@@ -1,0 +1,7 @@
+# This file must be tailored for your system. You can get a start by
+# running this:
+#
+# mount | egrep '^tmpfs| ext4| xfs' | awk '{ printf "%s\n", $3 }'
+
+/boot
+/

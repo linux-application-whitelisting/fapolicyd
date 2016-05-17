@@ -1,0 +1,10 @@
+[Unit]
+Description=File Access Policy Daemon
+DefaultDependencies=no
+After=local-fs.target systemd-tmpfiles-setup.service
+
+[Service]
+ExecStart=/sbin/fapolicyd --permissive
+
+[Install]
+WantedBy=multi-user.target

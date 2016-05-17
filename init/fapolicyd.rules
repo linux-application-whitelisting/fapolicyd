@@ -1,0 +1,39 @@
+# This is some sample rules that demonstrate some of the capabilities
+# of the fapolicyd. This is written as a blacklist. If you wanted a
+# whitelist, then you would end with deny all all. But be very careful
+# with that and run in permissive for a while to confirm.
+
+# Prevent execution by ld.so
+deny exe=/usr/lib64/ld-2.22.so all
+
+# Don't allow unpackaged executables
+allow exe=/usr/bin/rpm dir=systemdirs
+allow exe=/usr/bin/python3.4 comm=dnf dir=systemdirs
+deny exe_dir=execdirs exe=unpackaged all
+
+# Only allow system ELF libs
+allow all dir=execdirs ftype=application/x-sharedlib
+deny all ftype=application/x-sharedlib
+
+# Only allow system python executables and libs
+# File type by: file --mime-type /path-to-file
+allow all dir=execdirs ftype=text/x-python
+allow exe=/usr/bin/python3.4 dir=execdirs ftype=text/x-python
+allow exe=/usr/bin/python3.4 dir=execdirs ftype=application/octet-stream
+allow exe=/usr/bin/python2.7 dir=execdirs ftype=text/x-python
+allow exe=/usr/bin/python2.7 dir=execdirs ftype=application/octet-stream
+deny  all ftype=text/x-python
+#deny  all ftype=application/octet-stream path=*.pyc
+
+# Perl
+
+# PHP
+
+# Data exfiltration
+#deny exe=/usr/bin/ssh dir=/opt
+#deny exe=/usr/bin/wget dir=/tmp
+#deny all device=/dev/cdrom
+
+# Allow everything else
+allow all all
+

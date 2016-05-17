@@ -1,0 +1,114 @@
+.TH FAPOLICYD.RULES: "7" "May 2016" "Red Hat" "System Administration Utilities"
+.SH NAME
+fapolicyd.rules \- fapolicyd rules to determine access rights
+.SH DESCRIPTION
+\fBfapolicyd.rules\fP is a file that contains the rules that \fBfapolicyd\fP uses to make decisions about access rights. The rules follow a simple format of:
+
+.nf
+.B access decision subject object
+.fi
+
+.SS Access
+The decision is either
+.IR control allow " or " deny ".
+If the rule triggers, this is the access decision that fapolicyd will tell the kernel.
+
+.SS Subject
+The subject is the process that is performing actions on system resources. The fields in the rule that describe the subject are written in a name=value format.i There can be one or more subject fields. Each field is and'ed with others to decide if a rule triggers. The name can be any of the following:
+
+.RS
+.TP 12
+.B all
+This matches against any subject. When used, this must be the only subject in the rule.
+.TP
+.B auid
+This is the numeric login uid that the audit system assigns users when they log in to the system. Daemons have a value of -1.
+.TP
+.B uid
+This is the numeric user id that the program is running under.
+.TP
+.B sessionid
+This is the numeric session id that the audit system assigns to users when they log in. Daemons have a value of -1.
+.TP
+.B pid
+This is the numeric process id that a program has.
+.TP
+.B comm
+This is the shortened command name. When an interpreter starts a program, it usually renames the program to the script rather than the interpreter.
+.TP
+.B exe
+This is the full path to the executable. Globbing is not supported. You may also use the special keyword \fBunpackaged\fP to match on the subject not being listed in the rpm database.
+.TP
+.B exe_dir
+If you wish to match a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIexe_dir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBunpackaged\fP.
+.RS
+.TP 12
+.B execdirs
+The \fIexecdirs\fP option will match against the following list of directories:
+.RS
+.TP 12
+/usr/
+/bin/
+/sbin/
+/lib/
+/lib64/
+/usr/libexec/
+.RE
+.TP 12
+.B systemdirs
+The \fIexecdirs\fP option will match against the same list as \fIexecdirs\fP but also includes /etc/.
+.TP 12
+.B unpackaged
+The \fIunpackaged\fP option will look up the current executable's full path in the rpm database to see if the execuatble is known to the system. The rule will trigger if the file in question is not packaged.
+.RE
+.TP
+.B exe_type
+This option takes the mime type of a file as an argument. If you wish to check the mime type of a file while writing rules, run the following command:
+
+.nf
+.B file --mime-type /path-to-file
+.fi
+
+.TP
+.B exe_device
+This option will match against the device that the executable resides on. To use it, start with /dev/ and add the target device name.
+.RE
+
+.SS Object
+The object is the file that the subject is interacting with. The fields in the rule that describe the obbject are written in a name=value format. There can be one or more object fields. Each field is and'ed with others to decide if a rule triggers. The name can be any of the following:
+
+.RS
+.TP 12
+.B all
+This matches against any subject. When used, this must be the only subject in the rule.
+.TP
+.B path
+This is the full path to the file that will be accessed. Globbing is not supported. You may also use the special keyword \fBunpackaged\fP to match on the subject not being listed in the rpm database.
+.TP
+.B dir
+If you wish to match on access to any file in a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIexe_dir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBunpackaged\fP. See the \fBexe_dir\fP for an explanation of these keywords.
+.TP
+.B device
+This option will match against the device that the file being accessed resides on. To use it, start with /dev/ and add the target device name.
+.TP
+.B ftype
+This option matches against the mime type of the file being accessed. See \fBexe_type\fP for more information on determining the mime type.
+.TP
+.B sha256hash
+This option matches against the sha256 hash of the file being accessed.
+.RE
+
+.SH EXAMPLES
+The following rules show how rules may look.
+
+.nf
+.B deny exe=/usr/bin/wget dir=/tmp
+.B allow exe=/usr/bin/python3.4 dir=execdirs ftype=text/x-python
+.B deny all all
+.fi
+
+.SH "SEE ALSO"
+.BR fapolicyd (8)
+
+.SH AUTHOR
+Steve Grubb

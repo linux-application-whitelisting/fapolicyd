@@ -1,0 +1,19 @@
+Kernel
+======
+Add permissive mode
+Add audit events
+Add EXECVE, EXECVE_PERM 
+
+Userspace
+=========
+Need to work out deadlocking issue with system updates
+Don't run as root, but keep DAC override
+Add process cache
+Add file cache
+Allow globbing
+Add audit option
+Add ability to identify suspicious sequences
+Keep cache statistics - Most Recently Used, Most Often Used
+Write statistics on shutdown
+Add sighup handler
+

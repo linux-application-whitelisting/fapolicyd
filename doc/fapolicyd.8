@@ -1,0 +1,47 @@
+.TH "FAPOLICYD" "8" "May 2016" "Red Hat" "System Administration Utilities"
+.SH NAME
+fapolicyd \- File Access Policy Daemon
+.SH SYNOPSIS
+.B fapolicyd
+.RB [ \-\-debug ]\ [ \-\-debug\-deny ]\ [ \-\-permissive ]\ [ \-\-queue\ NNNN ]\ [ \-\-boost\ NN ]
+.SH DESCRIPTION
+\fBfapolicyd\fP is a userspace daemon that determines access rights to files based on attributes of the process and file. It can be used to either blacklist or whitelist processes or file access.
+
+Configuring \fBfapolicyd\fP is done with the files in \fI/etc/fapolicyd/\fP. There are two files, 
+.B fapolicyd.rules
+and
+.B fapolicyd.mounts
+. The first one sets the access rights and the second one determines which partitions to watch.
+.SH OPTIONS
+.TP
+.B \-\-debug
+leave the daemon in the foreground for debugging. Event information is written to stderr so that policy decisions can be observed.
+.TP
+.B \-\-debug\-deny
+leave the daemon in the foreground for debugging. Event information is written to stderr only when the decision is to deny access.
+.TP
+.B \-\-permissive
+the daemon will allow file access regardless of the policy decision. This is usefule for debugging rules before making them permanent.
+.TP
+.B \-\-boost\ NN
+increase the daemon's scheduling priority by this much. The number should be positive and less than 20. The default boost is 10.
+.TP
+.B \-\-queue\ NNNN
+the internal queue of pending decisions is set by this number. It should be a positive number. The default size is 2048.
+.SH SIGNALS
+.TP
+SIGTERM
+caused fapolicyd to discontinue processing events and exit.
+
+.SH FILES
+.B /etc/fapolicyd/fapolicyd.rules
+- access control rules
+.P
+.B /etc/fapolicyd/fapolicyd.mounts
+- lists partitions to control access to
+
+.SH "SEE ALSO"
+.BR fapolicyd.rules (5)
+
+.SH AUTHOR
+Steve Grubb
