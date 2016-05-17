@@ -37,7 +37,7 @@
 #include <rpm/rpmmacro.h>
 #include <rpm/rpmlog.h>
 #include <magic.h>
-#include "libudev.h"
+#include <libudev.h>
 #include "file.h"
 #include "message.h"
 
