@@ -23,9 +23,15 @@ Sample rules are included.
 
 NOTES
 =====
-One thing to note, as of the 0.8 release you can deadlock your system
-if you use rpm -i/U, yum update, or dnf update.
+One thing to note, the 0.8 release can deadlock your system if you
+use rpm -i/U, yum update, or dnf update.
 
 Its highly recommended to run in permissive mode while you are testing the
-daemon's policy. To see access decision use the debug option.
+daemon's policy. To see access decisions, use the debug option.
 
+The fapolicyd.mounts file must be setup based on your partitioning scheme.
+You can run:
+
+    mount | egrep '^tmpfs| ext4| xfs' | awk '{ printf "%s\n", $3 }'
+
+to get an initial list of things to watch.
