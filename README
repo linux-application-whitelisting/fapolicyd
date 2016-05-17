@@ -1,14 +1,15 @@
-# fapolicyd
 File Access Policy Daemon
 
-This is an application whitelisting daemon for Linux.
+This is a simple application whitelisting daemon for Linux.
 
-# Dependencies
+DEPENDENCIES
+============
 libgcrypt-devel
 rpm-devel
 file-devel
 
-# Building
+BUILDING
+========
 To build from the repo after cloning:
 
 cd fapolicyd
@@ -19,8 +20,11 @@ make dist
 Then use the new tarball with the spec file and create your own rpm.
 Sample rules are included.
 
+NOTES
+=====
 One thing to note, as of the 0.8 release you can deadlock your system
 if you use rpm -i/U, yum update, or dnf update.
 
 Its highly recommended to run in permissive mode while you are testing the
 daemon's policy. To see access decision use the debug option.
+
