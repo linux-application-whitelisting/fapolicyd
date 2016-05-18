@@ -21,6 +21,49 @@ make dist
 Then use the new tarball with the spec file and create your own rpm.
 Sample rules are included.
 
+RUNNING
+=======
+You need to setup the fapolicyd.mounts file because every system
+is potentially partitioned differently. The daemon has to place a watch
+on each partition in order to get events occurring on the partition.
+If the daemon does not get notifications, then it cannot make access
+control decisions.
+
+To get an initial watch list, you can run this:
+
+mount | egrep '^tmpfs| ext4| xfs' | awk '{ printf "%s\n", $3 }' >> /etc/fapolicyd/fapolicyd.mounts
+
+You might want to look at the fapolicyd.rules file to see what the sample
+policy looks like. The policy is designed with 3 goals in mind.
+
+1) No bypass of security by executing programs via ld.so.
+2) All approved executables are packaged/unpackaged programs can't run
+3) elf and python files/shared objects must come from system directories.
+This prevents LD_LIBRARY & PYTHON_LIBRARY redirection to an attacker
+controlled dir.
+
+You can test by starting the daemon from the command line. Before starting
+the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. Start
+the daemon as follows:
+
+/usr/sbin/fapolicyd --permissive --debug
+
+Then in another window do the following:
+
+1) /usr/lib64/ld-2.22.so /usr/bin/ls
+2) my-ls
+3) run a python file in your home directory.
+4) run a program from /tmp
+
+In permissive + debug mode you will see dec=deny which means
+"decision is to deny". But the program will actually be allowed to run.
+
+You can run the daemon from the command line with --debug-deny command
+line option. This culls the event notification to only print the denials.
+If this is running cleanly, then you can remove the --permissive option
+and get true denials. Now retest above steps and see the difference.
+
+
 NOTES
 =====
 One thing to note, the 0.8 release can deadlock your system if you
@@ -29,9 +72,3 @@ use rpm -i/U, yum update, or dnf update.
 Its highly recommended to run in permissive mode while you are testing the
 daemon's policy. To see access decisions, use the debug option.
 
-The fapolicyd.mounts file must be setup based on your partitioning scheme.
-You can run:
-
-    mount | egrep '^tmpfs| ext4| xfs' | awk '{ printf "%s\n", $3 }'
-
-to get an initial list of things to watch.
