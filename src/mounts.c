@@ -127,7 +127,7 @@ int load_mounts(void)
 	}
 
 	while (get_line(f, buf, PATH_MAX)) {
-		if (buf[0] != '#') {
+		if (buf[0] != '#' && buf[0] != 0) {
 			struct stat sb;
 
 			if (stat(buf, &sb) == 0) {
