@@ -295,7 +295,6 @@ static int check_subject(lnode *r, event_t *e)
 	unsigned int cnt = 0;
 
 	while (cnt < r->s_count) {
-		int results = 0;
 		if (r->s[cnt].type != ALL_SUBJ) {
 			subject_attr_t *subj = get_subj_attr(e, r->s[cnt].type);
 			if (subj == NULL)
