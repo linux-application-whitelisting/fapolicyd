@@ -78,14 +78,16 @@ In debug mode, you will see events such as this:
 
 rule:4 dec=deny auid=1000 pid=7792 exe=/usr/bin/my-ls file=/etc/ld.so.cache
 
-What this is saying is rule 4 made the ultimate decision that was followed.
-The Decision is to deny access. The user logged in as user id 1000. The
-process id is 7792. The executable or subject is my-ls. The my-ls
-application wanted to access /etc/ld.so.cache.
+What this is saying is rule 4 made the ultimate Decision that was followed.
+The Decision is to deny access. The subject is the user that logged in as
+user id 1000. The subject's process id that is trying to perform an action
+is 7792. The current executable that subject is using is my-ls. The my-ls
+application wanted to access /etc/ld.so.cache which is the object.
 
 WRITING RULES
 =============
-See the fapolicyd.rules man page
+The rules follow a simple "decision subject object" recipe. For more
+information, see the fapolicyd.rules man page.
 
 
 NOTES
