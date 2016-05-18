@@ -2,12 +2,14 @@ File Access Policy Daemon
 
 This is a simple application whitelisting daemon for Linux.
 
+
 DEPENDENCIES
 ============
 libgcrypt-devel
 rpm-devel
 file-devel
 systemd-devel
+
 
 BUILDING
 ========
@@ -18,8 +20,12 @@ cd fapolicyd
 ./configure
 make dist
 
-Then use the new tarball with the spec file and create your own rpm.
-Sample rules are included.
+This will create a tarball. You can use the new tarball with the spec file
+and create your own rpm. If you want to experiment without installing, just
+run make with mo arguments. It should run fine from where it was built as
+long as you put the configuration files in /etc/fapolicyd. The fapolicy.rules
+and fapolicyd.mounts files go there.
+
 
 RUNNING
 =======
@@ -62,6 +68,18 @@ You can run the daemon from the command line with --debug-deny command
 line option. This culls the event notification to only print the denials.
 If this is running cleanly, then you can remove the --permissive option
 and get true denials. Now retest above steps and see the difference.
+
+
+DEBUG MODE
+==========
+In debug mode, you will see events such as this:
+
+rule:4 dec=deny auid=1000 pid=7792 exe=/usr/bin/my-ls file=/etc/ld.so.cache
+
+What this is saying is rule 4 made the ultimate decision that was followed.
+The Decision is to deny access. The user logged in as user id 1000. The
+process id is 7792. The executable or subject is my-ls. The my-ls
+application wanted to access /etc/ld.so.cache.
 
 
 NOTES
