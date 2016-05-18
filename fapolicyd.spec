@@ -38,6 +38,7 @@ make DESTDIR="${RPM_BUILD_ROOT}" INSTALL='install -p' install
 
 %files
 %defattr(-,root,root,-)
+%doc README COPYING
 %attr(750,root,root) %dir /etc/fapolicyd
 %config(noreplace) %attr(640,root,root) /etc/fapolicyd/fapolicyd.rules
 %config(noreplace) %attr(640,root,root) /etc/fapolicyd/fapolicyd.mounts

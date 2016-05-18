@@ -22,7 +22,7 @@ make dist
 
 This will create a tarball. You can use the new tarball with the spec file
 and create your own rpm. If you want to experiment without installing, just
-run make with mo arguments. It should run fine from where it was built as
+run make with no arguments. It should run fine from where it was built as
 long as you put the configuration files in /etc/fapolicyd. The fapolicy.rules
 and fapolicyd.mounts files go there.
 
@@ -49,8 +49,10 @@ This prevents LD_LIBRARY & PYTHON_LIBRARY redirection to an attacker
 controlled dir.
 
 You can test by starting the daemon from the command line. Before starting
-the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. Start
-the daemon as follows:
+the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. When
+testing new policy, its highly recommended to use the permissive mode to
+make sure nothing bad happens. It really is not too hard to deadlock your
+system. Continuing on with the tutorial, as root start the daemon as follows:
 
 /usr/sbin/fapolicyd --permissive --debug
 
@@ -81,6 +83,10 @@ The Decision is to deny access. The user logged in as user id 1000. The
 process id is 7792. The executable or subject is my-ls. The my-ls
 application wanted to access /etc/ld.so.cache.
 
+WRITING RULES
+=============
+See the fapolicyd.rules man page
+
 
 NOTES
 =====
@@ -88,5 +94,5 @@ One thing to note, the 0.8 release can deadlock your system if you
 use rpm -i/U, yum update, or dnf update.
 
 Its highly recommended to run in permissive mode while you are testing the
-daemon's policy. To see access decisions, use the debug option.
+daemon's policy.
 
