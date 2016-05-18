@@ -84,6 +84,7 @@ user id 1000. The subject's process id that is trying to perform an action
 is 7792. The current executable that subject is using is my-ls. The my-ls
 application wanted to access /etc/ld.so.cache which is the object.
 
+
 WRITING RULES
 =============
 The rules follow a simple "decision subject object" recipe. For more

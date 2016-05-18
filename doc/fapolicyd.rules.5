@@ -8,6 +8,9 @@ fapolicyd.rules \- fapolicyd rules to determine access rights
 .B access decision subject object
 .fi
 
+They are evaluated from top to bottom with the first rule to match being used
+for the access control decision.
+
 .SS Access
 The decision is either
 .IR allow " or " deny ".
