@@ -127,17 +127,22 @@ int load_mounts(void)
 	}
 
 	while (get_line(f, buf, PATH_MAX)) {
-		if (buf[0] != '#' && buf[0] != 0) {
-			struct stat sb;
+		if (buf[0] != '#') {
+			char *ptr = buf;
+			while (*ptr == ' ')
+				ptr++;
+			if (*ptr != 0) {
+				struct stat sb;
 
-			if (stat(buf, &sb) == 0) {
-				if (!S_ISDIR(sb.st_mode)) {
-					msg(LOG_ERR,
-				"mount point %s is not a directory", buf);
-					exit(1);
+				if (stat(ptr, &sb) == 0) {
+					if (!S_ISDIR(sb.st_mode)) {
+						msg(LOG_ERR,
+				    "mount point %s is not a directory", ptr);
+						exit(1);
+					}
 				}
+				mounts_append(&mounts, ptr, lineno);
 			}
-			mounts_append(&mounts, buf, lineno);
 		}
 		lineno++;
 	}

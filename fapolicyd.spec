@@ -49,6 +49,6 @@ make DESTDIR="${RPM_BUILD_ROOT}" INSTALL='install -p' install
 %attr(644,root,root) %{_mandir}/man5/fapolicyd.rules.5.gz
 
 %changelog
-* Tue May 17 2016 Steve Grubb <sgrubb@redhat.com> 0.8.1-1
-- Initial public release
+* Thu May 19 2016 Steve Grubb <sgrubb@redhat.com> 0.8.1-1
+- New  release
 
