@@ -1,15 +1,25 @@
 # This is some sample rules that demonstrate some of the capabilities
 # of the fapolicyd. This is written as a blacklist. If you wanted a
 # whitelist, then you would end with deny all all. But be very careful
-# with that and run in permissive for a while to confirm.
+# with that and run in permissive for a while to confirm. Also, the
+# versions of python and the update utilities may need adjusting for
+# your distribution.
 
 # Prevent execution by ld.so
 deny exe=/usr/lib64/ld-2.22.so all
 
-# Don't allow unpackaged executables
+# We have to carve out an exception for the system updaters
+# or things go very bad (deadlock).
 allow exe=/usr/bin/rpm all
 allow exe=/usr/bin/python3.4 comm=dnf all
+
+# Don't allow unpackaged executables
 deny exe_dir=execdirs exe=unpackaged all
+
+# Only allow system ELF Applications - note: depends on above check
+# for unpackaged executables.
+allow all dir=execdirs ftype=application/x-executable
+deny all ftype=application/x-executable
 
 # Only allow system ELF libs
 allow all dir=execdirs ftype=application/x-sharedlib
