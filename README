@@ -93,9 +93,6 @@ information, see the fapolicyd.rules man page.
 
 NOTES
 =====
-One thing to note, the 0.8 release can deadlock your system if you
-use rpm -i/U, yum update, or dnf update.
-
 Its highly recommended to run in permissive mode while you are testing the
 daemon's policy.
 
