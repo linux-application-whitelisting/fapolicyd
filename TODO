@@ -6,9 +6,10 @@ Add EXECVE, EXECVE_PERM
 
 Userspace
 =========
-Don't run as root, but keep DAC override
 Add file cache
 Add process cache
+Fix spec file to create a user
+Update systemd service file to use default user
 Allow globbing
 Add audit option
 Add ability to identify suspicious sequences

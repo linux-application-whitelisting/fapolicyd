@@ -32,6 +32,8 @@
 #include <sys/resource.h> 
 #include <stdio.h>
 #include <ctype.h>
+#include <pwd.h>
+#include <cap-ng.h>
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -47,6 +49,7 @@ volatile int stop = 0;
 
 // Local variables
 static int nice_val = 10;
+static int uid = 0;
 static const char *pidfile = "/var/run/fapolicyd.pid";
 
 static void term_handler(int sig)
@@ -129,7 +132,7 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
-		"[--boost xxx] [--queue xxx]\n");
+		"[--boost xxx] [--queue xxx] [--user xx]\n");
 	exit(1);
 }
 
@@ -183,6 +186,30 @@ int main(int argc, char *argv[])
 				msg(LOG_WARNING,
 					"q_size might be unnecessarily large");
 			}
+		} else if (strcmp(argv[i], "--user") == 0) {
+			i++;
+			if (i == argc || *argv[i] == '-') {
+				msg(LOG_ERR, "user takes an argument");
+				exit(1);
+			}
+			if (isdigit(*argv[i])) {
+				errno = 0;
+				uid = strtol(argv[i], NULL, 10);
+				if (errno) {
+					msg(LOG_ERR,
+						"Error converting user value");
+					exit(1);
+				}
+			} else {
+				struct passwd *pw = getpwnam(argv[i]);
+				if (pw == NULL) {
+					msg(LOG_ERR, "user %s is unknown",
+							argv[i]);
+					exit(1);
+				}
+				uid = pw->pw_uid;
+				endpwent();
+			}
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
 			usage();
@@ -221,7 +248,21 @@ int main(int argc, char *argv[])
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
 	}
 
+	// Write the pid file for the init system
 	write_pid_file();
+
+	// If we are not going to be root, then setup necessary capabilities
+	if (uid != 0) {
+		capng_clear(CAPNG_SELECT_BOTH);
+		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
+			CAP_DAC_OVERRIDE, CAP_SYS_ADMIN, CAP_SYS_NICE,
+			CAP_SYS_RESOURCE, -1);
+		if (capng_change_id(uid, uid, CAPNG_DROP_SUPP_GRP)) {
+			msg(LOG_ERR, "Cannot change to uid %d", uid);
+			exit(1);
+		} else
+			msg(LOG_DEBUG, "Changed to uid %d", uid);
+	}
 
 	// Initialize the file watch system
 	pfd[0].fd = init_fanotify();

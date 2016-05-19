@@ -9,6 +9,7 @@ Source0: https://github.com/stevegrubb/fapolicyd/archive/%{name}-%{version}.tar.
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel-headers >=  2.6.36
 BuildRequires: systemd-devel libgcrypt-devel rpm-devel file-devel
+BuildRequires: libcap-ng-devel
 Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units

@@ -40,6 +40,7 @@ AC_CHECK_LIB(gcrypt, gcry_md_open, , [AC_MSG_ERROR([libgcrypt not found])], -lgc
 AC_CHECK_LIB(rpm, rpmtsInitIterator, , [AC_MSG_ERROR([librpm not found])], -lrpm)
 AC_CHECK_LIB(rpmio, rpmFreeCrypto, , [AC_MSG_ERROR([librpmio not found])], -lrpmio)
 AC_CHECK_LIB(magic, magic_descriptor, , [AC_MSG_ERROR([libmagic not found])], -lmagic)
+AC_CHECK_LIB(cap-ng, capng_change_id, , [AC_MSG_ERROR([libcap-ng not found])], -lcap-ng)
 
 AC_OUTPUT(Makefile src/Makefile init/Makefile doc/Makefile)
 

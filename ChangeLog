@@ -2,6 +2,7 @@
 - Documentation updates
 - Update rules
 - Output how many rules are loaded in debug mode
+- Add user commandline option
 
 0.8
 - Initial public release

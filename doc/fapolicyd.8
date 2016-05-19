@@ -2,8 +2,7 @@
 .SH NAME
 fapolicyd \- File Access Policy Daemon
 .SH SYNOPSIS
-.B fapolicyd
-.RB [ \-\-debug ]\ [ \-\-debug\-deny ]\ [ \-\-permissive ]\ [ \-\-queue\ NNNN ]\ [ \-\-boost\ NN ]
+\fBfapolicyd\fP [\fIoptions\fP]
 .SH DESCRIPTION
 \fBfapolicyd\fP is a userspace daemon that determines access rights to files based on attributes of the process and file. It can be used to either blacklist or whitelist processes or file access.
 
@@ -28,6 +27,9 @@ increase the daemon's scheduling priority by this much. The number should be pos
 .TP
 .B \-\-queue\ NNNN
 the internal queue of pending decisions is set by this number. It should be a positive number. The default size is 2048.
+.TP
+.B \-\-user\ NN
+run as a particular user rather than root. This may either be numeric or a user name from the passwd database.
 .SH SIGNALS
 .TP
 SIGTERM
