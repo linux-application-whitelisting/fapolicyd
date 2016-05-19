@@ -6,10 +6,9 @@ Add EXECVE, EXECVE_PERM
 
 Userspace
 =========
-Need to work out deadlocking issue with system updates
 Don't run as root, but keep DAC override
-Add process cache
 Add file cache
+Add process cache
 Allow globbing
 Add audit option
 Add ability to identify suspicious sequences
