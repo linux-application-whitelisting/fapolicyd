@@ -134,16 +134,12 @@ int reload_config(void)
 static void log_it(unsigned int num, decision_t results, event_t *e)
 {
 	subject_attr_t *subj, *subj2, *subj3;
-	//subject_attr_t *subj4;
 	object_attr_t *obj;
-	//object_attr_t *obj2;
 
 	subj = get_subj_attr(e, EXE);
 	subj2 = get_subj_attr(e, AUID);
 	subj3 = get_subj_attr(e, PID);
-	//subj4 = get_subj_attr(e, EXE_DIR);
 	obj = get_obj_attr(e, PATH);
-	//obj2 = get_obj_attr(e, SHA256HASH);
 	msg(LOG_DEBUG, "rule:%u dec=%s auid=%d pid=%d exe=%s file=%s",
 		num+1,
 		dec_val_to_name(results),

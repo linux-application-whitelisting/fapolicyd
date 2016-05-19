@@ -126,6 +126,7 @@ void shutdown_fanotify(void)
 	// End the thread
 	pthread_cond_signal(&do_decision);
 	pthread_join(decision_thread, NULL);
+
 	// Clean up
 	q_close(q);
 	close(fd);
@@ -160,22 +161,18 @@ static void *decision_thread_main(void *arg)
 {
 	sigset_t sigs;
 
-	//decision_tid = syscall(SYS_gettid);
-
 	/* This is a worker thread. Don't handle signals. */
 	sigemptyset(&sigs);
 	sigaddset(&sigs, SIGTERM);
 	sigaddset(&sigs, SIGHUP);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
-	//msg(LOG_DEBUG, "Starting decision thread %u", decision_tid);
 	while (!stop) {
 		int len;
 		struct fanotify_event_metadata metadata;
 
 		pthread_mutex_lock(&decision_lock);
 		while (events_ready == 0) {
-			//msg(LOG_DEBUG, "Waiting for event");
 			pthread_cond_wait(&do_decision, &decision_lock);
 			if (stop)
 				return NULL;
@@ -192,7 +189,7 @@ static void *decision_thread_main(void *arg)
 		if (q_queue_length(q) == 0)
 			events_ready = 0;
 		pthread_mutex_unlock(&decision_lock);
-		//msg(LOG_DEBUG, "Starting decision");
+
 		make_policy_decision(&metadata);
 		if (close(metadata.fd))
 			msg(LOG_DEBUG, "close fd failed");
@@ -210,8 +207,6 @@ static void enqueue_event(const struct fanotify_event_metadata *metadata)
 		events_ready = 1;
 	pthread_cond_signal(&do_decision);
 	pthread_mutex_unlock(&decision_lock);
-//	msg(LOG_DEBUG, "enqueue pid: %u fd:%d: q:%zu",
-//		metadata->pid, metadata->fd, q_queue_length(q));
 }
 
 static void approve_event(const struct fanotify_event_metadata *metadata)
@@ -254,14 +249,7 @@ void handle_events(void)
 				if (((metadata->mask & FAN_OPEN_PERM))||
 				    ((metadata->mask & FAN_OPEN))) {
 					if (metadata->pid == our_pid) {
-//						msg(LOG_DEBUG,
-//							"approve self");
 						approve_event(metadata);
-//					} else if (metadata->pid ==
-//							    decision_tid) {
-//						msg(LOG_DEBUG,
-//							"approve thread");
-//						approve_event(metadata);
 					} else
 						enqueue_event(metadata);
 				}

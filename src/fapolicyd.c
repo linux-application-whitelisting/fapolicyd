@@ -271,8 +271,6 @@ int main(int argc, char *argv[])
 	msg(LOG_DEBUG, "Starting to listen for events");
 	while (!stop) {
 		rc = poll(pfd, 1, -1);
-//msg(LOG_INFO, "poll:%d", rc);
-//fflush(stdout);
 		if (rc < 0) {
 			if (errno == EINTR)
 				continue;
