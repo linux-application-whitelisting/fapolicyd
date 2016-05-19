@@ -9,6 +9,7 @@ libgcrypt-devel
 rpm-devel
 file-devel
 systemd-devel
+libcap-ng-devel
 
 
 BUILDING
@@ -95,4 +96,6 @@ NOTES
 =====
 Its highly recommended to run in permissive mode while you are testing the
 daemon's policy.
+
+Stracing the daemon can deadlock the system.
 
