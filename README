@@ -23,7 +23,7 @@ make dist
 This will create a tarball. You can use the new tarball with the spec file
 and create your own rpm. If you want to experiment without installing, just
 run make with no arguments. It should run fine from where it was built as
-long as you put the configuration files in /etc/fapolicyd. The fapolicy.rules
+long as you put the configuration files in /etc/fapolicyd. The fapolicyd.rules
 and fapolicyd.mounts files go there.
 
 
@@ -43,8 +43,8 @@ You might want to look at the fapolicyd.rules file to see what the sample
 policy looks like. The policy is designed with 3 goals in mind.
 
 1) No bypass of security by executing programs via ld.so.
-2) All approved executables are packaged/unpackaged programs can't run
-3) elf and python files/shared objects must come from system directories.
+2) All approved executables are packaged. Unpackaged programs can't run
+3) Elf and python files/shared objects must come from system directories.
 This prevents LD_LIBRARY & PYTHON_LIBRARY redirection to an attacker
 controlled dir.
 

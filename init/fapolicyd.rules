@@ -7,8 +7,8 @@
 deny exe=/usr/lib64/ld-2.22.so all
 
 # Don't allow unpackaged executables
-allow exe=/usr/bin/rpm dir=systemdirs
-allow exe=/usr/bin/python3.4 comm=dnf dir=systemdirs
+allow exe=/usr/bin/rpm all
+allow exe=/usr/bin/python3.4 comm=dnf all
 deny exe_dir=execdirs exe=unpackaged all
 
 # Only allow system ELF libs
@@ -25,9 +25,32 @@ allow exe=/usr/bin/python2.7 dir=execdirs ftype=application/octet-stream
 deny  all ftype=text/x-python
 #deny  all ftype=application/octet-stream path=*.pyc
 
+#
+# In this next optional languages section, choose either to
+# block (default) or allow by commenting or uncommenting the
+# appropriate line.
+#
+
+# Block all perl
+deny exe=/usr/bin/perl all
+
 # Perl
+#allow all dir=execdirs ftype=text/x-perl
+#deny  all ftype=text/x-perl
+
+# Block all PHP
+deny exe=/usr/bin/php all
 
 # PHP
+#allow all dir=execdirs ftype=text/x-php
+#deny  all ftype=text/x-php
+
+# Block all Ruby
+deny exe=/usr/bin/ruby all
+
+# Ruby
+#allow all dir=execdirs ftype=text/x-ruby
+#deny  all ftype=text/x-ruby
 
 # Data exfiltration
 #deny exe=/usr/bin/ssh dir=/opt
