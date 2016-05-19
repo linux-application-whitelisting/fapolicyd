@@ -119,7 +119,9 @@ int load_config(void)
 	if (rules.cnt == 0) {
 		msg(LOG_INFO, "No rules in config - exiting");
 		return 1;
-	}
+	} else
+		msg(LOG_DEBUG, "Loaded %u rules", rules.cnt);
+
 	return 0;
 }
 
