@@ -1,6 +1,6 @@
 Summary: File Access Policy Daemon
 Name: fapolicyd
-Version: 0.8.1
+Version: 0.8.2
 Release: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -49,6 +49,6 @@ make DESTDIR="${RPM_BUILD_ROOT}" INSTALL='install -p' install
 %attr(644,root,root) %{_mandir}/man5/fapolicyd.rules.5.gz
 
 %changelog
-* Thu May 19 2016 Steve Grubb <sgrubb@redhat.com> 0.8.1-1
+* Thu May 19 2016 Steve Grubb <sgrubb@redhat.com> 0.8.2-1
 - New  release
 
