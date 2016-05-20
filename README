@@ -99,3 +99,7 @@ daemon's policy.
 
 Stracing the daemon can deadlock the system.
 
+About shell script restrictions...there's not much difference between
+running a script or someone typing things in by hand. The aim at this
+point is to check that any programs it calls meets the policy.
+
