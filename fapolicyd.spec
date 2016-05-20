@@ -7,7 +7,7 @@ Group: System Environment/Daemons
 URL: https://github.com/stevegrubb/fapolicyd
 Source0: https://github.com/stevegrubb/fapolicyd/archive/%{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-BuildRequires: kernel-headers >=  2.6.36
+BuildRequires: kernel-headers
 BuildRequires: systemd-devel libgcrypt-devel rpm-devel file-devel
 BuildRequires: libcap-ng-devel
 Requires(post): systemd-units

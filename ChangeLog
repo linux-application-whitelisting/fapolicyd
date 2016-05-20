@@ -1,4 +1,5 @@
 0.8.2
+- Add seccomp filter support
 
 0.8.1
 - Documentation updates

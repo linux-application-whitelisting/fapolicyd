@@ -32,6 +32,13 @@ echo Checking for required header files
 AC_HEADER_STDC
 AC_CHECK_HEADER(sys/fanotify.h, , [AC_MSG_ERROR(
 ["Couldn't find sys/fanotify.h...your kernel might not be new enough"] )])
+AC_CHECK_HEADER(linux/seccomp.h, , [AC_MSG_WARN(
+["Couldn't find linux/seccomp.h...seccomp filter will not be used"] )])
+AC_CHECK_DECLS([SECCOMP_MODE_FILTER], [], [], [[#include <linux/seccomp.h>]])
+AC_CHECK_DECLS([PR_SET_NO_NEW_PRIVS], [], [AC_MSG_WARN(
+["Couldn't find PR_SET_NO_NEW_PRIVS...privilege escalation might be possible"] )
+], [[#include <linux/prctl.h>]])
+AC_CHECK_FUNCS(fexecve, [], [])
 
 echo .
 echo Checking for required libraries
