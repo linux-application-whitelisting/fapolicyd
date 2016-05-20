@@ -103,6 +103,7 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 		extern magic_t magic_cookie;
 
 		ptr = magic_descriptor(magic_cookie, fd);
+		close(fd);
 		if (ptr) {
 			char *str;
 			strncpy(buf, ptr, blen);

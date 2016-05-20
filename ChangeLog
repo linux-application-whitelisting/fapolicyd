@@ -1,5 +1,6 @@
 0.8.2
 - Add seccomp filter support
+- Fix leaked descriptor in exe_type processing
 
 0.8.1
 - Documentation updates
