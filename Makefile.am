@@ -1,6 +1,6 @@
 
 SUBDIRS = src init doc 
-EXTRA_DIST = ChangeLog AUTHORS NEWS README INSTALL fapolicyd.spec doc/uml/fapolicyd.xmi autogen.sh
+EXTRA_DIST = ChangeLog AUTHORS NEWS README INSTALL fapolicyd.spec doc/uml/fapolicyd.xmi doc/uml/README autogen.sh
 
 clean-generic:
 	rm -rf autom4te*.cache 
