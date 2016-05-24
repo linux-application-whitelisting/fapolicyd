@@ -26,11 +26,23 @@
 
 #include <sys/types.h>
 
+// Information we will cache to identify the same executable
+struct file_info
+{
+	dev_t    device;
+	ino_t    inode;
+	mode_t   mode;
+	blkcnt_t blocks;
+	struct timespec time;
+};
+
 void file_init(void);
 void file_close(void);
+struct file_info *stat_file_entry(int fd);
+int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
 char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf);
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf);
-char *get_device_from_fd(int fd, size_t blen, char *buf);
+char *get_device_from_fd(int fd, unsigned int device, size_t blen, char *buf);
 char *get_file_type_from_fd(int fd, size_t blen, char *buf);
 int  check_packaged_from_file(const char *filename);
 char *get_hash_from_fd(int fd);

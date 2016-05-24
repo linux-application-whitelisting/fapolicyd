@@ -25,6 +25,7 @@
 #define SUBJECT_HEADER
 
 #include "subject-attr.h"
+#include "process.h"
 
 /* This is the node of the linked list. message & item are the only elements
  * at this time. Any data elements that are per item goes here. */
@@ -39,6 +40,7 @@ typedef struct {
   snode *head;		// List head
   snode *cur;		// Pointer to current node
   unsigned int cnt;	// How many items in this list
+  struct proc_info *info;	// unique proc fingerprint
 } slist;
 
 void subject_create(slist *l);

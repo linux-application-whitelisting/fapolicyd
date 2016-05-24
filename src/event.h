@@ -33,12 +33,13 @@ typedef struct ev {
 	pid_t pid;
 	int fd;
 	int type;
-	slist s;
-	olist o;
+	slist *s;
+	olist *o;
 } event_t;
 
+int init_event_system(void);
+void destroy_event_system(void);
 void new_event(const struct fanotify_event_metadata *m, event_t *e);
-void clear_event(event_t *e);
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);
 object_attr_t *get_obj_attr(event_t *e, object_type_t t);
 

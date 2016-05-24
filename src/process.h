@@ -26,6 +26,17 @@
 
 #include <sys/types.h>
 
+// Information we will cache to identify the same executable
+struct proc_info
+{
+	pid_t	pid;
+	dev_t	device;
+	ino_t	inode;
+	struct timespec time;
+};
+
+struct proc_info *stat_proc_entry(pid_t pid);
+int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2);
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf);
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf);
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf);

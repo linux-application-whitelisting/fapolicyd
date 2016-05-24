@@ -89,6 +89,60 @@ void file_close(void)
 	free((void *)c.devname);
 }
 
+struct file_info *stat_file_entry(int fd)
+{
+	struct stat sb;
+
+	if (fstat(fd, &sb) == 0) {
+		struct file_info *info = malloc(sizeof(struct file_info));
+		if (info == NULL)
+			return info;
+
+		info->device = sb.st_dev;
+		info->inode = sb.st_ino;
+		info->mode = sb.st_mode;
+		info->blocks = sb.st_blocks;
+		info->time.tv_sec = sb.st_mtim.tv_sec;
+		info->time.tv_nsec = sb.st_mtim.tv_nsec;
+
+		return info;
+	}
+	return NULL;
+}
+
+// Returns 0 if equal and 1 if not equal
+#include "message.h"
+int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
+{
+	if (p1 == NULL || p2 == NULL)
+		return 1;
+
+	// Compare in the order to find likely mismatch first
+//msg(LOG_DEBUG, "inode %ld %ld", p1->inode, p2->inode);
+	if (p1->inode != p2->inode) {
+//msg(LOG_DEBUG, "mismatch INODE");
+		return 1;
+	}
+	if (p1->time.tv_nsec != p2->time.tv_nsec) {
+//msg(LOG_DEBUG, "mismatch NANO");
+		return 1;
+	}
+	if (p1->time.tv_sec != p2->time.tv_sec) {
+//msg(LOG_DEBUG, "mismatch SEC");
+		return 1;
+	}
+	if (p1->device != p2->device) {
+//msg(LOG_DEBUG, "mismatch DEV");
+		return 1;
+	}
+	if (p1->blocks != p2->blocks) {
+//msg(LOG_DEBUG, "mismatch BLOCKS");
+		return 1;
+	}
+
+	return 0;
+}
+
 char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	char path[PATH_MAX+1];
@@ -155,17 +209,13 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	return buf;
 }
 
-char *get_device_from_fd(int fd, size_t blen, char *buf)
+char *get_device_from_fd(int fd, unsigned int device, size_t blen, char *buf)
 {
-	struct stat sb;
 	struct udev_device *dev;
 	const char *node;
 
-	if (fstat(fd, &sb) < 0)
-		return NULL;
-
 	if (c.device) {
-		if (c.device == sb.st_dev) {
+		if (c.device == device) {
 			strncpy(buf, c.devname, blen-1);
 			buf[blen-1] = 0;
 			return buf;
@@ -173,7 +223,7 @@ char *get_device_from_fd(int fd, size_t blen, char *buf)
 	}
 
 	// Create udev_device from the dev_t obtained from stat
-	dev = udev_device_new_from_devnum(udev, 'b', sb.st_dev);
+	dev = udev_device_new_from_devnum(udev, 'b', device);
 	node = udev_device_get_devnode(dev);
 	if (node == NULL) {
 		udev_device_unref(dev);
@@ -185,7 +235,7 @@ char *get_device_from_fd(int fd, size_t blen, char *buf)
 
 	// Update saved values
 	free((void *)c.devname);
-	c.device = sb.st_dev;
+	c.device = device;
 	c.devname = strdup(buf);
 
 	return buf;

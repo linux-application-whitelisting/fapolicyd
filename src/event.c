@@ -25,33 +25,120 @@
 #include <string.h>
 #include <limits.h>
 #include <sys/fanotify.h>
+#include <stdlib.h>
 #include "event.h"
-#include "process.h"
 #include "file.h"
+#include "lru.h"
+#include "message.h"
+
+static Queue *subj_cache = NULL;
+static Queue *obj_cache = NULL;
+
+// Return 0 on success and 1 on error
+int init_event_system(void)
+{
+	subj_cache = init_lru(1024, subject_clear, "Subject");
+	if (!subj_cache)
+		return 1;
+
+	obj_cache = init_lru(4096, object_clear, "Object");
+	if (!obj_cache)
+		return 1;
+
+	return 0;
+}
+
+void destroy_event_system(void)
+{
+	destroy_lru(subj_cache);
+	destroy_lru(obj_cache);
+}
 
 void new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
 	subject_attr_t subj;
+	QNode *q_node;
+	unsigned int key, rc = 1;
+	slist *s;
+	olist *o;
+	struct proc_info *pinfo;
+	struct file_info *finfo;
 
 	// Transfer things from fanotify structs to ours
 	e->pid = m->pid;
 	e->fd = m->fd;
 	e->type = m->mask & FAN_ALL_EVENTS;
 
-	// Setup the subject with what we currently have
-	subject_create(&(e->s));
-	subj.type = PID;
-	subj.val = e->pid;
-	subject_append(&(e->s), &subj);
+	key = compute_subject_key(subj_cache, m->pid);
+	q_node = check_lru_cache(subj_cache, key);
+	s = (slist *)q_node->item;
+
+	// get proc fingerprint
+	pinfo = stat_proc_entry(m->pid);
+
+	// Check the subject to see if its what its supposed to be
+	if (s) {
+		rc = compare_proc_infos(pinfo, s->info);
+		if (rc) {
+			lru_evict(subj_cache, key);
+			q_node = check_lru_cache(subj_cache, key);
+			s = (slist *)q_node->item;
+		} else if (s->cnt == 0)
+			msg(LOG_DEBUG, "cached subject has cnt of 0");
+	}
+
+	if (rc) {
+		// If empty, setup the subject with what we currently have
+		e->s = malloc(sizeof(slist));
+		subject_create(e->s);
+		subj.type = PID;
+		subj.val = e->pid;
+		subject_append(e->s, &subj);
+
+		// give custody of the list to the cache
+		q_node->item = e->s;
+		((slist *)q_node->item)->info = pinfo;
+	} else	{ // Use the one from the cache
+		e->s = s;
+		free(pinfo);
+	}
 
 	// Init the object
-	object_create(&(e->o));
-}
+	// get file fingerprint
+	rc = 1;
+	finfo = stat_file_entry(m->fd);
 
-void clear_event(event_t *e)
-{
-	subject_clear(&(e->s));
-	object_clear(&(e->o));
+	// Just using inodes don't give a good key. It needs 
+	// conditioning to use more slots in the cache.
+	unsigned int magic = finfo->inode + finfo->time.tv_sec + finfo->blocks;
+	key = compute_object_key(obj_cache, magic);
+//msg(LOG_DEBUG, "ino:%u key:%u info addr:%p", magic, key, finfo);
+	q_node = check_lru_cache(obj_cache, key);
+	o = (olist *)q_node->item;
+
+	if (o) {
+		rc = compare_file_infos(finfo, o->info);
+		if (rc) {
+//msg(LOG_DEBUG, "EVICTING cached object, info addr:%p", o->info);
+			lru_evict(obj_cache, key);
+			q_node = check_lru_cache(obj_cache, key);
+			o = (olist *)q_node->item;
+		} else if (o->cnt == 0)
+			msg(LOG_DEBUG, "cached object has cnt of 0");
+	}
+
+	if (rc) {
+		// If empty, setup the subject with what we currently have
+		e->o = malloc(sizeof(olist));
+		object_create(e->o);
+
+		// give custody of the list to the cache
+		q_node->item = e->o;
+		((olist *)q_node->item)->info = finfo;
+	} else { // Use the one from the cache
+		e->o = o;
+		free(finfo);
+	}
 }
 
 /*
@@ -62,7 +149,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 {
 	subject_attr_t subj;
 	snode *sn;
-	slist *s = &(e->s);
+	slist *s = e->s;
 
 	subject_first(s);
 	sn = subject_get_cur(s);
@@ -121,8 +208,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			return NULL;
 	};
 
-	if (subject_append(&(e->s), &subj) == 0) {
-		sn = subject_get_cur(&(e->s));
+	if (subject_append(e->s, &subj) == 0) {
+		sn = subject_get_cur(e->s);
 		return &(sn->s);
 	}
 
@@ -133,7 +220,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 {
 	char buf[PATH_MAX+1], *ptr;
 	object_attr_t obj;
-	onode *on = object_find_type(&(e->o), t);
+	onode *on = object_find_type(e->o, t);
 	if (on)
 		return &(on->o);
 
@@ -143,7 +230,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		case PATH:
 		case ODIR:
 			// Try to avoid looking up the path if we have it
-			on = object_find_file(&(e->o));
+			on = object_find_file(e->o);
 			if (on)
 				obj.o = strdup(on->o.o);
 			else {
@@ -156,7 +243,9 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			}
 			break;
 		case DEVICE:
-			ptr = get_device_from_fd(e->fd, sizeof(buf), buf);
+			ptr = get_device_from_fd(e->fd, 
+					((olist *)e->o)->info->device,
+					sizeof(buf), buf);
 			if (ptr)
 				obj.o = strdup(buf);
 			else 
@@ -178,8 +267,8 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			return NULL;
 	}
 
-	if (object_append(&(e->o), &obj) == 0) {
-		on = object_get_cur(&(e->o));
+	if (object_append(e->o, &obj) == 0) {
+		on = object_get_cur(e->o);
 		return &(on->o);
 	}
 

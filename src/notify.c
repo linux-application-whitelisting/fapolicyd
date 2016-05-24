@@ -154,7 +154,6 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 		write(fd, &response,
 		    sizeof(struct fanotify_response));
 	}
-	clear_event(&e);
 }
 
 static void *decision_thread_main(void *arg)

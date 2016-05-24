@@ -33,6 +33,7 @@ void object_create(olist *l)
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+	l->info = NULL;
 }
 
 void object_first(olist *l)
@@ -129,6 +130,7 @@ void object_clear(olist* l)
 		free(current);
 		current=nextnode;
 	}
+	free(l->info);
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;

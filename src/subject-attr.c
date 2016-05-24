@@ -26,7 +26,7 @@
 #include <strings.h>
 #include "subject-attr.h"
 
-static nv_t table[] = {
+static const nv_t table[] = {
 {	ALL_SUBJ,   "all"	},
 {	AUID,       "auid"	},
 {	UID,        "uid"	},

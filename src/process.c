@@ -32,8 +32,52 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <magic.h>
 #include "process.h"
+
+struct proc_info *stat_proc_entry(pid_t pid)
+{
+	char path[32];
+	struct stat sb;
+
+	snprintf(path, sizeof(path), "/proc/%d", pid);
+	if (stat(path, &sb) == 0) {
+		struct proc_info *info = malloc(sizeof(struct proc_info));
+		if (info == NULL)
+			return info;
+
+		info->pid = pid;
+		info->device = sb.st_dev;
+		info->inode = sb.st_ino;
+		info->time.tv_sec = sb.st_ctim.tv_sec;
+		info->time.tv_nsec = sb.st_ctim.tv_nsec;
+
+		return info;
+	}
+	return NULL;
+}
+
+// Returns 0 if equal and 1 if not equal
+int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
+{
+	if (p1 == NULL || p2 == NULL)
+		return 1;
+
+	// Compare in the order to find likely mismatch first
+	if (p1->inode != p2->inode)
+		return 1;
+	if (p1->pid != p2->pid)
+		return 1;
+	if (p1->time.tv_nsec != p2->time.tv_nsec)
+		return 1;
+	if (p1->time.tv_sec != p2->time.tv_sec)
+		return 1;
+	if (p1->device != p2->device)
+		return 1;
+
+	return 0;
+}
 
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 {

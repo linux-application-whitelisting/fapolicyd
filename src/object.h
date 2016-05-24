@@ -39,6 +39,7 @@ typedef struct {
   onode *head;		// List head
   onode *cur;		// Pointer to current node
   unsigned int cnt;	// How many items in this list
+  struct file_info *info; // unique file fingerprint
 } olist;
 
 void object_create(olist *l);

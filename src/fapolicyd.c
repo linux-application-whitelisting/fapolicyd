@@ -341,6 +341,9 @@ int main(int argc, char *argv[])
 	// Install seccomp filter to prevent escalation
 	install_syscall_filter();
 
+	// Setup lru caches
+	init_event_system();
+
 	// Initialize the file watch system
 	pfd[0].fd = init_fanotify();
 	pfd[0].events = POLLIN;
@@ -367,6 +370,7 @@ int main(int argc, char *argv[])
 	file_close();
 	if (pidfile)
 		unlink(pidfile);
+	destroy_event_system();
 	destroy_config();
 
 	return 0;

@@ -33,6 +33,7 @@ void subject_create(slist *l)
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+	l->info = NULL;
 }
 
 void subject_first(slist *l)
@@ -101,6 +102,9 @@ void subject_clear(slist* l)
 	snode* nextnode;
 	register snode* current;
 
+	if (l == NULL)
+		return;
+
 	current = l->head;
 	while (current) {
 		if (current->s.type >= COMM)
@@ -109,6 +113,7 @@ void subject_clear(slist* l)
 		free(current);
 		current=nextnode;
 	}
+	free(l->info);
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
