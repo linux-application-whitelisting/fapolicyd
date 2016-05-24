@@ -6,14 +6,11 @@ Add EXECVE, EXECVE_PERM
 
 Userspace
 =========
-Add file cache
-Add process cache
 Fix spec file to create a user
 Update systemd service file to use default user
+Write statistics on shutdown
 Allow globbing
 Add audit option
 Add ability to identify suspicious sequences
-Keep cache statistics - Most Recently Used, Most Often Used
-Write statistics on shutdown
 Add sighup handler
 
