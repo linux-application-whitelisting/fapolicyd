@@ -76,7 +76,7 @@
 
 // Global program variables
 int debug = 0, permissive = 0;
-int q_size = 2048;
+int q_size = 1024;
 
 // Signal handler notifications
 volatile int stop = 0;
