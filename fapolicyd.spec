@@ -28,6 +28,9 @@ access rights.
 rm -rf $RPM_BUILD_ROOT
 make DESTDIR="${RPM_BUILD_ROOT}" INSTALL='install -p' install
 
+%pre
+getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin fapolicyd
+
 %post
 %systemd_post fapolicyd.service
 

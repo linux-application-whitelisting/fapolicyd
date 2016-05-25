@@ -6,7 +6,6 @@ Add EXECVE, EXECVE_PERM
 
 Userspace
 =========
-Fix spec file to create a user
 Update systemd service file to use default user
 Write statistics on shutdown
 Change attribute access to hash table
