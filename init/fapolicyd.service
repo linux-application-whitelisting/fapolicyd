@@ -4,7 +4,7 @@ DefaultDependencies=no
 After=local-fs.target systemd-tmpfiles-setup.service
 
 [Service]
-ExecStart=/sbin/fapolicyd --permissive
+ExecStart=/sbin/fapolicyd --permissive --user fapolicyd
 
 [Install]
 WantedBy=multi-user.target

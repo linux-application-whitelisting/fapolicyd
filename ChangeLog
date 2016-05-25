@@ -2,6 +2,8 @@
 - Add seccomp filter support
 - Fix leaked descriptor in exe_type processing
 - Add LRU cache for subject and objects
+- Create fapolicyd user on install
+- Update systemd service file to run as user fapolicyd
 
 0.8.1
 - Documentation updates
