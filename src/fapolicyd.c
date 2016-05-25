@@ -60,15 +60,12 @@ static const char *pidfile = "/var/run/fapolicyd.pid";
 static void install_syscall_filter(void)
 {
 	scmp_filter_ctx ctx;
-	int rc;
+	int rc = -1;
 
-#ifdef HAVE_DECL_PR_SET_NO_NEW_PRIVS
-	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-		msg(LOG_ERR, "Setting NO_NEW_PRIVS failed");
-		rc = 1;
-	}
-#endif
 	ctx = seccomp_init(SCMP_ACT_ALLOW);
+	if (ctx == NULL)
+		goto err_out;
+
 	rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EACCES),
 				SCMP_SYS(execve), 0);
 	if (rc < 0)
@@ -85,9 +82,11 @@ static void install_syscall_filter(void)
 				SCMP_SYS(sendfile), 0);
 	if (rc < 0)
 		goto err_out;
+
 	rc = seccomp_load(ctx);
 err_out:
-	msg(LOG_ERR, "Failed installing seccomp filter");
+	if (rc < 0)
+		msg(LOG_ERR, "Failed installing seccomp filter");
 	seccomp_release(ctx);
 }
 
