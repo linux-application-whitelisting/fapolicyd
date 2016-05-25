@@ -42,5 +42,6 @@ void destroy_event_system(void);
 void new_event(const struct fanotify_event_metadata *m, event_t *e);
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);
 object_attr_t *get_obj_attr(event_t *e, object_type_t t);
+void run_usage_report(void);
 
 #endif

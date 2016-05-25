@@ -38,7 +38,7 @@ static QNode *new_QNode(void)
 	if (temp == NULL)
 		return temp;
 	temp->item = NULL;
-	temp->uses = 0;
+	temp->uses = 1;	// Setting to 1 because its being used
  
 	// Initialize prev and next as NULL
 	temp->prev = temp->next = NULL;

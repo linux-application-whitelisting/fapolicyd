@@ -370,6 +370,7 @@ int main(int argc, char *argv[])
 	file_close();
 	if (pidfile)
 		unlink(pidfile);
+	run_usage_report();
 	destroy_event_system();
 	destroy_config();
 

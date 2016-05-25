@@ -6,7 +6,6 @@ Add EXECVE, EXECVE_PERM
 
 Userspace
 =========
-Write statistics on shutdown
 Change attribute access to hash table
 Improve the object hash for better cache utilization
 Allow globbing

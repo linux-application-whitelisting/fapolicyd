@@ -26,10 +26,14 @@
 #include <limits.h>
 #include <sys/fanotify.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
 #include "event.h"
 #include "file.h"
 #include "lru.h"
 #include "message.h"
+
+#define REPORT "/var/log/fapolicyd-access.log"
 
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
@@ -273,5 +277,62 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 	}
 
 	return NULL;
+}
+
+static print_queue_stats(FILE *f, const Queue *q)
+{
+	fprintf(f, "%s queue size: %u\n", q->name, q->total);
+	fprintf(f, "%s slots in use: %u\n", q->name, q->count);
+	fprintf(f, "%s hits: %lu\n", q->name, q->hits);
+	fprintf(f, "%s misses: %lu\n", q->name, q->misses);
+	fprintf(f, "%s evictions: %lu\n", q->name, q->evictions);
+}
+
+void run_usage_report(void)
+{
+	time_t t;
+	QNode *q_node;
+	FILE *f = fopen(REPORT, "w");
+	if (f == NULL) {
+		msg(LOG_INFO, "Cannot create usage report");
+		return;
+	}
+	t = time(NULL);
+	fprintf(f, "File access attempts from oldest to newest as of %s\n", ctime(&t));
+	fprintf(f, "\tFILE\t\t\t\t\t\t    ATTEMPTS\n");
+	fprintf(f, "---------------------------------------------------------------------------\n");
+	if (obj_cache->count == 0) {
+		fprintf(f, "(none)\n");
+		fclose(f);
+		return;
+	}
+
+	q_node = obj_cache->end;
+
+	while (q_node) {
+		int len;
+		const char *file;
+		olist *o = (olist *)q_node->item;
+		onode *on = object_find_file(o);
+		if (on == NULL)
+			goto next;
+		file = on->o.o;
+		if (file == NULL)
+			goto next;
+
+		len = strlen(file);
+		if (len > 62)
+			fprintf(f, "%s\t%lu\n", file, q_node->uses);
+		else
+			fprintf(f, "%-62s\t%lu\n", file, q_node->uses);
+		next:
+		q_node = q_node->prev;
+	}
+
+	fprintf(f, "\n---\n\n");
+	print_queue_stats(f, obj_cache);
+	fprintf(f, "\n");
+	print_queue_stats(f, subj_cache);
+	fclose(f);
 }
 

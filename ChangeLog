@@ -5,6 +5,7 @@
 - Create fapolicyd user on install
 - Update systemd service file to run as user fapolicyd
 - Adjust inter-thread queue default size
+- Write statistics on shutdown
 
 0.8.1
 - Documentation updates

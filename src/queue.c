@@ -91,8 +91,8 @@ void q_close(struct queue *q)
 			free(q->memory[i]);
 		free(q->memory);
 	}
-	free(q);
 	msg(LOG_DEBUG, "Inter-thread max queue depth %u", q->max_depth);
+	free(q);
 }
 
 /* add DATA to Q */
