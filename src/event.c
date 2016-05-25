@@ -279,7 +279,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 	return NULL;
 }
 
-static print_queue_stats(FILE *f, const Queue *q)
+static void print_queue_stats(FILE *f, const Queue *q)
 {
 	fprintf(f, "%s queue size: %u\n", q->name, q->total);
 	fprintf(f, "%s slots in use: %u\n", q->name, q->count);

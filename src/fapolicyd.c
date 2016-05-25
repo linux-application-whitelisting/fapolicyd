@@ -57,7 +57,7 @@ static int uid = 0;
 static const char *pidfile = "/var/run/fapolicyd.pid";
 
 
-static int install_syscall_filter(void)
+static void install_syscall_filter(void)
 {
 	scmp_filter_ctx ctx;
 	int rc;
