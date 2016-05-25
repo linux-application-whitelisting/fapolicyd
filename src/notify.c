@@ -92,8 +92,7 @@ int init_fanotify(void)
 	events_ready = 0;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 
-	//mask = FAN_MODIFY | FAN_CLOSE;
-	mask = FAN_MODIFY | FAN_OPEN_PERM;
+	mask = FAN_OPEN_PERM;
 
 	// Iterate through the mount points and add a mark
 	path = first_mounts();
