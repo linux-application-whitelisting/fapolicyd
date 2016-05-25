@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "queue.h"
+#include "message.h"
 
 
 /* Queue implementation */
@@ -64,6 +65,7 @@ struct queue *q_open(size_t num_entries)
 	q->entry_size = entry_size;
 	q->queue_head = 0;
 	q->queue_length = 0;
+	q->max_depth = 0;
 
 	sz = num_entries * sizeof(*q->memory);
 	q->memory = malloc(sz);
@@ -90,6 +92,7 @@ void q_close(struct queue *q)
 		free(q->memory);
 	}
 	free(q);
+	msg(LOG_DEBUG, "Inter-thread max queue depth %u", q->max_depth);
 }
 
 /* add DATA to Q */
@@ -120,6 +123,8 @@ int q_append(struct queue *q, const struct fanotify_event_metadata *data)
 		q->memory[entry_index] = copy;
 
 	q->queue_length++;
+	if (q->queue_length > q->max_depth)
+		q->max_depth = q->queue_length;
 
 	return 0;
 }
