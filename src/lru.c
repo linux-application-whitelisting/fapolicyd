@@ -27,6 +27,7 @@
 #include "lru.h"
 #include "message.h"
 
+//#define DEBUG
  
 // Local declarations
 static void dequeue(Queue *queue);
@@ -119,8 +120,43 @@ static unsigned int queue_is_empty(const Queue *queue)
 	return queue->end == NULL;
 }
 
+#ifdef DEBUG
+static void sanity_check_queue(Queue *q, const char *id)
+{
+	unsigned int i;
+	QNode *n = q->front;
+	if (n == NULL)
+		return;
+
+	// Walk bottom to top
+	i = 0;
+	while (n->next) {
+		if (n->next->prev != n) {
+			msg(LOG_DEBUG, "%s - corruption found %u", id, i);
+			abort();
+		}
+		i++;
+		n = n->next;
+	}
+
+	// Walk top to bottom
+	n = q->end;
+	while (n->prev) {
+		if (n->prev->next != n) {
+			msg(LOG_DEBUG, "%s - Corruption found %u", id, i);
+			abort();
+		}
+		i--;
+		n = n->prev;
+	}
+}
+#else
+#define sanity_check_queue(a, b) do {} while(0)
+#endif
+
 static void insert_before(Queue *queue, QNode *node, QNode *new_node)
 {
+	sanity_check_queue(queue, "1 insert_before");
 	new_node->prev = node->prev;
 	new_node->next  = node;
 	if (node->prev == NULL)
@@ -128,10 +164,12 @@ static void insert_before(Queue *queue, QNode *node, QNode *new_node)
 	else
 		node->prev->next = new_node;
 	node->prev = new_node;
+	sanity_check_queue(queue, "2 insert_before");
 }
 
 static void insert_beginning(Queue *queue, QNode *new_node)
 {
+	sanity_check_queue(queue, "1 insert_beginning");
 	if (queue->front == NULL) {
 		queue->front = new_node;
 		queue->end = new_node;
@@ -139,19 +177,23 @@ static void insert_beginning(Queue *queue, QNode *new_node)
 		new_node->next = NULL;
 	} else
 		insert_before(queue, queue->front, new_node);
+	sanity_check_queue(queue, "2 insert_beginning");
 }
 
 static void remove_node(Queue *queue, QNode *node)
 {
 	// If we are at the beginning
+	sanity_check_queue(queue, "1 remove_node");
 	if (node->prev == NULL) {
 		queue->front = node->next;
 		if (queue->front)
 			queue->front->prev = NULL;
+		goto out;
 	} else {
 		if (node->prev->next != node) {
-			msg(LOG_ERR, "Linked list corruption detected");
-			exit(1);
+			msg(LOG_ERR, "Linked list corruption detected %s",
+				queue->name);
+			abort();
 		}
 		node->prev->next = node->next;
 	}
@@ -163,11 +205,14 @@ static void remove_node(Queue *queue, QNode *node)
 			queue->end->next = NULL;
 	} else {
 		if (node->next->prev != node) {
-			msg(LOG_ERR, "Linked list corruption detected");
-			exit(1);
+			msg(LOG_ERR, "Linked List corruption detected %s",
+				queue->name);
+			abort();
 		}
 		node->next->prev = node->prev;
 	}
+out:
+	sanity_check_queue(queue, "2 remove_node");
 }
 
 // Remove from the end of the queue 
@@ -245,7 +290,6 @@ QNode *check_lru_cache(Queue *queue, unsigned int key)
 
 	// Check for out of bounds key
 	if (key >= queue->total) {
-msg(LOG_DEBUG, "key: %u total: %u", key, queue->total);
 		return NULL;
 	}
 
@@ -268,8 +312,7 @@ msg(LOG_DEBUG, "key: %u total: %u", key, queue->total);
 		queue->hits++;
 	} else
 		queue->hits++;
-if (queue->front == NULL)
-msg(LOG_DEBUG, "queue->front is NULL");
+
 	return queue->front;
 }
 
