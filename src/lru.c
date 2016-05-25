@@ -143,23 +143,31 @@ static void insert_beginning(Queue *queue, QNode *new_node)
 
 static void remove_node(Queue *queue, QNode *node)
 {
-	// FIXME: Add sanity check before unlinking
-
-	// if we are at the beginning
+	// If we are at the beginning
 	if (node->prev == NULL) {
 		queue->front = node->next;
 		if (queue->front)
 			queue->front->prev = NULL;
-	} else
+	} else {
+		if (node->prev->next != node) {
+			msg(LOG_ERR, "Linked list corruption detected");
+			exit(1);
+		}
 		node->prev->next = node->next;
+	}
 
 	// If we are at the end
 	if (node->next == NULL) {
 		queue->end = node->prev;
 		if (queue->end)
 			queue->end->next = NULL;
-	} else
+	} else {
+		if (node->next->prev != node) {
+			msg(LOG_ERR, "Linked list corruption detected");
+			exit(1);
+		}
 		node->next->prev = node->prev;
+	}
 }
 
 // Remove from the end of the queue 
