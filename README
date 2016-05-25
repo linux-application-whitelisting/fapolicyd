@@ -10,7 +10,7 @@ rpm-devel
 file-devel
 systemd-devel
 libcap-ng-devel
-
+libseccomp-devel
 
 BUILDING
 ========
@@ -91,12 +91,14 @@ WRITING RULES
 The rules follow a simple "decision subject object" recipe. For more
 information, see the fapolicyd.rules man page.
 
+
 REPORT
 ======
 On shutdown the daemon will write an object access report to
 /var/log/fapolicyd-access.log. The report is from oldest access to newest.
 Timestamps are not included because that would be a severe performance hit.
 The report gives some basic forensic information about what was being accessed.
+
 
 NOTES
 =====

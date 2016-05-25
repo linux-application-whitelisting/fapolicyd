@@ -34,44 +34,14 @@
 #include <ctype.h>
 #include <pwd.h>
 #include <cap-ng.h>
-#include <stddef.h>        /* offsetof */
 #include <sys/prctl.h>
-#include <linux/audit.h>   /* Arch definitions */
-#include <linux/filter.h>  /* BPF */
-#include <linux/seccomp.h>
 #include <linux/unistd.h>  /* syscall numbers */
+#include <seccomp.h>
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
 #include "file.h"
 #include "message.h"
-
-// Seccomp macros
-#define syscall_nr (offsetof(struct seccomp_data, nr))
-#define arch_nr (offsetof(struct seccomp_data, arch))
-
-#if defined(__i386__)
-# define ARCH_NR        AUDIT_ARCH_I386
-#elif defined(__x86_64__)
-# define ARCH_NR        AUDIT_ARCH_X86_64
-#else
-# warning "Platform does not support seccomp filter yet"
-# define ARCH_NR        0
-#endif
-
-#define VALIDATE_ARCHITECTURE \
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, arch_nr), \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, ARCH_NR, 0, 2)
-
-#define EXAMINE_SYSCALL \
-	BPF_STMT(BPF_LD+BPF_W+BPF_ABS, syscall_nr)
-
-#define DENY_SYSCALL(name) \
-	BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_##name, 0, 1), \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL)
-
-#define OTHERWISE_OK \
-	BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
 
 
 // Global program variables
@@ -85,45 +55,40 @@ volatile int stop = 0;
 static int nice_val = 10;
 static int uid = 0;
 static const char *pidfile = "/var/run/fapolicyd.pid";
-static struct sock_filter filter[] = {
-	VALIDATE_ARCHITECTURE,
-	EXAMINE_SYSCALL,
-	DENY_SYSCALL(execve),
-#ifdef HAVE_FEXECVE
-# ifdef __NR_fexecve
-	DENY_SYSCALL(fexecve),
-# endif
-#endif
-	OTHERWISE_OK
-};
-
-static struct sock_fprog prog = {
-	.len = (unsigned short)(sizeof(filter)/sizeof(filter[0])),
-	.filter = filter,
-};
 
 
 static int install_syscall_filter(void)
 {
-	int rc = 0;
+	scmp_filter_ctx ctx;
+	int rc;
+
 #ifdef HAVE_DECL_PR_SET_NO_NEW_PRIVS
 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
 		msg(LOG_ERR, "Setting NO_NEW_PRIVS failed");
 		rc = 1;
 	}
 #endif
-#if ARCH_NR
-# ifdef HAVE_DECL_SECCOMP_MODE_FILTER
-	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)) {
-		if (errno == EINVAL)
-			msg(LOG_WARNING, "SECCOMP_FILTER is not available");
-		rc = 1;
-	}
-	if (rc == 0)
-		msg(LOG_DEBUG, "Syscall filter installed");
+	ctx = seccomp_init(SCMP_ACT_ALLOW);
+	rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EACCES),
+				SCMP_SYS(execve), 0);
+	if (rc < 0)
+		goto err_out;
+#ifdef HAVE_FEXECVE
+# ifdef __NR_fexecve
+	rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EACCES),
+				SCMP_SYS(fexecve), 0);
+	if (rc < 0)
+		goto err_out;
 # endif
 #endif
-	return rc;
+	rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EIO),
+				SCMP_SYS(sendfile), 0);
+	if (rc < 0)
+		goto err_out;
+	rc = seccomp_load(ctx);
+err_out:
+	msg(LOG_ERR, "Failed installing seccomp filter");
+	seccomp_release(ctx);
 }
 
 static void term_handler(int sig)
