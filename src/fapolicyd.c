@@ -145,12 +145,18 @@ static int become_daemon(void)
 		case 0: // Child
 			fd = open("/dev/null", O_RDWR);
 			if (fd < 0) return -1;
-			if (dup2(fd, 0) < 0)
+			if (dup2(fd, 0) < 0) {
+				close(fd);
 				return -1;
-			if (dup2(fd, 1) < 0)
+			}
+			if (dup2(fd, 1) < 0) {
+				close(fd);
 				return -1;
-			if (dup2(fd, 2) < 0)
+			}
+			if (dup2(fd, 2) < 0) {
+				close(fd);
 				return -1;
+			}
 			close(fd);
 			chdir("/");
 			if (setsid() < 0)

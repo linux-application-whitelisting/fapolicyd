@@ -116,14 +116,12 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// conditioning to use more slots in the cache.
 	unsigned int magic = finfo->inode + finfo->time.tv_sec + finfo->blocks;
 	key = compute_object_key(obj_cache, magic);
-//msg(LOG_DEBUG, "ino:%u key:%u info addr:%p", magic, key, finfo);
 	q_node = check_lru_cache(obj_cache, key);
 	o = (olist *)q_node->item;
 
 	if (o) {
 		rc = compare_file_infos(finfo, o->info);
 		if (rc) {
-//msg(LOG_DEBUG, "EVICTING cached object, info addr:%p", o->info);
 			lru_evict(obj_cache, key);
 			q_node = check_lru_cache(obj_cache, key);
 			o = (olist *)q_node->item;
@@ -179,8 +177,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			subj.val = e->pid;
 			break;
 		case COMM: {
-			char buf[20], *ptr;
-			ptr = get_comm_from_pid(e->pid,	sizeof(buf), buf);
+			char buf[21], *ptr;
+			ptr = get_comm_from_pid(e->pid,	sizeof(buf)-1, buf);
 			if (ptr)
 				subj.str = strdup(buf);
 			else
@@ -229,6 +227,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		return &(on->o);
 
 	// One not on the list, look it up and make one
+	obj.len = 0;
 	obj.type = t;
 	switch (t) {
 		case PATH:
@@ -310,7 +309,7 @@ void run_usage_report(void)
 	q_node = obj_cache->end;
 
 	while (q_node) {
-		int len;
+		unsigned int len;
 		const char *file;
 		olist *o = (olist *)q_node->item;
 		onode *on = object_find_file(o);

@@ -32,7 +32,7 @@ typedef enum { ALL_OBJ = OBJ_START, PATH, ODIR, DEVICE, FTYPE,
 
 typedef struct o {
 	object_type_t type;
-	size_t len;	// String length of 'o'
+	size_t len;	// String length of 'o' used by rules not events
 	char *o;	// Everything is a string
 } object_attr_t;
 

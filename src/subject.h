@@ -44,7 +44,7 @@ typedef struct {
 } slist;
 
 void subject_create(slist *l);
-void subject_first(slist *l);
+static inline void subject_first(slist *l) { l->cur = l->head; }
 void subject_last(slist *l);
 snode *subject_next(slist *l);
 static inline snode *subject_get_cur(const slist *l) { return l->cur; }

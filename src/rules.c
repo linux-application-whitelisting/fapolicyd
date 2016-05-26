@@ -69,7 +69,7 @@ lnode *rules_next(llist *l)
 int assign_subject(lnode *n, int type, char *ptr2, int lineno)
 {
 	// assign the subject
-	int i = n->s_count;
+	unsigned int i = n->s_count;
 
 	n->s[i].type = type;
 	if (n->s[i].type >= COMM) {
@@ -97,7 +97,7 @@ int assign_subject(lnode *n, int type, char *ptr2, int lineno)
 int assign_object(lnode *n, int type, char *ptr2, int lineno)
 {
 	// assign the object
-	int i = n->o_count;
+	unsigned int i = n->o_count;
 
 	n->o[i].type = type;
 	n->o[i].o = strdup(ptr2);
@@ -289,29 +289,35 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj)
 	return 1;
 }
 
-// Returns 0 if no match, 1 if a match
+// Returns 0 if no match, 1 if a match, -1 on error
 static int check_subject(lnode *r, event_t *e)
 {
 	unsigned int cnt = 0;
 
 	while (cnt < r->s_count) {
-		if (r->s[cnt].type != ALL_SUBJ) {
-			subject_attr_t *subj = get_subj_attr(e, r->s[cnt].type);
-			if (subj == NULL)
+		unsigned int type = r->s[cnt].type;
+		if (type != ALL_SUBJ) {
+			subject_attr_t *subj = get_subj_attr(e, type);
+			if (subj == NULL) {
+				cnt++;
 				continue;
+			}
 
 			// If mismatch, we don't care
-			if (r->s[cnt].type >= COMM) {
-				if (subj->str == NULL)
+			if (type >= COMM) {
+				// can't happen unless out of memory
+				if (subj->str == NULL) {
+					cnt++;
 					continue;
+				}
 				//  For directories we only do a partial
 				//  match.  Any child dir would also match.
-				if (r->s[cnt].type == EXE_DIR) {
+				if (type == EXE_DIR) {
 					int rc = subj_dir_test(&(r->s[cnt]),
 								subj);
 					if (rc == 0)
 						return 0;
-				} else if (r->s[cnt].type == EXE &&
+				} else if (type == EXE &&
 				   strcasecmp(r->s[cnt].str, "unpackaged")==0) {
 					if (check_packaged_from_file(subj->str))
 						return 0;
@@ -334,8 +340,11 @@ static decision_t check_object(lnode *r, event_t *e)
 	while (cnt < r->o_count) {
 		if (r->o[cnt].type != ALL_OBJ) {
 			object_attr_t *obj = get_obj_attr(e, r->o[cnt].type);
-			if (obj == NULL || obj->o == NULL)
+			// can't happen unless out of memory
+			if (obj == NULL || obj->o == NULL) {
+				cnt++;
 				continue;
+			}
 
 			//  For directories (and unpackaged), we only do a
 			//  partial match.  Any child dir would also match.

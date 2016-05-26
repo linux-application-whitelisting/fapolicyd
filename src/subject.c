@@ -36,11 +36,6 @@ void subject_create(slist *l)
 	l->info = NULL;
 }
 
-void subject_first(slist *l)
-{
-	l->cur = l->head;
-}
-
 void subject_last(slist *l)
 {
         register snode* window;

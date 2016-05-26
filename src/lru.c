@@ -135,6 +135,10 @@ static void sanity_check_queue(Queue *q, const char *id)
 			msg(LOG_DEBUG, "%s - corruption found %u", id, i);
 			abort();
 		}
+		if (i == q->count) {
+			msg(LOG_DEBUG, "%s - forward loop found %u", id, i);
+			abort();
+		}
 		i++;
 		n = n->next;
 	}
@@ -144,6 +148,10 @@ static void sanity_check_queue(Queue *q, const char *id)
 	while (n->prev) {
 		if (n->prev->next != n) {
 			msg(LOG_DEBUG, "%s - Corruption found %u", id, i);
+			abort();
+		}
+		if (i == 0) {
+			msg(LOG_DEBUG, "%s - backward loop found %u", id, i);
 			abort();
 		}
 		i--;
