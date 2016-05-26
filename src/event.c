@@ -206,6 +206,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			}
 			break;
 		case EXE_DEVICE:
+			// FIXME: write real code for this
+			subj.str = strdup("?");
 		default:
 			return NULL;
 	};
