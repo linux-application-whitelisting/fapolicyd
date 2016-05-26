@@ -23,6 +23,7 @@ access rights.
 
 %build
 %configure --sbindir=/sbin 
+make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
 rm -rf $RPM_BUILD_ROOT

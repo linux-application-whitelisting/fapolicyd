@@ -48,6 +48,7 @@ policy looks like. The policy is designed with 3 goals in mind.
 3) Elf and python files/shared objects must come from system directories.
 This prevents LD_LIBRARY & PYTHON_LIBRARY redirection to an attacker
 controlled dir.
+4) Other languages are not allowed or must be enabled.
 
 You can test by starting the daemon from the command line. Before starting
 the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. When
