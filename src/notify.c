@@ -49,6 +49,7 @@ static pid_t our_pid;
 static struct queue *q = NULL;
 static pthread_t decision_thread;
 static pthread_t deadmans_switch_thread;
+static pthread_mutexattr_t decision_lock_attr;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
 static volatile int events_ready;
@@ -90,7 +91,10 @@ int init_fanotify(void)
 	}
 
 	// Start decision thread so its ready when first event comes
-	pthread_mutex_init(&decision_lock, NULL);
+	pthread_mutexattr_init(&decision_lock_attr);
+	pthread_mutexattr_settype(&decision_lock_attr,
+						PTHREAD_MUTEX_ERRORCHECK);
+	pthread_mutex_init(&decision_lock, &decision_lock_attr);
 	pthread_cond_init(&do_decision, NULL);
 	events_ready = 0;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
@@ -131,6 +135,9 @@ void shutdown_fanotify(void)
 	pthread_cond_signal(&do_decision);
 	pthread_join(decision_thread, NULL);
 	pthread_join(deadmans_switch_thread, NULL);
+	pthread_mutex_destroy(&decision_lock);
+	pthread_mutexattr_destroy(&decision_lock_attr);
+	pthread_cond_destroy(&do_decision);
 
 	// Clean up
 	q_close(q);
@@ -194,10 +201,13 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (events_ready == 0) {
+			// This unlocks decision_lock
 			pthread_cond_wait(&do_decision, &decision_lock);
 			if (stop)
 				return NULL;
 		}
+		// Re-acquire the lock without deadlocking if events were ready
+		pthread_mutex_trylock(&decision_lock);
 		alive = 1;
 		len = q_peek(q, &metadata);
 		if (len == 0) {
