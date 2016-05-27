@@ -51,6 +51,7 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin fapolicyd
 %attr(755,root,root) /sbin/fapolicyd
 %attr(644,root,root) %{_mandir}/man8/fapolicyd.8.gz
 %attr(644,root,root) %{_mandir}/man5/fapolicyd.rules.5.gz
+%ghost /var/log/fapolicyd-access.log
 
 %changelog
 * Thu May 19 2016 Steve Grubb <sgrubb@redhat.com> 0.8.2-1

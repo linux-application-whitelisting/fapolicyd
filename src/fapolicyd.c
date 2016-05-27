@@ -273,6 +273,9 @@ int main(int argc, char *argv[])
         setrlimit(RLIMIT_FSIZE, &limit);
         setrlimit(RLIMIT_NOFILE, &limit);
 
+	// Set strict umask
+	(void) umask( 237 );
+
 	// get more time slices because everything is waiting on us
 	rc = nice(-nice_val);
 	if (rc == -1)
