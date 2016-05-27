@@ -4,6 +4,9 @@ DefaultDependencies=no
 After=local-fs.target systemd-tmpfiles-setup.service
 
 [Service]
+Type=forking
+PIDFile=/var/run/fapolicyd.pid
+Restart=on-abnormal
 ExecStart=/sbin/fapolicyd --permissive --user fapolicyd
 
 [Install]

@@ -48,14 +48,17 @@ extern int q_size;
 static pid_t our_pid;
 static struct queue *q = NULL;
 static pthread_t decision_thread;
+static pthread_t deadmans_switch_thread;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
 static volatile int events_ready;
 static volatile pid_t decision_tid;
+static volatile int alive = 1;
 static int fd;
 
 // Local functions
 static void *decision_thread_main(void *arg);
+static void *deadmans_switch_thread_main(void *arg);
 
 int init_fanotify(void)
 {
@@ -91,6 +94,8 @@ int init_fanotify(void)
 	pthread_cond_init(&do_decision, NULL);
 	events_ready = 0;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
+	pthread_create(&deadmans_switch_thread, NULL,
+			deadmans_switch_thread_main, NULL);
 
 	mask = FAN_OPEN_PERM;
 
@@ -125,6 +130,7 @@ void shutdown_fanotify(void)
 	// End the thread
 	pthread_cond_signal(&do_decision);
 	pthread_join(decision_thread, NULL);
+	pthread_join(deadmans_switch_thread, NULL);
 
 	// Clean up
 	q_close(q);
@@ -155,6 +161,23 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 	}
 }
 
+static void *deadmans_switch_thread_main(void *arg)
+{
+	do {
+		// Are you alive decision thread?
+		if (alive == 0 && events_ready && !stop &&
+					q_queue_length(q) > 2) {
+			msg(LOG_ERR,
+				"Deadman's switch activated...killing process");
+			raise(SIGABRT);
+		}
+		// OK, prove it again.
+		alive = 0;
+		sleep(2);
+	} while (!stop);
+	return NULL;
+}
+
 static void *decision_thread_main(void *arg)
 {
 	sigset_t sigs;
@@ -175,6 +198,7 @@ static void *decision_thread_main(void *arg)
 			if (stop)
 				return NULL;
 		}
+		alive = 1;
 		len = q_peek(q, &metadata);
 		if (len == 0) {
 			// Should never happen
