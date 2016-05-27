@@ -201,13 +201,12 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (events_ready == 0) {
-			// This unlocks decision_lock
 			pthread_cond_wait(&do_decision, &decision_lock);
-			if (stop)
+			if (stop) {
+				pthread_mutex_unlock(&decision_lock);
 				return NULL;
+			}
 		}
-		// Re-acquire the lock without deadlocking if events were ready
-		pthread_mutex_trylock(&decision_lock);
 		alive = 1;
 		len = q_peek(q, &metadata);
 		if (len == 0) {
