@@ -27,112 +27,96 @@
 #include <errno.h>
 #include "policy.h"
 #include "object.h"
+#include "message.h"
 
-void object_create(olist *l)
+//#define DEBUG
+
+void object_create(o_array *a)
 {
-	l->head = NULL;
-	l->cur = NULL;
-	l->cnt = 0;
-	l->info = NULL;
+	int i;
+
+	a->obj = malloc(sizeof(object_attr_t *) * ((OBJ_END-OBJ_START)+1));
+	for (i = 0; i < OBJ_END - OBJ_START; i++)
+		a->obj[i] = NULL;
+	a->cnt = 0;
+	a->info = NULL;
 }
 
-void object_first(olist *l)
+#ifdef DEBUG
+static void sanity_check_array(o_array *a, const char *id)
 {
-	l->cur = l->head;
-}
-
-void object_last(olist *l)
-{
-        register onode* window;
-	
-	if (l->head == NULL) {
-		l->cur = NULL;
-		return;
+	int i;
+	unsigned int num = 0;
+	for (i = 0; i < OBJ_END - OBJ_START; i++)
+		if (a->obj[i]) num++;
+	if (num != a->cnt) {
+		msg(LOG_DEBUG, "%s - array corruption %u!=%u", id, num, a->cnt);
+		abort();
 	}
-
-        window = l->head;
-	while (window->next)
-		window = window->next;
-	l->cur = window;
 }
+#else
+#define sanity_check_array(a, b) do {} while(0)
+#endif
 
-onode *object_next(olist *l)
+object_attr_t *object_access(o_array *a, object_type_t t)
 {
-	if (l->cur == NULL)
+	sanity_check_array(a, "object_access");
+	if (t >= OBJ_START && t <= OBJ_END)
+		return a->obj[t - OBJ_START];
+	else
 		return NULL;
-	l->cur = l->cur->next;
-	return l->cur;
 }
 
-int object_append(olist *l, object_attr_t *obj)
+// Returns 1 on failure and 0 on success
+int object_add(o_array *a, object_attr_t *obj)
 {
-	onode* newnode;
+	object_attr_t *newnode;
 
-	if (obj) { // parse up the rule
-		newnode = malloc(sizeof(onode));
-		newnode->o.type = obj->type;
-		newnode->o.len = obj->len;
-		newnode->o.o = obj->o;
+	sanity_check_array(a, "object_add 1");
+	if (obj) {
+		if (obj->type >= OBJ_START && obj->type <= OBJ_END) {
+			newnode = malloc(sizeof(object_attr_t));
+			newnode->type = obj->type;
+			newnode->len = obj->len;
+			newnode->o = obj->o;
+		} else
+			return 1;
 	} else
 		return 1;
 
-	newnode->next = NULL;
-	object_last(l);
+	a->obj[obj->type - OBJ_START] = newnode;
+	a->cnt++;
 
-	// if we are at top, fix this up
-	if (l->head == NULL)
-		l->head = newnode;
-	else {	// Otherwise add pointer to newnode
-		object_last(l);
-		l->cur->next = newnode;
-	}
-
-	// make newnode current
-	l->cur = newnode;
-	l->cnt++;
 	return 0;
 }
 
-onode *object_find_type(olist *l, object_type_t t)
+object_attr_t *object_find_file(o_array *a)
 {
-	l->cur = l->head;
-
-	while (l->cur) {
-		if (l->cur->o.type == t)
-			return l->cur;
-		l->cur = l->cur->next;
-	}
-	return NULL;
-}
-
-onode *object_find_file(olist *l)
-{
-	l->cur = l->head;
-
-	while (l->cur) {
-		if (l->cur->o.type >= PATH && l->cur->o.type <= ODIR)
-			return l->cur;
-		l->cur = l->cur->next;
-	}
-	return NULL;
+	sanity_check_array(a, "object_find_file");
+	if (a->obj[PATH - OBJ_START])
+		return a->obj[PATH - OBJ_START];
+	else
+		return a->obj[ODIR - OBJ_START];
 }
 
 
-void object_clear(olist* l)
+void object_clear(o_array *a)
 {
-	onode* nextnode;
-	register onode* current;
+	int i;
+	object_attr_t *current;
 
-	current = l->head;
-	while (current) {
-		free(current->o.o);
-		nextnode=current->next;
+	if (a == NULL)
+		return;
+
+	for (i = 0; i < OBJ_END - OBJ_START; i++) {
+		current = a->obj[i];
+		if (current == NULL)
+			continue;
+		free(current->o);
 		free(current);
-		current=nextnode;
 	}
-	free(l->info);
-	l->head = NULL;
-	l->cur = NULL;
-	l->cnt = 0;
+	free(a->info);
+	free(a->obj);
+	a->cnt = 0;
 }
 

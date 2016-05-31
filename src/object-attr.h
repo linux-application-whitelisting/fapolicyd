@@ -30,6 +30,8 @@
 typedef enum { ALL_OBJ = OBJ_START, PATH, ODIR, DEVICE, FTYPE,
 		SHA256HASH, FMODE } object_type_t;
 
+#define OBJ_END FMODE
+
 typedef struct o {
 	object_type_t type;
 	size_t len;	// String length of 'o' used by rules not events

@@ -33,8 +33,8 @@ typedef struct ev {
 	pid_t pid;
 	int fd;
 	int type;
-	slist *s;
-	olist *o;
+	s_array *s;
+	o_array *o;
 } event_t;
 
 int init_event_system(void);

@@ -27,29 +27,18 @@
 #include "subject-attr.h"
 #include "process.h"
 
-/* This is the node of the linked list. message & item are the only elements
- * at this time. Any data elements that are per item goes here. */
-typedef struct _snode{
-  subject_attr_t s;
-  struct _snode *next;	// Next node pointer
-} snode;
-
-/* This is the linked list head. Only data elements that are 1 per
+/* This is the attribute array. Only data elements that are 1 per
  * event goes here. */
 typedef struct {
-  snode *head;		// List head
-  snode *cur;		// Pointer to current node
-  unsigned int cnt;	// How many items in this list
+  subject_attr_t **subj;	// Subject array
+  unsigned int cnt;		// How many items in this list
   struct proc_info *info;	// unique proc fingerprint
-} slist;
+} s_array;
 
-void subject_create(slist *l);
-static inline void subject_first(slist *l) { l->cur = l->head; }
-void subject_last(slist *l);
-snode *subject_next(slist *l);
-static inline snode *subject_get_cur(const slist *l) { return l->cur; }
-int subject_append(slist *l, subject_attr_t *subj);
-void subject_clear(slist* l);
+void subject_create(s_array *a);
+subject_attr_t *subject_access(s_array *a, subject_type_t t);
+int subject_add(s_array *a, subject_attr_t *subj);
+void subject_clear(s_array* a);
 static inline int type_is_subj(int type) {if (type < OBJ_START) return 1; else return 0;}
 
 #endif

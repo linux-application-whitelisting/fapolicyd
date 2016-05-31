@@ -63,8 +63,8 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 	subject_attr_t subj;
 	QNode *q_node;
 	unsigned int key, rc = 1;
-	slist *s;
-	olist *o;
+	s_array *s;
+	o_array *o;
 	struct proc_info *pinfo;
 	struct file_info *finfo;
 
@@ -75,7 +75,7 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 
 	key = compute_subject_key(subj_cache, m->pid);
 	q_node = check_lru_cache(subj_cache, key);
-	s = (slist *)q_node->item;
+	s = (s_array *)q_node->item;
 
 	// get proc fingerprint
 	pinfo = stat_proc_entry(m->pid);
@@ -86,22 +86,22 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 		if (rc) {
 			lru_evict(subj_cache, key);
 			q_node = check_lru_cache(subj_cache, key);
-			s = (slist *)q_node->item;
+			s = (s_array *)q_node->item;
 		} else if (s->cnt == 0)
 			msg(LOG_DEBUG, "cached subject has cnt of 0");
 	}
 
 	if (rc) {
 		// If empty, setup the subject with what we currently have
-		e->s = malloc(sizeof(slist));
+		e->s = malloc(sizeof(s_array));
 		subject_create(e->s);
 		subj.type = PID;
 		subj.val = e->pid;
-		subject_append(e->s, &subj);
+		subject_add(e->s, &subj);
 
 		// give custody of the list to the cache
 		q_node->item = e->s;
-		((slist *)q_node->item)->info = pinfo;
+		((s_array *)q_node->item)->info = pinfo;
 	} else	{ // Use the one from the cache
 		e->s = s;
 		free(pinfo);
@@ -117,26 +117,26 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 	unsigned int magic = finfo->inode + finfo->time.tv_sec + finfo->blocks;
 	key = compute_object_key(obj_cache, magic);
 	q_node = check_lru_cache(obj_cache, key);
-	o = (olist *)q_node->item;
+	o = (o_array *)q_node->item;
 
 	if (o) {
 		rc = compare_file_infos(finfo, o->info);
 		if (rc) {
 			lru_evict(obj_cache, key);
 			q_node = check_lru_cache(obj_cache, key);
-			o = (olist *)q_node->item;
+			o = (o_array *)q_node->item;
 		} else if (o->cnt == 0)
 			msg(LOG_DEBUG, "cached object has cnt of 0");
 	}
 
 	if (rc) {
-		// If empty, setup the subject with what we currently have
-		e->o = malloc(sizeof(olist));
+		// If empty, setup the object with what we currently have
+		e->o = malloc(sizeof(s_array));
 		object_create(e->o);
 
 		// give custody of the list to the cache
 		q_node->item = e->o;
-		((olist *)q_node->item)->info = finfo;
+		((o_array *)q_node->item)->info = finfo;
 	} else { // Use the one from the cache
 		e->o = o;
 		free(finfo);
@@ -150,16 +150,12 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 {
 	subject_attr_t subj;
-	snode *sn;
-	slist *s = e->s;
+	subject_attr_t *sn;
+	s_array *s = e->s;
 
-	subject_first(s);
-	sn = subject_get_cur(s);
-	while (sn) {
-		if (sn->s.type == t)
-			return &(sn->s);
-		sn = subject_next(s);
-	}
+	sn = subject_access(s, t);
+	if (sn)
+		return sn;
 
 	// One not on the list, look it up and make one
 	subj.type = t;
@@ -212,21 +208,28 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			return NULL;
 	};
 
-	if (subject_append(e->s, &subj) == 0) {
-		sn = subject_get_cur(e->s);
-		return &(sn->s);
+	if (subject_add(e->s, &subj) == 0) {
+		sn = subject_access(e->s, t);
+		return sn;
 	}
 
 	return NULL;
 }
 
+/*
+ * This function will search the list for a nv pair of the right type.
+ * If not found, it will create the type and return it.
+ */
 object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 {
 	char buf[PATH_MAX+1], *ptr;
 	object_attr_t obj;
-	onode *on = object_find_type(e->o, t);
+	object_attr_t *on;
+	o_array *o = e->o;
+
+	on = object_access(o, t);
 	if (on)
-		return &(on->o);
+		return on;
 
 	// One not on the list, look it up and make one
 	obj.len = 0;
@@ -235,9 +238,9 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		case PATH:
 		case ODIR:
 			// Try to avoid looking up the path if we have it
-			on = object_find_file(e->o);
+			on = object_find_file(o);
 			if (on)
-				obj.o = strdup(on->o.o);
+				obj.o = strdup(on->o);
 			else {
 				ptr = get_file_from_fd(e->fd, e->pid, 
 							sizeof(buf), buf);
@@ -249,7 +252,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			break;
 		case DEVICE:
 			ptr = get_device_from_fd(e->fd, 
-					((olist *)e->o)->info->device,
+					o->info->device,
 					sizeof(buf), buf);
 			if (ptr)
 				obj.o = strdup(buf);
@@ -272,9 +275,9 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			return NULL;
 	}
 
-	if (object_append(e->o, &obj) == 0) {
-		on = object_get_cur(e->o);
-		return &(on->o);
+	if (object_add(e->o, &obj) == 0) {
+		on = object_access(e->o, t);
+		return on;
 	}
 
 	return NULL;
@@ -313,11 +316,11 @@ void run_usage_report(void)
 	while (q_node) {
 		unsigned int len;
 		const char *file;
-		olist *o = (olist *)q_node->item;
-		onode *on = object_find_file(o);
+		o_array *o = (o_array *)q_node->item;
+		object_attr_t *on = object_find_file(o);
 		if (on == NULL)
 			goto next;
-		file = on->o.o;
+		file = on->o;
 		if (file == NULL)
 			goto next;
 

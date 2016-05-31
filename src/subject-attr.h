@@ -31,6 +31,8 @@
 typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, 
 	COMM, EXE, EXE_DIR, EXE_TYPE, EXE_DEVICE } subject_type_t;
 
+#define SUBJ_END EXE_DEVICE
+
 typedef struct s {
 	subject_type_t type;
 	union {

@@ -26,31 +26,19 @@
 
 #include "object-attr.h"
 
-/* This is the node of the linked list. message & item are the only elements
- * at this time. Any data elements that are per item goes here. */
-typedef struct _onode{
-  object_attr_t o;
-  struct _onode *next;	// Next node pointer
-} onode;
-
 /* This is the linked list head. Only data elements that are 1 per
  * event goes here. */
 typedef struct {
-  onode *head;		// List head
-  onode *cur;		// Pointer to current node
+  object_attr_t **obj;	// Object array
   unsigned int cnt;	// How many items in this list
   struct file_info *info; // unique file fingerprint
-} olist;
+} o_array;
 
-void object_create(olist *l);
-void object_first(olist *l);
-void object_last(olist *l);
-onode *object_next(olist *l);
-static inline onode *object_get_cur(const olist *l) { return l->cur; }
-int object_append(olist *l, object_attr_t *obj);
-onode *object_find_type(olist *l, object_type_t t);
-onode *object_find_file(olist *l);
-void object_clear(olist* l);
+void object_create(o_array *a);
+object_attr_t *object_access(o_array *a, object_type_t t);
+int object_add(o_array *a, object_attr_t *obj);
+object_attr_t *object_find_file(o_array *a);
+void object_clear(o_array *a);
 static inline int type_is_obj(int type) {if (type >= OBJ_START) return 1; else return 0;}
 
 #endif

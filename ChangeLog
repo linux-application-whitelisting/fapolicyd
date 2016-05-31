@@ -6,6 +6,7 @@
 - Update systemd service file to run as user fapolicyd
 - Adjust inter-thread queue default size
 - Write statistics on shutdown
+- Change attribute access to hash table
 
 0.8.1
 - Documentation updates

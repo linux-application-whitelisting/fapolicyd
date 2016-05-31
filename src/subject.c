@@ -27,90 +27,92 @@
 #include <errno.h>
 #include "policy.h"
 #include "subject.h"
+#include "message.h"
 
-void subject_create(slist *l)
+//#define DEBUG
+
+void subject_create(s_array *a)
 {
-	l->head = NULL;
-	l->cur = NULL;
-	l->cnt = 0;
-	l->info = NULL;
+	int i;
+
+	a->subj = malloc(sizeof(subject_attr_t *) * ((SUBJ_END-SUBJ_START)+1));
+	for (i = 0; i < SUBJ_END - SUBJ_START; i++)
+		a->subj[i] = NULL;
+	a->cnt = 0;
+	a->info = NULL;
 }
 
-void subject_last(slist *l)
+#ifdef DEBUG
+static void sanity_check_array(s_array *a, const char *id)
 {
-        register snode* window;
-	
-	if (l->head == NULL) {
-		l->cur = NULL;
-		return;
+	int i;
+	unsigned int num = 0;
+	for (i = 0; i < SUBJ_END - SUBJ_START; i++)
+		if (a->subj[i]) num++;
+	if (num != a->cnt) {
+		msg(LOG_DEBUG, "%s - array corruption %u!=%u", id, num, a->cnt);
+		abort();
 	}
-
-        window = l->head;
-	while (window->next)
-		window = window->next;
-
-	l->cur = window;
 }
+#else
+#define sanity_check_array(a, b) do {} while(0)
+#endif
 
-snode *subject_next(slist *l)
+subject_attr_t *subject_access(s_array *a, subject_type_t t)
 {
-	if (l->cur == NULL)
+	sanity_check_array(a, "subject_access");
+	if (t >= SUBJ_START && t <= SUBJ_END)
+		return a->subj[t - SUBJ_START];
+	else
 		return NULL;
-	l->cur = l->cur->next;
-
-	return l->cur;
 }
 
-int subject_append(slist *l, subject_attr_t *subj)
+// Returns 1 on failure and 0 on success
+int subject_add(s_array *a, subject_attr_t *subj)
 {
-	snode* newnode;
+	subject_attr_t* newnode;
+	subject_type_t t;
 
-	if (subj) { // parse up the rule
-		newnode = malloc(sizeof(snode));
-		newnode->s.type = subj->type;
-		if (subj->type >= COMM)
-			newnode->s.str = subj->str;
-		else
-			newnode->s.val = subj->val;
+	sanity_check_array(a, "subject_add 1");
+	if (subj) {
+		t = subj->type;
+		if (t >= SUBJ_START && t <= SUBJ_END) {
+			newnode = malloc(sizeof(subject_attr_t));
+			newnode->type = t;
+			if (subj->type >= COMM)
+				newnode->str = subj->str;
+			else
+				newnode->val = subj->val;
+		} else
+			return 1;
 	} else 
 		return 1;
 
-	newnode->next = NULL;
-	subject_last(l);
+	a->subj[t - SUBJ_START] = newnode;
+	a->cnt++;
+	sanity_check_array(a, "subject_add 2");
 
-	// if we are at top, fix this up
-	if (l->head == NULL)
-		l->head = newnode;
-	else {	// Otherwise add pointer to newnode
-		subject_last(l);
-		l->cur->next = newnode;
-	}
-
-	// make newnode current
-	l->cur = newnode;
-	l->cnt++;
 	return 0;
 }
 
-void subject_clear(slist* l)
+void subject_clear(s_array* a)
 {
-	snode* nextnode;
-	register snode* current;
+	int i;
+	subject_attr_t *current;
 
-	if (l == NULL)
+	if (a == NULL)
 		return;
 
-	current = l->head;
-	while (current) {
-		if (current->s.type >= COMM)
-			free(current->s.str);
-		nextnode=current->next;
+	for (i = 0; i < SUBJ_END - SUBJ_START; i++) {
+		current = a->subj[i];
+		if (current == NULL)
+			continue;
+		if (current->type >= COMM)
+			free(current->str);
 		free(current);
-		current=nextnode;
 	}
-	free(l->info);
-	l->head = NULL;
-	l->cur = NULL;
-	l->cnt = 0;
+	free(a->info);
+	free(a->subj);
+	a->cnt = 0;
 }
 
