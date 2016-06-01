@@ -23,6 +23,12 @@ echo Checking compiler options
 AC_C_CONST
 AC_C_INLINE
 
+withval=""
+AC_ARG_WITH(debug,
+AS_HELP_STRING([--with-debug],[turn on debugging (default=no)]),
+AC_DEFINE(DEBUG,1,[Define if you want to enable runtime debug checking.]),
+[])
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
