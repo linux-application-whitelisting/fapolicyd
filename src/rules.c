@@ -31,6 +31,8 @@
 #include "message.h"
 #include "file.h" // This seems wrong
 
+//#define DEBUG
+
 void rules_create(llist *l)
 {
 	l->head = NULL;
@@ -66,11 +68,106 @@ lnode *rules_next(llist *l)
 	return l->cur;
 }
 
+#ifdef DEBUG
+static void sanity_check_node(lnode *n, const char *id)
+{
+	unsigned int j, cnt;
+
+	if (n->s_count > MAX_FIELDS) {
+		msg(LOG_DEBUG, "%s - node s_count is out of range %u",
+				id, n->s_count);
+		abort();
+	}
+	if (n->o_count > MAX_FIELDS) {
+		msg(LOG_DEBUG, "%s - node o_count is out of range %u",
+				id, n->o_count);
+		abort();
+	}
+
+	if (n->s_count) {
+		cnt = 0;
+		for (j = 0; j < MAX_FIELDS; j++) {
+			if (n->s[j].type != 0xFF) {
+				cnt++;
+				if (n->s[j].type < SUBJ_START ||
+					n->s[j].type > SUBJ_END) {
+					msg(LOG_DEBUG,
+					"%s - subject type is out of range %d",
+						id, n->s[j].type);
+					abort();
+				}
+			}
+		}
+		if (cnt != n->s_count) {
+			msg(LOG_DEBUG, "%s - subject cnt mismatch %u!=%u",
+						id, cnt, n->s_count);
+			abort();
+		}
+	}
+	if (n->o_count) {
+		cnt = 0;
+		for (j = 0; j < MAX_FIELDS; j++) {
+			if (n->o[j].type != 0xFF) {
+				cnt++;
+				if (n->o[j].type < OBJ_START ||
+					n->o[j].type > OBJ_END) {
+					msg(LOG_DEBUG,
+					"%s - object type is out of range %d",
+						id, n->o[j].type);
+					abort();
+				}
+			}
+		}
+		if (cnt != n->o_count) {
+			msg(LOG_DEBUG, "%s - object cnt mismatch %u!=%u",
+						id, cnt, n->o_count);
+			abort();
+		}
+	}
+}
+#else
+#define sanity_check_node(a, b) do {} while(0)
+#endif
+
+#ifdef DEBUG
+static void sanity_check_list(llist *l, const char *id)
+{
+	unsigned int i;
+
+	lnode *n = l->head;
+	if (n == NULL)
+		return;
+
+	if (l->cnt == 0) {
+		msg(LOG_DEBUG, "%s - zero length cnt found", id);
+		abort();
+	}
+
+	i = 1;
+	while (n->next) {
+		if (i == l->cnt) {
+			msg(LOG_DEBUG, "%s - forward loop found %u", id, i);
+			abort();
+		}
+		sanity_check_node(n, id);
+		i++;
+		n = n->next;
+	}
+	if (i != l->cnt) {
+		msg(LOG_DEBUG, "%s - count mismatch %u!=%u", id, i, l->cnt);
+		abort();
+	}
+}
+#else
+#define sanity_check_list(a, b) do {} while(0)
+#endif
+
 int assign_subject(lnode *n, int type, char *ptr2, int lineno)
 {
 	// assign the subject
 	unsigned int i = n->s_count;
 
+	sanity_check_node(n, "assign_subject - 1");
 	n->s[i].type = type;
 	if (n->s[i].type >= COMM) {
 		n->s[i].str = strdup(ptr2);
@@ -90,6 +187,7 @@ int assign_subject(lnode *n, int type, char *ptr2, int lineno)
 	}
 
 	n->s_count++;
+	sanity_check_node(n, "assign_subject - 2");
 
 	return 0;
 }
@@ -99,6 +197,7 @@ int assign_object(lnode *n, int type, char *ptr2, int lineno)
 	// assign the object
 	unsigned int i = n->o_count;
 
+	sanity_check_node(n, "assign_object - 1");
 	n->o[i].type = type;
 	n->o[i].o = strdup(ptr2);
 	if (n->o[i].o == NULL) {
@@ -112,6 +211,7 @@ int assign_object(lnode *n, int type, char *ptr2, int lineno)
 		n->o[i].len = 0;
 
 	n->o_count++;
+	sanity_check_node(n, "assign_object - 2");
 
 	return 0;
 }
@@ -192,9 +292,15 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 {
 	lnode* newnode;
 
+	sanity_check_list(l, "rules_append - 1");
 	if (buf) { // parse up the rule
+		unsigned int i;
 		newnode = malloc(sizeof(lnode));
 		newnode->s_count = newnode->o_count = 0;
+		for (i=0; i<MAX_FIELDS; i++) {
+			newnode->s[i].type = 0xFF;
+			newnode->o[i].type = 0xFF;
+		}
 		int rc = nv_split(buf, newnode, lineno);
 		if (rc) {
 			free(newnode);
@@ -219,6 +325,7 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 	l->cur = newnode;
 	newnode->num = l->cnt;
 	l->cnt++;
+	sanity_check_list(l, "rules_append - 2");
 
 	return 0;
 }
@@ -294,6 +401,7 @@ static int check_subject(lnode *r, event_t *e)
 {
 	unsigned int cnt = 0;
 
+	sanity_check_node(r, "check_subject");
 	while (cnt < r->s_count) {
 		unsigned int type = r->s[cnt].type;
 		if (type != ALL_SUBJ) {
@@ -337,6 +445,7 @@ static decision_t check_object(lnode *r, event_t *e)
 {
 	unsigned int cnt = 0;
 
+	sanity_check_node(r, "check_object");
 	while (cnt < r->o_count) {
 		if (r->o[cnt].type != ALL_OBJ) {
 			object_attr_t *obj = get_obj_attr(e, r->o[cnt].type);
