@@ -222,8 +222,7 @@ static void *decision_thread_main(void *arg)
 		pthread_mutex_unlock(&decision_lock);
 
 		make_policy_decision(&metadata);
-		if (close(metadata.fd))
-			msg(LOG_DEBUG, "close fd failed");
+		close(metadata.fd);
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
