@@ -58,7 +58,8 @@ void destroy_event_system(void)
 	destroy_lru(obj_cache);
 }
 
-void new_event(const struct fanotify_event_metadata *m, event_t *e)
+// Return 0 on success and 1 on error
+int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
 	subject_attr_t subj;
 	QNode *q_node;
@@ -79,6 +80,8 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 
 	// get proc fingerprint
 	pinfo = stat_proc_entry(m->pid);
+	if (pinfo == NULL)
+		return 1;
 
 	// Check the subject to see if its what its supposed to be
 	if (s) {
@@ -111,6 +114,8 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// get file fingerprint
 	rc = 1;
 	finfo = stat_file_entry(m->fd);
+	if (finfo == NULL)
+		return 1;
 
 	// Just using inodes don't give a good key. It needs 
 	// conditioning to use more slots in the cache.
@@ -141,6 +146,7 @@ void new_event(const struct fanotify_event_metadata *m, event_t *e)
 		e->o = o;
 		free(finfo);
 	}
+	return 0;
 }
 
 /*

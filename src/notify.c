@@ -151,8 +151,10 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 	event_t e;
 	int decision;
 
-	new_event(metadata, &e);
-	decision = process_event(&e);
+	if (new_event(metadata, &e))
+		decision = FAN_DENY;
+	else
+		decision = process_event(&e);
 
 	// Permissive mode uses open notifications
 	// that do not need responses. Only reply
