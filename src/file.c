@@ -156,7 +156,7 @@ char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 	if ((size_t)path_len < blen)
 		buf[path_len] = 0;
 	else
-		buf[blen] = 0;
+		buf[blen-1] = 0;
 	return buf;
 }
 
@@ -184,10 +184,10 @@ static void resolve_path(const char *pcwd, char *path, size_t len)
 
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 {
-	char procfd_path[PATH_MAX];
+	char procfd_path[PATH_MAX+1];
 	ssize_t path_len;
 
-	snprintf(procfd_path, sizeof(procfd_path), 
+	snprintf(procfd_path, sizeof(procfd_path)-1, 
 		"/proc/self/fd/%d", fd);
 	path_len = readlink(procfd_path, buf, blen - 1);
 	if (path_len < 0)
@@ -196,14 +196,14 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	if ((size_t)path_len < blen)
 		buf[path_len] = 0;
 	else
-		buf[blen] = 0;
+		buf[blen-1] = 0;
 
 	// If this does not start with a '/' we have a relative path
 	if (buf[0] != '/') {
 		char pcwd[PATH_MAX+1];
 
 		pcwd[0] = 0;
-		get_program_cwd_from_pid(pid, PATH_MAX+1, pcwd);
+		get_program_cwd_from_pid(pid, sizeof(pcwd), pcwd);
 		resolve_path(pcwd, buf, blen);
 	}
 	return buf;

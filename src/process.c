@@ -97,14 +97,14 @@ char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 		if ((size_t)rc < blen)
 			buf[rc] = 0;
 		else
-			buf[blen] = 0;
+			buf[blen-1] = 0;
 
 		// Trim the newline
 		ptr = strchr(buf, 0x0A);
 		if (ptr)
 			*ptr = 0;
 	} else  // FIXME: this should be NULL
-		snprintf(buf, blen,
+		snprintf(buf, blen-1,
 			"Error-getting-comm(errno=%d,pid=%d)",
 			errno, pid);
 	return buf;
@@ -130,7 +130,7 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 	if ((size_t)path_len < blen)
 		buf[path_len] = 0;
 	else
-		buf[blen] = '\0';
+		buf[blen-1] = '\0';
 
 	return buf;
 }

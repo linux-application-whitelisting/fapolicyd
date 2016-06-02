@@ -180,7 +180,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			break;
 		case COMM: {
 			char buf[21], *ptr;
-			ptr = get_comm_from_pid(e->pid,	sizeof(buf)-1, buf);
+			ptr = get_comm_from_pid(e->pid,	sizeof(buf), buf);
 			if (ptr)
 				subj.str = strdup(buf);
 			else
@@ -210,6 +210,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		case EXE_DEVICE:
 			// FIXME: write real code for this
 			subj.str = strdup("?");
+			break;
 		default:
 			return NULL;
 	};

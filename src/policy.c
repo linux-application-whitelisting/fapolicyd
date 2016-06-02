@@ -164,7 +164,7 @@ decision_t process_event(event_t *e)
 
 	// Output some information if debugging on
 	if ((debug > 1 && results == DENY) || (debug == 1))
-		log_it(r->num, results, e);
+		log_it(r ? r->num : 0xFFFFFFFF, results, e);
 
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)
