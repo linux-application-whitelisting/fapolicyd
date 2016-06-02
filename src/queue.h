@@ -50,7 +50,7 @@ int q_append(struct queue *q, const struct fanotify_event_metadata *data);
 
 /* Peek at head of Q, storing it into BUF of SIZE. Return 1 if an entry 
  * exists, 0 if queue is empty. On error, return -1 and set errno. */
-int q_peek(struct queue *q, struct fanotify_event_metadata *data);
+int q_peek(const struct queue *q, struct fanotify_event_metadata *data);
 
 /* Drop head of Q and return 0. On error, return -1 and set errno. */
 int q_drop_head(struct queue *q);

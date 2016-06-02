@@ -162,7 +162,7 @@ static void sanity_check_list(llist *l, const char *id)
 #define sanity_check_list(a, b) do {} while(0)
 #endif
 
-int assign_subject(lnode *n, int type, char *ptr2, int lineno)
+static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 {
 	// assign the subject
 	unsigned int i = n->s_count;
@@ -192,7 +192,7 @@ int assign_subject(lnode *n, int type, char *ptr2, int lineno)
 	return 0;
 }
 
-int assign_object(lnode *n, int type, char *ptr2, int lineno)
+static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 {
 	// assign the object
 	unsigned int i = n->o_count;
@@ -340,7 +340,7 @@ static const nv_t dirs[] = {
 	{ 7, "/lib64/"},
 	{13, "/usr/libexec/"}
 };
-#define NUM_DIRS sizeof(dirs)/sizeof(dirs[0])
+#define NUM_DIRS (sizeof(dirs)/sizeof(dirs[0]))
 
 // Returns 0 if no match, 1 if a match
 static int check_dirs(unsigned int i, const char *path)

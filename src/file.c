@@ -209,7 +209,7 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	return buf;
 }
 
-char *get_device_from_fd(int fd, unsigned int device, size_t blen, char *buf)
+char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 {
 	struct udev_device *dev;
 	const char *node;

@@ -66,7 +66,7 @@ static void mounts_last(llist *l)
 	l->cur = window;
 }
 
-static int mounts_append(llist *l, char *buf, unsigned int lineno)
+static int mounts_append(llist *l, const char *buf, unsigned int lineno)
 {
         lnode* newnode;
 
@@ -88,6 +88,7 @@ static int mounts_append(llist *l, char *buf, unsigned int lineno)
 	// make newnode current
 	l->cur = newnode;
 	l->cnt++;
+
 	return 0;
 }
 

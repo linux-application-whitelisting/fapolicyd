@@ -129,7 +129,7 @@ int q_append(struct queue *q, const struct fanotify_event_metadata *data)
 	return 0;
 }
 
-int q_peek(struct queue *q, struct fanotify_event_metadata *data)
+int q_peek(const struct queue *q, struct fanotify_event_metadata *data)
 {
 	if (q->queue_length == 0)
 		return 0;

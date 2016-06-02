@@ -258,8 +258,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			}
 			break;
 		case DEVICE:
-			ptr = get_device_from_fd(e->fd, 
-					o->info->device,
+			ptr = get_device_from_stat(o->info->device,
 					sizeof(buf), buf);
 			if (ptr)
 				obj.o = strdup(buf);

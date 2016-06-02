@@ -35,9 +35,9 @@ typedef struct {
 } o_array;
 
 void object_create(o_array *a);
-object_attr_t *object_access(o_array *a, object_type_t t);
-int object_add(o_array *a, object_attr_t *obj);
-object_attr_t *object_find_file(o_array *a);
+object_attr_t *object_access(const o_array *a, object_type_t t);
+int object_add(o_array *a, const object_attr_t *obj);
+object_attr_t *object_find_file(const o_array *a);
 void object_clear(o_array *a);
 static inline int type_is_obj(int type) {if (type >= OBJ_START) return 1; else return 0;}
 

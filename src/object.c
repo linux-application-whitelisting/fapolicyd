@@ -58,7 +58,7 @@ static void sanity_check_array(o_array *a, const char *id)
 #define sanity_check_array(a, b) do {} while(0)
 #endif
 
-object_attr_t *object_access(o_array *a, object_type_t t)
+object_attr_t *object_access(const o_array *a, object_type_t t)
 {
 	sanity_check_array(a, "object_access");
 	if (t >= OBJ_START && t <= OBJ_END)
@@ -68,7 +68,7 @@ object_attr_t *object_access(o_array *a, object_type_t t)
 }
 
 // Returns 1 on failure and 0 on success
-int object_add(o_array *a, object_attr_t *obj)
+int object_add(o_array *a, const object_attr_t *obj)
 {
 	object_attr_t *newnode;
 
@@ -90,7 +90,7 @@ int object_add(o_array *a, object_attr_t *obj)
 	return 0;
 }
 
-object_attr_t *object_find_file(o_array *a)
+object_attr_t *object_find_file(const o_array *a)
 {
 	sanity_check_array(a, "object_find_file");
 	if (a->obj[PATH - OBJ_START])
