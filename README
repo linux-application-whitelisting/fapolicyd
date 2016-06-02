@@ -38,7 +38,7 @@ control decisions.
 
 To get an initial watch list, you can run this:
 
-mount | egrep '^tmpfs| ext4| xfs' | awk '{ printf "%s\n", $3 }' >> /etc/fapolicyd/fapolicyd.mounts
+mount | egrep '^tmpfs| ext4| ext3| xfs' | awk '{ printf "%s\n", $3 }' >> /etc/fapolicyd/fapolicyd.mounts
 
 You might want to look at the fapolicyd.rules file to see what the sample
 policy looks like. The policy is designed with 3 goals in mind.
