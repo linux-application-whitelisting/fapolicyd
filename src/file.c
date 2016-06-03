@@ -268,6 +268,10 @@ int check_packaged_from_file(const char *filename)
 
 	// Search rpm database for filename
 	iter = rpmtsInitIterator(rpm, RPMTAG_BASENAMES, filename, 0);
+	if (iter == NULL) {
+		msg(LOG_ERR, "rpm database error - exiting");
+		exit(1);
+	}
 	
 	// Check to see if there's a package name associated with the file
 	Header header = rpmdbNextIterator(iter);

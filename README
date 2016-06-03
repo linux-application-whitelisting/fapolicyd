@@ -112,3 +112,11 @@ About shell script restrictions...there's not much difference between
 running a script or someone typing things in by hand. The aim at this
 point is to check that any programs it calls meets the policy.
 
+If for some reason rpm database errors are detected, you may need to do
+the following:
+
+1) db_verify /var/lib/rpm/Packages
+if OK, then
+2) rm -f /var/lib/rpm/__db*
+3) rpm --rebuilddb
+
