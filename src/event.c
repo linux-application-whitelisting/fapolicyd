@@ -130,8 +130,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			lru_evict(obj_cache, key);
 			q_node = check_lru_cache(obj_cache, key);
 			o = (o_array *)q_node->item;
-		} else if (o->cnt == 0)
-			msg(LOG_DEBUG, "cached object has cnt of 0");
+		}
 	}
 
 	if (rc) {

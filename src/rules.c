@@ -32,6 +32,7 @@
 #include "file.h" // This seems wrong
 
 //#define DEBUG
+#define UNUSED 0xFF
 
 void rules_create(llist *l)
 {
@@ -73,6 +74,11 @@ static void sanity_check_node(lnode *n, const char *id)
 {
 	unsigned int j, cnt;
 
+	if (n == NULL) {
+		msg(LOG_DEBUG, "node is NULL");
+		abort();
+	}
+
 	if (n->s_count > MAX_FIELDS) {
 		msg(LOG_DEBUG, "%s - node s_count is out of range %u",
 				id, n->s_count);
@@ -87,7 +93,7 @@ static void sanity_check_node(lnode *n, const char *id)
 	if (n->s_count) {
 		cnt = 0;
 		for (j = 0; j < MAX_FIELDS; j++) {
-			if (n->s[j].type != 0xFF) {
+			if (n->s[j].type != UNUSED) {
 				cnt++;
 				if (n->s[j].type < SUBJ_START ||
 					n->s[j].type > SUBJ_END) {
@@ -107,7 +113,7 @@ static void sanity_check_node(lnode *n, const char *id)
 	if (n->o_count) {
 		cnt = 0;
 		for (j = 0; j < MAX_FIELDS; j++) {
-			if (n->o[j].type != 0xFF) {
+			if (n->o[j].type != UNUSED) {
 				cnt++;
 				if (n->o[j].type < OBJ_START ||
 					n->o[j].type > OBJ_END) {
@@ -296,10 +302,11 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 	if (buf) { // parse up the rule
 		unsigned int i;
 		newnode = malloc(sizeof(lnode));
-		newnode->s_count = newnode->o_count = 0;
+		newnode->s_count = 0;
+		newnode->o_count = 0;
 		for (i=0; i<MAX_FIELDS; i++) {
-			newnode->s[i].type = 0xFF;
-			newnode->o[i].type = 0xFF;
+			newnode->s[i].type = UNUSED;
+			newnode->o[i].type = UNUSED;
 		}
 		int rc = nv_split(buf, newnode, lineno);
 		if (rc) {
@@ -347,7 +354,7 @@ static int check_dirs(unsigned int i, const char *path)
 {
 	// Iterate across the lists looking for a match.
 	// If we match, stop iterating and return a decision.
-	for (; i< NUM_DIRS; i++) {
+	for (; i < NUM_DIRS; i++) {
 		// Check to see if we even care about this path
 		if (strncmp(path, dirs[i].name, dirs[i].value) == 0)
 			return 1;

@@ -145,6 +145,21 @@ void shutdown_fanotify(void)
 	clear_mounts();
 }
 
+static int get_ready(void)
+{
+	return events_ready;
+}
+
+static void set_ready(void)
+{
+	events_ready = 1;
+}
+
+static void clear_ready(void)
+{
+	events_ready = 0;
+}
+
 static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 {
 	struct fanotify_response response;
@@ -174,11 +189,11 @@ static void *deadmans_switch_thread_main(void *arg)
 {
 	do {
 		// Are you alive decision thread?
-		if (alive == 0 && events_ready && !stop &&
+		if (alive == 0 && get_ready() && !stop &&
 					q_queue_length(q) > 2) {
 			msg(LOG_ERR,
 				"Deadman's switch activated...killing process");
-			raise(SIGABRT);
+			raise(SIGKILL);
 		}
 		// OK, prove it again.
 		alive = 0;
@@ -202,7 +217,7 @@ static void *decision_thread_main(void *arg)
 		struct fanotify_event_metadata metadata;
 
 		pthread_mutex_lock(&decision_lock);
-		while (events_ready == 0) {
+		while (get_ready() == 0) {
 			pthread_cond_wait(&do_decision, &decision_lock);
 			if (stop) {
 				pthread_mutex_unlock(&decision_lock);
@@ -213,14 +228,14 @@ static void *decision_thread_main(void *arg)
 		len = q_peek(q, &metadata);
 		if (len == 0) {
 			// Should never happen
-			events_ready = 0; // Reset to reality
+			clear_ready(); // Reset to reality
 			pthread_mutex_unlock(&decision_lock);
 			msg(LOG_DEBUG, "queue size is 0 but event recieved");
 			continue;
 		}
 		q_drop_head(q);
 		if (q_queue_length(q) == 0)
-			events_ready = 0;
+			clear_ready();
 		pthread_mutex_unlock(&decision_lock);
 
 		make_policy_decision(&metadata);
@@ -236,7 +251,7 @@ static void enqueue_event(const struct fanotify_event_metadata *metadata)
 	if (q_append(q, metadata))
 		msg(LOG_DEBUG, "enqueue error");
 	else
-		events_ready = 1;
+		set_ready();
 	pthread_cond_signal(&do_decision);
 	pthread_mutex_unlock(&decision_lock);
 }
