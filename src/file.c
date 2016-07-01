@@ -250,7 +250,7 @@ char *get_file_type_from_fd(int fd, size_t blen, char *buf)
 	ptr = magic_descriptor(magic_cookie, fd);
 	if (ptr) {
 		char *str;
-		strncpy(buf, ptr, blen);
+		strncpy(buf, ptr, blen-1);
 		buf[blen-1] = 0;
 		str = strchr(buf, ';');
 		if (str)
