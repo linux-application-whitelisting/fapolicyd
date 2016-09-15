@@ -107,6 +107,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		((s_array *)q_node->item)->info = pinfo;
 	} else	{ // Use the one from the cache
 		e->s = s;
+		clear_proc_info(pinfo);
 		free(pinfo);
 	}
 
@@ -144,6 +145,24 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	} else { // Use the one from the cache
 		e->o = o;
 		free(finfo);
+	}
+	// Setup pattern info
+	pinfo = e->s->info;
+	if (pinfo && pinfo->state < STATE_FULL) {
+		object_attr_t *on = get_obj_attr(e, PATH);
+		if (on) {
+			const char *file = on->o;
+			if (pinfo->path1 == NULL) {
+				pinfo->path1 = strdup(file);
+			} else if (pinfo->path2 == NULL) {
+				pinfo->path2 = strdup(file);
+				pinfo->state = STATE_PARTIAL;
+			} else if (pinfo->path3 == NULL) {
+				pinfo->path3 = strdup(file);
+				pinfo->state = STATE_FULL;
+				subject_reset(e->s, EXE);
+			}
+		}
 	}
 	return 0;
 }

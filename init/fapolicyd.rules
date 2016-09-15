@@ -6,7 +6,10 @@
 # your distribution.
 
 # Prevent execution by ld.so
-deny exe=/usr/lib64/ld-2.22.so all
+deny pattern=ld_so all
+
+# Don't allow LD_PRELOAD
+deny pattern=ld_preload all
 
 # Keep systemd out of the way
 deny exe=/usr/lib/systemd/systemd path=/var/lib/rpm/Packages

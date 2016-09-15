@@ -28,7 +28,7 @@
 #include "nv.h"
 
 // Top is numbers, bottom is strings
-typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, 
+typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, PATTERN, 
 	COMM, EXE, EXE_DIR, EXE_TYPE, EXE_DEVICE } subject_type_t;
 
 #define SUBJ_END EXE_DEVICE

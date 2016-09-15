@@ -50,6 +50,8 @@ AC_CHECK_LIB(magic, magic_descriptor, , [AC_MSG_ERROR([libmagic not found])], -l
 AC_CHECK_LIB(cap-ng, capng_change_id, , [AC_MSG_ERROR([libcap-ng not found])], -lcap-ng)
 AC_CHECK_LIB(seccomp, seccomp_rule_add, , [AC_MSG_ERROR([libseccomp not found])], -lseccomp)
 
+LD_SO_PATH
+
 AC_OUTPUT(Makefile src/Makefile init/Makefile doc/Makefile)
 
 echo .

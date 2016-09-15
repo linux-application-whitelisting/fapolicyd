@@ -103,6 +103,7 @@ void subject_clear(s_array* a)
 	if (a == NULL)
 		return;
 
+	sanity_check_array(a, "subject_clear");
 	for (i = 0; i < SUBJ_END - SUBJ_START; i++) {
 		current = a->subj[i];
 		if (current == NULL)
@@ -111,8 +112,28 @@ void subject_clear(s_array* a)
 			free(current->str);
 		free(current);
 	}
+	clear_proc_info(a->info);
 	free(a->info);
 	free(a->subj);
 	a->cnt = 0;
+}
+
+void subject_reset(s_array *a, subject_type_t t)
+{
+	if (a == NULL)
+		return;
+
+	sanity_check_array(a, "subject_reset1");
+	if (t >= SUBJ_START && t <= SUBJ_END) {
+		subject_attr_t *current = a->subj[t - SUBJ_START];
+		if (current == NULL)
+			return;
+		if (current->type >= COMM)
+			free(current->str);
+		free(current);
+		a->subj[t - SUBJ_START] = NULL;
+		a->cnt--;
+		sanity_check_array(a, "subject_reset2");
+	}
 }
 

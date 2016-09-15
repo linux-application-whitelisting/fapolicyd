@@ -3,7 +3,7 @@ AM_CPPFLAGS = -I${top_srcdir} -I${top_srcdir}/src
 sbin_PROGRAMS = fapolicyd
 fapolicyd_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
 fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now
-fapolicy_LDADD = -lpthread 
+fapolicyd_LDADD = -lpthread 
 
 fapolicyd_SOURCES = event.c fapolicyd.c file.c lru.c message.c \
 	mounts.c notify.c object-attr.c object.c \

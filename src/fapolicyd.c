@@ -286,7 +286,6 @@ int main(int argc, char *argv[])
 	// Load the rule configuration
 	if (load_config())
 		exit(1);
-	file_init();
 	if (!debug) {
 		if (become_daemon() < 0) {
 			msg(LOG_ERR, "Exiting due to failure daemonizing");
@@ -317,6 +316,9 @@ int main(int argc, char *argv[])
 
 	// Setup lru caches
 	init_event_system();
+
+	// Init the file test libraries
+	file_init();
 
 	// Initialize the file watch system
 	pfd[0].fd = init_fanotify();

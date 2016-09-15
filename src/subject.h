@@ -38,6 +38,7 @@ typedef struct {
 void subject_create(s_array *a);
 subject_attr_t *subject_access(s_array *a, subject_type_t t);
 int subject_add(s_array *a, subject_attr_t *subj);
+void subject_reset(s_array *a, subject_type_t t);
 void subject_clear(s_array* a);
 static inline int type_is_subj(int type) {if (type < OBJ_START) return 1; else return 0;}
 

@@ -32,6 +32,7 @@ static const nv_t table[] = {
 {	UID,        "uid"	},
 {	SESSIONID,  "sessionid"	},
 {	PID,        "pid"	},
+{	PATTERN,    "pattern"	},
 {	COMM,       "comm"	},
 {	EXE,        "exe"	},
 {	EXE_DIR,    "exe_dir"	},

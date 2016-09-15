@@ -26,6 +26,9 @@
 
 #include <sys/types.h>
 
+typedef enum { STATE_COLLECTING=0, STATE_PARTIAL, STATE_FULL, STATE_NORMAL,
+	STATE_LD_PRELOAD, STATE_BAD_INTERPRETER, STATE_LD_SO } state_t;
+
 // Information we will cache to identify the same executable
 struct proc_info
 {
@@ -33,9 +36,15 @@ struct proc_info
 	dev_t	device;
 	ino_t	inode;
 	struct timespec time;
+	// FIXME: We can jettison paths when state reaches > Full
+	state_t state;
+	char *path1;
+	char *path2;
+	char *path3;
 };
 
 struct proc_info *stat_proc_entry(pid_t pid);
+void clear_proc_info(struct proc_info *info);
 int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2);
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf);
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf);

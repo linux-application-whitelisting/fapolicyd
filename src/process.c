@@ -52,10 +52,25 @@ struct proc_info *stat_proc_entry(pid_t pid)
 		info->inode = sb.st_ino;
 		info->time.tv_sec = sb.st_ctim.tv_sec;
 		info->time.tv_nsec = sb.st_ctim.tv_nsec;
+		// Make all paths empty
+		info->path1 = NULL;
+		info->path2 = NULL;
+		info->path3 = NULL;
+		info->state = STATE_COLLECTING;
 
 		return info;
 	}
 	return NULL;
+}
+
+void clear_proc_info(struct proc_info *info)
+{
+	free(info->path1);
+	free(info->path2);
+	free(info->path3);
+	info->path1 = NULL;
+	info->path2 = NULL;
+	info->path3 = NULL;
 }
 
 // Returns 0 if equal and 1 if not equal

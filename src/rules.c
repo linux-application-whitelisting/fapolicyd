@@ -34,6 +34,17 @@
 //#define DEBUG
 #define UNUSED 0xFF
 
+// Pattern detection
+#define SYSTEM_LD_CACHE "/etc/ld.so.cache"
+#define PATTERN_NORMAL_STR "normal"
+#define PATTERN_NORMAL_VAL 0
+#define PATTERN_LD_PRELOAD_STR "ld_preload"
+#define PATTERN_LD_PRELOAD_VAL 1
+#define PATTERN_BAD_INTERPRETER_STR "bad_interpreter"
+#define PATTERN_BAD_INTERPRETER_VAL 2
+#define PATTERN_LD_SO_STR "ld_so"
+#define PATTERN_LD_SO_VAL 3
+
 void rules_create(llist *l)
 {
 	l->head = NULL;
@@ -183,12 +194,30 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			return 1;
 		}
 	} else {
-		errno = 0;
-		n->s[i].val = strtol(ptr2, NULL, 10);
-		if (errno) {
-			msg(LOG_ERR, "Error converting val (%s) in line %d",
-				ptr2, lineno);
-			return 2;
+		if (n->s[i].type == PATTERN) {
+			if (strcasecmp(ptr2, PATTERN_LD_PRELOAD_STR) == 0) {
+				n->s[i].val = PATTERN_LD_PRELOAD_VAL;
+//			} else if (strcasecmp(ptr2,
+//					PATTERN_BAD_INTERPRETER_STR) == 0) {
+//				n->s[i].val = PATTERN_BAD_INTERPRETER_VAL;
+			} else if (strcasecmp(ptr2,
+					PATTERN_LD_SO_STR) == 0) {
+				n->s[i].val = PATTERN_LD_SO_VAL;
+			} else {
+				msg(LOG_ERR,
+					"Unknown pattern value %s in line %d",
+					ptr2, lineno);
+				return 2;
+			}
+		} else {
+			errno = 0;
+			n->s[i].val = strtol(ptr2, NULL, 10);
+			if (errno) {
+				msg(LOG_ERR,
+					"Error converting val (%s) in line %d",
+					ptr2, lineno);
+				return 2;
+			}
 		}
 	}
 
@@ -403,6 +432,115 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj)
 	return 1;
 }
 
+
+//#define NEW_WAY 1
+
+// Returns 0 if no match, 1 if a match
+static int subj_pattern_test(subject_attr_t *s, event_t *e)
+{
+	int rc = 0;
+	struct proc_info *pinfo = e->s->info;
+
+	// If still collecting, we can't decide yet.
+	if (pinfo->state == STATE_COLLECTING)
+		return rc;
+
+	// Do the analysis
+#ifdef NEW_WAY
+	// What if this is already running pgm and we were
+	// evicted from cache and are now recovering?
+	if (pinfo->state == STATE_PARTIAL) {
+msg(LOG_DEBUG, "path1: %s", pinfo->path1);
+msg(LOG_DEBUG, "path2: %s", pinfo->path2);
+		if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0)
+			pinfo->state = STATE_LD_SO;
+		else if (strcmp(pinfo->path2, SYSTEM_LD_SO)) {
+			// When programs start, its either ld.so or themselves
+			// There is no other way they start. So, if there is a
+			// miscompare, then we must have started a while ago.
+			subject_attr_t *sub = get_subj_attr(e, EXE);
+			// FIXME: The problem here is that the exe name
+			// gets set by ld.so. At partial match we do not
+			// know if we are recovering from eviction or
+			// this is the wrong interp. If we got the execve
+			// access notification, we can fix this use case.
+			if (strcmp(pinfo->path1, sub->str) == 0)
+				pinfo->state = STATE_BAD_INTERPRETER;
+		}
+	} else if (pinfo->state == STATE_FULL) {
+		// When programs start, its either ld.so or themselves
+		// There is no other way they start. So, if there is a
+		// miscompare, then we must have started a while ago.
+		subject_attr_t *sub = get_subj_attr(e, EXE);
+		if (strcmp(pinfo->path1, sub->str)) {
+			pinfo->state = STATE_NORMAL;
+		} else {
+			if (strcmp(pinfo->path3, SYSTEM_LD_CACHE) == 0)
+				pinfo->state = STATE_NORMAL;
+			else
+				pinfo->state = STATE_LD_PRELOAD;
+		}
+	}
+
+#else  //  OLD WAY
+	if (pinfo->state == STATE_FULL) {
+		// When programs start, its either ld.so or themselves
+		// There is no other way they start. So, if there is a
+		// miscompare, then we must have started a while ago.
+		subject_attr_t *sub = get_subj_attr(e, EXE);
+		if (strcmp(pinfo->path1, sub->str))
+			// If we hit this, we assume program is already running
+			pinfo->state = STATE_NORMAL;
+		else if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0)
+			// First thing is ld.so when its used
+			pinfo->state = STATE_LD_SO;
+		else {
+			// To get here, pgm matched path1
+			if (strcmp(pinfo->path2, SYSTEM_LD_SO) == 0) {
+				// To get here interp is ld.so
+				if (strcmp(pinfo->path3, SYSTEM_LD_CACHE) == 0)
+					// ld.so normally checks cache first
+					pinfo->state = STATE_NORMAL;
+				else
+					// but preload does the preload
+					pinfo->state = STATE_LD_PRELOAD;
+			} else
+				// To get here wrong interp used
+				pinfo->state = STATE_BAD_INTERPRETER;
+		}
+	}
+#endif
+	// If nothing detected, then we cannot decide yet
+	if (pinfo->state == STATE_PARTIAL)
+		return rc;
+
+	// Done with the paths
+	clear_proc_info(pinfo);
+
+	// Make a decision
+	switch (s->val)
+	{
+		case PATTERN_NORMAL_VAL:
+			if (pinfo->state == STATE_NORMAL)
+				rc = 1;
+			break;
+		case PATTERN_LD_PRELOAD_VAL:
+			if (pinfo->state == STATE_LD_PRELOAD)
+				rc = 1;
+			break;
+		case PATTERN_BAD_INTERPRETER_VAL:
+			if (pinfo->state == STATE_BAD_INTERPRETER)
+				rc = 1;
+			break;
+		case PATTERN_LD_SO_VAL:
+			if (pinfo->state == STATE_LD_SO)
+				rc = 1;
+			break;
+	}
+
+	return rc;
+}
+
 // Returns 0 if no match, 1 if a match, -1 on error
 static int check_subject(lnode *r, event_t *e)
 {
@@ -413,13 +551,18 @@ static int check_subject(lnode *r, event_t *e)
 		unsigned int type = r->s[cnt].type;
 		if (type != ALL_SUBJ) {
 			subject_attr_t *subj = get_subj_attr(e, type);
-			if (subj == NULL) {
+			if (subj == NULL && type != PATTERN) {
 				cnt++;
 				continue;
 			}
 
 			// If mismatch, we don't care
-			if (type >= COMM) {
+			if (type == PATTERN) {
+					int rc = subj_pattern_test
+							(&(r->s[cnt]), e);
+					if (rc == 0)
+						return 0;
+			} else if (type >= COMM) {
 				// can't happen unless out of memory
 				if (subj->str == NULL) {
 					cnt++;
@@ -438,7 +581,7 @@ static int check_subject(lnode *r, event_t *e)
 						return 0;
 				} else if (strcmp(subj->str, r->s[cnt].str))
 					return 0;
-			} else if (subj->val != r->s[cnt].val)
+			} else if (subj && subj->val != r->s[cnt].val)
 					return 0;
 		}
 		cnt++;
