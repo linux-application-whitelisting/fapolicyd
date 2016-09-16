@@ -343,24 +343,66 @@ void run_usage_report(void)
 		o_array *o = (o_array *)q_node->item;
 		object_attr_t *on = object_find_file(o);
 		if (on == NULL)
-			goto next;
+			goto next_obj;
 		file = on->o;
 		if (file == NULL)
-			goto next;
+			goto next_obj;
 
 		len = strlen(file);
 		if (len > 62)
 			fprintf(f, "%s\t%lu\n", file, q_node->uses);
 		else
 			fprintf(f, "%-62s\t%lu\n", file, q_node->uses);
-		next:
+	next_obj:
 		q_node = q_node->prev;
 	}
 
 	fprintf(f, "\n---\n\n");
 	print_queue_stats(f, obj_cache);
-	fprintf(f, "\n");
+	fprintf(f, "\n\n");
+
+	fprintf(f, "Active processes oldest to most recently active as of %s\n", ctime(&t));
+	fprintf(f, "\tEXE\tCOMM\t\t\t\t\t    ATTEMPTS\n");
+	fprintf(f, "---------------------------------------------------------------------------\n");
+	if (subj_cache->count == 0) {
+		fprintf(f, "(none)\n");
+		fclose(f);
+		return;
+	}
+
+	q_node = subj_cache->end;
+
+	while (q_node) {
+		unsigned int len;
+		char *exe, *comm, *text;
+		subject_attr_t *se, *sc;
+		s_array *s = (s_array *)q_node->item;
+		se = subject_find_exe(s);
+		if (se == NULL)
+			goto next_subj;
+		exe = se->str;
+		if (exe == NULL)
+			goto next_subj;
+
+		sc = subject_find_comm(s);
+		if (sc == NULL)
+			comm = "?";
+		else
+			comm = sc->str ? sc->str : "?";
+
+		asprintf(&text, "%s (%s)", exe, comm);
+		len = strlen(text);
+		if (len > 62)
+			fprintf(f, "%s\t%lu\n", text, q_node->uses);
+		else
+			fprintf(f,"%-62s\t%lu\n", text, q_node->uses);
+		free(text);
+	next_subj:
+		q_node = q_node->prev;
+	}
+	fprintf(f, "\n---\n\n");
 	print_queue_stats(f, subj_cache);
+	fprintf(f, "\n");
 	fclose(f);
 }
 
