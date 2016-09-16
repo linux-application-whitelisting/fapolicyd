@@ -6,9 +6,9 @@ Add EXECVE, EXECVE_PERM
 
 Userspace
 =========
+Add sighup handler
 Improve the object hash for better cache utilization
+Add ability to detect bad interpreter
 Allow globbing
 Add audit option
-Add ability to identify suspicious sequences
-Add sighup handler
 
