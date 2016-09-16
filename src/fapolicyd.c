@@ -48,6 +48,7 @@
 // Global program variables
 int debug = 0, permissive = 0;
 int q_size = 1024;
+int details = 1;
 
 // Signal handler notifications
 volatile int stop = 0;
@@ -177,7 +178,8 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
-		"[--boost xxx] [--queue xxx] [--user xx]\n");
+		"[--boost xxx]\n\t\t[--queue xxx] [--user xx] "
+		"[--no-details]\n");
 	exit(1);
 }
 
@@ -190,7 +192,9 @@ int main(int argc, char *argv[])
 
 	set_message_mode(MSG_STDERR, debug);
 	for (i=1; i < argc; i++) {
-		if (strcmp(argv[i], "--debug") == 0) {
+		if (strcmp(argv[i], "--help") == 0)
+			usage();
+		else if (strcmp(argv[i], "--debug") == 0) {
 			debug = 1;
 			set_message_mode(MSG_STDERR, DBG_YES);
 		} else if (strcmp(argv[i], "--debug-deny") == 0) {
@@ -255,6 +259,8 @@ int main(int argc, char *argv[])
 				uid = pw->pw_uid;
 				endpwent();
 			}
+		} else if (strcmp(argv[i], "--no-details") == 0) {
+			details = 0;
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
 			usage();
