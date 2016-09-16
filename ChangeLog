@@ -8,6 +8,7 @@
 - Write statistics on shutdown
 - Change attribute access to hash table
 - Deny access to stale pid's or fd's
+- Add new pattern subject detection
 - Add executable report on shutdown
 - Add --no-details  to suppress file/exe names on shutdown report
 
