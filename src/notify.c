@@ -56,6 +56,7 @@ static volatile int events_ready;
 static volatile pid_t decision_tid;
 static volatile int alive = 1;
 static int fd;
+static unsigned long allowed = 0, denied = 0;
 
 // Local functions
 static void *decision_thread_main(void *arg);
@@ -143,6 +144,10 @@ void shutdown_fanotify(void)
 	q_close(q);
 	close(fd);
 	clear_mounts();
+
+	// Report results
+	msg(LOG_DEBUG, "Allowed accesses: %u", allowed);
+	msg(LOG_DEBUG, "Denied accesses: %u", denied);
 }
 
 static int get_ready(void)
@@ -170,6 +175,11 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 		decision = FAN_DENY;
 	else
 		decision = process_event(&e);
+
+	if (decision == DENY)
+		denied++;
+	else
+		allowed++;
 
 	// Permissive mode uses open notifications
 	// that do not need responses. Only reply
