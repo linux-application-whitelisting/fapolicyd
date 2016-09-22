@@ -24,6 +24,7 @@
 #ifndef EVENT_HEADER
 #define EVENT_HEADER
 
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>
 #include "subject.h"
@@ -42,6 +43,6 @@ void destroy_event_system(void);
 int new_event(const struct fanotify_event_metadata *m, event_t *e);
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);
 object_attr_t *get_obj_attr(event_t *e, object_type_t t);
-void run_usage_report(void);
+void run_usage_report(FILE *f);
 
 #endif

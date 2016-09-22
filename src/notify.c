@@ -150,6 +150,16 @@ void shutdown_fanotify(void)
 	msg(LOG_DEBUG, "Denied accesses: %u", denied);
 }
 
+void decision_report(FILE *f)
+{
+	if (f == NULL)
+		return;
+
+	// Report results
+	fprintf(f, "Allowed accesses: %lu\n", allowed);
+	fprintf(f, "Denied accesses: %lu\n\n", denied);
+}
+
 static int get_ready(void)
 {
 	return events_ready;
@@ -175,6 +185,11 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 		decision = FAN_DENY;
 	else
 		decision = process_event(&e);
+
+	if (decision == DENY)
+		denied++;
+	else
+		allowed++;
 
 	if (decision == DENY)
 		denied++;

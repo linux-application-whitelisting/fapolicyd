@@ -24,8 +24,11 @@
 #ifndef NOTIFY_HEADER
 #define NOTIFY_HEADER
 
+#include <stdio.h>
+
 int init_fanotify(void);
 void shutdown_fanotify(void);
+void decision_report(FILE *f);
 void handle_events(void);
 
 #endif

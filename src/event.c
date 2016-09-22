@@ -33,8 +33,6 @@
 #include "lru.h"
 #include "message.h"
 
-#define REPORT "/var/log/fapolicyd-access.log"
-
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 extern int details;
@@ -317,15 +315,14 @@ static void print_queue_stats(FILE *f, const Queue *q)
 	fprintf(f, "%s evictions: %lu\n", q->name, q->evictions);
 }
 
-void run_usage_report(void)
+void run_usage_report(FILE *f)
 {
 	time_t t;
 	QNode *q_node;
-	FILE *f = fopen(REPORT, "w");
-	if (f == NULL) {
-		msg(LOG_INFO, "Cannot create usage report");
+
+	if (f == NULL)
 		return;
-	}
+
 	if (details) {
 		t = time(NULL);
 		fprintf(f, "File access attempts from oldest to newest as of %s\n", ctime(&t));
@@ -408,6 +405,5 @@ void run_usage_report(void)
 	}
 	print_queue_stats(f, subj_cache);
 	fprintf(f, "\n");
-	fclose(f);
 }
 

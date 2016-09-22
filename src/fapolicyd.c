@@ -22,6 +22,7 @@
  */
 
 #include "config.h"
+#include <stdio.h>
 #include <poll.h>
 #include <string.h>
 #include <errno.h>
@@ -57,6 +58,7 @@ volatile int stop = 0;
 static int nice_val = 10;
 static int uid = 0;
 static const char *pidfile = "/var/run/fapolicyd.pid";
+#define REPORT "/var/log/fapolicyd-access.log"
 
 
 static void install_syscall_filter(void)
@@ -352,7 +354,13 @@ int main(int argc, char *argv[])
 	file_close();
 	if (pidfile)
 		unlink(pidfile);
-	run_usage_report();
+	FILE *f = fopen(REPORT, "w");
+	if (f == NULL)
+		msg(LOG_WARNING, "Cannot create usage report");
+	decision_report(f);
+	run_usage_report(f);
+	if (f)
+		fclose(f);
 	destroy_event_system();
 	destroy_config();
 
