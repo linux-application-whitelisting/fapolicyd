@@ -266,11 +266,15 @@ int check_packaged_from_file(const char *filename)
 {
 	rpmdbMatchIterator iter;
 
+	// Nothing is in home
+	if (strncmp(filename, "/home/", 6) == 0)
+		return 0;
+
 	// Search rpm database for filename
 	iter = rpmtsInitIterator(rpm, RPMTAG_BASENAMES, filename, 0);
 	if (iter == NULL) {
-		msg(LOG_ERR, "rpm database error - exiting");
-		exit(1);
+		msg(LOG_DEBUG, "rpm database error looking up: %s", filename);
+		return 0;
 	}
 	
 	// Check to see if there's a package name associated with the file
