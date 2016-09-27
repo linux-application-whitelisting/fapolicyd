@@ -258,6 +258,7 @@ char *get_file_type_from_fd(int fd, size_t blen, char *buf)
 	} else
 		return NULL;
 	
+	lseek(fd, 0, SEEK_SET);
 	return buf;
 }
 
@@ -302,9 +303,9 @@ static char *bytes2hex(char *final, const char *buf, unsigned int size)
 }
 
 // This function wraps read(2) so its signal-safe
-static int safe_read(int fd, char *buf, int size)
+static ssize_t safe_read(int fd, char *buf, size_t size)
 {
-	int len;
+	ssize_t len;
 
 	do {
 		len = read(fd, buf, size);
@@ -317,7 +318,7 @@ char *get_hash_from_fd(int fd)
 {
 	gcry_md_hd_t ctx;
 	gcry_error_t error;
-	char fbuf[4906], *hptr, *digest;
+	char fbuf[4096], *hptr, *digest;
 	int len;
 
 	// Initialize a context
@@ -328,7 +329,7 @@ char *get_hash_from_fd(int fd)
 	// read in a buffer at a time and hand to gcrypt
 	while ((len = safe_read(fd, fbuf, 4096)) > 0) {
 		gcry_md_write(ctx, fbuf, len);
-		if (len != 4906)
+		if (len != 4096)
 			break;
 	}
 	
@@ -345,6 +346,7 @@ char *get_hash_from_fd(int fd)
 	// Convert to ASCII string
 	bytes2hex(digest, hptr, len);
 	gcry_md_close(ctx);
+	lseek(fd, 0, SEEK_SET);
 
 	return digest;
 }
