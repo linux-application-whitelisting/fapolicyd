@@ -1,3 +1,5 @@
+0.8.3
+
 0.8.2
 - Add seccomp filter support
 - Fix leaked descriptor in exe_type processing
