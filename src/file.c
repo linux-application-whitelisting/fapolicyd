@@ -38,8 +38,10 @@
 #include <rpm/rpmlog.h>
 #include <magic.h>
 #include <libudev.h>
+#include <elf.h>
 #include "file.h"
 #include "message.h"
+#include "process.h" // For elf info bit mask
 
 // Local variables
 static struct udev *udev;
@@ -349,5 +351,196 @@ char *get_hash_from_fd(int fd)
 	lseek(fd, 0, SEEK_SET);
 
 	return digest;
+}
+
+static unsigned char e_ident[EI_NIDENT];
+
+static int read_preliminary_header(int fd)
+{
+	ssize_t rc = safe_read(fd, (char *)e_ident, EI_NIDENT);
+	if (rc == EI_NIDENT)
+		return 0;
+	return 1;
+}
+
+static Elf32_Ehdr *read_header32(int fd)
+{
+	Elf32_Ehdr *ptr = malloc(sizeof(Elf32_Ehdr));
+	strcpy(ptr->e_ident, e_ident);
+	ssize_t rc = safe_read(fd, (char *)&(ptr->e_type), sizeof(Elf32_Ehdr) - EI_NIDENT);
+	if (rc == (sizeof(Elf32_Ehdr) - EI_NIDENT))
+		return ptr;
+	free(ptr);
+	return NULL;
+}
+
+static Elf64_Ehdr *read_header64(int fd)
+{
+	Elf64_Ehdr *ptr = malloc(sizeof(Elf64_Ehdr));
+	strcpy(ptr->e_ident, e_ident);
+	ssize_t rc = safe_read(fd, (char *)&(ptr->e_type),
+				sizeof(Elf64_Ehdr) - EI_NIDENT);
+	if (rc == (sizeof(Elf64_Ehdr) - EI_NIDENT))
+		return ptr;
+	free(ptr);
+	return NULL;
+}
+
+uint32_t gather_elf(int fd)
+{
+	//struct elf_info *e;
+	uint32_t info = 0;
+	if (read_preliminary_header(fd))
+		return 0;
+
+	if (strncmp((char *)e_ident, ELFMAG, 4))
+		return 0;
+
+	/* e = malloc(sizeof(struct elf_info));
+	if (e == NULL)
+		return 0;
+	e->first_lib = NULL; */
+	info |= IS_ELF;
+	if (e_ident[4] == 1) {
+		unsigned i;
+		Elf32_Phdr *ph_tbl = NULL;
+		
+		Elf32_Ehdr *hdr = read_header32(fd);
+		if (hdr == NULL)
+			return 0;
+
+		// Look for program header information
+		// FIXME: Should there be a size check?
+		ph_tbl = malloc(hdr->e_phentsize * hdr->e_phnum);
+		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
+					hdr->e_phoff)
+			goto err_out32;
+
+		// Read in complete table
+		if ((unsigned int)safe_read(fd, (char *)ph_tbl,
+					hdr->e_phentsize * hdr->e_phnum) !=
+					hdr->e_phentsize * hdr->e_phnum)
+			goto err_out32;
+
+		// Check for rpath record
+		for (i = 0; i < hdr->e_phnum; i++) {
+			if (ph_tbl[i].p_type == PT_LOAD)
+				info |= HAS_LOAD;
+			else if (ph_tbl[i].p_type == PT_DYNAMIC) {
+				unsigned int j = 0;
+				unsigned int num;
+
+				info |= HAS_DYNAMIC;
+				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+				if((unsigned int)lseek(fd, ph_tbl[i].p_offset,
+							SEEK_SET) !=
+						ph_tbl[i].p_offset)
+					goto err_out32;
+
+				num = ph_tbl[i].p_filesz / sizeof(Elf64_Dyn);
+				if (num > 1000)
+					goto err_out32;
+
+				if ((unsigned int)safe_read(fd, (char *)dyn_tbl,
+						ph_tbl[i].p_filesz) !=
+						ph_tbl[i].p_filesz)
+					goto err_out32;
+
+				while (j < num) {
+					if (dyn_tbl[j].d_tag == DT_NEEDED) {
+					} else if (dyn_tbl[j].d_tag == DT_RUNPATH)
+						info |= HAS_RPATH;
+					else if (dyn_tbl[j].d_tag == DT_RPATH) {
+						info |= HAS_RPATH;
+						break;
+					}
+					j++;
+				} 
+				free(dyn_tbl); 
+			}
+			if (info & HAS_RPATH)
+				break;
+		}
+		goto done32;
+err_out32:
+//		free(e->first_lib);
+//		free(e);
+//		e = NULL;
+		info |= HAS_ERROR;
+done32:
+		free(ph_tbl);
+		free(hdr);
+	} else if (e_ident[4] == 2) {
+		unsigned i;
+		Elf64_Phdr *ph_tbl;
+		
+		Elf64_Ehdr *hdr = read_header64(fd);
+		if (hdr == NULL)
+			return 0;
+
+		// Look for program header information
+		// FIXME: Should there be a size check?
+		ph_tbl = malloc(hdr->e_phentsize * hdr->e_phnum);
+		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
+					hdr->e_phoff)
+			goto err_out64;
+
+		// Read in complete table
+		if ((unsigned int)safe_read(fd, (char *)ph_tbl,
+					hdr->e_phentsize * hdr->e_phnum) !=
+					hdr->e_phentsize * hdr->e_phnum)
+			goto err_out64;
+
+		// Check for rpath record
+		for (i = 0; i < hdr->e_phnum; i++) {
+			if (ph_tbl[i].p_type == PT_LOAD)
+				info |= HAS_LOAD;
+			if (ph_tbl[i].p_type == PT_DYNAMIC) {
+				unsigned int j = 0;
+				unsigned int num;
+
+				info |= HAS_DYNAMIC;
+				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+				if ((unsigned int)lseek(fd, ph_tbl[i].p_offset,
+							SEEK_SET) !=
+						ph_tbl[i].p_offset)
+					goto err_out64;
+
+				num = ph_tbl[i].p_filesz / sizeof(Elf64_Dyn);
+				if (num > 1000)
+					goto err_out64;
+
+				if ((unsigned int)safe_read(fd, (char *)dyn_tbl,
+						ph_tbl[i].p_filesz) !=
+						ph_tbl[i].p_filesz)
+					goto err_out64;
+
+				while (j < num) {
+					if (dyn_tbl[j].d_tag == DT_NEEDED) {
+					} else if (dyn_tbl[j].d_tag == DT_RUNPATH)
+						info |= HAS_RPATH;
+					else if (dyn_tbl[j].d_tag == DT_RPATH) {
+						info |= HAS_RPATH;
+						break;
+					}
+					j++;
+				}
+				free(dyn_tbl); 
+			}
+			if (info & HAS_RPATH)
+				break;
+		}
+		goto done64;
+err_out64:
+//		free(e->first_lib);
+//		free(e);
+//		e = NULL;
+		info |= HAS_ERROR;
+done64:
+		free(ph_tbl);
+		free(hdr);
+	}
+	lseek(fd, 0, SEEK_SET);
+	return info;
 }
 

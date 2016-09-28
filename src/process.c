@@ -57,6 +57,7 @@ struct proc_info *stat_proc_entry(pid_t pid)
 		info->path2 = NULL;
 		info->path3 = NULL;
 		info->state = STATE_COLLECTING;
+		info->elf_info = 0;
 
 		return info;
 	}

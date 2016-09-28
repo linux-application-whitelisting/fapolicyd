@@ -441,9 +441,14 @@ static int subj_pattern_test(subject_attr_t *s, event_t *e)
 	int rc = 0;
 	struct proc_info *pinfo = e->s->info;
 
-	// If still collecting, we can't decide yet.
-	if (pinfo->state == STATE_COLLECTING)
+	// If still collecting, and its an elf file, we can't decide yet.
+	if (pinfo->state == STATE_COLLECTING) {
+		if (pinfo->elf_info == 0) {
+			pinfo->state = STATE_NOT_ELF;
+			clear_proc_info(pinfo);
+		}
 		return rc;
+	}
 
 	// Do the analysis
 #ifdef NEW_WAY
@@ -498,10 +503,11 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 			// To get here, pgm matched path1
 			if (strcmp(pinfo->path2, SYSTEM_LD_SO) == 0) {
 				// To get here interp is ld.so
-				if (strcmp(pinfo->path3, SYSTEM_LD_CACHE) == 0)
+				if (strcmp(pinfo->path3, SYSTEM_LD_CACHE) == 0
+				   || (pinfo->elf_info & HAS_RPATH))
 					// ld.so normally checks cache first
 					pinfo->state = STATE_NORMAL;
-				else
+				else 
 					// but preload does the preload
 					pinfo->state = STATE_LD_PRELOAD;
 			} else
@@ -514,9 +520,6 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 	if (pinfo->state == STATE_PARTIAL)
 		return rc;
 
-	// Done with the paths
-	clear_proc_info(pinfo);
-
 	// Make a decision
 	switch (s->val)
 	{
@@ -525,8 +528,12 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				rc = 1;
 			break;
 		case PATTERN_LD_PRELOAD_VAL:
-			if (pinfo->state == STATE_LD_PRELOAD)
+			if (pinfo->state == STATE_LD_PRELOAD) {
 				rc = 1;
+				//msg(LOG_DEBUG, "path1: %s", pinfo->path1);
+				//msg(LOG_DEBUG, "path2: %s", pinfo->path2);
+				//msg(LOG_DEBUG, "path3: %s", pinfo->path3);
+			}
 			break;
 		case PATTERN_BAD_INTERPRETER_VAL:
 			if (pinfo->state == STATE_BAD_INTERPRETER)
@@ -537,6 +544,9 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				rc = 1;
 			break;
 	}
+
+	// Done with the paths
+	clear_proc_info(pinfo);
 
 	return rc;
 }

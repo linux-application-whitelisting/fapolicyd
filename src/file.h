@@ -25,6 +25,7 @@
 #define FILE_HEADER
 
 #include <sys/types.h>
+#include <stdint.h>
 
 // Information we will cache to identify the same executable
 struct file_info
@@ -46,5 +47,6 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf);
 char *get_file_type_from_fd(int fd, size_t blen, char *buf);
 int  check_packaged_from_file(const char *filename);
 char *get_hash_from_fd(int fd);
+uint32_t gather_elf(int fd);
 
 #endif
