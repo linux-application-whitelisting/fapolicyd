@@ -146,8 +146,8 @@ void shutdown_fanotify(void)
 	clear_mounts();
 
 	// Report results
-	msg(LOG_DEBUG, "Allowed accesses: %u", allowed);
-	msg(LOG_DEBUG, "Denied accesses: %u", denied);
+	msg(LOG_DEBUG, "Allowed accesses: %lu", allowed);
+	msg(LOG_DEBUG, "Denied accesses: %lu", denied);
 }
 
 void decision_report(FILE *f)
