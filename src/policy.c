@@ -42,8 +42,10 @@ static const nv_t table[] = {
 {       NO_OPINION, "no-opinion" },
 {       ALLOW, "allow" },
 {       DENY, "deny" },
+#ifdef FAN_AUDIT
 {       ALLOW_AUDIT, "allow_audit" },
 {       DENY_AUDIT, "deny_audit" }
+#endif
 };
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
@@ -163,12 +165,12 @@ decision_t process_event(event_t *e)
 	}
 
 	// Output some information if debugging on
-	if ((debug > 1 && results == DENY) || (debug == 1))
+	if ((debug > 1 && (results & ~AUDIT) == DENY) || (debug == 1))
 		log_it(r ? r->num : 0xFFFFFFFF, results, e);
 
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)
-		return results & ~AUDIT;
+		return results;
 
 	return ALLOW;
 }

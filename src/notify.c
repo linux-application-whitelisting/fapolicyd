@@ -81,10 +81,19 @@ int init_fanotify(void)
 
 	// FIXME: Need to decide if we want the NOFOLLOW flag here. We need
 	// to decide if the path can be trivially changed by symlinks.
-	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT | FAN_NONBLOCK,
+	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT | 
+				FAN_NONBLOCK | FAN_ENABLE_AUDIT,
                         	O_RDONLY | O_LARGEFILE | O_CLOEXEC |
 				O_NOATIME);
 //				 O_NOATIME | O_NOFOLLOW);
+
+	// We will retry without the ENABLE_AUDIT to see if that is unsupported
+	if (fd < 0 && errno == EINVAL)
+		fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
+				FAN_NONBLOCK |
+				O_RDONLY | O_LARGEFILE | O_CLOEXEC |
+				O_NOATIME);
+
 	if (fd < 0) {
 		msg(LOG_ERR, "Failed opening fanotify fd (%s)",
 			strerror(errno));
@@ -186,12 +195,7 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 	else
 		decision = process_event(&e);
 
-	if (decision == DENY)
-		denied++;
-	else
-		allowed++;
-
-	if (decision == DENY)
+	if ((decision & ~AUDIT) == DENY)
 		denied++;
 	else
 		allowed++;
@@ -203,8 +207,10 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 		response.fd = metadata->fd;
 		if (permissive)
 			response.response = FAN_ALLOW;
-		else
+		else {
 			response.response = decision;
+			printf("decision:%X\n", decision);
+		}
 		write(fd, &response,
 		    sizeof(struct fanotify_response));
 	}

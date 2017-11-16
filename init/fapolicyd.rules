@@ -6,13 +6,13 @@
 # your distribution.
 
 # Prevent execution by ld.so
-deny pattern=ld_so all
+deny_audit pattern=ld_so all
 
 # Don't allow LD_PRELOAD
-deny pattern=ld_preload all
+deny_audit pattern=ld_preload all
 
 # Keep systemd out of the way
-deny exe=/usr/lib/systemd/systemd path=/var/lib/rpm/Packages
+deny_audit exe=/usr/lib/systemd/systemd path=/var/lib/rpm/Packages
 
 # We have to carve out an exception for the system updaters
 # or things go very bad (deadlock).
@@ -20,16 +20,16 @@ allow exe=/usr/bin/rpm all
 allow exe=/usr/bin/python3.4 comm=dnf all
 
 # Don't allow unpackaged executables
-deny exe_dir=execdirs exe=unpackaged all
+deny_audit exe_dir=execdirs exe=unpackaged all
 
 # Only allow system ELF Applications - note: depends on above check
 # for unpackaged executables.
 allow all dir=execdirs ftype=application/x-executable
-deny all ftype=application/x-executable
+deny_audit all ftype=application/x-executable
 
 # Only allow system ELF libs
 allow all dir=execdirs ftype=application/x-sharedlib
-deny all ftype=application/x-sharedlib
+deny_audit all ftype=application/x-sharedlib
 
 # Only allow system python executables and libs
 # File type by: file --mime-type /path-to-file
@@ -38,7 +38,7 @@ allow exe=/usr/bin/python3.4 dir=execdirs ftype=text/x-python
 allow exe=/usr/bin/python3.4 dir=execdirs ftype=application/octet-stream
 allow exe=/usr/bin/python2.7 dir=execdirs ftype=text/x-python
 allow exe=/usr/bin/python2.7 dir=execdirs ftype=application/octet-stream
-deny  all ftype=text/x-python
+deny_audit  all ftype=text/x-python
 #deny  all ftype=application/octet-stream path=*.pyc
 
 #
@@ -48,30 +48,30 @@ deny  all ftype=text/x-python
 #
 
 # Block all perl
-deny exe=/usr/bin/perl all
+deny_audit exe=/usr/bin/perl all
 
 # Perl
 #allow all dir=execdirs ftype=text/x-perl
 #deny  all ftype=text/x-perl
 
 # Block all PHP
-deny exe=/usr/bin/php all
+deny_audit exe=/usr/bin/php all
 
 # PHP
 #allow all dir=execdirs ftype=text/x-php
 #deny  all ftype=text/x-php
 
 # Block all Ruby
-deny exe=/usr/bin/ruby all
+deny_audit exe=/usr/bin/ruby all
 
 # Ruby
 #allow all dir=execdirs ftype=text/x-ruby
-#deny  all ftype=text/x-ruby
+#deny_audit  all ftype=text/x-ruby
 
 # Data exfiltration
-#deny exe=/usr/bin/ssh dir=/opt
-#deny exe=/usr/bin/wget dir=/tmp
-#deny all device=/dev/cdrom
+#deny_audit exe=/usr/bin/ssh dir=/opt
+#deny_audit exe=/usr/bin/wget dir=/tmp
+#deny_audit all device=/dev/cdrom
 
 # Allow everything else
 allow all all

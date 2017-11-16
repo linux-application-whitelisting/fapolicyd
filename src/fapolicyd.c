@@ -311,7 +311,7 @@ int main(int argc, char *argv[])
 		capng_clear(CAPNG_SELECT_BOTH);
 		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
 			CAP_DAC_OVERRIDE, CAP_SYS_ADMIN, CAP_SYS_PTRACE,
-			CAP_SYS_NICE, CAP_SYS_RESOURCE, -1);
+			CAP_SYS_NICE, CAP_SYS_RESOURCE, CAP_AUDIT_WRITE, -1);
 		if (capng_change_id(uid, uid, CAPNG_DROP_SUPP_GRP)) {
 			msg(LOG_ERR, "Cannot change to uid %d", uid);
 			exit(1);
