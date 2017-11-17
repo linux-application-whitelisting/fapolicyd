@@ -22,7 +22,7 @@ access rights.
 %setup -q
 
 %build
-%configure --sbindir=/sbin 
+%configure --sbindir=/sbin --with-audit 
 make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
