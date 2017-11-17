@@ -28,13 +28,22 @@
 #include "event.h"
 
 #define CONFIG_FILE "/etc/fapolicyd/fapolicyd.rules"
-#ifdef FAN_AUDIT
+
+#ifdef USE_AUDIT
+#if HAVE_DECL_FAN_AUDIT
 #define AUDIT FAN_AUDIT
 #else
 #define AUDIT 0x10
 #define FAN_ENABLE_AUDIT 0x00000040
 #endif
-typedef enum { NO_OPINION = 0, ALLOW = FAN_ALLOW, DENY = FAN_DENY, ALLOW_AUDIT = FAN_ALLOW | AUDIT, DENY_AUDIT = FAN_DENY | AUDIT} decision_t;
+#else
+#endif
+
+typedef enum { NO_OPINION = 0, ALLOW = FAN_ALLOW, DENY = FAN_DENY,
+#ifdef USE_AUDIT
+ALLOW_AUDIT = FAN_ALLOW | AUDIT, DENY_AUDIT = FAN_DENY | AUDIT
+#endif
+} decision_t;
 
 extern int debug;
 extern int permissive;
@@ -44,6 +53,7 @@ const char *dec_val_to_name(unsigned int v);
 int load_config(void);
 int reload_config(void);
 decision_t process_event(event_t *e);
+void policy_no_audit(void);
 void destroy_config(void);
 
 #endif

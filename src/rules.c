@@ -650,12 +650,21 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 	return r->d;
 }
 
-void rules_clear(llist* l)
+void rules_unsupport_audit(llist *l)
 {
-	lnode* nextnode;
-	register lnode* current;
+	register lnode *current = l->head;
 
-	current = l->head;
+	while (current) {
+		current->d &= ~AUDIT;
+		current=current->next;
+	}
+}
+
+void rules_clear(llist *l)
+{
+	lnode *nextnode;
+	register lnode *current = l->head;
+
 	while (current) {
 		unsigned int i;
 

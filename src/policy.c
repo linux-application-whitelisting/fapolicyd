@@ -42,7 +42,7 @@ static const nv_t table[] = {
 {       NO_OPINION, "no-opinion" },
 {       ALLOW, "allow" },
 {       DENY, "deny" },
-#ifdef FAN_AUDIT
+#ifdef USE_AUDIT
 {       ALLOW_AUDIT, "allow_audit" },
 {       DENY_AUDIT, "deny_audit" }
 #endif
@@ -173,6 +173,11 @@ decision_t process_event(event_t *e)
 		return results;
 
 	return ALLOW;
+}
+
+void policy_no_audit(void)
+{
+	rules_unsupport_audit(&rules);
 }
 
 void destroy_config(void)

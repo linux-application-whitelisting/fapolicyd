@@ -1,6 +1,6 @@
 /*
 * rules.h - Header file for rules.c
-* Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2016-17 Red Hat Inc., Durham, North Carolina.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -31,8 +31,8 @@
 
 #define MAX_FIELDS 8
 
-/* This is the node of the linked list. message & item are the only elements
- * at this time. Any data elements that are per item goes here. */
+/* This is one node of the linked list. Any data elements that are per
+ * rule goes here. */
 typedef struct _lnode{
   decision_t d;
   unsigned int num;
@@ -58,6 +58,7 @@ lnode *rules_next(llist *l);
 static inline lnode *rules_get_cur(const llist *l) { return l->cur; }
 int rules_append(llist *l, char *buf, unsigned int lineno);
 decision_t rule_evaluate(lnode *r, event_t *e);
+void rules_unsupport_audit(llist *l);
 void rules_clear(llist* l);
 
 #endif

@@ -88,11 +88,14 @@ int init_fanotify(void)
 //				 O_NOATIME | O_NOFOLLOW);
 
 	// We will retry without the ENABLE_AUDIT to see if that is unsupported
-	if (fd < 0 && errno == EINVAL)
+	if (fd < 0 && errno == EINVAL) {
 		fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
 				FAN_NONBLOCK,
 				O_RDONLY | O_LARGEFILE | O_CLOEXEC |
 				O_NOATIME);
+		if (fd >= 0)
+			policy_no_audit();
+	}
 
 	if (fd < 0) {
 		msg(LOG_ERR, "Failed opening fanotify fd (%s)",

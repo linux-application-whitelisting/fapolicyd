@@ -29,6 +29,12 @@ AS_HELP_STRING([--with-debug],[turn on debugging (default=no)]),
 AC_DEFINE(DEBUG,1,[Define if you want to enable runtime debug checking.]),
 [])
 
+AC_ARG_WITH(audit,
+AS_HELP_STRING([--with-audit],[turn on decision auditing (default=no)]),
+AC_DEFINE(USE_AUDIT,1,[Define if you want to enable decision auditing.]),
+[])
+AC_CHECK_DECLS([FAN_AUDIT], [], [], [[#include <linux/fanotify.h>]])
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
