@@ -1,5 +1,6 @@
 0.8.3
 - Add audit support for the linux-4.15 kernel
+- Don't close report descriptor in report
 
 0.8.2
 - Add seccomp filter support

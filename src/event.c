@@ -331,7 +331,6 @@ void run_usage_report(FILE *f)
 		fprintf(f, "---------------------------------------------------------------------------\n");
 		if (obj_cache->count == 0) {
 			fprintf(f, "(none)\n");
-			fclose(f);
 			return;
 		}
 
@@ -368,7 +367,6 @@ void run_usage_report(FILE *f)
 		fprintf(f, "---------------------------------------------------------------------------\n");
 		if (subj_cache->count == 0) {
 			fprintf(f, "(none)\n");
-			fclose(f);
 			return;
 		}
 
