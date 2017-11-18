@@ -212,12 +212,9 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 		response.fd = metadata->fd;
 		if (permissive)
 			response.response = FAN_ALLOW;
-		else {
+		else
 			response.response = decision;
-			printf("decision:%X\n", decision);
-		}
-		write(fd, &response,
-		    sizeof(struct fanotify_response));
+		write(fd, &response, sizeof(struct fanotify_response));
 	}
 }
 
