@@ -347,6 +347,9 @@ int main(int argc, char *argv[])
 			if (pfd[0].revents & POLLIN) {
 				handle_events();
 			}
+			// Uncomment these to fix rpm masking signals
+			// sigaction(SIGTERM, &sa, NULL);
+			// sigaction(SIGINT, &sa, NULL);
 		}
 	}
 	msg(LOG_DEBUG, "shutting down...");
