@@ -1,14 +1,15 @@
 Kernel
 ======
-Add permissive mode
-Add audit events
 Add EXECVE, EXECVE_PERM 
+Hand userspace a fstat buf for object with event
 
 Userspace
 =========
-Add sighup handler
-Improve the object hash for better cache utilization
 Add ability to detect bad interpreter
+Support execute events for better subj cache utilization
+Support SWID as trust source
+Add admin defined whitelist of dirs or files
+Improve the object hash for better cache utilization
+Add sighup handler
 Allow globbing
-Add audit option
 

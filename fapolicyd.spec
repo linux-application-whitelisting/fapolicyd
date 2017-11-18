@@ -54,6 +54,6 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin fapolicyd
 %ghost /var/log/fapolicyd-access.log
 
 %changelog
-* Wed Sep 28 2016 Steve Grubb <sgrubb@redhat.com> 0.8.3-1
-- New  release
+* Sat Nov 18 2017 Steve Grubb <sgrubb@redhat.com> 0.8.3-1
+- New release
 
