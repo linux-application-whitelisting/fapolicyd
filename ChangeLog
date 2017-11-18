@@ -2,6 +2,7 @@
 - Add audit support for the linux-4.15 kernel
 - Don't close report descriptor in report
 - Fix busy loop to use poll as originally intended
+- Relax timing on deadman's switch
 
 0.8.2
 - Add seccomp filter support

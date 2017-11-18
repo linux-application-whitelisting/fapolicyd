@@ -230,7 +230,7 @@ static void *deadmans_switch_thread_main(void *arg)
 		}
 		// OK, prove it again.
 		alive = 0;
-		sleep(2);
+		sleep(3);
 	} while (!stop);
 	return NULL;
 }
