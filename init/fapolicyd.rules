@@ -39,7 +39,7 @@ allow exe=/usr/bin/python3.4 dir=execdirs ftype=application/octet-stream
 allow exe=/usr/bin/python2.7 dir=execdirs ftype=text/x-python
 allow exe=/usr/bin/python2.7 dir=execdirs ftype=application/octet-stream
 deny_audit  all ftype=text/x-python
-#deny  all ftype=application/octet-stream path=*.pyc
+#deny_audit all ftype=application/octet-stream path=*.pyc
 
 #
 # In this next optional languages section, choose either to
@@ -52,14 +52,14 @@ deny_audit exe=/usr/bin/perl all
 
 # Perl
 #allow all dir=execdirs ftype=text/x-perl
-#deny  all ftype=text/x-perl
+#deny_audit all ftype=text/x-perl
 
 # Block all PHP
 deny_audit exe=/usr/bin/php all
 
 # PHP
 #allow all dir=execdirs ftype=text/x-php
-#deny  all ftype=text/x-php
+#deny_audit all ftype=text/x-php
 
 # Block all Ruby
 deny_audit exe=/usr/bin/ruby all
