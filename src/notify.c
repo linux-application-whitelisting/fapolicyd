@@ -80,14 +80,14 @@ int init_fanotify(void)
 		exit(1);
 
 	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
-#if USE_AUDIT
+#ifdef USE_AUDIT
 				FAN_ENABLE_AUDIT |
 #endif
 				FAN_NONBLOCK,
 				O_RDONLY | O_LARGEFILE | O_CLOEXEC |
 				O_NOATIME);
 
-#if USE_AUDIT
+#ifdef USE_AUDIT
 	// We will retry without the ENABLE_AUDIT to see if THAT is supported
 	if (fd < 0 && errno == EINVAL) {
 		fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
