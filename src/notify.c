@@ -79,8 +79,6 @@ int init_fanotify(void)
 	if (load_mounts())
 		exit(1);
 
-	// FIXME: Need to decide if we want the NOFOLLOW flag here. We need
-	// to decide if the path can be trivially changed by symlinks.
 	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
 #if USE_AUDIT
 				FAN_ENABLE_AUDIT |
@@ -88,7 +86,6 @@ int init_fanotify(void)
 				FAN_NONBLOCK,
 				O_RDONLY | O_LARGEFILE | O_CLOEXEC |
 				O_NOATIME);
-//				 O_NOATIME | O_NOFOLLOW);
 
 #if USE_AUDIT
 	// We will retry without the ENABLE_AUDIT to see if THAT is supported
@@ -97,7 +94,6 @@ int init_fanotify(void)
 				FAN_NONBLOCK,
 				O_RDONLY | O_LARGEFILE | O_CLOEXEC |
 				O_NOATIME);
-//				 O_NOATIME | O_NOFOLLOW);
 		if (fd >= 0)
 			policy_no_audit();
 	}
