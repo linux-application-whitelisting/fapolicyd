@@ -37,6 +37,7 @@
 #define FAN_ENABLE_AUDIT 0x00000040
 #endif
 #else
+#define AUDIT 0x0
 #endif
 
 typedef enum { NO_OPINION = 0, ALLOW = FAN_ALLOW, DENY = FAN_DENY,

@@ -652,6 +652,7 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 
 void rules_unsupport_audit(llist *l)
 {
+#ifdef USE_AUDIT
 	register lnode *current = l->head;
 	int warn = 0;
 
@@ -666,6 +667,7 @@ void rules_unsupport_audit(llist *l)
 		    "Rules with audit events are not supported by the kernel");
 		msg(LOG_NOTICE, "Converting rules to non-audit rules");
 	}
+#endif
 }
 
 void rules_clear(llist *l)
