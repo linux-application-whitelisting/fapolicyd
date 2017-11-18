@@ -661,9 +661,11 @@ void rules_unsupport_audit(llist *l)
 		current->d &= ~AUDIT;
 		current=current->next;
 	}
-	if (warn)
+	if (warn) {
 		msg(LOG_WARNING,
 		    "Rules with audit events are not supported by the kernel");
+		msg(LOG_NOTICE, "Converting rules to non-audit rules");
+	}
 }
 
 void rules_clear(llist *l)
