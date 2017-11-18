@@ -1,6 +1,6 @@
 /*
  * notify.c - functions handle recieving and enqueuing events
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016-17 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved. 
  *
  * This software may be freely redistributed and/or modified under the
@@ -220,6 +220,15 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 
 static void *deadmans_switch_thread_main(void *arg)
 {
+	sigset_t sigs;
+
+	/* This is a worker thread. Don't handle signals. */
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGTERM);
+	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGINT);
+	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
+
 	do {
 		// Are you alive decision thread?
 		if (alive == 0 && get_ready() && !stop &&
@@ -243,6 +252,7 @@ static void *decision_thread_main(void *arg)
 	sigemptyset(&sigs);
 	sigaddset(&sigs, SIGTERM);
 	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGINT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	while (!stop) {
