@@ -303,9 +303,9 @@ void handle_events(void)
 {
 	const struct fanotify_event_metadata *metadata;
 	struct fanotify_event_metadata buf[FANOTIFY_BUFFER_SIZE];
-	ssize_t len;
+	ssize_t len = -2;
 
-	while (1) {
+	while (len < 0) {
 		do {
 			len = read(fd, (void *) buf, sizeof(buf));
 		} while (len == -1 && errno == EINTR && stop == 0);
@@ -314,33 +314,34 @@ void handle_events(void)
 			exit(1);
 		}
 		if (stop)
-			break;
-		
-		metadata = (const struct fanotify_event_metadata *)buf;
-		while (FAN_EVENT_OK(metadata, len)) {
-			if (metadata->vers != FANOTIFY_METADATA_VERSION) {
-				msg(LOG_ERR,
-				  "Mismatch of fanotify metadata version");
-				exit(1);
-			}
+			return;
+	}
 
-			if (metadata->fd >= 0) {
-				// We will only handle these 2 events for now
-				if (((metadata->mask & FAN_OPEN_PERM))||
-				    ((metadata->mask & FAN_OPEN))) {
-					if (metadata->pid == our_pid) {
-						approve_event(metadata);
-					} else
-						enqueue_event(metadata);
-				}
-				// For now, prevent leaking descriptors
-				// in the near future we should do processing
-				// to update the cache.
-				else
-					close(metadata->fd); 
-			}
-			metadata = FAN_EVENT_NEXT(metadata, len);
+	metadata = (const struct fanotify_event_metadata *)buf;
+	while (FAN_EVENT_OK(metadata, len)) {
+		if (metadata->vers != FANOTIFY_METADATA_VERSION) {
+			msg(LOG_ERR, "Mismatch of fanotify metadata version");
+			exit(1);
 		}
+
+		if (metadata->fd >= 0) {
+			// We will only handle these 2 events for now
+			if (((metadata->mask & FAN_OPEN_PERM))||
+			    ((metadata->mask & FAN_OPEN))) {
+				if (metadata->pid == our_pid) {
+					approve_event(metadata);
+				} else
+					enqueue_event(metadata);
+			}
+			// For now, prevent leaking descriptors
+			// in the near future we should do processing
+			// to update the cache.
+			else {
+				close(metadata->fd);
+				return;
+			}
+		}
+		metadata = FAN_EVENT_NEXT(metadata, len);
 	}
 }
 
