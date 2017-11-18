@@ -81,21 +81,27 @@ int init_fanotify(void)
 
 	// FIXME: Need to decide if we want the NOFOLLOW flag here. We need
 	// to decide if the path can be trivially changed by symlinks.
-	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT | 
-				FAN_NONBLOCK | FAN_ENABLE_AUDIT,
-                        	O_RDONLY | O_LARGEFILE | O_CLOEXEC |
+	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
+#if USE_AUDIT
+				FAN_ENABLE_AUDIT |
+#endif
+				FAN_NONBLOCK,
+				O_RDONLY | O_LARGEFILE | O_CLOEXEC |
 				O_NOATIME);
 //				 O_NOATIME | O_NOFOLLOW);
 
-	// We will retry without the ENABLE_AUDIT to see if that is unsupported
+#if USE_AUDIT
+	// We will retry without the ENABLE_AUDIT to see if THAT is supported
 	if (fd < 0 && errno == EINVAL) {
 		fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
 				FAN_NONBLOCK,
 				O_RDONLY | O_LARGEFILE | O_CLOEXEC |
 				O_NOATIME);
+//				 O_NOATIME | O_NOFOLLOW);
 		if (fd >= 0)
 			policy_no_audit();
 	}
+#endif
 
 	if (fd < 0) {
 		msg(LOG_ERR, "Failed opening fanotify fd (%s)",
