@@ -1,6 +1,7 @@
 0.8.4
 - Mask signals from deadman's switch
 - Reinstate strong umask before writing report
+- Use pw_gid to set the group when changing gid
 
 0.8.3
 - Add audit support for the linux-4.15 kernel

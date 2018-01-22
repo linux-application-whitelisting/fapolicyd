@@ -56,7 +56,7 @@ volatile int stop = 0;
 
 // Local variables
 static int nice_val = 10;
-static int uid = 0;
+static int uid = 0, gid = 0;
 static const char *pidfile = "/var/run/fapolicyd.pid";
 #define REPORT "/var/log/fapolicyd-access.log"
 
@@ -251,6 +251,10 @@ int main(int argc, char *argv[])
 						"Error converting user value");
 					exit(1);
 				}
+				// FIXME: This is wrong until specified
+				// on the command line. But less wrong than
+				// leaving as root
+				gid = uid;
 			} else {
 				struct passwd *pw = getpwnam(argv[i]);
 				if (pw == NULL) {
@@ -259,6 +263,7 @@ int main(int argc, char *argv[])
 					exit(1);
 				}
 				uid = pw->pw_uid;
+				gid = pw->pw_gid;
 				endpwent();
 			}
 		} else if (strcmp(argv[i], "--no-details") == 0) {
@@ -312,7 +317,7 @@ int main(int argc, char *argv[])
 		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
 			CAP_DAC_OVERRIDE, CAP_SYS_ADMIN, CAP_SYS_PTRACE,
 			CAP_SYS_NICE, CAP_SYS_RESOURCE, CAP_AUDIT_WRITE, -1);
-		if (capng_change_id(uid, uid, CAPNG_DROP_SUPP_GRP)) {
+		if (capng_change_id(uid, gid, CAPNG_DROP_SUPP_GRP)) {
 			msg(LOG_ERR, "Cannot change to uid %d", uid);
 			exit(1);
 		} else
