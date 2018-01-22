@@ -357,6 +357,8 @@ int main(int argc, char *argv[])
 	file_close();
 	if (pidfile)
 		unlink(pidfile);
+	// Reinstate the strict umask in case rpm messed with it
+	(void) umask( 237 );
 	FILE *f = fopen(REPORT, "w");
 	if (f == NULL)
 		msg(LOG_WARNING, "Cannot create usage report");
