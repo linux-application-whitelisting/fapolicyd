@@ -1,6 +1,6 @@
 /*
 * rules.c - Minimal linked list set of rules
-* Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
 * All Rights Reserved. 
 *
 * This software may be freely redistributed and/or modified under the
@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <pwd.h>
 #include "policy.h"
 #include "rules.h"
 #include "nv.h"
@@ -210,13 +211,26 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 				return 2;
 			}
 		} else {
-			errno = 0;
-			n->s[i].val = strtol(ptr2, NULL, 10);
-			if (errno) {
-				msg(LOG_ERR,
+			if (isdigit(*ptr2)) {
+				errno = 0;
+				n->s[i].val = strtol(ptr2, NULL, 10);
+				if (errno) {
+					msg(LOG_ERR,
 					"Error converting val (%s) in line %d",
-					ptr2, lineno);
-				return 2;
+						ptr2, lineno);
+					return 2;
+				}
+			// Support names for auid and uid entries
+			} else if (n->s[i].type == AUID ||
+					n->s[i].type == UID) {
+				struct passwd *pw = getpwnam(ptr2);
+				if (pw == NULL) {
+					msg(LOG_ERR, "user %s is unknown",
+							ptr2);
+					exit(1);
+				}
+                                n->s[i].val = pw->pw_uid;
+				endpwent();
 			}
 		}
 	}
