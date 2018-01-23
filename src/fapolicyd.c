@@ -1,6 +1,6 @@
 /*
  * fapolicyd.c - Main file for the program
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved. 
  *
  * This software may be freely redistributed and/or modified under the
@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <pwd.h>
+#include <grp.h>
 #include <cap-ng.h>
 #include <sys/prctl.h>
 #include <linux/unistd.h>  /* syscall numbers */
@@ -180,7 +181,7 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
-		"[--boost xxx]\n\t\t[--queue xxx] [--user xx] "
+		"[--boost xxx]\n\t\t[--queue xxx] [--user xx] [--group xx]"
 		"[--no-details]\n");
 	exit(1);
 }
@@ -265,6 +266,30 @@ int main(int argc, char *argv[])
 				uid = pw->pw_uid;
 				gid = pw->pw_gid;
 				endpwent();
+			}
+		} else if (strcmp(argv[i], "--group") == 0) {
+			i++;
+			if (i == argc || *argv[i] == '-') {
+				msg(LOG_ERR, "group takes an argument");
+				exit(1);
+			}
+			if (isdigit(*argv[i])) {
+				errno = 0;
+				gid = strtol(argv[i], NULL, 10);
+				if (errno) {
+					msg(LOG_ERR,
+						"Error converting group value");
+					exit(1);
+				}
+			} else {
+				struct group *gr = getgrnam(argv[i]);
+				if (gr == NULL) {
+					msg(LOG_ERR, "group %s is unknown",
+							argv[i]);
+					exit(1);
+				}
+				gid = gr->gr_gid;
+				endgrent();
 			}
 		} else if (strcmp(argv[i], "--no-details") == 0) {
 			details = 0;

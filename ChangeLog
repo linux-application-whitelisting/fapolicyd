@@ -3,6 +3,7 @@
 - Reinstate strong umask before writing report
 - Use pw_gid to set the group when changing gid
 - Allow the use of account names for auid & uid in rules
+- Support group option on command line
 
 0.8.3
 - Add audit support for the linux-4.15 kernel
