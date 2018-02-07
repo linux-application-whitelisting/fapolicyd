@@ -1,3 +1,5 @@
+0.8.5
+
 0.8.4
 - Mask signals from deadman's switch
 - Reinstate strong umask before writing report

@@ -1,6 +1,6 @@
 Summary: File Access Policy Daemon
 Name: fapolicyd
-Version: 0.8.4
+Version: 0.8.5
 Release: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -54,6 +54,6 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin fapolicyd
 %ghost /var/log/fapolicyd-access.log
 
 %changelog
-* Wed Feb 07 2018 Steve Grubb <sgrubb@redhat.com> 0.8.4-1
+* Wed Feb 07 2018 Steve Grubb <sgrubb@redhat.com> 0.8.5-1
 - New release
 
