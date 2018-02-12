@@ -17,7 +17,7 @@ Requires(postun): systemd-units
 %description
 Fapolicyd (File Access Policy Daemon) implements application whitelisting
 to decide file access rights. Applications that are known via a reputation
-source is allowed access while unknown applications are not. The daemon
+source are allowed access while unknown applications are not. The daemon
 makes use of the kernel's fanotify interface to determine file access rights.
 
 %prep
