@@ -4,8 +4,8 @@ Version: 0.8.5
 Release: 1
 License: GPLv2+
 Group: System Environment/Daemons
-URL: https://github.com/stevegrubb/fapolicyd
-Source0: https://github.com/stevegrubb/fapolicyd/archive/%{name}-%{version}.tar.gz
+URL: http://people.redhat.com/sgrubb/fapolicyd
+Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel-headers
 BuildRequires: systemd-devel libgcrypt-devel rpm-devel file-devel
