@@ -45,9 +45,9 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %doc README
 %{!?_licensedir:%global license %%doc}
 %license COPYING
-%attr(750,root,root) %dir /etc/fapolicyd
-%config(noreplace) %attr(644,root,root) /etc/fapolicyd/fapolicyd.rules
-%config(noreplace) %attr(644,root,root) /etc/fapolicyd/fapolicyd.mounts
+%attr(750,root,fapolicyd) %dir %{_sysconfdir}/%{name}
+%config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.rules
+%config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.mounts
 %attr(644,root,root) %{_unitdir}/fapolicyd.service
 %attr(755,root,root) /sbin/fapolicyd
 %attr(644,root,root) %{_mandir}/man8/*
