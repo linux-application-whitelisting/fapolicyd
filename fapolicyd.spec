@@ -23,7 +23,7 @@ makes use of the kernel's fanotify interface to determine file access rights.
 %setup -q
 
 %build
-%configure --sbindir=/sbin --with-audit 
+%configure --with-audit 
 make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
@@ -49,7 +49,7 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.rules
 %config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.mounts
 %attr(644,root,root) %{_unitdir}/fapolicyd.service
-%attr(755,root,root) /sbin/fapolicyd
+%attr(755,root,root) %{_sbindir}/fapolicyd
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*
 %ghost /var/log/fapolicyd-access.log
