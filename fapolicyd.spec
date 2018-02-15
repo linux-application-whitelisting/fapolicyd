@@ -27,7 +27,7 @@ makes use of the kernel's fanotify interface to determine file access rights.
 make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
-make DESTDIR="${RPM_BUILD_ROOT}" INSTALL='install -p' install
+make DESTDIR="%{buildroot}" INSTALL='install -p' install
 
 %pre
 getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
