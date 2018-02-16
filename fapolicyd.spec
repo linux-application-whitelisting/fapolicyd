@@ -55,6 +55,6 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %ghost %{_localstatedir}/log/fapolicyd-access.log
 
 %changelog
-* Wed Feb 07 2018 Steve Grubb <sgrubb@redhat.com> 0.8.5-1
+* Fri Feb 16 2018 Steve Grubb <sgrubb@redhat.com> 0.8.5-1
 - New release
 
