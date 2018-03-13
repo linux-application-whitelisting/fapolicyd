@@ -1,6 +1,6 @@
 /*
  * file.c - functions for accessing attributes of files
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2108 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved. 
  *
  * This software may be freely redistributed and/or modified under the
@@ -435,17 +435,23 @@ uint32_t gather_elf(int fd)
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
 				if((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
-						ph_tbl[i].p_offset)
+						ph_tbl[i].p_offset) {
+					free(dyn_tbl);
 					goto err_out32;
+				}
 
 				num = ph_tbl[i].p_filesz / sizeof(Elf64_Dyn);
-				if (num > 1000)
+				if (num > 1000) {
+					free(dyn_tbl);
 					goto err_out32;
+				}
 
 				if ((unsigned int)safe_read(fd, (char *)dyn_tbl,
 						ph_tbl[i].p_filesz) !=
-						ph_tbl[i].p_filesz)
+						ph_tbl[i].p_filesz) {
+					free(dyn_tbl);
 					goto err_out32;
+				}
 
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
@@ -504,18 +510,21 @@ done32:
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
 				if ((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
-						ph_tbl[i].p_offset)
+						ph_tbl[i].p_offset) {
+					free(dyn_tbl);
 					goto err_out64;
-
+				}
 				num = ph_tbl[i].p_filesz / sizeof(Elf64_Dyn);
-				if (num > 1000)
+				if (num > 1000) {
+					free(dyn_tbl);
 					goto err_out64;
-
+				}
 				if ((unsigned int)safe_read(fd, (char *)dyn_tbl,
 						ph_tbl[i].p_filesz) !=
-						ph_tbl[i].p_filesz)
+						ph_tbl[i].p_filesz) {
+					free(dyn_tbl);
 					goto err_out64;
-
+				}
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
 					} else if (dyn_tbl[j].d_tag == DT_RUNPATH)

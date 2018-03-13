@@ -27,6 +27,7 @@
 #include <string.h>
 #include <errno.h>
 #include <pwd.h>
+#include <ctype.h>
 #include "policy.h"
 #include "rules.h"
 #include "nv.h"
