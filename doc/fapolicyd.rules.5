@@ -13,8 +13,8 @@ for the access control decision.
 
 .SS Access
 The decision is either
-.IR allow " or " deny ".
-If the rule triggers, this is the access decision that fapolicyd will tell the kernel.
+.IR allow ", " deny ", " allow_audit ", or " deny_audit ".
+If the rule triggers, this is the access decision that fapolicyd will tell the kernel. If the decision is one of the audit variety, then the decision will trigger a FANOTIFY audit event with all relevant information.
 
 .SS Subject
 The subject is the process that is performing actions on system resources. The fields in the rule that describe the subject are written in a name=value format.i There can be one or more subject fields. Each field is and'ed with others to decide if a rule triggers. The name can be any of the following:
@@ -105,7 +105,7 @@ This option matches against the sha256 hash of the file being accessed.
 The following rules show how rules may look.
 
 .nf
-.B deny exe=/usr/bin/wget dir=/tmp
+.B deny_audit exe=/usr/bin/wget dir=/tmp
 .B allow exe=/usr/bin/python3.4 dir=execdirs ftype=text/x-python
 .B deny all all
 .fi
