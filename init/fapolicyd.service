@@ -9,5 +9,10 @@ PIDFile=/var/run/fapolicyd.pid
 Restart=on-abnormal
 ExecStart=/usr/sbin/fapolicyd --permissive --user fapolicyd
 
+### Security Settings ###
+MemoryDenyWriteExecute=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+
 [Install]
 WantedBy=multi-user.target
