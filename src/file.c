@@ -143,12 +143,12 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 //msg(LOG_DEBUG, "mismatch SEC");
 		return 1;
 	}
-	if (p1->device != p2->device) {
-//msg(LOG_DEBUG, "mismatch DEV");
-		return 1;
-	}
 	if (p1->size != p2->size) {
 //msg(LOG_DEBUG, "mismatch BLOCKS");
+		return 1;
+	}
+	if (p1->device != p2->device) {
+//msg(LOG_DEBUG, "mismatch DEV");
 		return 1;
 	}
 
