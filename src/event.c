@@ -120,7 +120,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 
 	// Just using inodes don't give a good key. It needs 
 	// conditioning to use more slots in the cache.
-	unsigned int magic = finfo->inode + finfo->time.tv_nsec + finfo->size;
+	unsigned long magic = finfo->inode + finfo->time.tv_nsec + finfo->size;
 	key = compute_object_key(obj_cache, magic);
 	q_node = check_lru_cache(obj_cache, key);
 	o = (o_array *)q_node->item;
@@ -136,7 +136,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 
 	if (rc) {
 		// If empty, setup the object with what we currently have
-		e->o = malloc(sizeof(s_array));
+		e->o = malloc(sizeof(o_array));
 		object_create(e->o);
 
 		// give custody of the list to the cache
