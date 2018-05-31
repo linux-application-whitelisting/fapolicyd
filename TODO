@@ -5,12 +5,12 @@ Hand userspace a fstat buf for object with event
 
 Userspace
 =========
+Rename unpackaged to untrusted 
+Do not use rpm database directly as trust source, make a copy and use that
+Add admin defined whitelist of dirs or files
 Add ability to detect bad interpreter
 Support execute events for better subj cache utilization
-Do not use rpm database directly as trust source, make a copy and use that
 Support SWID as trust source
-Add admin defined whitelist of dirs or files
-Improve the object hash for better cache utilization
 Add sighup handler
 Allow globbing
 
