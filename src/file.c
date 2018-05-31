@@ -1,6 +1,6 @@
 /*
  * file.c - functions for accessing attributes of files
- * Copyright (c) 2016,2108 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved. 
  *
  * This software may be freely redistributed and/or modified under the
@@ -104,10 +104,19 @@ struct file_info *stat_file_entry(int fd)
 		info->device = sb.st_dev;
 		info->inode = sb.st_ino;
 		info->mode = sb.st_mode;
-		info->blocks = sb.st_blocks;
-		info->time.tv_sec = sb.st_mtim.tv_sec;
-		info->time.tv_nsec = sb.st_mtim.tv_nsec;
+		info->size = sb.st_size;
 
+		// Try to get the modified time. If its zero, then it
+		// hasn't been modified. Revert to create time if no
+		// modifications have been done.
+		if (sb.st_mtim.tv_sec)
+			info->time.tv_sec = sb.st_mtim.tv_sec;
+		else
+			info->time.tv_sec = sb.st_ctim.tv_sec;
+		if (sb.st_mtim.tv_nsec)
+			info->time.tv_nsec = sb.st_mtim.tv_nsec;
+		else
+			info->time.tv_nsec = sb.st_ctim.tv_nsec;
 		return info;
 	}
 	return NULL;
@@ -138,7 +147,7 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 //msg(LOG_DEBUG, "mismatch DEV");
 		return 1;
 	}
-	if (p1->blocks != p2->blocks) {
+	if (p1->size != p2->size) {
 //msg(LOG_DEBUG, "mismatch BLOCKS");
 		return 1;
 	}

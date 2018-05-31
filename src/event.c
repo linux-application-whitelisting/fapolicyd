@@ -1,6 +1,6 @@
 /*
  * event.c - Functions to access event attributes
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved. 
  *
  * This software may be freely redistributed and/or modified under the
@@ -120,7 +120,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 
 	// Just using inodes don't give a good key. It needs 
 	// conditioning to use more slots in the cache.
-	unsigned int magic = finfo->inode + finfo->time.tv_sec + finfo->blocks;
+	unsigned int magic = finfo->inode + finfo->time.tv_nsec + finfo->size;
 	key = compute_object_key(obj_cache, magic);
 	q_node = check_lru_cache(obj_cache, key);
 	o = (o_array *)q_node->item;

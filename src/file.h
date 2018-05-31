@@ -1,6 +1,6 @@
 /*
  * file.h - Header file for file.c
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -34,7 +34,7 @@ struct file_info
 	dev_t    device;
 	ino_t    inode;
 	mode_t   mode;
-	blkcnt_t blocks;
+	off_t    size;
 	struct timespec time;
 };
 
