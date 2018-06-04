@@ -28,6 +28,7 @@ make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
 make DESTDIR="%{buildroot}" INSTALL='install -p' install
+mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 
 %pre
 getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
@@ -53,7 +54,7 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*
 %ghost %{_localstatedir}/log/fapolicyd-access.log
-%attr(750,root,fapolicyd) %dir %{_localstatedir}/%{_lib}/%{name}
+%attr(750,root,fapolicyd) %dir %{_localstatedir}/lib/%{name}
 
 %changelog
 * Fri Feb 16 2018 Steve Grubb <sgrubb@redhat.com> 0.8.6-1
