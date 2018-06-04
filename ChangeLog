@@ -3,6 +3,7 @@
 - Update object hash calculation to better determine uniqueness
 - Override rpm's signal handling
 - Use private database as trust store
+- Update the rules for python 3.6 and remove systemd exclusion
 
 0.8.5
 - Update spec file and license info

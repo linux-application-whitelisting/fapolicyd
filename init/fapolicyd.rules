@@ -11,13 +11,10 @@ deny_audit pattern=ld_so all
 # Don't allow LD_PRELOAD
 deny_audit pattern=ld_preload all
 
-# Keep systemd out of the way
-deny_audit exe=/usr/lib/systemd/systemd path=/var/lib/rpm/Packages
-
 # We have to carve out an exception for the system updaters
 # or things go very bad (deadlock).
 allow exe=/usr/bin/rpm all
-allow exe=/usr/bin/python3.4 comm=dnf all
+allow exe=/usr/bin/python3.6 comm=dnf all
 
 # Don't allow unpackaged executables
 deny_audit exe_dir=execdirs exe=unpackaged all
@@ -34,8 +31,8 @@ deny_audit all ftype=application/x-sharedlib
 # Only allow system python executables and libs
 # File type by: file --mime-type /path-to-file
 allow all dir=execdirs ftype=text/x-python
-allow exe=/usr/bin/python3.4 dir=execdirs ftype=text/x-python
-allow exe=/usr/bin/python3.4 dir=execdirs ftype=application/octet-stream
+allow exe=/usr/bin/python3.6 dir=execdirs ftype=text/x-python
+allow exe=/usr/bin/python3.6 dir=execdirs ftype=application/octet-stream
 allow exe=/usr/bin/python2.7 dir=execdirs ftype=text/x-python
 allow exe=/usr/bin/python2.7 dir=execdirs ftype=application/octet-stream
 deny_audit  all ftype=text/x-python
