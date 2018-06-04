@@ -378,9 +378,14 @@ int main(int argc, char *argv[])
 			if (pfd[0].revents & POLLIN) {
 				handle_events();
 			}
-			// Uncomment these to fix rpm masking signals
-			// sigaction(SIGTERM, &sa, NULL);
-			// sigaction(SIGINT, &sa, NULL);
+
+			// This will always need to be here as long as we
+			// link against librpm. Turns out that librpm masks
+			// signals to prevent corrupted databases during an
+			// update. Since we only do read access, we can turn
+			// them back on. 
+			sigaction(SIGTERM, &sa, NULL);
+			sigaction(SIGINT, &sa, NULL);
 		}
 	}
 	msg(LOG_DEBUG, "shutting down...");

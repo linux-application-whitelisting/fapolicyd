@@ -1,6 +1,7 @@
 0.8.6
 - Add some systemd process protections
 - Update object hash calculation to better determine uniqueness
+- Override rpm's signal handling
 
 0.8.5
 - Update spec file and license info
