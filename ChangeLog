@@ -5,6 +5,7 @@
 - Use private database as trust store
 - Update the rules for python 3.6 and remove systemd exclusion
 - Rename exec_dir rule option unpackaged to untrusted
+- Remove unneeded rpm code
 
 0.8.5
 - Update spec file and license info

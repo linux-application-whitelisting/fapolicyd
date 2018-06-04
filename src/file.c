@@ -31,12 +31,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <gcrypt.h>
-#include <rpm/rpmlib.h>
-#include <rpm/header.h>
-#include <rpm/rpmts.h>
-#include <rpm/rpmdb.h>
-#include <rpm/rpmmacro.h>
-#include <rpm/rpmlog.h>
 #include <magic.h>
 #include <libudev.h>
 #include <elf.h>
@@ -46,7 +40,6 @@
 
 // Local variables
 static struct udev *udev;
-static rpmts rpm;
 magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
 struct cache c = { 0, NULL };
@@ -57,14 +50,6 @@ void file_init(void)
 	// Setup udev
 	udev = udev_new();
 
-	// Setup librpm
-/*	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
-		msg(LOG_ERR, "rpmReadConfigFiles failed: %s",
-				strerror (errno));
-		exit(1);
-	}
-	rpm = rpmtsCreate();
-*/
 	// Setup libmagic
 	unsetenv("MAGIC");
 	magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
@@ -83,11 +68,6 @@ void file_init(void)
 void file_close(void)
 {
 	udev_unref(udev);
-/*	rpmtsFree(rpm);
-	rpmFreeCrypto();
-	rpmFreeRpmrc();
-	rpmFreeMacros(NULL);
-	rpmlogClose(); */
 	magic_close(magic_cookie);
 	free((void *)c.devname);
 }
@@ -272,31 +252,6 @@ char *get_file_type_from_fd(int fd, size_t blen, char *buf)
 	
 	lseek(fd, 0, SEEK_SET);
 	return buf;
-}
-
-// Returns a 1 if packaged and 0 if not
-int check_packaged_from_file(const char *filename)
-{
-	rpmdbMatchIterator iter;
-
-	// Nothing is in home
-	if (strncmp(filename, "/home/", 6) == 0)
-		return 0;
-
-	// Search rpm database for filename
-	iter = rpmtsInitIterator(rpm, RPMTAG_BASENAMES, filename, 0);
-	if (iter == NULL) {
-		msg(LOG_DEBUG, "rpm database error looking up: %s", filename);
-		return 0;
-	}
-	
-	// Check to see if there's a package name associated with the file
-	Header header = rpmdbNextIterator(iter);
-	rpmdbFreeIterator(iter);
-	if (header)
-		return 1;
-
-	return 0;
 }
 
 // This function converts byte array into asciie hex
