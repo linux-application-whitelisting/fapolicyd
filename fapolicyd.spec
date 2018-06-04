@@ -7,7 +7,7 @@ URL: http://people.redhat.com/sgrubb/fapolicyd
 Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
 BuildRequires: kernel-headers
 BuildRequires: systemd-devel libgcrypt-devel rpm-devel file-devel
-BuildRequires: libcap-ng-devel libseccomp-devel
+BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
 Requires(pre): shadow-utils
 Requires(post): systemd-units
 Requires(preun): systemd-units
@@ -53,6 +53,7 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*
 %ghost %{_localstatedir}/log/fapolicyd-access.log
+%attr(750,root,fapolicyd) %dir %{_localstatedir}/%{_lib}/%{name}
 
 %changelog
 * Fri Feb 16 2018 Steve Grubb <sgrubb@redhat.com> 0.8.6-1

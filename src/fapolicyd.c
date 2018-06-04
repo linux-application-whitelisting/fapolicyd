@@ -45,6 +45,7 @@
 #include "policy.h"
 #include "event.h"
 #include "file.h"
+#include "database.h"
 #include "message.h"
 
 
@@ -356,6 +357,9 @@ int main(int argc, char *argv[])
 	// Setup lru caches
 	init_event_system();
 
+	// Init the database
+	init_database();
+
 	// Init the file test libraries
 	file_init();
 
@@ -391,6 +395,7 @@ int main(int argc, char *argv[])
 	msg(LOG_DEBUG, "shutting down...");
 	shutdown_fanotify();
 	file_close();
+	close_database();
 	if (pidfile)
 		unlink(pidfile);
 	// Reinstate the strict umask in case rpm messed with it

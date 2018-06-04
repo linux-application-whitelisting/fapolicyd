@@ -58,13 +58,13 @@ void file_init(void)
 	udev = udev_new();
 
 	// Setup librpm
-	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
+/*	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
 		msg(LOG_ERR, "rpmReadConfigFiles failed: %s",
 				strerror (errno));
 		exit(1);
 	}
 	rpm = rpmtsCreate();
-
+*/
 	// Setup libmagic
 	unsetenv("MAGIC");
 	magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
@@ -83,11 +83,11 @@ void file_init(void)
 void file_close(void)
 {
 	udev_unref(udev);
-	rpmtsFree(rpm);
+/*	rpmtsFree(rpm);
 	rpmFreeCrypto();
 	rpmFreeRpmrc();
 	rpmFreeMacros(NULL);
-	rpmlogClose();
+	rpmlogClose(); */
 	magic_close(magic_cookie);
 	free((void *)c.devname);
 }
