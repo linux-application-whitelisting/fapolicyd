@@ -5,7 +5,9 @@ Hand userspace a fstat buf for object with event
 
 Userspace
 =========
-Verify database startup and ownership, group
+Verify database startup and ownership, group is correct
+Find where miscompares of database is coming from
+Handle dnf & rpm updates including updating the database
 Add admin defined whitelist of dirs or files
 Add ability to detect bad interpreter
 Support execute events for better subj cache utilization
