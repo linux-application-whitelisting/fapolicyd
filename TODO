@@ -5,7 +5,6 @@ Hand userspace a fstat buf for object with event
 
 Userspace
 =========
-Rename unpackaged to untrusted 
 Add admin defined whitelist of dirs or files
 Add ability to detect bad interpreter
 Support execute events for better subj cache utilization

@@ -417,7 +417,7 @@ static int obj_dir_test(object_attr_t *o, object_attr_t *obj)
 	// Execdirs doesn't have /etc in its list
 	else if ((o->len == 8) && strcmp(o->o, "execdirs") == 0)
 		return check_dirs(1, obj->o);
-	else if ((o->len == 10) && strcasecmp(o->o, "unpackaged") == 0) {
+	else if ((o->len == 10) && strcasecmp(o->o, "untrusted") == 0) {
 		if (check_trust_database(obj->o))
 			return 0;
 	// Just a normal dir test
@@ -439,7 +439,7 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj)
 	// Execdirs doesn't have /etc in its list
 	else if ((len == 8) && strcmp(s->str, "execdirs") == 0)
 		return check_dirs(1, subj->str);
-	else if ((len == 10) && strcasecmp(s->str, "unpackaged") == 0) {
+	else if ((len == 10) && strcasecmp(s->str, "untrusted") == 0) {
 		if (check_trust_database(subj->str))
 			return 0;
 
@@ -603,7 +603,7 @@ static int check_subject(lnode *r, event_t *e)
 					if (rc == 0)
 						return 0;
 				} else if (type == EXE &&
-				   strcasecmp(r->s[cnt].str, "unpackaged")==0) {
+				   strcasecmp(r->s[cnt].str, "untrusted")==0) {
 					if (check_trust_database(subj->str))
 						return 0;
 				} else if (strcmp(subj->str, r->s[cnt].str))
@@ -632,14 +632,14 @@ static decision_t check_object(lnode *r, event_t *e)
 				continue;
 			}
 
-			//  For directories (and unpackaged), we only do a
+			//  For directories (and untrusted), we only do a
 			//  partial match.  Any child dir would also match.
 			if (r->o[cnt].type == ODIR) {
 				int rc = obj_dir_test(&(r->o[cnt]), obj);
 				if (rc == 0)
 					return 0;
 			} else if (r->o[cnt].type == PATH &&
-				 strcasecmp(r->s[cnt].str, "unpackaged") == 0) {
+				 strcasecmp(r->s[cnt].str, "untrusted") == 0) {
 				if (check_trust_database(obj->o))
 					return 0;
 			} else if (strcmp(obj->o, r->o[cnt].o))

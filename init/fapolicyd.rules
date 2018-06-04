@@ -16,11 +16,11 @@ deny_audit pattern=ld_preload all
 allow exe=/usr/bin/rpm all
 allow exe=/usr/bin/python3.6 comm=dnf all
 
-# Don't allow unpackaged executables
-deny_audit exe_dir=execdirs exe=unpackaged all
+# Don't allow untrusted executables
+deny_audit exe_dir=execdirs exe=untrusted all
 
 # Only allow system ELF Applications - note: depends on above check
-# for unpackaged executables.
+# for untrusted executables.
 allow all dir=execdirs ftype=application/x-executable
 deny_audit all ftype=application/x-executable
 
