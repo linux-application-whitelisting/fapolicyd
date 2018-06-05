@@ -312,31 +312,49 @@ static int unsigned_int_parser(unsigned *i, const char *str, int line)
 
 	/* convert to unsigned long */
 	errno = 0;
-	*i = strtoul(str, NULL, 10);
+	j = strtoul(str, NULL, 10);
 	if (errno) {
 		msg(LOG_ERR,
 			"Error converting string to a number (%s) - line %d",
 			strerror(errno), line);
 		return 1;
 	}
+	*i = j;
 	return 0;
 }
 
 static int permissive_parser(struct nv_pair *nv, int line,
                 struct daemon_conf *config)
 {
-	return unsigned_int_parser(&config->permissive, nv->value, line);
+	int rc = unsigned_int_parser(&(config->permissive), nv->value, line);
+	if (rc == 0 && config->permissive > 1) {
+		msg(LOG_WARNING,
+			"permissive value reset to 1 - line %d", line);
+		config->permissive = 1;
+	}
+	return rc;
 }
 
 static int nice_val_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
-	return unsigned_int_parser(&config->nice_val, nv->value, line);
+	int rc = unsigned_int_parser(&(config->nice_val), nv->value, line);
+	if (rc == 0 && config->nice_val > 20) {
+		msg(LOG_WARNING,
+			"Error, nice_val is larger than 20 - line %d",
+			line);
+		rc = 1;
+	}
+	return rc;
 }
 static int q_size_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
-	return unsigned_int_parser(&config->q_size, nv->value, line);
+	int rc = unsigned_int_parser(&(config->q_size), nv->value, line);
+	if (rc == 0 && config->q_size >= 10480)
+		msg(LOG_WARNING,
+			"q_size might be unnecessarily large - line %d", line);
+	return rc;
 }
 
 static int uid_parser(struct nv_pair *nv, int line,
@@ -363,6 +381,7 @@ static int uid_parser(struct nv_pair *nv, int line,
 		}
 		uid = pw->pw_uid;
 		gid = pw->pw_gid;
+		endpwent();
 	}
 	config->uid = uid;
 	config->gid = gid;
@@ -391,6 +410,7 @@ static int gid_parser(struct nv_pair *nv, int line,
 			return 1;
 		}
 		gid = gr->gr_gid;
+		endgrent();
 	}
 	config->gid = gid;
 	return 0;
@@ -399,6 +419,6 @@ static int gid_parser(struct nv_pair *nv, int line,
 static int details_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
-	return unsigned_int_parser(&config->details, nv->value, line);
+	return unsigned_int_parser(&(config->details), nv->value, line);
 }
 
