@@ -193,10 +193,13 @@ int main(int argc, char *argv[])
 	int rc, i;
 
 	if (argc > 1 && strcmp(argv[1], "--help") == 0)
-			usage();
-	load_daemon_config(&config);
-	permissive = config.permissive;
+		usage();
 	set_message_mode(MSG_STDERR, debug);
+	if (load_daemon_config(&config)) {
+		msg(LOG_ERR, "Exiting due to bad configuration");
+		return 1;
+	}
+	permissive = config.permissive;
 	for (i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--debug") == 0) {
 			debug = 1;

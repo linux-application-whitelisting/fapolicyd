@@ -163,7 +163,12 @@ int load_daemon_config(struct daemon_conf *config)
 
 		/* identify keyword or error */
 		kw = kw_lookup(nv.name);
-		if (kw->name) {
+		if (kw->name == NULL) {
+			msg(LOG_ERR, "Unknown keyword \"%s\" in line %d of %s",
+				nv.name, lineno, CONFIG_FILE);
+			fclose(f);
+			return 1;
+		} else {
 			/* dispatch to keyword's local parser */
 			rc = kw->parser(&nv, lineno, config);
 			if (rc != 0) {
