@@ -36,7 +36,6 @@
 
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
-extern int details;
 
 // Return 0 on success and 1 on error
 int init_event_system(void)
@@ -317,7 +316,7 @@ static void print_queue_stats(FILE *f, const Queue *q)
 	fprintf(f, "%s evictions: %lu\n", q->name, q->evictions);
 }
 
-void run_usage_report(FILE *f)
+void run_usage_report(struct daemon_conf *config, FILE *f)
 {
 	time_t t;
 	QNode *q_node;
@@ -325,7 +324,7 @@ void run_usage_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (details) {
+	if (config->details) {
 		t = time(NULL);
 		fprintf(f, "File access attempts from oldest to newest as of %s\n", ctime(&t));
 		fprintf(f, "\tFILE\t\t\t\t\t\t    ATTEMPTS\n");
@@ -362,7 +361,7 @@ void run_usage_report(FILE *f)
 	print_queue_stats(f, obj_cache);
 	fprintf(f, "\n\n");
 
-	if (details) {
+	if (config->details) {
 		fprintf(f, "Active processes oldest to most recently active as of %s\n", ctime(&t));
 		fprintf(f, "\tEXE\tCOMM\t\t\t\t\t    ATTEMPTS\n");
 		fprintf(f, "---------------------------------------------------------------------------\n");

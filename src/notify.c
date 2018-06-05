@@ -1,6 +1,6 @@
 /*
  * notify.c - functions handle recieving and enqueuing events
- * Copyright (c) 2016-17 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016-18 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved. 
  *
  * This software may be freely redistributed and/or modified under the
@@ -43,7 +43,6 @@
 
 // External variables
 extern volatile int stop;
-extern int q_size;
 
 // Local variables
 static pid_t our_pid;
@@ -63,13 +62,13 @@ static unsigned long allowed = 0, denied = 0;
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
 
-int init_fanotify(void)
+int init_fanotify(struct daemon_conf *conf)
 {
 	uint64_t mask;
 	const char *path;
 
 	// Get inter-thread queue ready
-	q = q_open(q_size);
+	q = q_open(conf->q_size);
 	if (q == NULL) {
 		msg(LOG_ERR, "Failed setting up queue (%s)",
 			strerror(errno));

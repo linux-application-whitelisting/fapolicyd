@@ -1,6 +1,6 @@
 /*
  * notify.h - Header file for notify.c
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -26,8 +26,9 @@
 #define NOTIFY_HEADER
 
 #include <stdio.h>
+#include "daemon-config.h"
 
-int init_fanotify(void);
+int init_fanotify(struct daemon_conf *config);
 void shutdown_fanotify(void);
 void decision_report(FILE *f);
 void handle_events(void);

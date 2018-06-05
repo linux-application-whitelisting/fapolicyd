@@ -49,6 +49,7 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %attr(750,root,fapolicyd) %dir %{_sysconfdir}/%{name}
 %config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.rules
 %config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.mounts
+%config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.conf
 %attr(644,root,root) %{_unitdir}/fapolicyd.service
 %attr(755,root,root) %{_sbindir}/fapolicyd
 %attr(644,root,root) %{_mandir}/man8/*

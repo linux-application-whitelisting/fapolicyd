@@ -34,7 +34,6 @@
 #include <sys/resource.h> 
 #include <stdio.h>
 #include <ctype.h>
-#include <pwd.h>
 #include <grp.h>
 #include <cap-ng.h>
 #include <sys/prctl.h>
@@ -47,21 +46,19 @@
 #include "file.h"
 #include "database.h"
 #include "message.h"
+#include "daemon-config.h"
 
 
 // Global program variables
 int debug = 0, permissive = 0;
-int q_size = 1024;
-int details = 1;
 
 // Signal handler notifications
 volatile int stop = 0;
 
 // Local variables
-static int nice_val = 10;
-static int uid = 0, gid = 0;
 static const char *pidfile = "/var/run/fapolicyd.pid";
 #define REPORT "/var/log/fapolicyd-access.log"
+static struct daemon_conf config;
 
 
 static void install_syscall_filter(void)
@@ -195,11 +192,13 @@ int main(int argc, char *argv[])
 	struct rlimit limit;
 	int rc, i;
 
+	if (argc > 1 && strcmp(argv[1], "--help") == 0)
+			usage();
+	load_daemon_config(&config);
+	permissive = config.permissive;
 	set_message_mode(MSG_STDERR, debug);
 	for (i=1; i < argc; i++) {
-		if (strcmp(argv[i], "--help") == 0)
-			usage();
-		else if (strcmp(argv[i], "--debug") == 0) {
+		if (strcmp(argv[i], "--debug") == 0) {
 			debug = 1;
 			set_message_mode(MSG_STDERR, DBG_YES);
 		} else if (strcmp(argv[i], "--debug-deny") == 0) {
@@ -214,12 +213,12 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 			errno = 0;
-			nice_val = strtoul(argv[i], NULL, 10);
+			config.nice_val = strtoul(argv[i], NULL, 10);
 			if (errno) {
 				msg(LOG_ERR, "Error converting boost value");
 				exit(1);
 			}
-			if (nice_val >= 20) {
+			if (config.nice_val >= 20) {
 				msg(LOG_ERR,
 					"boost value must be less that 20");
 				exit(1);
@@ -231,12 +230,12 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 			errno = 0;
-			q_size = strtol(argv[i], NULL, 10);
+			config.q_size = strtol(argv[i], NULL, 10);
 			if (errno) {
 				msg(LOG_ERR, "Error converting queue value");
 				exit(1);
 			}
-			if (q_size >= 10480) {
+			if (config.q_size >= 10480) {
 				msg(LOG_WARNING,
 					"q_size might be unnecessarily large");
 			}
@@ -248,7 +247,7 @@ int main(int argc, char *argv[])
 			}
 			if (isdigit(*argv[i])) {
 				errno = 0;
-				uid = strtol(argv[i], NULL, 10);
+				config.uid = strtol(argv[i], NULL, 10);
 				if (errno) {
 					msg(LOG_ERR,
 						"Error converting user value");
@@ -257,7 +256,7 @@ int main(int argc, char *argv[])
 				// FIXME: This is wrong until specified
 				// on the command line. But less wrong than
 				// leaving as root
-				gid = uid;
+				config.gid = config.uid;
 			} else {
 				struct passwd *pw = getpwnam(argv[i]);
 				if (pw == NULL) {
@@ -265,8 +264,8 @@ int main(int argc, char *argv[])
 							argv[i]);
 					exit(1);
 				}
-				uid = pw->pw_uid;
-				gid = pw->pw_gid;
+				config.uid = pw->pw_uid;
+				config.gid = pw->pw_gid;
 				endpwent();
 			}
 		} else if (strcmp(argv[i], "--group") == 0) {
@@ -277,7 +276,7 @@ int main(int argc, char *argv[])
 			}
 			if (isdigit(*argv[i])) {
 				errno = 0;
-				gid = strtol(argv[i], NULL, 10);
+				config.gid = strtol(argv[i], NULL, 10);
 				if (errno) {
 					msg(LOG_ERR,
 						"Error converting group value");
@@ -290,11 +289,11 @@ int main(int argc, char *argv[])
 							argv[i]);
 					exit(1);
 				}
-				gid = gr->gr_gid;
+				config.gid = gr->gr_gid;
 				endgrent();
 			}
 		} else if (strcmp(argv[i], "--no-details") == 0) {
-			details = 0;
+			config.details = 0;
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
 			usage();
@@ -318,7 +317,7 @@ int main(int argc, char *argv[])
 	(void) umask( 0237 );
 
 	// get more time slices because everything is waiting on us
-	rc = nice(-nice_val);
+	rc = nice(-config.nice_val);
 	if (rc == -1)
 		msg(LOG_WARNING, "Couldn't adjust priority (%s)",
 				strerror(errno));
@@ -339,16 +338,17 @@ int main(int argc, char *argv[])
 	write_pid_file();
 
 	// If we are not going to be root, then setup necessary capabilities
-	if (uid != 0) {
+	if (config.uid != 0) {
 		capng_clear(CAPNG_SELECT_BOTH);
 		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
 			CAP_DAC_OVERRIDE, CAP_SYS_ADMIN, CAP_SYS_PTRACE,
 			CAP_SYS_NICE, CAP_SYS_RESOURCE, CAP_AUDIT_WRITE, -1);
-		if (capng_change_id(uid, gid, CAPNG_DROP_SUPP_GRP)) {
-			msg(LOG_ERR, "Cannot change to uid %d", uid);
+		if (capng_change_id(config.uid, config.gid,
+							CAPNG_DROP_SUPP_GRP)) {
+			msg(LOG_ERR, "Cannot change to uid %d", config.uid);
 			exit(1);
 		} else
-			msg(LOG_DEBUG, "Changed to uid %d", uid);
+			msg(LOG_DEBUG, "Changed to uid %d", config.uid);
 	}
 
 	// Install seccomp filter to prevent escalation
@@ -364,7 +364,7 @@ int main(int argc, char *argv[])
 	file_init();
 
 	// Initialize the file watch system
-	pfd[0].fd = init_fanotify();
+	pfd[0].fd = init_fanotify(&config);
 	pfd[0].events = POLLIN;
 
 	msg(LOG_DEBUG, "Starting to listen for events");
@@ -404,11 +404,12 @@ int main(int argc, char *argv[])
 	if (f == NULL)
 		msg(LOG_WARNING, "Cannot create usage report");
 	decision_report(f);
-	run_usage_report(f);
+	run_usage_report(&config, f);
 	if (f)
 		fclose(f);
 	destroy_event_system();
 	destroy_config();
+	free_daemon_config(&config);
 
 	return 0;
 }

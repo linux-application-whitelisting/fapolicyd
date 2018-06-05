@@ -5,11 +5,13 @@ fapolicyd_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused
 fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now
 fapolicyd_LDADD = -lpthread 
 
-fapolicyd_SOURCES = database.c event.c fapolicyd.c file.c lru.c message.c \
+fapolicyd_SOURCES = database.c daemon-config.c event.c \
+	fapolicyd.c file.c lru.c message.c \
 	mounts.c notify.c object-attr.c object.c \
 	policy.c process.c queue.c rules.c \
 	subject-attr.c subject.c
 
-noinst_HEADERS = database.h event.h file.h lru.h message.h \
-	mounts.h notify.h nv.h object-attr.h object.h \
-	policy.h process.h queue.h rules.h subject-attr.h subject.h
+noinst_HEADERS = database.h daemon-config.h event.h \
+	file.h lru.h message.h mounts.h notify.h \
+	nv.h object-attr.h object.h policy.h \
+	process.h queue.h rules.h subject-attr.h subject.h
