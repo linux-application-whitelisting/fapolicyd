@@ -25,7 +25,9 @@
 #ifndef DATABASE_HEADER
 #define DATABASE_HEADER
 
-int init_database(void);
+#include "daemon-config.h"
+
+int init_database(struct daemon_conf *config);
 int check_trust_database(const char *path);
 void close_database(void);
 

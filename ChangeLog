@@ -7,6 +7,7 @@
 - Rename exec_dir rule option unpackaged to untrusted
 - Remove unneeded rpm code
 - Add support for daemon config file
+- Allow database size to be configurable
 
 0.8.5
 - Update spec file and license info

@@ -72,6 +72,8 @@ static int gid_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 static int details_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
+static int db_max_size_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config);
 
 static const struct kw_pair keywords[] = 
 {
@@ -81,6 +83,7 @@ static const struct kw_pair keywords[] =
   {"uid",		uid_parser },
   {"gid",		gid_parser },
   {"details",		details_parser },
+  {"db_max_size",	db_max_size_parser },
   { NULL,		NULL }
 };
 
@@ -95,6 +98,7 @@ void clear_daemon_config(struct daemon_conf *config)
 	config->uid = 0;
 	config->gid = 0;
 	config->details = 1;
+	config->db_max_size = 100;
 }
 
 int load_daemon_config(struct daemon_conf *config)
@@ -425,5 +429,11 @@ static int details_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	return unsigned_int_parser(&(config->details), nv->value, line);
+}
+
+static int db_max_size_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config)
+{
+	return unsigned_int_parser(&(config->db_max_size), nv->value, line);
 }
 

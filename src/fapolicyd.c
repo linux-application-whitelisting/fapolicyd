@@ -361,7 +361,7 @@ int main(int argc, char *argv[])
 	init_event_system();
 
 	// Init the database
-	init_database();
+	init_database(&config);
 
 	// Init the file test libraries
 	file_init();

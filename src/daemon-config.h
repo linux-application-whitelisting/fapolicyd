@@ -34,6 +34,7 @@ struct daemon_conf
 	uid_t uid;
 	gid_t gid;
 	unsigned int details;
+	unsigned int db_max_size;
 };
 
 int load_daemon_config(struct daemon_conf *config);

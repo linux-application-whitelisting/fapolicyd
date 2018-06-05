@@ -20,21 +20,21 @@ const char *db = "trust.db";
 
 #define READ_DATA	0
 #define READ_TEST_KEY	1
-#define DATABASE_SIZE 240*1024*1024
+#define MEGABYTE	1024*1024
 #define DATA_FORMAT "%i %lu %s"
 
 
-static int init_db(void)
+static int init_db(struct daemon_conf *config)
 {
 	if (mdb_env_create(&env))
 		return 1;
 	if (mdb_env_set_maxdbs(env, 2))
 		return 1;
-	if (mdb_env_set_mapsize(env, DATABASE_SIZE))
+	if (mdb_env_set_mapsize(env, config->db_max_size*MEGABYTE))
 		return 1;
 	if (mdb_env_set_maxreaders(env, 4))
 		return 1;
-	if (mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0644))
+	if (mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0664))
 		return 1;
 	return 0;
 }
@@ -462,9 +462,9 @@ static int verify_database_entries(void)
  * it will verify it against the rpm database just in case something
  * has changed. If the database does not exist, then it will create one.
  */
-int init_database(void)
+int init_database(struct daemon_conf *config)
 {
-	if (init_db()) {
+	if (init_db(config)) {
 		msg(LOG_ERR, "Cannot open the database");
 		return 1;
 	}
