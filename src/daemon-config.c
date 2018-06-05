@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <grp.h>
 
 #define CONFIG_FILE "/etc/fapolicyd/fapolicyd.conf"
 
@@ -341,13 +342,58 @@ static int q_size_parser(struct nv_pair *nv, int line,
 static int uid_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
-	return unsigned_int_parser((unsigned *)&config->uid, nv->value, line);
+	uid_t uid = 0;
+	gid_t gid = 0;
+
+	if (isdigit(nv->value[0])) {
+		errno = 0;
+		uid = strtoul(nv->value, NULL, 10);
+		if (errno) {
+			msg(LOG_ERR,
+			"Error converting user value - line %d", line);
+			return 1;
+		}
+		gid = uid;
+	} else {
+		struct passwd *pw = getpwnam(nv->value);
+		if (pw == NULL) {
+			msg(LOG_ERR, "user %s is unknown - line %d",
+				nv->value, line);
+			return 1;
+		}
+		uid = pw->pw_uid;
+		gid = pw->pw_gid;
+	}
+	config->uid = uid;
+	config->gid = gid;
+	return 0;
 }
 
 static int gid_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
-	return unsigned_int_parser((unsigned *)&config->gid, nv->value, line);
+	gid_t gid = 0;
+
+	if (isdigit(nv->value[0])) {
+		errno = 0;
+		gid = strtoul(nv->value, NULL, 10);
+		if (errno) {
+			msg(LOG_ERR,
+			"Error converting group value - line %d", line);
+			return 1;
+		}
+	} else {
+		struct group *gr ;
+		gr = getgrnam(nv->value);
+		if (gr == NULL) {
+			msg(LOG_ERR, "group %s is unknown - line %d",
+					nv->value, line);
+			return 1;
+		}
+		gid = gr->gr_gid;
+	}
+	config->gid = gid;
+	return 0;
 }
 
 static int details_parser(struct nv_pair *nv, int line,
