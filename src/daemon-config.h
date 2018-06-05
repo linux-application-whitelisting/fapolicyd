@@ -33,8 +33,11 @@ struct daemon_conf
 	unsigned int q_size;
 	uid_t uid;
 	gid_t gid;
-	unsigned int details;
+	unsigned int do_stat_report;
+	unsigned int detailed_report;
 	unsigned int db_max_size;
+	unsigned int subj_cache_size;
+	unsigned int obj_cache_size;
 };
 
 int load_daemon_config(struct daemon_conf *config);

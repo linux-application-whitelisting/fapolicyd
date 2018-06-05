@@ -70,9 +70,15 @@ static int uid_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 static int gid_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int details_parser(struct nv_pair *nv, int line,
+static int detailed_report_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 static int db_max_size_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config);
+static int subj_cache_size_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config);
+static int obj_cache_size_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config);
+static int do_stat_report_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 
 static const struct kw_pair keywords[] = 
@@ -82,8 +88,11 @@ static const struct kw_pair keywords[] =
   {"q_size",		q_size_parser },
   {"uid",		uid_parser },
   {"gid",		gid_parser },
-  {"details",		details_parser },
+  {"detailed_report",	detailed_report_parser },
   {"db_max_size",	db_max_size_parser },
+  {"subj_cache_size",	subj_cache_size_parser },
+  {"obj_cache_size",	obj_cache_size_parser },
+  {"do_stat_report",	do_stat_report_parser },
   { NULL,		NULL }
 };
 
@@ -97,8 +106,11 @@ void clear_daemon_config(struct daemon_conf *config)
 	config->q_size = 1024;
 	config->uid = 0;
 	config->gid = 0;
-	config->details = 1;
+	config->do_stat_report = 1;
+	config->detailed_report = 1;
 	config->db_max_size = 100;
+	config->subj_cache_size = 1024;
+	config->obj_cache_size = 4096;
 }
 
 int load_daemon_config(struct daemon_conf *config)
@@ -360,7 +372,7 @@ static int q_size_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	int rc = unsigned_int_parser(&(config->q_size), nv->value, line);
-	if (rc == 0 && config->q_size >= 10480)
+	if (rc == 0 && config->q_size > 10480)
 		msg(LOG_WARNING,
 			"q_size might be unnecessarily large - line %d", line);
 	return rc;
@@ -425,15 +437,49 @@ static int gid_parser(struct nv_pair *nv, int line,
 	return 0;
 }
 
-static int details_parser(struct nv_pair *nv, int line,
+static int detailed_report_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
-	return unsigned_int_parser(&(config->details), nv->value, line);
+	return unsigned_int_parser(&(config->detailed_report), nv->value, line);
 }
 
 static int db_max_size_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	return unsigned_int_parser(&(config->db_max_size), nv->value, line);
+}
+
+static int subj_cache_size_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config)
+{
+	int rc=unsigned_int_parser(&(config->subj_cache_size), nv->value, line);
+	if (rc == 0 && config->subj_cache_size > 16384)
+		msg(LOG_WARNING,
+		    "subj_cache_size might be unnecessarily large - line %d",
+			 line);
+	return rc;
+}
+
+static int obj_cache_size_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config)
+{
+	int rc=unsigned_int_parser(&(config->obj_cache_size), nv->value, line);
+	if (rc == 0 && config->obj_cache_size > 32768)
+		msg(LOG_WARNING,
+		    "obj_cache_size might be unnecessarily large - line %d",
+			line);
+	return rc;
+}
+
+static int do_stat_report_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config)
+{
+	int rc=unsigned_int_parser(&(config->do_stat_report), nv->value, line);
+	if (rc == 0 && config->do_stat_report > 2) {
+		msg(LOG_WARNING,
+			"do_stat_report value reset to 1 - line %d", line);
+		config->do_stat_report = 1;
+	}
+	return rc;
 }
 

@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 				endgrent();
 			}
 		} else if (strcmp(argv[i], "--no-details") == 0) {
-			config.details = 0;
+			config.detailed_report = 0;
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
 			usage();
@@ -358,7 +358,7 @@ int main(int argc, char *argv[])
 	install_syscall_filter();
 
 	// Setup lru caches
-	init_event_system();
+	init_event_system(&config);
 
 	// Init the database
 	init_database(&config);
@@ -407,7 +407,8 @@ int main(int argc, char *argv[])
 	if (f == NULL)
 		msg(LOG_WARNING, "Cannot create usage report");
 	decision_report(f);
-	run_usage_report(&config, f);
+	if (config.do_stat_report)
+		run_usage_report(&config, f);
 	if (f)
 		fclose(f);
 	destroy_event_system();

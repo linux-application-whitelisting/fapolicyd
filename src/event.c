@@ -38,13 +38,13 @@ static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 
 // Return 0 on success and 1 on error
-int init_event_system(void)
+int init_event_system(struct daemon_conf *config)
 {
-	subj_cache = init_lru(1024, subject_clear, "Subject");
+	subj_cache=init_lru(config->subj_cache_size, subject_clear, "Subject");
 	if (!subj_cache)
 		return 1;
 
-	obj_cache = init_lru(4096, object_clear, "Object");
+	obj_cache = init_lru(config->obj_cache_size, object_clear, "Object");
 	if (!obj_cache)
 		return 1;
 
@@ -324,7 +324,7 @@ void run_usage_report(struct daemon_conf *config, FILE *f)
 	if (f == NULL)
 		return;
 
-	if (config->details) {
+	if (config->detailed_report) {
 		t = time(NULL);
 		fprintf(f, "File access attempts from oldest to newest as of %s\n", ctime(&t));
 		fprintf(f, "\tFILE\t\t\t\t\t\t    ATTEMPTS\n");
@@ -361,7 +361,7 @@ void run_usage_report(struct daemon_conf *config, FILE *f)
 	print_queue_stats(f, obj_cache);
 	fprintf(f, "\n\n");
 
-	if (config->details) {
+	if (config->detailed_report) {
 		fprintf(f, "Active processes oldest to most recently active as of %s\n", ctime(&t));
 		fprintf(f, "\tEXE\tCOMM\t\t\t\t\t    ATTEMPTS\n");
 		fprintf(f, "---------------------------------------------------------------------------\n");

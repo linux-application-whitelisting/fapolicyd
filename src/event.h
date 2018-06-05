@@ -40,7 +40,7 @@ typedef struct ev {
 	o_array *o;
 } event_t;
 
-int init_event_system(void);
+int init_event_system(struct daemon_conf *config);
 void destroy_event_system(void);
 int new_event(const struct fanotify_event_metadata *m, event_t *e);
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);
