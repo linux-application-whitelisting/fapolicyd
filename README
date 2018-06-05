@@ -11,6 +11,7 @@ file-devel
 systemd-devel
 libcap-ng-devel
 libseccomp-devel
+lmdb-devel
 
 BUILDING
 ========
