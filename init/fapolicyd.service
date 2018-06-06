@@ -7,12 +7,7 @@ After=local-fs.target systemd-tmpfiles-setup.service
 Type=forking
 PIDFile=/var/run/fapolicyd.pid
 Restart=on-abnormal
-ExecStart=/usr/sbin/fapolicyd --permissive --user fapolicyd
-
-### Security Settings ###
-MemoryDenyWriteExecute=true
-ProtectControlGroups=true
-ProtectKernelTunables=true
+ExecStart=/usr/sbin/fapolicyd
 
 [Install]
 WantedBy=multi-user.target

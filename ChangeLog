@@ -1,5 +1,4 @@
 0.8.6
-- Add some systemd process protections
 - Update object hash calculation to better determine uniqueness
 - Override rpm's signal handling
 - Use private database as trust store
