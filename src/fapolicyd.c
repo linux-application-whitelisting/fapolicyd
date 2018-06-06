@@ -403,14 +403,18 @@ int main(int argc, char *argv[])
 		unlink(pidfile);
 	// Reinstate the strict umask in case rpm messed with it
 	(void) umask( 0237 );
-	FILE *f = fopen(REPORT, "w");
-	if (f == NULL)
-		msg(LOG_WARNING, "Cannot create usage report");
-	decision_report(f);
-	if (config.do_stat_report)
+	if (config.do_stat_report) {
+		FILE *f = fopen(REPORT, "w");
+		if (f == NULL)
+			msg(LOG_WARNING, "Cannot create usage report");
+		fprintf(f, "Permissive: %s\n",
+					config.permissive ? "true" : "false");
+		fprintf(f, "q_size: %lu\n", config.q_size);
+		decision_report(f);
 		run_usage_report(&config, f);
-	if (f)
-		fclose(f);
+		if (f)
+			fclose(f);
+	}
 	destroy_event_system();
 	destroy_config();
 	free_daemon_config(&config);

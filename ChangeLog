@@ -7,6 +7,7 @@
 - Remove unneeded rpm code
 - Add support for daemon config file
 - Allow database size to be configurable
+- Add permissive setting and q_size to usage report
 
 0.8.5
 - Update spec file and license info
