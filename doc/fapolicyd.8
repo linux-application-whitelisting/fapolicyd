@@ -1,4 +1,4 @@
-.TH "FAPOLICYD" "8" "May 2016" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD" "8" "June 2018" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd \- File Access Policy Daemon
 .SH SYNOPSIS
@@ -38,7 +38,13 @@ run using a particular group rather than root. This may either be numeric or a u
 SIGTERM
 caused fapolicyd to discontinue processing events and exit.
 
+.SH NOTES
+To get audit events, you must have auditing enabled and at least one systemcall rule loaded. Otherwise you will not get any events.
+
 .SH FILES
+.B /etc/fapolicyd/fapolicyd.conf
+- daemon configuration
+.P
 .B /etc/fapolicyd/fapolicyd.rules
 - access control rules
 .P
