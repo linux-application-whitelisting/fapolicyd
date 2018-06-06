@@ -153,7 +153,8 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			const char *file = on->o;
 			if (pinfo->path1 == NULL) {
 				pinfo->path1 = strdup(file);
-				pinfo->elf_info = gather_elf(e->fd);
+				pinfo->elf_info = gather_elf(e->fd,
+							e->o->info->size);
 			} else if (pinfo->path2 == NULL) {
 				pinfo->path2 = strdup(file);
 				pinfo->state = STATE_PARTIAL;

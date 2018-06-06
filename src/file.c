@@ -332,8 +332,9 @@ static int read_preliminary_header(int fd)
 static Elf32_Ehdr *read_header32(int fd)
 {
 	Elf32_Ehdr *ptr = malloc(sizeof(Elf32_Ehdr));
-	strcpy(ptr->e_ident, e_ident);
-	ssize_t rc = safe_read(fd, (char *)&(ptr->e_type), sizeof(Elf32_Ehdr) - EI_NIDENT);
+	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
+	ssize_t rc = safe_read(fd, (char *)&(ptr->e_type),
+				sizeof(Elf32_Ehdr) - EI_NIDENT);
 	if (rc == (sizeof(Elf32_Ehdr) - EI_NIDENT))
 		return ptr;
 	free(ptr);
@@ -343,7 +344,7 @@ static Elf32_Ehdr *read_header32(int fd)
 static Elf64_Ehdr *read_header64(int fd)
 {
 	Elf64_Ehdr *ptr = malloc(sizeof(Elf64_Ehdr));
-	strcpy(ptr->e_ident, e_ident);
+	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
 	ssize_t rc = safe_read(fd, (char *)&(ptr->e_type),
 				sizeof(Elf64_Ehdr) - EI_NIDENT);
 	if (rc == (sizeof(Elf64_Ehdr) - EI_NIDENT))
@@ -352,7 +353,8 @@ static Elf64_Ehdr *read_header64(int fd)
 	return NULL;
 }
 
-uint32_t gather_elf(int fd)
+// size is the file size from fstat done when event was received
+uint32_t gather_elf(int fd, off_t size)
 {
 	//struct elf_info *e;
 	uint32_t info = 0;
@@ -367,17 +369,24 @@ uint32_t gather_elf(int fd)
 		return 0;
 	e->first_lib = NULL; */
 	info |= IS_ELF;
-	if (e_ident[4] == 1) {
+	if (e_ident[EI_CLASS] == ELFCLASS32) {
 		unsigned i;
 		Elf32_Phdr *ph_tbl = NULL;
 		
 		Elf32_Ehdr *hdr = read_header32(fd);
-		if (hdr == NULL)
-			return 0;
+		if (hdr == NULL) {
+			info |= HAS_ERROR;
+			return info;
+		}
 
 		// Look for program header information
-		// FIXME: Should there be a size check?
-		ph_tbl = malloc(hdr->e_phentsize * hdr->e_phnum);
+		// We want to do a basic size check to make sure
+		off_t sz = hdr->e_phentsize * hdr->e_phnum;
+		if (sz > size) {
+			info |= HAS_ERROR;
+			return info;
+		}
+		ph_tbl = malloc(sz);
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
 			goto err_out32;
@@ -442,17 +451,24 @@ err_out32:
 done32:
 		free(ph_tbl);
 		free(hdr);
-	} else if (e_ident[4] == 2) {
+	} else if (e_ident[EI_CLASS] == ELFCLASS64) {
 		unsigned i;
 		Elf64_Phdr *ph_tbl;
 		
 		Elf64_Ehdr *hdr = read_header64(fd);
-		if (hdr == NULL)
-			return 0;
+		if (hdr == NULL) {
+			info |= HAS_ERROR;
+			return info;
+		}
 
 		// Look for program header information
-		// FIXME: Should there be a size check?
-		ph_tbl = malloc(hdr->e_phentsize * hdr->e_phnum);
+		// We want to do a basic size check to make sure
+		off_t sz = hdr->e_phentsize * hdr->e_phnum;
+		if (sz > size) {
+			info |= HAS_ERROR;
+			return info;
+		}
+		ph_tbl = malloc(sz);
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
 			goto err_out64;

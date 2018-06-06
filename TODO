@@ -13,6 +13,7 @@ Handle dnf & rpm updates including updating the database
 Add admin defined whitelist of dirs or files
 Add sighup handler
 Add ability to detect bad interpreter
+Handle HAS_ERROR in elf pattern processing
 Add file verification scrubber and update database status
 Use the verified status in decisions
 Support execute events for better subj cache utilization
