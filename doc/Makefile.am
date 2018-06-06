@@ -1,5 +1,5 @@
 # Makefile.am --
-# Copyright 2016 Red Hat Inc., Durham, North Carolina.
+# Copyright 2016,2018 Red Hat Inc., Durham, North Carolina.
 # All Rights Reserved.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -22,5 +22,5 @@
 
 EXTRA_DIST = $(man_MANS)
 
-man_MANS = fapolicyd.8 fapolicyd.rules.5
+man_MANS = fapolicyd.8 fapolicyd.rules.5 fapolicyd.conf.5
 
