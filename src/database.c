@@ -344,6 +344,7 @@ static void close_rpm(void)
 
 static int create_database(void)
 {
+	msg(LOG_INFO, "Creating database");
 	if (init_rpm()) {
 		msg(LOG_ERR, "Cannot open the rpm database");
 		return 1;
@@ -399,6 +400,7 @@ out:
 static int check_database_copy(void)
 {
 	int problems = 0;
+	msg(LOG_INFO, "Checking database");
 	if (init_rpm()) {
 		msg(LOG_ERR, "Cannot open the rpm database");
 		return 1;
