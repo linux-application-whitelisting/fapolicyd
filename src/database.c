@@ -319,6 +319,13 @@ static char *get_sha256_rpm(void)
 	return rpmfiFDigestHex(fi, NULL);
 }
 
+static int is_dir_rpm(void)
+{
+	mode_t mode = rpmfiFMode(fi);
+	if (S_ISDIR(mode))
+		return 1;
+	return 0;
+}
 static void close_rpm(void)
 {
 	rpmfiFree(fi);
@@ -346,6 +353,12 @@ static int create_database(void)
 	while (get_next_package_rpm()) {
 		// Loop across the packages
 		while (get_next_file_rpm()) {
+			// We do not want directories in the database
+			// Multiple packages can own the same directory
+			// and that causes problems in the size info.
+			if (is_dir_rpm())
+				continue;
+
 			// Get specific file information
 			const char *file_name = get_file_name_rpm();
 			off_t sz = get_file_size_rpm();
@@ -397,6 +410,10 @@ static int check_database_copy(void)
 	while (get_next_package_rpm()) {
 		// Loop across the packages
 		while (get_next_file_rpm()) {
+			// Directories are not being kept, skip them.
+			if (is_dir_rpm())
+				continue;
+
 			// Get specific file information
 			const char *file_name = get_file_name_rpm();
 			off_t sz = get_file_size_rpm();

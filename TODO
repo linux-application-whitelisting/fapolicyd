@@ -5,7 +5,6 @@ Hand userspace a fstat buf for object with event
 
 Userspace
 =========
-Find where miscompares of database is coming from
 Does reversing path string improve lookup performance?
 Handle long paths by hashing it (lmdb has 511 byte limit) (Which hash to use?)
 During startup, update database with current trust sources
