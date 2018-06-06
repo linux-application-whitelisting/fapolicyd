@@ -408,14 +408,15 @@ int main(int argc, char *argv[])
 		FILE *f = fopen(REPORT, "w");
 		if (f == NULL)
 			msg(LOG_WARNING, "Cannot create usage report");
-		fprintf(f, "Permissive: %s\n",
+		else {
+			fprintf(f, "Permissive: %s\n",
 					config.permissive ? "true" : "false");
-		fprintf(f, "q_size: %u\n", config.q_size);
-		q_report(f);
-		decision_report(f);
-		run_usage_report(&config, f);
-		if (f)
+			fprintf(f, "q_size: %u\n", config.q_size);
+			q_report(f);
+			decision_report(f);
+			run_usage_report(&config, f);
 			fclose(f);
+		}
 	}
 	destroy_event_system();
 	destroy_config();

@@ -381,12 +381,18 @@ uint32_t gather_elf(int fd, off_t size)
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		off_t sz = hdr->e_phentsize * hdr->e_phnum;
+		unsigned long sz = hdr->e_phentsize * hdr->e_phnum;
 		if (sz > size) {
 			info |= HAS_ERROR;
+			free(hdr);
 			return info;
 		}
 		ph_tbl = malloc(sz);
+		if (ph_tbl == NULL) {
+			info |= HAS_ERROR;
+			free(hdr);
+			return info;
+		}
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
 			goto err_out32;
@@ -463,12 +469,18 @@ done32:
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		off_t sz = hdr->e_phentsize * hdr->e_phnum;
+		unsigned long sz = hdr->e_phentsize * hdr->e_phnum;
 		if (sz > size) {
 			info |= HAS_ERROR;
+			free(hdr);
 			return info;
 		}
 		ph_tbl = malloc(sz);
+		if (ph_tbl == NULL) {
+			info |= HAS_ERROR;
+			free(hdr);
+			return info;
+		}
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
 			goto err_out64;
