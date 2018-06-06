@@ -1,5 +1,5 @@
 /* queue.h -- a queue abstraction
- * Copyright 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 #ifndef QUEUE_HEADER
 #define QUEUE_HEADER
 
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>
 
@@ -45,6 +46,9 @@ struct queue *q_open(size_t num_entries);
 
 /* Close Q. */
 void q_close(struct queue *q);
+
+/* Write out q_depth */
+void q_report(FILE *f);
 
 /* Add DATA to tail of Q. Return 0 on success, -1 on error and set errno. */
 int q_append(struct queue *q, const struct fanotify_event_metadata *data);

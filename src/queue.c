@@ -1,5 +1,5 @@
 /* queue.c - a simple queue implementation
- * Copyright 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -83,6 +83,7 @@ err:
 	return NULL;
 }
 
+static unsigned int max_depth;
 void q_close(struct queue *q)
 {
 	if (q->memory != NULL) {
@@ -93,7 +94,13 @@ void q_close(struct queue *q)
 		free(q->memory);
 	}
 	msg(LOG_DEBUG, "Inter-thread max queue depth %u", q->max_depth);
+	max_depth = q->max_depth;
 	free(q);
+}
+
+void q_report(FILE *f)
+{
+	fprintf(f, "Inter-thread max queue depth %u", max_depth);
 }
 
 /* add DATA to Q */

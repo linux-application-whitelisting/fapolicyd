@@ -47,6 +47,7 @@
 #include "database.h"
 #include "message.h"
 #include "daemon-config.h"
+#include "queue.h"
 
 
 // Global program variables
@@ -409,7 +410,8 @@ int main(int argc, char *argv[])
 			msg(LOG_WARNING, "Cannot create usage report");
 		fprintf(f, "Permissive: %s\n",
 					config.permissive ? "true" : "false");
-		fprintf(f, "q_size: %lu\n", config.q_size);
+		fprintf(f, "q_size: %u\n", config.q_size);
+		q_report(f);
 		decision_report(f);
 		run_usage_report(&config, f);
 		if (f)
