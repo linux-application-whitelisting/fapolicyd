@@ -381,7 +381,8 @@ uint32_t gather_elf(int fd, off_t size)
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		unsigned long sz = hdr->e_phentsize * hdr->e_phnum;
+		unsigned long sz = 
+			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
 		if (sz > size) {
 			info |= HAS_ERROR;
 			free(hdr);
@@ -399,8 +400,8 @@ uint32_t gather_elf(int fd, off_t size)
 
 		// Read in complete table
 		if ((unsigned int)safe_read(fd, (char *)ph_tbl,
-					hdr->e_phentsize * hdr->e_phnum) !=
-					hdr->e_phentsize * hdr->e_phnum)
+			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum) !=
+			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum)
 			goto err_out32;
 
 		// Check for rpath record
@@ -469,7 +470,8 @@ done32:
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		unsigned long sz = hdr->e_phentsize * hdr->e_phnum;
+		unsigned long sz = 
+			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
 		if (sz > size) {
 			info |= HAS_ERROR;
 			free(hdr);
@@ -487,8 +489,8 @@ done32:
 
 		// Read in complete table
 		if ((unsigned int)safe_read(fd, (char *)ph_tbl,
-					hdr->e_phentsize * hdr->e_phnum) !=
-					hdr->e_phentsize * hdr->e_phnum)
+			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum) !=
+			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum)
 			goto err_out64;
 
 		// Check for rpath record
