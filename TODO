@@ -5,6 +5,7 @@ Hand userspace fstat results for object with event (currently get a fd)
 
 Userspace
 =========
+/bin is symlink to /usr/bin, /usr/bin is detected. rpm says /bin. reconcile.
 Does reversing path string improve lookup performance?
 Handle long paths by hashing it (lmdb has 511 byte limit) (Which hash to use?)
 During startup, update database with current trust sources
