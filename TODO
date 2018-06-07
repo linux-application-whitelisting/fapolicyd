@@ -1,7 +1,7 @@
 Kernel
 ======
-Add EXECVE, EXECVE_PERM 
-Hand userspace a fstat buf for object with event
+Add EXECVE, EXECVE_PERM fanotify options 
+Hand userspace fstat results for object with event (currently get a fd)
 
 Userspace
 =========
