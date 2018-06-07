@@ -40,11 +40,13 @@ static Queue *obj_cache = NULL;
 // Return 0 on success and 1 on error
 int init_event_system(struct daemon_conf *config)
 {
-	subj_cache=init_lru(config->subj_cache_size, subject_clear, "Subject");
+	subj_cache=init_lru(config->subj_cache_size,
+				(void (*)(void *))subject_clear, "Subject");
 	if (!subj_cache)
 		return 1;
 
-	obj_cache = init_lru(config->obj_cache_size, object_clear, "Object");
+	obj_cache = init_lru(config->obj_cache_size,
+				(void (*)(void *))object_clear, "Object");
 	if (!obj_cache)
 		return 1;
 
