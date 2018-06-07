@@ -383,7 +383,7 @@ uint32_t gather_elf(int fd, off_t size)
 		// We want to do a basic size check to make sure
 		unsigned long sz = 
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
-		if (sz > size) {
+		if (sz > (unsigned long)size) {
 			info |= HAS_ERROR;
 			free(hdr);
 			return info;
@@ -472,7 +472,7 @@ done32:
 		// We want to do a basic size check to make sure
 		unsigned long sz = 
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
-		if (sz > size) {
+		if (sz > (unsigned long)size) {
 			info |= HAS_ERROR;
 			free(hdr);
 			return info;
