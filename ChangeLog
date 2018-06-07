@@ -1,3 +1,5 @@
+0.8.7
+
 0.8.6
 - Update object hash calculation to better determine uniqueness
 - Override rpm's signal handling
