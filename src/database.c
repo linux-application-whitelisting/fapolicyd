@@ -3,6 +3,7 @@
 #include <lmdb.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <rpm/rpmlib.h>
 #include <rpm/rpmts.h>
 #include <rpm/rpmmacro.h>
@@ -17,12 +18,25 @@ static MDB_dbi dbi;
 static int dbi_init = 0;
 const char *data_dir = "/var/lib/fapolicyd";
 const char *db = "trust.db";
+static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 
 #define READ_DATA	0
 #define READ_TEST_KEY	1
 #define MEGABYTE	1024*1024
 #define DATA_FORMAT "%i %lu %s"
 
+static int is_link(const char *path)
+{
+	int rc;
+	struct stat sb;
+
+	rc = lstat(path, &sb);
+	if (rc == 0) {
+		if (S_ISLNK(sb.st_mode))
+			return 1;
+	}
+	return 0;
+}
 
 static int init_db(struct daemon_conf *config)
 {
@@ -36,6 +50,12 @@ static int init_db(struct daemon_conf *config)
 		return 1;
 	if (mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0664))
 		return 1;
+
+	lib_symlink = is_link("/lib");
+	lib64_symlink = is_link("/lib64");
+	bin_symlink = is_link("/bin");
+	sbin_symlink = is_link("/sbin");
+
 	return 0;
 }
 
@@ -508,6 +528,26 @@ int check_trust_database(const char *path)
 
 	if (lt_read_db(path, READ_TEST_KEY))
 		rc = 1;
+	else if (lib64_symlink || lib_symlink || bin_symlink || sbin_symlink) {
+		// If we are on a system that symlinks the top level
+		// directories to /usr, then let's try again without the /usr
+		// dir. There shouldn't be many packages that have this
+		// problem. These are sorted from most likely to least.
+		if (strncmp(path, "/usr/", 5) == 0) {
+			if ((lib64_symlink &&
+				 strncmp(&path[5], "lib64/", 6) == 0) || 
+				(lib_symlink &&
+					strncmp(&path[5], "lib/", 4) == 0) ||
+				(bin_symlink &&
+					strncmp(&path[5], "bin/", 4) == 0) ||
+				(sbin_symlink &&
+					strncmp(&path[5], "sbin/", 5) == 0)) {
+				// We h
+				if (lt_read_db(&path[4], READ_TEST_KEY))
+					rc = 1;
+			}
+		}
+	}
 
 	end_long_term_read_ops();
 	return rc;

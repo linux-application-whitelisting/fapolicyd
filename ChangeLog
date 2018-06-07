@@ -1,4 +1,5 @@
 0.8.7
+- If the path has a top level symlinked dir, retry db lookup without /usr
 
 0.8.6
 - Update object hash calculation to better determine uniqueness
