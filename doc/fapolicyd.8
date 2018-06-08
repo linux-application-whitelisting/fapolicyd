@@ -23,7 +23,7 @@ leave the daemon in the foreground for debugging. Event information is written t
 the daemon will allow file access regardless of the policy decision. This is useful for debugging rules before making them permanent.
 .TP
 .B \-\-boost\ NN
-increase the daemon's scheduling priority by this much. The number should be positive and less than 20. The default boost is 10.
+increase the daemon's scheduling priority by this much. The number should be positive and less than or equal to 20. The default boost is 10.
 .TP
 .B \-\-queue\ NNNN
 the internal queue of pending decisions is set by this number. It should be a positive number. The default size is 1024.
