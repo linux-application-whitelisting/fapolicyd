@@ -212,7 +212,7 @@ int main(int argc, char *argv[])
 			permissive = 1;
 		} else if (strcmp(argv[i], "--boost") == 0) {
 			i++;
-			if (i == argc || !isdigit(argv[i])) {
+			if (i == argc || !isdigit(*argv[i])) {
 				msg(LOG_ERR, "boost takes a numeric argument");
 				exit(1);
 			}
@@ -222,19 +222,20 @@ int main(int argc, char *argv[])
 				msg(LOG_ERR, "Error converting boost value");
 				exit(1);
 			}
-			if (config.nice_val >= 20) {
+			if (config.nice_val > 20) {
 				msg(LOG_ERR,
-					"boost value must be less that 20");
+					"boost value must be less than or"
+					" equal to 20");
 				exit(1);
 			}
 		} else if (strcmp(argv[i], "--queue") == 0) {
 			i++;
-			if (i == argc || !isdigit(argv[i])) {
+			if (i == argc || !isdigit(*argv[i])) {
 				msg(LOG_ERR, "queue takes a numeric argument");
 				exit(1);
 			}
 			errno = 0;
-			config.q_size = strtol(argv[i], NULL, 10);
+			config.q_size = strtoul(argv[i], NULL, 10);
 			if (errno) {
 				msg(LOG_ERR, "Error converting queue value");
 				exit(1);
@@ -251,16 +252,26 @@ int main(int argc, char *argv[])
 			}
 			if (isdigit(*argv[i])) {
 				errno = 0;
-				config.uid = strtol(argv[i], NULL, 10);
+				struct passwd *pw;
+				
+				config.uid = strtoul(argv[i], NULL, 10);
+				
 				if (errno) {
 					msg(LOG_ERR,
 						"Error converting user value");
 					exit(1);
 				}
-				// FIXME: This is wrong until specified
-				// on the command line. But less wrong than
-				// leaving as root
-				config.gid = config.uid;
+
+				pw = getpwuid(config.uid);
+
+				if (pw == NULL) {
+					msg(LOG_ERR, "user entry with uid %d"
+						" not found", config.uid);
+					exit(1);
+				}
+
+				config.gid = pw->pw_gid;
+				endpwent();
 			} else {
 				struct passwd *pw = getpwnam(argv[i]);
 				if (pw == NULL) {
@@ -280,7 +291,7 @@ int main(int argc, char *argv[])
 			}
 			if (isdigit(*argv[i])) {
 				errno = 0;
-				config.gid = strtol(argv[i], NULL, 10);
+				config.gid = strtoul(argv[i], NULL, 10);
 				if (errno) {
 					msg(LOG_ERR,
 						"Error converting group value");
