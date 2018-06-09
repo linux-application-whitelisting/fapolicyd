@@ -107,53 +107,55 @@ static char *get_line(FILE *f, char *buf, int size)
 
 int load_mounts(void)
 {
-	int fd, lineno = 1;
 	FILE *f;
+	int lineno = 1;
 	char buf[PATH_MAX+1];
 
 	mounts_create(&mounts);
 
-	// Now open the file and load them one by one.
-	fd = open(MOUNTS_CONFIG_FILE, O_NOFOLLOW|O_RDONLY);
-	if (fd < 0) {
-		msg(LOG_ERR, "Error opening mounts (%s)",
-			strerror(errno));
-		exit(1);
-	}
-
-	f = fdopen(fd, "r");
+	f = fopen(MOUNTS_CONFIG_FILE, "r");
+	
 	if (f == NULL) {
-		msg(LOG_ERR, "Error - fdopen failed (%s)",
-			strerror(errno));
-		exit(1);
+		msg(LOG_ERR, "Error while opening (%s)", strerror(errno));
+		return 1;
 	}
 
 	while (get_line(f, buf, PATH_MAX)) {
-		if (buf[0] != '#') {
+		if (buf[0] != '#') { 
 			char *ptr = buf;
+
 			while (*ptr == ' ')
 				ptr++;
-			if (*ptr != 0) {
+
+			if (*ptr == '/') {
 				struct stat sb;
 
-				if (stat(ptr, &sb) == 0) {
-					if (!S_ISDIR(sb.st_mode)) {
-						msg(LOG_ERR,
-				    "mount point %s is not a directory", ptr);
-						exit(1);
-					}
+				if (stat(ptr, &sb) == -1) {
+					msg(LOG_ERR, "Cannot stat %s: %s", 
+						ptr, strerror(errno));
+					return 1;	
 				}
+
+				if (!S_ISDIR(sb.st_mode)) {
+					msg(LOG_ERR, "Mount point %s is not a"
+						" directory", ptr);
+					return 1;	
+				}
+
 				mounts_append(&mounts, ptr, lineno);
 			}
 		}
+
 		lineno++;
 	}
+
 	fclose(f);
 
 	if (mounts.cnt == 0) { 
 		msg(LOG_INFO, "No mount points - exiting");
 		return 1;
 	}
+
 	return 0;
 }
 
