@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <limits.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -162,6 +163,7 @@ int load_mounts(void)
 	}
 
 	fclose(f);
+	close(fd);
 
 	/* Only return true if no mounts found in configuration file */
 	if (mounts.cnt == 0) { 
