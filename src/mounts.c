@@ -131,29 +131,44 @@ int load_mounts(void)
 	while (get_line(f, buf, PATH_MAX)) {
 		if (buf[0] != '#') {
 			char *ptr = buf;
+
 			while (*ptr == ' ')
 				ptr++;
-			if (*ptr != 0) {
+
+			/* Only proceed if it appears to be an absolute path */
+			if (*ptr == '/') {
 				struct stat sb;
 
-				if (stat(ptr, &sb) == 0) {
-					if (!S_ISDIR(sb.st_mode)) {
-						msg(LOG_ERR,
-				    "mount point %s is not a directory", ptr);
-						exit(1);
-					}
+				if (stat(ptr, &sb) == -1) {
+					msg(LOG_INFO, "Invalid entry \"%s\". "
+						"Failed to stat object, %s."
+						" Skipping", ptr, 
+						strerror(errno));
+					continue; /* Don't return to caller */
 				}
+
+				if (!S_ISDIR(sb.st_mode)) {
+					msg(LOG_INFO, "Invalid entry \"%s\". "
+						"Is not directory. Skipping",
+						 ptr);
+					continue; /* Don't return to caller */
+				}
+
 				mounts_append(&mounts, ptr, lineno);
 			}
 		}
+
 		lineno++;
 	}
+
 	fclose(f);
 
+	/* Only return true if no mounts found in configuration file */
 	if (mounts.cnt == 0) { 
 		msg(LOG_INFO, "No mount points - exiting");
 		return 1;
 	}
+
 	return 0;
 }
 
