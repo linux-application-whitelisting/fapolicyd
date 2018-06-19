@@ -46,11 +46,11 @@ struct cache { dev_t device; const char *devname; };
 struct cache c = { 0, NULL };
 
 static const char *interpreters[] = {
-	"/lib/ld.so.2",
-	"/lib/ld-linux.so.1",
+	"/lib64/ld-linux-x86-64.so.2",
+	"/usr/lib64/ld-linux-x86-64.so.2",
 	"/lib/ld-linux.so.2",
-	"/lib64/ld-linux-x86-64.so.1",
-	"/lib64/ld-linux-x86-64.so.2"
+	"/usr/lib/ld-linux.so.2",
+	"/lib/ld.so.2"
 };
 
 // Initialize what we can now so that its not done each call
@@ -385,7 +385,6 @@ check_interpreter(const char *interp)
 uint32_t gather_elf(int fd, off_t size)
 {
 	//struct elf_info *e;
-	char *interp;
 	uint32_t info = 0;
 
 	if (read_preliminary_header(fd))
@@ -441,30 +440,29 @@ uint32_t gather_elf(int fd, off_t size)
 
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
+				uint8_t len;
+				char interp[23];
 				uint32_t filesz = ph_tbl[i].p_filesz;
 				uint32_t offset = ph_tbl[i].p_offset;
 
-				interp = malloc(sizeof(char) * filesz);
-
-				if (interp == NULL) goto err_out64;
-
 				if ((unsigned int) lseek(fd, offset, SEEK_SET)
 								!= offset) {
-					free(interp);
-					goto err_out64;
+					goto err_out32;
 				}
 
+				len = (filesz < 23 ? filesz : 23);
+
 				if ((unsigned int) safe_read(fd, (char *)
-						interp, filesz) != filesz) {
-					free(interp);
-					goto err_out64;
+						interp, len) != len) {
+					goto err_out32;
 				}
+
+				// Explictly terminate the string
+				interp[len - 1] = '\0';
 
 				// Perform ELF interpreter validation
 				if (check_interpreter(interp))
 					info |= HAS_BAD_INTERP;
-
-				free(interp);
 			}
 
 			if (ph_tbl[i].p_type == PT_DYNAMIC) {
@@ -559,30 +557,28 @@ done32:
 
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
+				uint8_t len;
+				char interp[33];
 				uint64_t filesz = ph_tbl[i].p_filesz;
 				uint64_t offset = ph_tbl[i].p_offset;
 
-				interp = malloc(sizeof(char) * filesz);
-
-				if (interp == NULL) goto err_out64;
-
 				if ((unsigned int) lseek(fd, offset, SEEK_SET)
 								!= offset) {
-					free(interp);
 					goto err_out64;
 				}
 
+				len = (filesz < 33 ? filesz : 33);
+
 				if ((unsigned int) safe_read(fd, (char *)
-						interp, filesz) != filesz) {
-					free(interp);
+						interp, len) != len) {
 					goto err_out64;
 				}
+
+				interp[len - 1] = '\0';
 
 				// Perform ELF interpreter validation
 				if (check_interpreter(interp))
 					info |= HAS_BAD_INTERP;
-
-				free(interp);
 			}
 
 			if (ph_tbl[i].p_type == PT_DYNAMIC) {
