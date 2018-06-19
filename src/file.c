@@ -47,11 +47,12 @@ struct cache c = { 0, NULL };
 
 static const char *interpreters[] = {
 	"/lib64/ld-linux-x86-64.so.2",
-	"/usr/lib64/ld-linux-x86-64.so.2",
 	"/lib/ld-linux.so.2",
+	"/usr/lib64/ld-linux-x86-64.so.2",
 	"/usr/lib/ld-linux.so.2",
-	"/lib/ld.so.2"
+	"/lib/ld.so.2",
 };
+#define MAX_INTERPS (sizeof(interpreters)/sizeof(interpreters[0]))
 
 // Initialize what we can now so that its not done each call
 void file_init(void)
@@ -365,17 +366,13 @@ static Elf64_Ehdr *read_header64(int fd)
  * Check interpreter provided as an argument obtained from the ELF against
  * known fixed locations in the file hierarchy.
  */
-static int
-check_interpreter(const char *interp)
+static int check_interpreter(const char *interp)
 {
-	int res;
-	size_t i, len;
+	unsigned i;
 
-	len = *(&interpreters + 1) - interpreters;
-	for (i = 0; i < len; i++) {
-		res = strcmp(interp, interpreters[i]);
-
-		if (res == 0) return 0;
+	for (i = 0; i < MAX_INTERPS; i++) {
+		if (strcmp(interp, interpreters[i]) == 0)
+			return 0;
 	}
 
 	return 1;
