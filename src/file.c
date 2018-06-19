@@ -45,6 +45,14 @@ magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
 struct cache c = { 0, NULL };
 
+static const char *interpreters[] = {
+	"/lib64/ld-linux-x86-64.so.2",
+	"/usr/lib64/ld-linux-x86-64.so.2",
+	"/lib/ld-linux.so.2",
+	"/usr/lib/ld-linux.so.2",
+	"/lib/ld.so.2"
+};
+
 // Initialize what we can now so that its not done each call
 void file_init(void)
 {
@@ -353,11 +361,32 @@ static Elf64_Ehdr *read_header64(int fd)
 	return NULL;
 }
 
+/**
+ * Check interpreter provided as an argument obtained from the ELF against
+ * known fixed locations in the file hierarchy.
+ */
+static int
+check_interpreter(const char *interp)
+{
+	int res;
+	size_t i, len;
+
+	len = *(&interpreters + 1) - interpreters;
+	for (i = 0; i < len; i++) {
+		res = strcmp(interp, interpreters[i]);
+
+		if (res == 0) return 0;
+	}
+
+	return 1;
+}
+
 // size is the file size from fstat done when event was received
 uint32_t gather_elf(int fd, off_t size)
 {
 	//struct elf_info *e;
 	uint32_t info = 0;
+
 	if (read_preliminary_header(fd))
 		return 0;
 
@@ -408,7 +437,35 @@ uint32_t gather_elf(int fd, off_t size)
 		for (i = 0; i < hdr->e_phnum; i++) {
 			if (ph_tbl[i].p_type == PT_LOAD)
 				info |= HAS_LOAD;
-			else if (ph_tbl[i].p_type == PT_DYNAMIC) {
+
+			// Obtain program interpreter from ELF object file
+			if (ph_tbl[i].p_type == PT_INTERP) {
+				uint8_t len;
+				char interp[23];
+				uint32_t filesz = ph_tbl[i].p_filesz;
+				uint32_t offset = ph_tbl[i].p_offset;
+
+				if ((unsigned int) lseek(fd, offset, SEEK_SET)
+								!= offset) {
+					goto err_out32;
+				}
+
+				len = (filesz < 23 ? filesz : 23);
+
+				if ((unsigned int) safe_read(fd, (char *)
+						interp, len) != len) {
+					goto err_out32;
+				}
+
+				// Explictly terminate the string
+				interp[len - 1] = '\0';
+
+				// Perform ELF interpreter validation
+				if (check_interpreter(interp))
+					info |= HAS_BAD_INTERP;
+			}
+
+			if (ph_tbl[i].p_type == PT_DYNAMIC) {
 				unsigned int j = 0;
 				unsigned int num;
 
@@ -497,6 +554,33 @@ done32:
 		for (i = 0; i < hdr->e_phnum; i++) {
 			if (ph_tbl[i].p_type == PT_LOAD)
 				info |= HAS_LOAD;
+
+			// Obtain program interpreter from ELF object file
+			if (ph_tbl[i].p_type == PT_INTERP) {
+				uint8_t len;
+				char interp[33];
+				uint64_t filesz = ph_tbl[i].p_filesz;
+				uint64_t offset = ph_tbl[i].p_offset;
+
+				if ((unsigned int) lseek(fd, offset, SEEK_SET)
+								!= offset) {
+					goto err_out64;
+				}
+
+				len = (filesz < 33 ? filesz : 33);
+
+				if ((unsigned int) safe_read(fd, (char *)
+						interp, len) != len) {
+					goto err_out64;
+				}
+
+				interp[len - 1] = '\0';
+
+				// Perform ELF interpreter validation
+				if (check_interpreter(interp))
+					info |= HAS_BAD_INTERP;
+			}
+
 			if (ph_tbl[i].p_type == PT_DYNAMIC) {
 				unsigned int j = 0;
 				unsigned int num;
