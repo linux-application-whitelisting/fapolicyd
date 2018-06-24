@@ -468,10 +468,7 @@ uint32_t gather_elf(int fd, off_t size)
 
 				info |= HAS_DYNAMIC;
 
-				if (ph_tbl[i].p_filesz > size) {
-					info |= HAS_ERROR;
-					goto err_out32;
-				}
+				if (ph_tbl[i].p_filesz > size) goto err_out32;
 
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
 
@@ -591,10 +588,7 @@ done32:
 
 				info |= HAS_DYNAMIC;
 
-				if (ph_tbl[i].p_filesz > size) {
-					info |= HAS_ERROR;
-					goto err_out64;
-				}
+				if (ph_tbl[i].p_filesz > size) goto err_out64;
 
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
 
