@@ -467,7 +467,14 @@ uint32_t gather_elf(int fd, off_t size)
 				unsigned int num;
 
 				info |= HAS_DYNAMIC;
+
+				if (ph_tbl[i].p_filesz > size) {
+					info |= HAS_ERROR;
+					goto err_out32;
+				}
+
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+
 				if((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
 						ph_tbl[i].p_offset) {
@@ -583,7 +590,14 @@ done32:
 				unsigned int num;
 
 				info |= HAS_DYNAMIC;
+
+				if (ph_tbl[i].p_filesz > size) {
+					info |= HAS_ERROR;
+					goto err_out64;
+				}
+
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+
 				if ((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
 						ph_tbl[i].p_offset) {
