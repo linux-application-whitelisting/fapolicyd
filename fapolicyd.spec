@@ -60,6 +60,6 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %ghost %{_localstatedir}/lib/%{name}/lock.mdb
 
 %changelog
-* Thu Jun 07 2018 Steve Grubb <sgrubb@redhat.com> 0.8.7-1
+* Wed Oct 08 2018 Steve Grubb <sgrubb@redhat.com> 0.8.7-1
 - New release
 
