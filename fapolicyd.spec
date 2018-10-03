@@ -1,6 +1,6 @@
 Summary: Application Whitelisting Daemon
 Name: fapolicyd
-Version: 0.8.7
+Version: 0.8.8
 Release: 1
 License: GPLv3+
 URL: http://people.redhat.com/sgrubb/fapolicyd
@@ -60,6 +60,6 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %ghost %{_localstatedir}/lib/%{name}/lock.mdb
 
 %changelog
-* Wed Oct 08 2018 Steve Grubb <sgrubb@redhat.com> 0.8.7-1
+* Wed Oct 08 2018 Steve Grubb <sgrubb@redhat.com> 0.8.8-1
 - New release
 
