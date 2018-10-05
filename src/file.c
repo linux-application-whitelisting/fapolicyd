@@ -170,11 +170,14 @@ static void resolve_path(const char *pcwd, char *path, size_t len)
 	int tlen = strlen(pcwd);
 
 	// Start with current working directory
-	strcpy(tpath, pcwd);
-	// Add the relative path
-	if (tlen >= PATH_MAX)
+	strncpy(tpath, pcwd, PATH_MAX);
+	if (tlen >= PATH_MAX) {
 		tlen=PATH_MAX-1;
-	strncat(tpath, path, PATH_MAX - tlen - 1);
+		tpath[PATH_MAX] = 0;
+	}
+
+	// Add the relative path
+	strncat(tpath, path, (PATH_MAX-1) - tlen);
 	tpath[PATH_MAX] = 0;
 
 	// Ask for it to be resolved
