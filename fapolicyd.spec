@@ -43,7 +43,7 @@ getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Applica
 %systemd_postun_with_restart fapolicyd.service
 
 %files
-%doc README
+%doc README.md
 %{!?_licensedir:%global license %%doc}
 %license COPYING
 %attr(750,root,fapolicyd) %dir %{_sysconfdir}/%{name}
