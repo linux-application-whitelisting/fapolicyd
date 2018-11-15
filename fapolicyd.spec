@@ -8,6 +8,7 @@ Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
 BuildRequires: kernel-headers
 BuildRequires: systemd-devel libgcrypt-devel rpm-devel file-devel
 BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
+BuildRequires: python3-devel
 Requires(pre): shadow-utils
 Requires(post): systemd-units
 Requires(preun): systemd-units
@@ -28,36 +29,44 @@ make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
 make DESTDIR="%{buildroot}" INSTALL='install -p' install
+mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
+install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
+mkdir -p %{buildroot}/%{_localstatedir}/run/%{name}
 
 %pre
-getent passwd fapolicyd >/dev/null || useradd -r -M -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
+getent passwd %{name} >/dev/null || useradd -r -M -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}
 
 %post
-%systemd_post fapolicyd.service
+%systemd_post %{name}.service
 
 %preun
-%systemd_preun fapolicyd.service
+%systemd_preun %{name}.service
 
 %postun
-%systemd_postun_with_restart fapolicyd.service
+%systemd_postun_with_restart %{name}.service
 
 %files
 %doc README.md
 %{!?_licensedir:%global license %%doc}
 %license COPYING
-%attr(750,root,fapolicyd) %dir %{_sysconfdir}/%{name}
-%config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.rules
-%config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.mounts
-%config(noreplace) %attr(644,root,fapolicyd) %{_sysconfdir}/%{name}/fapolicyd.conf
-%attr(644,root,root) %{_unitdir}/fapolicyd.service
-%attr(755,root,root) %{_sbindir}/fapolicyd
+%attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
+%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
+%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.mounts
+%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
+%attr(644,root,root) %{_unitdir}/%{name}.service
+%attr(755,root,root) %{_sbindir}/%{name}
+%attr(755,root,root) %{_sbindir}/%{name}-cli
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*
-%ghost %{_localstatedir}/log/fapolicyd-access.log
-%attr(770,root,fapolicyd) %dir %{_localstatedir}/lib/%{name}
+%ghost %{_localstatedir}/log/%{name}-access.log
+%attr(770,root,%{name}) %dir %{_localstatedir}/lib/%{name}
+%attr(770,root,%{name}) %dir %{_localstatedir}/run/%{name}
+%ghost %{_localstatedir}/run/%{name}/%{name}.fifo
 %ghost %{_localstatedir}/lib/%{name}/data.mdb
 %ghost %{_localstatedir}/lib/%{name}/lock.mdb
+%{python3_sitelib}/dnf-plugins/%{name}-dnf-plugin.py
+%{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
 * Wed Oct 08 2018 Steve Grubb <sgrubb@redhat.com> 0.8.8-1

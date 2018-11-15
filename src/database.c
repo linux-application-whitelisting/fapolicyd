@@ -1,17 +1,54 @@
+/*
+ * database.c - Trust database
+ * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * All Rights Reserved.
+ *
+ * This software may be freely redistributed and/or modified under the
+ * terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2, or (at your option) any
+ * later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; see the file COPYING. If not, write to the
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
+ * Boston, MA 02110-1335, USA.
+ *
+ * Authors:
+ *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
+ */
+
 #include "config.h"
 #include <stdio.h>
 #include <lmdb.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdatomic.h>
+#include <poll.h>
+#include <pthread.h>
+#include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <rpm/rpmlib.h>
 #include <rpm/rpmts.h>
 #include <rpm/rpmmacro.h>
 #include <rpm/rpmlog.h>
 #include <rpm/rpmdb.h>
+
 #include "database.h"
 #include "message.h"
+#include "event.h"
+#include "temporary_db.h"
 
+#define BUFFER_SIZE 1024
 
 static MDB_env *env;
 static MDB_dbi dbi;
@@ -20,10 +57,21 @@ const char *data_dir = "/var/lib/fapolicyd";
 const char *db = "trust.db";
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 
+// External variables
+extern volatile atomic_bool stop;
+
+static const char* fifo_path = "/var/run/fapolicyd/fapolicyd.fifo";
+
+
+static pthread_t update_thread;
+static pthread_mutex_t update_lock;
+
 #define READ_DATA	0
 #define READ_TEST_KEY	1
 #define MEGABYTE	1024*1024
 #define DATA_FORMAT "%i %lu %s"
+
+static void *update_thread_main(void *arg);
 
 static int is_link(const char *path)
 {
@@ -42,20 +90,25 @@ static int init_db(struct daemon_conf *config)
 {
 	if (mdb_env_create(&env))
 		return 1;
+
 	if (mdb_env_set_maxdbs(env, 2))
-		return 1;
+		return 2;
+
 	if (mdb_env_set_mapsize(env, config->db_max_size*MEGABYTE))
-		return 1;
+		return 3;
+
 	if (mdb_env_set_maxreaders(env, 4))
-		return 1;
+		return 4;
+
 	if (mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0664))
-		return 1;
+		return 5;
 
 	lib_symlink = is_link("/lib");
 	lib64_symlink = is_link("/lib64");
 	bin_symlink = is_link("/bin");
 	sbin_symlink = is_link("/sbin");
 
+	init_db_list();
 	return 0;
 }
 
@@ -63,6 +116,8 @@ static void close_db(void)
 {
 	mdb_close(env, dbi);
 	mdb_env_close(env);
+
+	empty_db_list();
 }
 
 /*
@@ -274,6 +329,32 @@ static int database_empty(void)
 	return 0;
 }
 
+static int delete_all_entries_db()
+{
+	int rc = 0;
+	MDB_txn *txn;
+
+	if (mdb_txn_begin(env, NULL, 0, &txn))
+		return 1;
+
+	if (open_dbi(txn)) {
+		abort_transaction(txn);
+		return 2;
+	}
+
+	// 0 -> delete , 1 -> delete and close
+	if ((rc = mdb_drop(txn, dbi, 0))) {
+		msg(LOG_DEBUG, "mdb_drop -> %s", mdb_strerror(rc));
+		abort_transaction(txn);
+		return 3;
+	}
+
+	if (mdb_txn_commit(txn))
+		return 4;
+
+	return 0;
+}
+
 
 static rpmts ts = NULL;
 static rpmdbMatchIterator mi = NULL;
@@ -362,12 +443,13 @@ static void close_rpm(void)
 	rpmlogClose();
 }
 
-static int create_database(void)
+static int load_rpmdb_into_memory()
 {
-	msg(LOG_INFO, "Creating database");
-	if (init_rpm()) {
-		msg(LOG_ERR, "Cannot open the rpm database");
-		return 1;
+	msg(LOG_INFO, "Reading RPMDB into memory");
+	int rc = 0;
+	if ((rc = init_rpm())) {
+		msg(LOG_ERR, "init_rpm() failed (%d)", rc);
+		return rc;
 	}
 
 	// Loop across the rpm database
@@ -385,32 +467,43 @@ static int create_database(void)
 			off_t sz = get_file_size_rpm();
 			const char *sha = get_sha256_rpm();
 			char *data;
-			int verified = 0, rc;
+			int verified = 0;
 			if (asprintf(&data, DATA_FORMAT,
 						verified, sz, sha) == -1) {
-				rc = 1;
-				goto out;
+				data = NULL;
 			}
 
-			if ((rc = write_db(file_name, data)))
-				msg(LOG_ERR, "Error (%d) writing %s",
-						rc, file_name);
-out:
-			free((void *)file_name);
-			free((void *)sha);
-			free(data);
-			if (rc) {
-				mdb_env_sync(env, 1);
-				close_rpm();
-				return 1;
+			if (data) append_db_list(file_name, data);
+			else {
+				free((void*)file_name);
 			}
+
+			free((void *)sha);
 		}
 	}
 
-	// Flush everything to disk
-	mdb_env_sync(env, 1);
 	close_rpm();
 	return 0;
+}
+
+static int create_database(int with_sync)
+{
+	msg(LOG_INFO, "Creating database");
+	int rc = 0;
+
+	db_item_t * item = get_first_from_db_list();
+
+	for (; item != NULL; item = item->next) {
+
+		if ((rc = write_db(item->index, item->data)))
+			msg(LOG_ERR, "Error (%d) writing %s",
+					rc, item->index);
+	}
+
+	// Flush everything to disk
+	if (with_sync) mdb_env_sync(env, 1);
+	empty_db_list();
+	return rc;
 }
 
 /*
@@ -420,10 +513,11 @@ out:
 static int check_database_copy(void)
 {
 	int problems = 0;
+	int rc = 0;
 	msg(LOG_INFO, "Checking database");
-	if (init_rpm()) {
-		msg(LOG_ERR, "Cannot open the rpm database");
-		return 1;
+	if ((rc = init_rpm())) {
+		msg(LOG_ERR, "Cannot open the rpm database, rpm_init() (%d)", rc);
+		return rc;
 	}
 
 	start_long_term_read_ops();
@@ -503,21 +597,34 @@ static int verify_database_entries(void)
  */
 int init_database(struct daemon_conf *config)
 {
-	if (init_db(config)) {
-		msg(LOG_ERR, "Cannot open the database");
-		return 1;
+	int rc = 0;
+
+	msg(LOG_INFO, "Initialization of the database");
+	if ((rc = init_db(config))) {
+		msg(LOG_ERR, "Cannot open the database, init_db() (%d)", rc);
+		return rc;
 	}
 
 	if (database_empty()) {
-		if (create_database()) {
-			msg(LOG_ERR, "Failed to create database");
+		if ((rc = load_rpmdb_into_memory())) {
+			msg(LOG_ERR, "Failed to load rpm database (%d)", rc);
 			close_db();
-			return 1;
+			return rc;
+		}
+
+		if ((rc = create_database(/*with_sync*/1))) {
+			msg(LOG_ERR, "Failed to create database, create_database() (%d)", rc);
+			close_db();
+			return rc;
 		}
 	} else
-		return check_database_copy();
+		rc = check_database_copy();
 
-	return 0;
+
+	pthread_mutex_init(&update_lock, NULL);
+	pthread_create(&update_thread, NULL, update_thread_main, config);
+
+	return rc;
 }
 
 // Returns a 1 if trusted and 0 if not
@@ -556,5 +663,148 @@ int check_trust_database(const char *path)
 void close_database(void)
 {
 	close_db();
+	pthread_join(update_thread, NULL);
+	pthread_mutex_destroy(&update_lock);
+	unlink(fifo_path);
 }
 
+/*
+ * Lock wrapper for update mutex
+ */
+void lock_update_thread(void) {
+	pthread_mutex_lock(&update_lock);
+	//msg(LOG_DEBUG, "lock_update_thread()");
+}
+
+/*
+ * Unlock wrapper for update mutex
+ */
+void unlock_update_thread(void) {
+	pthread_mutex_unlock(&update_lock);
+	//msg(LOG_DEBUG, "unlock_update_thread()");
+}
+
+/*
+ * This function reloads updated rpmdb into our internal database
+ */
+
+int update_database(struct daemon_conf *config)
+{
+	int rc = 0;
+	msg(LOG_INFO, "Updating database");
+
+	msg(LOG_DEBUG, "Loading RPM database");
+	if ((rc = load_rpmdb_into_memory())) {
+		msg(LOG_ERR, "Cannot open the rpm database (%d)", rc);
+		return rc;
+	}
+
+	lock_update_thread();
+
+	if ((rc = delete_all_entries_db())) {
+		msg(LOG_ERR, "Cannot delete database (%d)", rc);
+		unlock_update_thread();
+		return rc;
+	}
+
+	rc = create_database(/*with_sync*/0);
+	flush_cache(config);
+
+	unlock_update_thread();
+	mdb_env_sync(env, 1);
+
+	if (rc) {
+		msg(LOG_ERR, "Failed to create database (%d)", rc);
+		close_db();
+		return rc;
+	}
+
+	return 0;
+}
+
+static void *update_thread_main(void *arg)
+{
+	int rc;
+	struct pollfd pfd[1];
+	char buff[BUFFER_SIZE];
+
+	char err_buff[BUFFER_SIZE];
+
+	struct daemon_conf *config = (struct daemon_conf *)arg;
+
+	msg(LOG_INFO, "Update thread main started");
+
+	/* Make sure that there is no such file/fifo */
+	unlink(fifo_path);
+	if ((rc = mkfifo(fifo_path, 0600)) != 0) {
+		msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
+		return NULL;
+	}
+
+	if ((pfd[0].fd = open(fifo_path, O_RDWR)) == -1) {
+		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
+		return NULL;
+	}
+
+	pfd[0].events = POLLIN;
+
+	while (!stop) {
+
+		rc = poll(pfd, 1, 1000);
+		msg(LOG_DEBUG, "Update poll interupted");
+
+		if (rc < 0) {
+			if (errno == EINTR) {
+				msg(LOG_DEBUG, "update poll rc = EINTR");
+				continue;
+			} else {
+				msg(LOG_ERR, "Update poll error (%s)", strerror_r(errno, err_buff, BUFFER_SIZE));
+				close(pfd[0].fd);
+				return NULL;
+			}
+		} else if (rc == 0) {
+			msg(LOG_DEBUG, "Update poll timeout expired");
+			continue;
+		} else {
+			if (pfd[0].revents & POLLIN) {
+				memset(buff, 0, BUFFER_SIZE);
+				ssize_t count = read(pfd[0].fd, buff, BUFFER_SIZE);
+
+				if (count == -1) {
+					msg(LOG_ERR, "Failed to read from a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
+					return NULL;
+				}
+
+				if (count == 0) {
+					msg(LOG_DEBUG, "Buffer contains zero bytes!");
+					continue;
+				}
+
+				msg(LOG_DEBUG, "Buffer contains: \"%s\"", buff);
+
+				int check = 1;
+				for (int i = 0 ; i < count ; i++) {
+					if (buff[i] != '1' && buff[i] != '\n' && buff[i] != '\0') {
+						check = 0;
+						msg(LOG_ERR, "Read bad content from pipe %s", fifo_path);
+						break;
+					}
+				}
+
+				if (check) {
+					msg(LOG_DEBUG, "It looks like there was an update of the system... Syncing DB.");
+
+					if ((rc = update_database(config))) {
+						msg(LOG_ERR, "Cannot update a database!");
+						unlink(fifo_path);
+						exit(rc);
+					} else {
+						msg(LOG_DEBUG, "Updated");
+					}
+				}
+			}
+		}
+
+	}
+	return NULL;
+}

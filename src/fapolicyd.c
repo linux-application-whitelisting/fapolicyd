@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
 #include "config.h"
@@ -40,6 +41,8 @@
 #include <linux/unistd.h>  /* syscall numbers */
 #include <sys/stat.h>	/* umask */
 #include <seccomp.h>
+#include <stdatomic.h>
+
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -54,7 +57,7 @@
 int debug = 0, permissive = 0;
 
 // Signal handler notifications
-volatile int stop = 0;
+volatile atomic_bool stop = 0;
 
 // Local variables
 static const char *pidfile = "/var/run/fapolicyd.pid";
@@ -323,10 +326,10 @@ int main(int argc, char *argv[])
 	sigaction(SIGINT, &sa, NULL);
 
 	// Bump up resources
-        limit.rlim_cur = RLIM_INFINITY;
-        limit.rlim_max = RLIM_INFINITY;
-        setrlimit(RLIMIT_FSIZE, &limit);
-        setrlimit(RLIMIT_NOFILE, &limit);
+	limit.rlim_cur = RLIM_INFINITY;
+	limit.rlim_max = RLIM_INFINITY;
+	setrlimit(RLIMIT_FSIZE, &limit);
+	setrlimit(RLIMIT_NOFILE, &limit);
 
 	// Set strict umask
 	(void) umask( 0237 );
@@ -385,6 +388,9 @@ int main(int argc, char *argv[])
 	msg(LOG_DEBUG, "Starting to listen for events");
 	while (!stop) {
 		rc = poll(pfd, 1, -1);
+
+		msg(LOG_DEBUG, "Main poll interupted");
+
 		if (rc < 0) {
 			if (errno == EINTR)
 				continue;
@@ -395,7 +401,9 @@ int main(int argc, char *argv[])
 			}
 		} else if (rc > 0) {
 			if (pfd[0].revents & POLLIN) {
+				lock_update_thread();
 				handle_events();
+				unlock_update_thread();
 			}
 
 			// This will always need to be here as long as we
