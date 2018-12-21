@@ -1,5 +1,10 @@
+0.8.8
+
 0.8.7
 - If the path has a top level symlinked dir, retry db lookup without /usr
+- Fix parsing of command line options (Matthew Bobrowski)
+- Add more validation of mount types (Matthew Bobrowski)
+- Elf parser updates (Matthew Bobrowski)
 
 0.8.6
 - Update object hash calculation to better determine uniqueness

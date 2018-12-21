@@ -186,6 +186,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 
 	// One not on the list, look it up and make one
 	subj.type = t;
+	subj.str = NULL;
 	switch (t) {
 		case AUID:
 			subj.val = get_program_auid_from_pid(e->pid);
@@ -241,6 +242,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		return sn;
 	}
 
+	free(subj.str);
 	return NULL;
 }
 
@@ -262,6 +264,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 	// One not on the list, look it up and make one
 	obj.len = 0;
 	obj.type = t;
+	obj.o = NULL;
 	switch (t) {
 		case PATH:
 		case ODIR:
@@ -307,12 +310,13 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		return on;
 	}
 
+	free(obj.o);
 	return NULL;
 }
 
 static void print_queue_stats(FILE *f, const Queue *q)
 {
-	fprintf(f, "%s queue size: %u\n", q->name, q->total);
+	fprintf(f, "%s cache size: %u\n", q->name, q->total);
 	fprintf(f, "%s slots in use: %u\n", q->name, q->count);
 	fprintf(f, "%s hits: %lu\n", q->name, q->hits);
 	fprintf(f, "%s misses: %lu\n", q->name, q->misses);

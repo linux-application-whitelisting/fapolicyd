@@ -170,11 +170,14 @@ static void resolve_path(const char *pcwd, char *path, size_t len)
 	int tlen = strlen(pcwd);
 
 	// Start with current working directory
-	strcpy(tpath, pcwd);
-	// Add the relative path
-	if (tlen >= PATH_MAX)
+	strncpy(tpath, pcwd, PATH_MAX);
+	if (tlen >= PATH_MAX) {
 		tlen=PATH_MAX-1;
-	strncat(tpath, path, PATH_MAX - tlen - 1);
+		tpath[PATH_MAX] = 0;
+	}
+
+	// Add the relative path
+	strncat(tpath, path, (PATH_MAX-1) - tlen);
 	tpath[PATH_MAX] = 0;
 
 	// Ask for it to be resolved
@@ -467,7 +470,11 @@ uint32_t gather_elf(int fd, off_t size)
 				unsigned int num;
 
 				info |= HAS_DYNAMIC;
+
+				if (ph_tbl[i].p_filesz > size) goto err_out32;
+
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+
 				if((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
 						ph_tbl[i].p_offset) {
@@ -583,7 +590,11 @@ done32:
 				unsigned int num;
 
 				info |= HAS_DYNAMIC;
+
+				if (ph_tbl[i].p_filesz > size) goto err_out64;
+
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+
 				if ((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
 						ph_tbl[i].p_offset) {
