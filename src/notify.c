@@ -32,12 +32,17 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/syscall.h>
+#include <sys/utsname.h>
 #include "file.h"
 #include "policy.h"
 #include "event.h"
 #include "message.h"
 #include "queue.h"
 #include "mounts.h"
+
+#ifndef FAN_OPEN_EXEC_PERM
+#define FAN_OPEN_EXEC_PERM 0x00040000
+#endif
 
 #define FANOTIFY_BUFFER_SIZE 8192
 
@@ -57,6 +62,7 @@ static volatile pid_t decision_tid;
 static volatile int alive = 1;
 static int fd;
 static unsigned long allowed = 0, denied = 0;
+static uint64_t mask;
 
 // Local functions
 static void *decision_thread_main(void *arg);
@@ -64,7 +70,6 @@ static void *deadmans_switch_thread_main(void *arg);
 
 int init_fanotify(struct daemon_conf *conf)
 {
-	uint64_t mask;
 	const char *path;
 
 	// Get inter-thread queue ready
@@ -116,13 +121,24 @@ int init_fanotify(struct daemon_conf *conf)
 	pthread_create(&deadmans_switch_thread, NULL,
 			deadmans_switch_thread_main, NULL);
 
-	mask = FAN_OPEN_PERM;
+	mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
 
 	// Iterate through the mount points and add a mark
 	path = first_mounts();
 	while (path) {
+retry_mark:
 		if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
 				mask, -1, path) == -1) {
+			/* 
+			 * The FAN_OPEN_EXEC_PERM mask is not supported by
+			 * all kernel releases prior to 5.0. Retry setting
+			 * up the mark using only the legacy FAN_OPEN_PERM
+			 * mask.
+			 */
+			if (errno == EINVAL && mask & FAN_OPEN_EXEC_PERM) {
+				mask = FAN_OPEN_PERM;
+				goto retry_mark;
+			}
 			msg(LOG_ERR, "Failed setting up watches (%s)",
 				strerror(errno));
 			exit(1);
@@ -205,10 +221,7 @@ static void make_policy_decision(const struct fanotify_event_metadata *metadata)
 	else
 		allowed++;
 
-	// Permissive mode uses open notifications
-	// that do not need responses. Only reply
-	// to _PERM events.
-	if (metadata->mask & FAN_OPEN_PERM) {
+	if (metadata->mask & mask) {
 		response.fd = metadata->fd;
 		if (permissive)
 			response.response = FAN_ALLOW;
@@ -335,12 +348,10 @@ void handle_events(void)
 		}
 
 		if (metadata->fd >= 0) {
-			// We will only handle these 2 events for now
-			if (((metadata->mask & FAN_OPEN_PERM))||
-			    ((metadata->mask & FAN_OPEN))) {
-				if (metadata->pid == our_pid) {
+			if (metadata->mask & mask) {
+				if (metadata->pid == our_pid)
 					approve_event(metadata);
-				} else
+				else
 					enqueue_event(metadata);
 			}
 			// For now, prevent leaking descriptors
