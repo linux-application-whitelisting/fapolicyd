@@ -32,7 +32,6 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/syscall.h>
-#include <sys/utsname.h>
 #include "file.h"
 #include "policy.h"
 #include "event.h"
