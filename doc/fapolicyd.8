@@ -6,7 +6,7 @@ fapolicyd \- File Access Policy Daemon
 .SH DESCRIPTION
 \fBfapolicyd\fP is a userspace daemon that determines access rights to files based on attributes of the process and file. It can be used to either blacklist or whitelist processes or file access.
 
-Configuring \fBfapolicyd\fP is done with the files in \fI/etc/fapolicyd/\fP. There are two files, 
+Configuring \fBfapolicyd\fP is done with the files in \fI/etc/fapolicyd/\fP. There are two files,
 .B fapolicyd.rules
 and
 .B fapolicyd.mounts
@@ -35,7 +35,7 @@ run as a particular user rather than root. This may either be numeric or a user 
 run using a particular group rather than root. This may either be numeric or a user name from the passwd database.
 .TP
 .B \-\-no-details
-when fapolicyd ends, it dumps a usage report with vaious statistics that meay be useful for tuning performeance. It can also detail which processes it knew about and files being accessed by them. This can be useful for foresics investigations. In some settings, this may not be desirable as the file names may be sensitive. Using this option removes process and file names leaving only the statistics. The default without giving this option is to generate a full report.
+when fapolicyd ends, it dumps a usage report with various statistics that may be useful for tuning performance. It can also detail which processes it knew about and files being accessed by them. This can be useful for forensics investigations. In some settings, this may not be desirable as the file names may be sensitive. Using this option removes process and file names leaving only the statistics. The default without giving this option is to generate a full report.
 .SH SIGNALS
 .TP
 SIGTERM
