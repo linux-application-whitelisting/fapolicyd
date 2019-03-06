@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
 #include "config.h"
@@ -49,6 +50,21 @@ int init_event_system(struct daemon_conf *config)
 				(void (*)(void *))object_clear, "Object");
 	if (!obj_cache)
 		return 1;
+
+	return 0;
+}
+
+int flush_cache(struct daemon_conf *config)
+{
+	msg(LOG_DEBUG, "Flushing caches");
+	destroy_lru(obj_cache);
+
+	obj_cache = init_lru(config->obj_cache_size,
+				(void (*)(void *))object_clear, "Object");
+	if (!obj_cache)
+		return 1;
+
+	msg(LOG_DEBUG, "Flushed");
 
 	return 0;
 }

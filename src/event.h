@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
 #ifndef EVENT_HEADER
@@ -41,6 +42,7 @@ typedef struct ev {
 } event_t;
 
 int init_event_system(struct daemon_conf *config);
+int flush_cache(struct daemon_conf *config);
 void destroy_event_system(void);
 int new_event(const struct fanotify_event_metadata *m, event_t *e);
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);

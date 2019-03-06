@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
 #include "config.h" /* Needed to get O_LARGEFILE definition */
@@ -32,6 +33,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/syscall.h>
+#include <stdatomic.h>
 #include "file.h"
 #include "policy.h"
 #include "event.h"
@@ -46,7 +48,7 @@
 #define FANOTIFY_BUFFER_SIZE 8192
 
 // External variables
-extern volatile int stop;
+extern volatile atomic_int stop;
 
 // Local variables
 static pid_t our_pid;
@@ -56,7 +58,7 @@ static pthread_t deadmans_switch_thread;
 static pthread_mutexattr_t decision_lock_attr;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
-static volatile int events_ready;
+static volatile atomic_bool events_ready;
 static volatile pid_t decision_tid;
 static volatile int alive = 1;
 static int fd;
