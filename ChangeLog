@@ -1,4 +1,7 @@
 0.8.8
+- Add FAN_OPEN_EXEC_PERM Support (Matthew Bobrowski)
+- Man page updates
+- Add dnf plugin to sync database when rpms install
 
 0.8.7
 - If the path has a top level symlinked dir, retry db lookup without /usr
