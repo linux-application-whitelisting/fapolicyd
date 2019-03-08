@@ -9,7 +9,7 @@ Does reversing path string improve lookup performance?
 Handle long paths by hashing it (lmdb has 511 byte limit) (Which hash to use?)
 During startup, update database with current trust sources
 During startup, block accesses while sync'ing trust database
-Handle dnf & rpm updates including updating the database
+Handle rpm updates including updating the database
 Add admin defined whitelist of dirs or files
 Add sighup handler
 Harden elf_gather by sanity checking sizes

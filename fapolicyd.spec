@@ -69,6 +69,6 @@ getent passwd %{name} >/dev/null || useradd -r -M -s /sbin/nologin -c "Applicati
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
-* Wed Oct 08 2018 Steve Grubb <sgrubb@redhat.com> 0.8.8-1
+* Fri Mar 08 2019 Steve Grubb <sgrubb@redhat.com> 0.8.8-1
 - New release
 
