@@ -31,6 +31,7 @@ make CFLAGS="%{optflags}" %{?_smp_mflags}
 make DESTDIR="%{buildroot}" INSTALL='install -p' install
 mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
+install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
 
@@ -55,6 +56,7 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.mounts
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %attr(644,root,root) %{_unitdir}/%{name}.service
+%attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}
 %attr(755,root,root) %{_sbindir}/%{name}-cli
 %attr(644,root,root) %{_mandir}/man8/*
