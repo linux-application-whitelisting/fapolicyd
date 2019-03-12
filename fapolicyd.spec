@@ -35,7 +35,7 @@ mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/%{_localstatedir}/run/%{name}
 
 %pre
-getent passwd %{name} >/dev/null || useradd -r -M -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}
+getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{name} -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}
 
 %post
 %systemd_post %{name}.service
