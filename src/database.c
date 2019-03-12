@@ -743,6 +743,7 @@ static void *update_thread_main(void *arg)
 
 	if ((pfd[0].fd = open(fifo_path, O_RDWR)) == -1) {
 		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
+		unlink(fifo_path);
 		return NULL;
 	}
 
@@ -759,8 +760,7 @@ static void *update_thread_main(void *arg)
 				continue;
 			} else {
 				msg(LOG_ERR, "Update poll error (%s)", strerror_r(errno, err_buff, BUFFER_SIZE));
-				close(pfd[0].fd);
-				return NULL;
+				goto err_out;
 			}
 		} else if (rc == 0) {
 			msg(LOG_DEBUG, "Update poll timeout expired");
@@ -772,7 +772,7 @@ static void *update_thread_main(void *arg)
 
 				if (count == -1) {
 					msg(LOG_ERR, "Failed to read from a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
-					return NULL;
+					goto err_out;
 				}
 
 				if (count == 0) {
@@ -796,6 +796,7 @@ static void *update_thread_main(void *arg)
 
 					if ((rc = update_database(config))) {
 						msg(LOG_ERR, "Cannot update a database!");
+						close(pfd[0].fd);
 						unlink(fifo_path);
 						exit(rc);
 					} else {
@@ -806,5 +807,10 @@ static void *update_thread_main(void *arg)
 		}
 
 	}
+
+err_out:
+	close(pfd[0].fd);
+	unlink(fifo_path);
+
 	return NULL;
 }
