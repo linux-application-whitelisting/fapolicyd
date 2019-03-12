@@ -60,7 +60,7 @@ static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 // External variables
 extern volatile atomic_bool stop;
 
-static const char* fifo_path = "/var/run/fapolicyd/fapolicyd.fifo";
+static const char* fifo_path = "/run/fapolicyd/fapolicyd.fifo";
 
 
 static pthread_t update_thread;

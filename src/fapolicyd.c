@@ -60,7 +60,7 @@ int debug = 0, permissive = 0;
 volatile atomic_bool stop = 0;
 
 // Local variables
-static const char *pidfile = "/var/run/fapolicyd.pid";
+static const char *pidfile = "/run/fapolicyd.pid";
 #define REPORT "/var/log/fapolicyd-access.log"
 static struct daemon_conf config;
 

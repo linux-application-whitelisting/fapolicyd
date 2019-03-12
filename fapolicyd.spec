@@ -32,7 +32,7 @@ make DESTDIR="%{buildroot}" INSTALL='install -p' install
 mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
-mkdir -p %{buildroot}/%{_localstatedir}/run/%{name}
+mkdir -p %{buildroot}/run/%{name}
 
 %pre
 getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{name} -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}
@@ -61,8 +61,8 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %attr(644,root,root) %{_mandir}/man5/*
 %ghost %{_localstatedir}/log/%{name}-access.log
 %attr(770,root,%{name}) %dir %{_localstatedir}/lib/%{name}
-%attr(770,root,%{name}) %dir %{_localstatedir}/run/%{name}
-%ghost %{_localstatedir}/run/%{name}/%{name}.fifo
+%attr(770,root,%{name}) %dir /run/%{name}
+%ghost /run/%{name}/%{name}.fifo
 %ghost %{_localstatedir}/lib/%{name}/data.mdb
 %ghost %{_localstatedir}/lib/%{name}/lock.mdb
 %{python3_sitelib}/dnf-plugins/%{name}-dnf-plugin.py

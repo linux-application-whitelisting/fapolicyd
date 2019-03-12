@@ -37,7 +37,7 @@ const char * usage =
 "-u\t--update\t\tNotifies fapolicyd to perform update of database\n"
 ;
 
-const char * _pipe = "/var/run/fapolicyd/fapolicyd.fifo";
+const char * _pipe = "/run/fapolicyd/fapolicyd.fifo";
 
 int main(int argc, char const *argv[])
 {
