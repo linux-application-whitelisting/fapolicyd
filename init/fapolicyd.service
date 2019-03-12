@@ -5,7 +5,7 @@ After=local-fs.target systemd-tmpfiles-setup.service
 
 [Service]
 Type=forking
-PIDFile=/var/run/fapolicyd.pid
+PIDFile=/run/fapolicyd.pid
 Restart=on-abnormal
 ExecStart=/usr/sbin/fapolicyd
 
