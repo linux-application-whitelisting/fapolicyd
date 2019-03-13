@@ -1,7 +1,7 @@
 /*
  * file.c - functions for accessing attributes of files
  * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
- * All Rights Reserved. 
+ * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
  * terms of the GNU General Public License as published by the Free
@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
@@ -66,7 +66,7 @@ void file_init(void)
 			MAGIC_NO_CHECK_ELF);
 	if (magic_cookie == NULL) {
 		msg(LOG_ERR, "Unable to init libmagic");
-		exit(1); 
+		exit(1);
 	}
 	if (magic_load(magic_cookie, NULL) != 0) {
 		msg(LOG_ERR, "Unable to load magic database");
@@ -192,7 +192,7 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	char procfd_path[PATH_MAX+1];
 	ssize_t path_len;
 
-	snprintf(procfd_path, sizeof(procfd_path)-1, 
+	snprintf(procfd_path, sizeof(procfd_path)-1,
 		"/proc/self/fd/%d", fd);
 	path_len = readlink(procfd_path, buf, blen - 1);
 	if (path_len < 0)
@@ -262,7 +262,7 @@ char *get_file_type_from_fd(int fd, size_t blen, char *buf)
 			*str = 0;
 	} else
 		return NULL;
-	
+
 	lseek(fd, 0, SEEK_SET);
 	return buf;
 }
@@ -312,7 +312,7 @@ char *get_hash_from_fd(int fd)
 		if (len != 4096)
 			break;
 	}
-	
+
 	// Ask for the grand total to be calculated
 	gcry_md_final(ctx);
 
@@ -401,7 +401,7 @@ uint32_t gather_elf(int fd, off_t size)
 	if (e_ident[EI_CLASS] == ELFCLASS32) {
 		unsigned i;
 		Elf32_Phdr *ph_tbl = NULL;
-		
+
 		Elf32_Ehdr *hdr = read_header32(fd);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
@@ -410,7 +410,7 @@ uint32_t gather_elf(int fd, off_t size)
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		unsigned long sz = 
+		unsigned long sz =
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
 		if (sz > (unsigned long)size) {
 			info |= HAS_ERROR;
@@ -504,8 +504,8 @@ uint32_t gather_elf(int fd, off_t size)
 						break;
 					}
 					j++;
-				} 
-				free(dyn_tbl); 
+				}
+				free(dyn_tbl);
 			}
 			if (info & HAS_RPATH)
 				break;
@@ -522,7 +522,7 @@ done32:
 	} else if (e_ident[EI_CLASS] == ELFCLASS64) {
 		unsigned i;
 		Elf64_Phdr *ph_tbl;
-		
+
 		Elf64_Ehdr *hdr = read_header64(fd);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
@@ -531,7 +531,7 @@ done32:
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		unsigned long sz = 
+		unsigned long sz =
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
 		if (sz > (unsigned long)size) {
 			info |= HAS_ERROR;
@@ -622,7 +622,7 @@ done32:
 					}
 					j++;
 				}
-				free(dyn_tbl); 
+				free(dyn_tbl);
 			}
 			if (info & HAS_RPATH)
 				break;
@@ -640,4 +640,3 @@ done64:
 	lseek(fd, 0, SEEK_SET);
 	return info;
 }
-

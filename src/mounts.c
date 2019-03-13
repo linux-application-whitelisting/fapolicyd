@@ -1,7 +1,7 @@
 /*
  * mounts.c - Minimal linked list set of mount points
  * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
- * All Rights Reserved. 
+ * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
  * terms of the GNU General Public License as published by the Free
@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
@@ -142,7 +142,7 @@ int load_mounts(void)
 				if (stat(ptr, &sb) == -1) {
 					msg(LOG_INFO, "Invalid entry \"%s\". "
 						"Failed to stat object, %s."
-						" Skipping", ptr, 
+						" Skipping", ptr,
 						strerror(errno));
 					continue; /* Don't return to caller */
 				}
@@ -164,7 +164,7 @@ int load_mounts(void)
 	fclose(f);
 
 	/* Only return true if no mounts found in configuration file */
-	if (mounts.cnt == 0) { 
+	if (mounts.cnt == 0) {
 		msg(LOG_INFO, "No mount points - exiting");
 		return 1;
 	}
@@ -211,4 +211,3 @@ void clear_mounts(void)
 	l->cur = NULL;
 	l->cnt = 0;
 }
-

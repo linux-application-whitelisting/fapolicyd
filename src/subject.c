@@ -1,7 +1,7 @@
 /*
 * subject.c - Minimal linked list set of subject attributes
 * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
-* All Rights Reserved. 
+* All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
 * terms of the GNU General Public License as published by the Free
@@ -15,7 +15,7 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; see the file COPYING. If not, write to the
-* Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+* Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
 * Boston, MA 02110-1335, USA.
 *
 * Authors:
@@ -86,7 +86,7 @@ int subject_add(s_array *a, subject_attr_t *subj)
 				newnode->val = subj->val;
 		} else
 			return 1;
-	} else 
+	} else
 		return 1;
 
 	a->subj[t - SUBJ_START] = newnode;
@@ -155,4 +155,3 @@ void subject_reset(s_array *a, subject_type_t t)
 		sanity_check_array(a, "subject_reset2");
 	}
 }
-

@@ -1,7 +1,7 @@
 /*
 * rules.c - Minimal linked list set of rules
 * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
-* All Rights Reserved. 
+* All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
 * terms of the GNU General Public License as published by the Free
@@ -15,7 +15,7 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
 *
 * Authors:
@@ -64,7 +64,7 @@ void rules_first(llist *l)
 void rules_last(llist *l)
 {
         register lnode* window;
-	
+
 	if (l->head == NULL)
 		return;
 
@@ -336,7 +336,7 @@ static int nv_split(char *buf, lnode *n, int lineno)
 		msg(LOG_ERR, "Object is missing in line %d", lineno);
 		return 6;
 	}
-	return 0;	
+	return 0;
 }
 
 // Returns 0 if success and 1 on rule failure.
@@ -524,7 +524,7 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				   || (pinfo->elf_info & HAS_RPATH))
 					// ld.so normally checks cache first
 					pinfo->state = STATE_NORMAL;
-				else 
+				else
 					// but preload does the preload
 					pinfo->state = STATE_LD_PRELOAD;
 			} else
@@ -714,4 +714,3 @@ void rules_clear(llist *l)
 	l->cur = NULL;
 	l->cnt = 0;
 }
-

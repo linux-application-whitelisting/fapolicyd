@@ -1,4 +1,5 @@
-/* queue.c - a simple queue implementation
+/*
+ * queue.c - a simple queue implementation
  * Copyright 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
@@ -14,7 +15,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
@@ -175,4 +176,3 @@ size_t q_queue_length(const struct queue *q)
 {
 	return q->queue_length;
 }
-

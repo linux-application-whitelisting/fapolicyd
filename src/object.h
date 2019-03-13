@@ -15,7 +15,7 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; see the file COPYING. If not, write to the
-* Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+* Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
 * Boston, MA 02110-1335, USA.
 *
 * Authors:
@@ -43,4 +43,3 @@ void object_clear(o_array *a);
 static inline int type_is_obj(int type) {if (type >= OBJ_START) return 1; else return 0;}
 
 #endif
-

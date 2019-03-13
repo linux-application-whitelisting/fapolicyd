@@ -1,4 +1,5 @@
-/* queue.h -- a queue abstraction
+/*
+ * queue.h -- a queue abstraction
  * Copyright 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
@@ -14,7 +15,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
@@ -53,7 +54,7 @@ void q_report(FILE *f);
 /* Add DATA to tail of Q. Return 0 on success, -1 on error and set errno. */
 int q_append(struct queue *q, const struct fanotify_event_metadata *data);
 
-/* Peek at head of Q, storing it into BUF of SIZE. Return 1 if an entry 
+/* Peek at head of Q, storing it into BUF of SIZE. Return 1 if an entry
  * exists, 0 if queue is empty. On error, return -1 and set errno. */
 int q_peek(const struct queue *q, struct fanotify_event_metadata *data);
 
@@ -61,7 +62,6 @@ int q_peek(const struct queue *q, struct fanotify_event_metadata *data);
 int q_drop_head(struct queue *q);
 
 /* Return the number of entries in Q. */
-size_t q_queue_length(const struct queue *q); 
+size_t q_queue_length(const struct queue *q);
 
 #endif
-

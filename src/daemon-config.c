@@ -16,11 +16,11 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
- * 
+ *
  */
 
 #include "config.h"
@@ -44,14 +44,14 @@ struct nv_pair
 	const char *value;
 };
 
-struct kw_pair 
+struct kw_pair
 {
 	const char *name;
 	int (*parser)(struct nv_pair *, int, struct daemon_conf *);
 };
 
 struct nv_list
-{ 
+{
 	const char *name;
 	int option;
 };
@@ -60,7 +60,7 @@ static char *get_line(FILE *f, char *buf, unsigned size, int *lineno,
 		const char *file);
 static int nv_split(char *buf, struct nv_pair *nv);
 static const struct kw_pair *kw_lookup(const char *val);
-static int permissive_parser(struct nv_pair *nv, int line, 
+static int permissive_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 static int nice_val_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
@@ -81,7 +81,7 @@ static int obj_cache_size_parser(struct nv_pair *nv, int line,
 static int do_stat_report_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 
-static const struct kw_pair keywords[] = 
+static const struct kw_pair keywords[] =
 {
   {"permissive",	permissive_parser },
   {"nice_val",		nice_val_parser },
@@ -125,7 +125,7 @@ int load_daemon_config(struct daemon_conf *config)
 	fd = open(CONFIG_FILE, O_RDONLY|O_NOFOLLOW);
 	if (fd < 0) {
 		if (errno != ENOENT) {
-			msg(LOG_ERR, "Error opening config file (%s)", 
+			msg(LOG_ERR, "Error opening config file (%s)",
 				strerror(errno));
 			return 1;
 		}
@@ -137,7 +137,7 @@ int load_daemon_config(struct daemon_conf *config)
 	/* Make into FILE struct and read line by line */
 	f = fdopen(fd, "rm");
 	if (f == NULL) {
-		msg(LOG_ERR, "Error - fdopen failed (%s)", 
+		msg(LOG_ERR, "Error - fdopen failed (%s)",
 			strerror(errno));
 		close(fd);
 		return 1;
@@ -152,17 +152,17 @@ int load_daemon_config(struct daemon_conf *config)
 			case 0: // fine
 				break;
 			case 1: // not the right number of tokens.
-				msg(LOG_ERR, 
-				"Wrong number of arguments for line %d in %s", 
+				msg(LOG_ERR,
+				"Wrong number of arguments for line %d in %s",
 					lineno, CONFIG_FILE);
 				break;
 			case 2: // no '=' sign
-				msg(LOG_ERR, 
-					"Missing equal sign for line %d in %s", 
+				msg(LOG_ERR,
+					"Missing equal sign for line %d in %s",
 					lineno, CONFIG_FILE);
 				break;
-			default: // something else went wrong... 
-				msg(LOG_ERR, "Unknown error for line %d in %s", 
+			default: // something else went wrong...
+				msg(LOG_ERR, "Unknown error for line %d in %s",
 					lineno, CONFIG_FILE);
 				break;
 		}
@@ -310,7 +310,7 @@ static const struct kw_pair *kw_lookup(const char *val)
 	}
 	return &keywords[i];
 }
- 
+
 void free_daemon_config(struct daemon_conf *config)
 {
 //	free((void*)config->file);
@@ -482,4 +482,3 @@ static int do_stat_report_parser(struct nv_pair *nv, int line,
 	}
 	return rc;
 }
-

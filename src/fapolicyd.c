@@ -1,7 +1,7 @@
 /*
  * fapolicyd.c - Main file for the program
  * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
- * All Rights Reserved. 
+ * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
  * terms of the GNU General Public License as published by the Free
@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
@@ -32,7 +32,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
-#include <sys/resource.h> 
+#include <sys/resource.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <grp.h>
@@ -103,7 +103,7 @@ static void term_handler(int sig)
 	stop = 1 + sig; // Just so its used...
 }
 
-// This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031 
+// This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031
 #define UNUSED(x) (void)(x)
 extern int rpmsqEnable (int signum, void *handler);
 int rpmsqEnable (int signum, void *handler)
@@ -256,9 +256,9 @@ int main(int argc, char *argv[])
 			if (isdigit(*argv[i])) {
 				errno = 0;
 				struct passwd *pw;
-				
+
 				config.uid = strtoul(argv[i], NULL, 10);
-				
+
 				if (errno) {
 					msg(LOG_ERR,
 						"Error converting user value");
@@ -410,7 +410,7 @@ int main(int argc, char *argv[])
 			// link against librpm. Turns out that librpm masks
 			// signals to prevent corrupted databases during an
 			// update. Since we only do read access, we can turn
-			// them back on. 
+			// them back on.
 			sigaction(SIGTERM, &sa, NULL);
 			sigaction(SIGINT, &sa, NULL);
 		}
@@ -443,4 +443,3 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
-

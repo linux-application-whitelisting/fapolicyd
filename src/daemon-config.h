@@ -1,4 +1,4 @@
-/* daemon-config.h -- 
+/* daemon-config.h --
  * Copyright 2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
@@ -18,7 +18,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
- * 
+ *
  */
 
 #ifndef DAEMON_CONFIG_H
