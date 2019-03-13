@@ -24,6 +24,9 @@ deny_audit exe_dir=execdirs exe=untrusted all
 allow all dir=execdirs ftype=application/x-executable
 deny_audit all ftype=application/x-executable
 
+# If you have a LD_LIBRARY_PATH, you may need to allow those here
+# allow all dir=/usr/local/cuda/lib64 ftype=application/x-sharedlib
+
 # Only allow system ELF libs
 allow all dir=execdirs ftype=application/x-sharedlib
 deny_audit all ftype=application/x-sharedlib
