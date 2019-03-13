@@ -100,7 +100,10 @@ static int init_db(struct daemon_conf *config)
 	if (mdb_env_set_maxreaders(env, 4))
 		return 4;
 
-	if (mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0664))
+	mode_t old_mode = umask(0);
+	int rc = mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0664);
+	(void) umask(old_mode);
+	if (rc)
 		return 5;
 
 	lib_symlink = is_link("/lib");
