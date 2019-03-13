@@ -357,6 +357,8 @@ int main(int argc, char *argv[])
 
 	// If we are not going to be root, then setup necessary capabilities
 	if (config.uid != 0) {
+		if (preconstruct_fifo(&config))
+			exit(1);
 		capng_clear(CAPNG_SELECT_BOTH);
 		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
 			CAP_DAC_OVERRIDE, CAP_SYS_ADMIN, CAP_SYS_PTRACE,

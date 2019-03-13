@@ -31,6 +31,7 @@
 void lock_update_thread(void);
 void unlock_update_thread(void);
 
+int preconstruct_fifo(struct daemon_conf *config);
 int init_database(struct daemon_conf *config);
 int update_database(struct daemon_conf *config);
 int check_trust_database(const char *path);

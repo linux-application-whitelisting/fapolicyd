@@ -56,6 +56,7 @@ static int dbi_init = 0;
 const char *data_dir = "/var/lib/fapolicyd";
 const char *db = "trust.db";
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
+static struct pollfd ffd[1] =  { {0, 0, 0} };
 
 // External variables
 extern volatile atomic_bool stop;
@@ -83,6 +84,45 @@ static int is_link(const char *path)
 		if (S_ISLNK(sb.st_mode))
 			return 1;
 	}
+	return 0;
+}
+
+int preconstruct_fifo(struct daemon_conf *config)
+{
+	int rc;
+	char err_buff[BUFFER_SIZE];
+
+	/* Make sure that there is no such file/fifo */
+	unlink(fifo_path);
+
+	mode_t old_mask = umask(0);
+	rc = mkfifo(fifo_path, 0660);
+	(void) umask(old_mask);
+
+	if (rc != 0) {
+	msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path,
+			strerror_r(errno, err_buff, BUFFER_SIZE));
+		return 1;
+	}
+
+	if ((ffd[0].fd = open(fifo_path, O_RDWR)) == -1) {
+		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path,
+			 strerror_r(errno, err_buff, BUFFER_SIZE));
+		unlink(fifo_path);
+		return 1;
+	}
+
+	if (config->gid != getgid()) {
+		if ((fchown(ffd[0].fd, 0, config->gid))) {
+			msg(LOG_ERR, "Failed to fix ownership of pipe %s (%s)",
+				fifo_path, strerror_r(errno, err_buff,
+				BUFFER_SIZE));
+			unlink(fifo_path);
+			close(ffd[0].fd);
+			return 1;
+		}
+	}
+
 	return 0;
 }
 
@@ -728,7 +768,6 @@ int update_database(struct daemon_conf *config)
 static void *update_thread_main(void *arg)
 {
 	int rc;
-	struct pollfd pfd[1];
 	char buff[BUFFER_SIZE];
 
 	char err_buff[BUFFER_SIZE];
@@ -739,29 +778,16 @@ static void *update_thread_main(void *arg)
 	msg(LOG_DEBUG, "Update thread main started");
 #endif
 
-	/* Make sure that there is no such file/fifo */
-	unlink(fifo_path);
-
-	mode_t old_mask = umask(0);
-	rc = mkfifo(fifo_path, 0660);
-	(void) umask(old_mask);
-
-	if (rc != 0) {
-	msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
-		return NULL;
+	if (ffd[0].fd == 0) {
+		if (preconstruct_fifo(config))
+			return NULL;
 	}
 
-	if ((pfd[0].fd = open(fifo_path, O_RDWR)) == -1) {
-		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
-		unlink(fifo_path);
-		return NULL;
-	}
-
-	pfd[0].events = POLLIN;
+	ffd[0].events = POLLIN;
 
 	while (!stop) {
 
-		rc = poll(pfd, 1, 1000);
+		rc = poll(ffd, 1, 1000);
 
 #ifdef DEBUG
 		msg(LOG_DEBUG, "Update poll interrupted");
@@ -783,9 +809,9 @@ static void *update_thread_main(void *arg)
 #endif
 			continue;
 		} else {
-			if (pfd[0].revents & POLLIN) {
+			if (ffd[0].revents & POLLIN) {
 				memset(buff, 0, BUFFER_SIZE);
-				ssize_t count = read(pfd[0].fd, buff, BUFFER_SIZE);
+				ssize_t count = read(ffd[0].fd, buff, BUFFER_SIZE);
 
 				if (count == -1) {
 					msg(LOG_ERR, "Failed to read from a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
@@ -815,7 +841,7 @@ static void *update_thread_main(void *arg)
 
 					if ((rc = update_database(config))) {
 						msg(LOG_ERR, "Cannot update a database!");
-						close(pfd[0].fd);
+						close(ffd[0].fd);
 						unlink(fifo_path);
 						exit(rc);
 					} else {
@@ -828,7 +854,7 @@ static void *update_thread_main(void *arg)
 	}
 
 err_out:
-	close(pfd[0].fd);
+	close(ffd[0].fd);
 	unlink(fifo_path);
 
 	return NULL;
