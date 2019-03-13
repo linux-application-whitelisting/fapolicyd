@@ -389,8 +389,9 @@ int main(int argc, char *argv[])
 	while (!stop) {
 		rc = poll(pfd, 1, -1);
 
-		msg(LOG_DEBUG, "Main poll interupted");
-
+#ifdef DEBUG
+		msg(LOG_DEBUG, "Main poll interrupted");
+#endif
 		if (rc < 0) {
 			if (errno == EINTR)
 				continue;

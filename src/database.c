@@ -732,7 +732,9 @@ static void *update_thread_main(void *arg)
 
 	struct daemon_conf *config = (struct daemon_conf *)arg;
 
-	msg(LOG_INFO, "Update thread main started");
+#ifdef DEBUG
+	msg(LOG_DEBUG, "Update thread main started");
+#endif
 
 	/* Make sure that there is no such file/fifo */
 	unlink(fifo_path);
@@ -752,18 +754,25 @@ static void *update_thread_main(void *arg)
 	while (!stop) {
 
 		rc = poll(pfd, 1, 1000);
-		msg(LOG_DEBUG, "Update poll interupted");
+
+#ifdef DEBUG
+		msg(LOG_DEBUG, "Update poll interrupted");
+#endif
 
 		if (rc < 0) {
 			if (errno == EINTR) {
+#ifdef DEBUG
 				msg(LOG_DEBUG, "update poll rc = EINTR");
+#endif
 				continue;
 			} else {
 				msg(LOG_ERR, "Update poll error (%s)", strerror_r(errno, err_buff, BUFFER_SIZE));
 				goto err_out;
 			}
 		} else if (rc == 0) {
+#ifdef DEBUG
 			msg(LOG_DEBUG, "Update poll timeout expired");
+#endif
 			continue;
 		} else {
 			if (pfd[0].revents & POLLIN) {
@@ -776,12 +785,14 @@ static void *update_thread_main(void *arg)
 				}
 
 				if (count == 0) {
-					msg(LOG_DEBUG, "Buffer contains zero bytes!");
+#ifdef DEBUG
+                                        msg(LOG_DEBUG, "Buffer contains zero bytes!");
+#endif
 					continue;
 				}
-
+#ifdef DEBUG
 				msg(LOG_DEBUG, "Buffer contains: \"%s\"", buff);
-
+#endif
 				int check = 1;
 				for (int i = 0 ; i < count ; i++) {
 					if (buff[i] != '1' && buff[i] != '\n' && buff[i] != '\0') {
@@ -792,7 +803,7 @@ static void *update_thread_main(void *arg)
 				}
 
 				if (check) {
-					msg(LOG_DEBUG, "It looks like there was an update of the system... Syncing DB.");
+					msg(LOG_INFO, "It looks like there was an update of the system... Syncing DB.");
 
 					if ((rc = update_database(config))) {
 						msg(LOG_ERR, "Cannot update a database!");
@@ -800,7 +811,7 @@ static void *update_thread_main(void *arg)
 						unlink(fifo_path);
 						exit(rc);
 					} else {
-						msg(LOG_DEBUG, "Updated");
+						msg(LOG_INFO, "Updated");
 					}
 				}
 			}
