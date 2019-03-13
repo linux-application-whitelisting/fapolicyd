@@ -738,8 +738,13 @@ static void *update_thread_main(void *arg)
 
 	/* Make sure that there is no such file/fifo */
 	unlink(fifo_path);
-	if ((rc = mkfifo(fifo_path, 0600)) != 0) {
-		msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
+
+	mode_t old_mask = umask(0);
+	rc = mkfifo(fifo_path, 0660);
+	(void) umask(old_mask);
+
+	if (rc != 0) {
+	msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
 		return NULL;
 	}
 
