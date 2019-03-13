@@ -1,7 +1,7 @@
 /*
  * lru.c - LRU cache implementation
  * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
- * All Rights Reserved. 
+ * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
  * terms of the GNU General Public License as published by the Free
@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
@@ -29,7 +29,7 @@
 #include "message.h"
 
 //#define DEBUG
- 
+
 // Local declarations
 static void dequeue(Queue *queue);
 
@@ -41,13 +41,13 @@ static QNode *new_QNode(void)
 		return temp;
 	temp->item = NULL;
 	temp->uses = 1;	// Setting to 1 because its being used
- 
+
 	// Initialize prev and next as NULL
 	temp->prev = temp->next = NULL;
- 
+
 	return temp;
 }
- 
+
 static Hash *create_hash(unsigned int hsize)
 {
 	unsigned int i;
@@ -61,11 +61,11 @@ static Hash *create_hash(unsigned int hsize)
 		free(hash);
 		return NULL;
 	}
- 
+
 	// Initialize all hash entries as empty
 	for (i = 0; i < hsize; i++)
 		hash->array[i] = NULL;
- 
+
 	return hash;
 }
 
@@ -74,7 +74,7 @@ static void destroy_hash(Hash *hash)
 	free(hash->array);
 	free(hash);
 }
- 
+
 static void dump_queue_stats(const Queue *q)
 {
 	msg(LOG_DEBUG, "%s cache size: %u", q->name, q->total);
@@ -89,19 +89,19 @@ static Queue *create_queue(unsigned int qsize, const char *name)
 	Queue *queue = malloc(sizeof(Queue));
 	if (queue == NULL)
 		return queue;
- 
+
 	// The queue is empty
 	queue->count = 0;
 	queue->hits = 0;
 	queue->misses = 0;
 	queue->evictions = 0;
 	queue->front = queue->end = NULL;
- 
+
 	// Number of slots that can be stored in memory
 	queue->total = qsize;
 
 	queue->name = name;
- 
+
 	return queue;
 }
 
@@ -114,12 +114,12 @@ static void destroy_queue(Queue *queue)
 
 	free(queue);
 }
- 
+
 static unsigned int are_all_slots_full(const Queue *queue)
 {
 	return queue->count == queue->total;
 }
- 
+
 static unsigned int queue_is_empty(const Queue *queue)
 {
 	return queue->end == NULL;
@@ -228,7 +228,7 @@ out:
 	sanity_check_queue(queue, "2 remove_node");
 }
 
-// Remove from the end of the queue 
+// Remove from the end of the queue
 static void dequeue(Queue *queue)
 {
 	QNode *temp = queue->end;
@@ -238,14 +238,14 @@ static void dequeue(Queue *queue)
 
 	remove_node(queue, queue->end);
 
-	queue->cleanup(temp->item); 
+	queue->cleanup(temp->item);
 	free(temp->item);
 	free(temp);
- 
+
 	// decrement the total of full slots by 1
 	queue->count--;
 }
- 
+
 // Remove front of the queue because its a mismatch
 void lru_evict(Queue *queue, unsigned int key)
 {
@@ -254,7 +254,7 @@ void lru_evict(Queue *queue, unsigned int key)
 
 	if (queue_is_empty(queue))
 		return;
- 
+
 	hash->array[key] = NULL;
 	remove_node(queue, queue->front);
 
@@ -285,13 +285,13 @@ static void enqueue(Queue *queue, unsigned int key)
 	// And add the new node to the front of queue
 	temp = new_QNode();
 
-	insert_beginning(queue, temp); 
+	insert_beginning(queue, temp);
 	hash->array[key] = temp;
- 
+
 	// increment number of full slots
 	queue->count++;
 }
- 
+
 // This function is called needing an item from cache.
 //  There are two scenarios:
 // 1. Item is not in cache, so add it to the front of the queue
@@ -307,19 +307,19 @@ QNode *check_lru_cache(Queue *queue, unsigned int key)
 	}
 
 	reqPage = hash->array[key];
- 
+
 	// item is not in cache, make new spot for it
 	if (reqPage == NULL) {
 		enqueue(queue, key);
 		queue->misses++;
- 
+
 	// item is there but not at front. Move it
 	} else if (reqPage != queue->front) {
 		remove_node(queue, reqPage);
-		reqPage->next = NULL; 
-		reqPage->prev = NULL; 
+		reqPage->next = NULL;
+		reqPage->prev = NULL;
 		insert_beginning(queue, reqPage);
- 
+
 		// Increment cached object metrics
 		queue->front->uses++;
 		queue->hits++;
@@ -366,4 +366,3 @@ unsigned long compute_object_key(const Queue *queue, unsigned long num)
 	else
 		return 0;
 }
-

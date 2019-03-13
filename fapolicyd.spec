@@ -24,7 +24,7 @@ makes use of the kernel's fanotify interface to determine file access rights.
 %setup -q
 
 %build
-%configure --with-audit 
+%configure --with-audit
 make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
@@ -73,4 +73,3 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %changelog
 * Fri Mar 08 2019 Steve Grubb <sgrubb@redhat.com> 0.8.9-1
 - New release
-

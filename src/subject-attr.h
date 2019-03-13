@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor 
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
@@ -29,7 +29,7 @@
 #include "nv.h"
 
 // Top is numbers, bottom is strings
-typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, PATTERN, 
+typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, PATTERN,
 	COMM, EXE, EXE_DIR, EXE_TYPE, EXE_DEVICE } subject_type_t;
 
 #define SUBJ_END EXE_DEVICE
@@ -46,4 +46,3 @@ int subj_name_to_val(const char *name);
 const char *subj_val_to_name(unsigned int v);
 
 #endif
-

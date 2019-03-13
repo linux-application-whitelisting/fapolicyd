@@ -360,7 +360,7 @@ static rpmts ts = NULL;
 static rpmdbMatchIterator mi = NULL;
 static int init_rpm(void)
 {
-	return rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);	
+	return rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);
 }
 
 static Header h = NULL;
@@ -642,7 +642,7 @@ int check_trust_database(const char *path)
 		// problem. These are sorted from most likely to least.
 		if (strncmp(path, "/usr/", 5) == 0) {
 			if ((lib64_symlink &&
-				 strncmp(&path[5], "lib64/", 6) == 0) || 
+				 strncmp(&path[5], "lib64/", 6) == 0) ||
 				(lib_symlink &&
 					strncmp(&path[5], "lib/", 4) == 0) ||
 				(bin_symlink &&
