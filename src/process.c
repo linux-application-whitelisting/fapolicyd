@@ -180,7 +180,6 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 
 	return NULL;
 }
-
 uid_t get_program_auid_from_pid(pid_t pid)
 {
 	char path[PATH_MAX+1];
@@ -195,6 +194,7 @@ uid_t get_program_auid_from_pid(pid_t pid)
 		rc = read(fd, path, PATH_MAX);
 		close(fd);
 		if (rc > 0) {
+			path[rc] = 0;  // manually terminate, read doesn't
 			errno = 0;
 			auid = strtol(path, NULL, 10);
 			if (errno == 0)
@@ -218,6 +218,7 @@ int get_program_sessionid_from_pid(pid_t pid)
 		rc = read(fd, path, PATH_MAX);
 		close(fd);
 		if (rc > 0) {
+			path[rc] = 0;  // manually terminate, read doesn't
 			errno = 0;
 			ses = strtol(path, NULL, 10);
 			if (errno == 0)
