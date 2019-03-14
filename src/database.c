@@ -1,6 +1,6 @@
 /*
  * database.c - Trust database
- * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-19 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -768,15 +769,21 @@ int update_database(struct daemon_conf *config)
 static void *update_thread_main(void *arg)
 {
 	int rc;
+	sigset_t sigs;
 	char buff[BUFFER_SIZE];
-
 	char err_buff[BUFFER_SIZE];
-
 	struct daemon_conf *config = (struct daemon_conf *)arg;
 
 #ifdef DEBUG
 	msg(LOG_DEBUG, "Update thread main started");
 #endif
+
+	/* This is a worker thread. Don't handle signals. */
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGTERM);
+	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGINT);
+	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	if (ffd[0].fd == 0) {
 		if (preconstruct_fifo(config))
