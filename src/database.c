@@ -96,9 +96,7 @@ int preconstruct_fifo(struct daemon_conf *config)
 	/* Make sure that there is no such file/fifo */
 	unlink(fifo_path);
 
-	mode_t old_mask = umask(0);
 	rc = mkfifo(fifo_path, 0660);
-	(void) umask(old_mask);
 
 	if (rc != 0) {
 	msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path,
@@ -141,9 +139,7 @@ static int init_db(struct daemon_conf *config)
 	if (mdb_env_set_maxreaders(env, 4))
 		return 4;
 
-	mode_t old_mode = umask(0);
-	int rc = mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0664);
-	(void) umask(old_mode);
+	int rc = mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0660);
 	if (rc)
 		return 5;
 
