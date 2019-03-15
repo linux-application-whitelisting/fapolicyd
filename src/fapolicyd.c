@@ -332,7 +332,7 @@ int main(int argc, char *argv[])
 	setrlimit(RLIMIT_NOFILE, &limit);
 
 	// Set strict umask
-	(void) umask( 0237 );
+	(void) umask( 0117 );
 
 	// get more time slices because everything is waiting on us
 	rc = nice(-config.nice_val);
