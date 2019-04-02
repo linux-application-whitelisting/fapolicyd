@@ -29,7 +29,7 @@
 #include <stdint.h>
 
 typedef enum { STATE_COLLECTING=0, STATE_PARTIAL, STATE_FULL, STATE_NORMAL,
-	STATE_NOT_ELF, STATE_LD_PRELOAD, STATE_BAD_INTERPRETER,
+	STATE_NOT_ELF, /*STATE_LD_PRELOAD,*/ STATE_BAD_INTERPRETER,
 	STATE_LD_SO } state_t;
 
 // This is used to determine what kind of elf file we are looking at.

@@ -85,9 +85,6 @@ There are various ways that an attacker may try to execute code that may reveal 
 .B normal
 This matches against any ELF program that is dynamically linked.
 .TP
-.B ld_preload
-This matches against access patterns that indicate that LD_PRELOAD is being used in starting up the application.
-.TP
 .B bad_interpreter
 This matches against access patterns that indicate that the defaul ELF interpreter is not being used.
 .TP
@@ -127,7 +124,7 @@ The following rules show how rules may look.
 .nf
 .B deny_audit exe=/usr/bin/wget dir=/tmp
 .B allow exe=/usr/bin/python3.4 dir=execdirs ftype=text/x-python
-.B deny_audit pattern ld_preload all
+.B deny_audit pattern ld_so all
 .B deny all all
 .fi
 

@@ -54,15 +54,14 @@ mount | egrep '^tmpfs| ext4| ext3| xfs' | awk '{ printf "%s\n", $3 }' >> /etc/fa
 ```
 
 You might want to look at the fapolicyd.rules file to see what the sample
-policy looks like. The policy is designed with 5 goals in mind.
+policy looks like. The policy is designed with 4 goals in mind.
 
 1. No bypass of security by executing programs via ld.so.
-2. No injection of code by LD_PRELOAD
-3. All approved executables are packaged. Unpackaged programs can't run
-4. Elf and python files/shared objects must come from system directories.
+2. All approved executables are packaged. Unpackaged programs can't run
+3. Elf and python files/shared objects must come from system directories.
 This prevents LD_LIBRARY & PYTHON_LIBRARY redirection to an attacker
 controlled dir.
-5. Other languages are not allowed or must be enabled.
+4. Other languages are not allowed or must be enabled.
 
 You can test by starting the daemon from the command line. Before starting
 the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. When

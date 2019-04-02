@@ -43,7 +43,7 @@
 #define PATTERN_NORMAL_STR "normal"
 #define PATTERN_NORMAL_VAL 0
 #define PATTERN_LD_PRELOAD_STR "ld_preload"
-#define PATTERN_LD_PRELOAD_VAL 1
+//#define PATTERN_LD_PRELOAD_VAL 1
 #define PATTERN_BAD_INTERPRETER_STR "bad_interpreter"
 #define PATTERN_BAD_INTERPRETER_VAL 2
 #define PATTERN_LD_SO_STR "ld_so"
@@ -200,7 +200,11 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	} else {
 		if (n->s[i].type == PATTERN) {
 			if (strcasecmp(ptr2, PATTERN_LD_PRELOAD_STR) == 0) {
-				n->s[i].val = PATTERN_LD_PRELOAD_VAL;
+				msg(LOG_ERR,
+				"ld_preload is a deprecated pattern in line %d",
+					lineno);
+				return 3;
+//				n->s[i].val = PATTERN_LD_PRELOAD_VAL;
 //			} else if (strcasecmp(ptr2,
 //					PATTERN_BAD_INTERPRETER_STR) == 0) {
 //				n->s[i].val = PATTERN_BAD_INTERPRETER_VAL;
@@ -307,7 +311,8 @@ static int nv_split(char *buf, lnode *n, int lineno)
 				} else
 					assign_object(n, type, ptr2, lineno);
 			} else
-				assign_subject(n, type, ptr2, lineno);
+				if (assign_subject(n, type, ptr2, lineno) == 3)
+					return -1;
 		} else if (strcasecmp(ptr, "all") == 0) {
 			if (n->s_count == 0) {
 				type = ALL_SUBJ;
@@ -560,8 +565,8 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 		} else {
 			if (strcmp(pinfo->path3, SYSTEM_LD_CACHE) == 0)
 				pinfo->state = STATE_NORMAL;
-			else
-				pinfo->state = STATE_LD_PRELOAD;
+//			else
+//				pinfo->state = STATE_LD_PRELOAD;
 		}
 	}
 
@@ -585,9 +590,9 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				   || (pinfo->elf_info & HAS_RPATH))
 					// ld.so normally checks cache first
 					pinfo->state = STATE_NORMAL;
-				else
+//				else
 					// but preload does the preload
-					pinfo->state = STATE_LD_PRELOAD;
+//					pinfo->state = STATE_LD_PRELOAD;
 			} else
 				// To get here wrong interp used
 				pinfo->state = STATE_BAD_INTERPRETER;
@@ -605,14 +610,14 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 			if (pinfo->state == STATE_NORMAL)
 				rc = 1;
 			break;
-		case PATTERN_LD_PRELOAD_VAL:
+/*		case PATTERN_LD_PRELOAD_VAL:
 			if (pinfo->state == STATE_LD_PRELOAD) {
 				rc = 1;
 				//msg(LOG_DEBUG, "path1: %s", pinfo->path1);
 				//msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				//msg(LOG_DEBUG, "path3: %s", pinfo->path3);
 			}
-			break;
+			break; */
 		case PATTERN_BAD_INTERPRETER_VAL:
 			if (pinfo->state == STATE_BAD_INTERPRETER)
 				rc = 1;

@@ -1,4 +1,8 @@
 0.8.9
+- Systemd usage updates
+- File permission adjustments based on selinux policy review
+- Fix unterminated reads of auid & sessionid values
+- Deprecate ld_preload pattern until new method exists
 
 0.8.8
 - Add FAN_OPEN_EXEC_PERM Support (Matthew Bobrowski)
