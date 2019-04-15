@@ -705,6 +705,8 @@ static decision_t check_object(lnode *r, event_t *e)
 				if (rc == 0)
 					return 0;
 			} else if (r->o[cnt].type == PATH &&
+				 (r->s[cnt].type == EXE ||
+				     r->s[cnt].type == EXE_DIR) &&
 				 strcasecmp(r->s[cnt].str, "untrusted") == 0) {
 				if (check_trust_database(obj->o))
 					return 0;

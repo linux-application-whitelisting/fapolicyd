@@ -1,4 +1,5 @@
 0.8.10
+- Fix segfault for rules whose subject is number oriented
 
 0.8.9
 - Systemd usage updates
