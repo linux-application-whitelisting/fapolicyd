@@ -613,8 +613,10 @@ out2:
 	// mdb_env_sync(env, 1);
 	close_rpm();
 	end_long_term_read_ops();
-	if (problems)
+	if (problems) {
 		msg(LOG_WARNING, "Found %d problems", problems);
+		return 1;
+	}
 	else
 		msg(LOG_INFO, "Database checks OK");
 	return 0;
@@ -657,8 +659,12 @@ int init_database(struct daemon_conf *config)
 			close_db();
 			return rc;
 		}
-	} else
-		rc = check_database_copy();
+	} else {
+		// check if our internal database is synced
+		if (check_database_copy()) {
+			update_database(config);
+		}
+	}
 
 
 	pthread_mutex_init(&update_lock, NULL);
