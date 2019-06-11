@@ -48,7 +48,7 @@
 #define FANOTIFY_BUFFER_SIZE 8192
 
 // External variables
-extern volatile atomic_int stop;
+extern volatile atomic_bool stop;
 
 // Local variables
 static pid_t our_pid;
