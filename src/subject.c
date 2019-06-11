@@ -44,7 +44,7 @@ void subject_create(s_array *a)
 }
 
 #ifdef DEBUG
-static void sanity_check_array(s_array *a, const char *id)
+static void sanity_check_array(const s_array *a, const char *id)
 {
 	int i;
 	unsigned int num = 0;
