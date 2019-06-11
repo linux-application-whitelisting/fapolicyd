@@ -48,6 +48,10 @@ static void sanity_check_array(s_array *a, const char *id)
 {
 	int i;
 	unsigned int num = 0;
+	if (a == NULL) {
+		msg(LOG_DEBUG, "%s - array is NULL", id);
+		abort();
+	}
 	for (i = 0; i < SUBJ_END - SUBJ_START; i++)
 		if (a->subj[i]) num++;
 	if (num != a->cnt) {
