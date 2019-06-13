@@ -56,6 +56,8 @@ int init_event_system(struct daemon_conf *config)
 
 int flush_cache(struct daemon_conf *config)
 {
+	if (obj_cache->count == 0) 
+		return 0;
 	msg(LOG_DEBUG, "Flushing caches");
 	destroy_lru(obj_cache);
 

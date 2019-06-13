@@ -1,6 +1,7 @@
 0.8.10
 - Fix segfault for rules whose subject is number oriented
 - When database problem is found on startup, rebuild database
+- Don't flush empty caches on database rebuild
 
 0.8.9
 - Systemd usage updates
