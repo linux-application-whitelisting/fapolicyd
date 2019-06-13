@@ -562,10 +562,10 @@ static int check_database_copy(void)
 
 	start_long_term_read_ops();
 
-	// Loop across the rpm database
-	while (get_next_package_rpm()) {
+	// Loop across the rpm database - breakout when problem detected
+	while (!problems && get_next_package_rpm()) {
 		// Loop across the packages
-		while (get_next_file_rpm()) {
+		while (!problems && get_next_file_rpm()) {
 			// Directories are not being kept, skip them.
 			if (is_dir_rpm())
 				continue;
