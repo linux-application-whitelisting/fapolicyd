@@ -58,7 +58,7 @@ int flush_cache(struct daemon_conf *config)
 {
 	if (obj_cache->count == 0) 
 		return 0;
-	msg(LOG_DEBUG, "Flushing caches");
+	msg(LOG_DEBUG, "Flushing object cache");
 	destroy_lru(obj_cache);
 
 	obj_cache = init_lru(config->obj_cache_size,
@@ -335,7 +335,8 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 static void print_queue_stats(FILE *f, const Queue *q)
 {
 	fprintf(f, "%s cache size: %u\n", q->name, q->total);
-	fprintf(f, "%s slots in use: %u\n", q->name, q->count);
+	fprintf(f, "%s slots in use: %u (%u%)\n", q->name, q->count,
+					(100*q->count)/q->total);
 	fprintf(f, "%s hits: %lu\n", q->name, q->hits);
 	fprintf(f, "%s misses: %lu\n", q->name, q->misses);
 	fprintf(f, "%s evictions: %lu\n", q->name, q->evictions);
