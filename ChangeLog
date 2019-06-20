@@ -1,4 +1,5 @@
 0.8.11
+- Convert hashes to lowercase like sha256sum outputs
 
 0.8.10
 - Fix segfault for rules whose subject is number oriented

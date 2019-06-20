@@ -1,6 +1,6 @@
 /*
  * file.c - functions for accessing attributes of files
- * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-19 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -272,7 +272,7 @@ static char *bytes2hex(char *final, const char *buf, unsigned int size)
 {
 	unsigned int i;
 	char *ptr = final;
-	const char *hex = "0123456789ABCDEF";
+	const char *hex = "0123456789abcdef";
 
 	for (i=0; i<size; i++) {
 		*ptr++ = hex[(buf[i] & 0xF0)>>4]; /* Upper nibble */
@@ -307,6 +307,7 @@ char *get_hash_from_fd(int fd)
 		return NULL;
 
 	// read in a buffer at a time and hand to gcrypt
+	lseek(fd, 0, SEEK_SET);
 	while ((len = safe_read(fd, fbuf, 4096)) > 0) {
 		gcry_md_write(ctx, fbuf, len);
 		if (len != 4096)

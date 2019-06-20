@@ -115,7 +115,7 @@ This option will match against the device that the file being accessed resides o
 This option matches against the mime type of the file being accessed. See \fBexe_type\fP for more information on determining the mime type.
 .TP
 .B sha256hash
-This option matches against the sha256 hash of the file being accessed.
+This option matches against the sha256 hash of the file being accessed. The hash in the rules should be all lowercase letters and do NOT start with 0x. Lowercase is the default output of sha256sum.
 .RE
 
 .SH EXAMPLES
