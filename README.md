@@ -12,7 +12,6 @@ DEPENDENCIES (fedora)
 * automake
 * libtool
 * make
-* libseccomp-devel
 * libudev-devel
 * kernel-headers
 * systemd-devel
