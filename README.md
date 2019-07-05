@@ -12,13 +12,17 @@ DEPENDENCIES (fedora)
 * automake
 * libtool
 * make
+* libseccomp-devel
+* libudev-devel
+* kernel-headers
+* systemd-devel
 * libgcrypt-devel
 * rpm-devel
 * file-devel
-* systemd-devel
 * libcap-ng-devel
 * libseccomp-devel
 * lmdb-devel
+* python3-devel
 
 BUILDING
 --------
