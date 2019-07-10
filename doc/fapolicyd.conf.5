@@ -1,4 +1,4 @@
-.TH FAPOLICYD.CONF: "5" "June 2018" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.CONF: "5" "July 2019" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd.conf \- fapolicyd configuration file
 .SH DESCRIPTION
@@ -47,9 +47,10 @@ This option controls how many entries the subject cache holds. You want the size
 This option controls how many entries the object cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. The default value is 4096.
 
 .SH "SEE ALSO"
-.BR fapolicyd(8)
+.BR fapolicyd (8),
+.BR fapolicyd-cli (1)
 and
-.BR fapolicy.rules(5).
+.BR fapolicy.rules (5).
 
 .SH AUTHOR
 Steve Grubb
