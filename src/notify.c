@@ -137,6 +137,8 @@ retry_mark:
 			 * mask.
 			 */
 			if (errno == EINVAL && mask & FAN_OPEN_EXEC_PERM) {
+				msg(LOG_INFO,
+				    "Kernel doesn't support OPEN_EXEC_PERM");
 				mask = FAN_OPEN_PERM;
 				goto retry_mark;
 			}

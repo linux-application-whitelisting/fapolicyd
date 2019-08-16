@@ -35,6 +35,9 @@
 #include "lru.h"
 #include "message.h"
 
+#define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
+	FAN_OPEN_EXEC|FAN_OPEN_EXEC_PERM)
+
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 
@@ -91,7 +94,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// Transfer things from fanotify structs to ours
 	e->pid = m->pid;
 	e->fd = m->fd;
-	e->type = m->mask & FAN_ALL_EVENTS;
+	e->type = m->mask & ALL_EVENTS;
 
 	key = compute_subject_key(subj_cache, m->pid);
 	q_node = check_lru_cache(subj_cache, key);
