@@ -11,7 +11,7 @@ deny_audit pattern=ld_so all
 # We have to carve out an exception for the system updaters
 # or things go very bad (deadlock).
 allow exe=/usr/bin/rpm all
-allow exe=/usr/bin/python3.6 comm=dnf all
+allow exe=/usr/bin/python3.7 comm=dnf all
 
 # Don't allow untrusted executables
 deny_audit exe_dir=execdirs exe=untrusted all
@@ -19,7 +19,9 @@ deny_audit exe_dir=execdirs exe=untrusted all
 # Only allow system ELF Applications - note: depends on above check
 # for untrusted executables.
 allow all dir=execdirs ftype=application/x-executable
+allow all dir=execdirs ftype=application/x-pie-executable
 deny_audit all ftype=application/x-executable
+deny_audit all ftype=application/x-pie-executable
 
 # If you have a LD_LIBRARY_PATH, you may need to allow those here
 # allow all dir=/usr/local/cuda/lib64 ftype=application/x-sharedlib
