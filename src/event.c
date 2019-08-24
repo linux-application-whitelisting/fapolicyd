@@ -85,7 +85,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
 	subject_attr_t subj;
 	QNode *q_node;
-	unsigned int key, rc = 1;
+	unsigned int key, rc, evict = 1;
 	s_array *s;
 	o_array *o;
 	struct proc_info *pinfo;
@@ -108,7 +108,9 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// Check the subject to see if its what its supposed to be
 	if (s) {
 		rc = compare_proc_infos(pinfo, s->info);
-		if (rc) {
+		// If not same proc or we detect execution, evict
+		evict = rc || e->type & (FAN_OPEN_EXEC|FAN_OPEN_EXEC_PERM);
+		if (evict) {
 			lru_evict(subj_cache, key);
 			q_node = check_lru_cache(subj_cache, key);
 			s = (s_array *)q_node->item;
@@ -116,7 +118,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			msg(LOG_DEBUG, "cached subject has cnt of 0");
 	}
 
-	if (rc) {
+	if (evict) {
 		// If empty, setup the subject with what we currently have
 		e->s = malloc(sizeof(s_array));
 		subject_create(e->s);
