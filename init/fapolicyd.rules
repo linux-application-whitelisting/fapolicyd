@@ -11,7 +11,7 @@ deny_audit pattern=ld_so all
 # We have to carve out an exception for the system updaters
 # or things go very bad (deadlock).
 allow exe=/usr/bin/rpm all
-allow exe=/usr/bin/python3.7 comm=dnf all
+allow exe=%python3_path% comm=dnf all
 
 # Don't allow untrusted executables
 deny_audit exe_dir=execdirs exe=untrusted all
@@ -33,10 +33,10 @@ deny_audit all ftype=application/x-sharedlib
 # Only allow system python executables and libs
 # File type by: file --mime-type /path-to-file
 allow all dir=execdirs ftype=text/x-python
-allow exe=/usr/bin/python3.6 dir=execdirs ftype=text/x-python
-allow exe=/usr/bin/python3.6 dir=execdirs ftype=application/octet-stream
-allow exe=/usr/bin/python2.7 dir=execdirs ftype=text/x-python
-allow exe=/usr/bin/python2.7 dir=execdirs ftype=application/octet-stream
+allow exe=%python3_path% dir=execdirs ftype=text/x-python
+allow exe=%python3_path% dir=execdirs ftype=application/octet-stream
+allow exe=%python2_path% dir=execdirs ftype=text/x-python
+allow exe=%python2_path% dir=execdirs ftype=application/octet-stream
 deny_audit  all ftype=text/x-python
 #deny_audit all ftype=application/octet-stream path=*.pyc
 
