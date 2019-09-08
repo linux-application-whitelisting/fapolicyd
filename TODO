@@ -5,7 +5,6 @@ Hand userspace fstat results for object with event (currently get a fd)
 Userspace
 =========
 Harden elf_gather by sanity checking sizes
-Detect static ELF programs
 Handle HAS_ERROR in elf pattern processing
 Does reversing path string improve lookup performance?
 Handle long paths by hashing it (lmdb has 511 byte limit) (Which hash to use?)

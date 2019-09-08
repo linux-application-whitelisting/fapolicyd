@@ -1,6 +1,6 @@
 /*
 * rules.c - Minimal linked list set of rules
-* Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2016,2018,2019 Red Hat Inc., Durham, North Carolina.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -48,6 +48,8 @@
 #define PATTERN_BAD_INTERPRETER_VAL 2
 #define PATTERN_LD_SO_STR "ld_so"
 #define PATTERN_LD_SO_VAL 3
+#define PATTERN_STATIC_STR "static"
+#define PATTERN_STATIC_VAL 4
 
 void rules_create(llist *l)
 {
@@ -211,6 +213,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			} else if (strcasecmp(ptr2,
 					PATTERN_LD_SO_STR) == 0) {
 				n->s[i].val = PATTERN_LD_SO_VAL;
+			} else if (strcasecmp(ptr2, PATTERN_STATIC_STR) == 0) {
+				n->s[i].val = PATTERN_STATIC_VAL;
 			} else {
 				msg(LOG_ERR,
 					"Unknown pattern value %s in line %d",
@@ -599,6 +603,12 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 		}
 	}
 #endif
+	if (pinfo->state == STATE_PARTIAL) {
+		if ((pinfo->elf_info & IS_ELF) &&
+				((pinfo->elf_info & HAS_DYNAMIC) == 0))
+			pinfo->state = STATE_STATIC;
+	}
+
 	// If nothing detected, then we cannot decide yet
 	if (pinfo->state == STATE_PARTIAL)
 		return rc;
@@ -624,6 +634,10 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 			break;
 		case PATTERN_LD_SO_VAL:
 			if (pinfo->state == STATE_LD_SO)
+				rc = 1;
+			break;
+		case PATTERN_STATIC_VAL:
+			if (pinfo->state == STATE_STATIC)
 				rc = 1;
 			break;
 	}
