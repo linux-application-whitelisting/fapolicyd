@@ -30,7 +30,7 @@
 
 typedef enum { STATE_COLLECTING=0, STATE_PARTIAL, STATE_FULL, STATE_NORMAL,
 	STATE_NOT_ELF, /*STATE_LD_PRELOAD,*/ STATE_BAD_INTERPRETER,
-	STATE_LD_SO, STATE_STATIC } state_t;
+	STATE_LD_SO, STATE_STATIC, STATE_BAD_ELF } state_t;
 
 // This is used to determine what kind of elf file we are looking at.
 // HAS_LOAD but no HAS_DYNAMIC is staticly linked app. Normally you see both.

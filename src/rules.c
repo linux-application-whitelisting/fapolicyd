@@ -522,7 +522,7 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj)
 
 //#define NEW_WAY 1
 
-// Returns 0 if no match, 1 if a match
+// Returns 0 if no match, 1 if a match, -1 on error
 static int subj_pattern_test(subject_attr_t *s, event_t *e)
 {
 	int rc = 0;
@@ -560,6 +560,11 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				pinfo->state = STATE_BAD_INTERPRETER;
 		}
 	} else if (pinfo->state == STATE_FULL) {
+		if (pinfo->elf_info & HAS_ERROR) {
+			pinfo->state = STATE_BAD_ELF;
+			clear_proc_info(pinfo);
+			return -1;
+		}
 		// When programs start, its either ld.so or themselves
 		// There is no other way they start. So, if there is a
 		// miscompare, then we must have started a while ago.
@@ -576,6 +581,11 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 
 #else  //  OLD WAY
 	if (pinfo->state == STATE_FULL) {
+		if (pinfo->elf_info & HAS_ERROR) {
+			pinfo->state = STATE_BAD_ELF;
+			clear_proc_info(pinfo);
+			return -1;
+		}
 		// When programs start, its either ld.so or themselves
 		// There is no other way they start. So, if there is a
 		// miscompare, then we must have started a while ago.
@@ -669,6 +679,10 @@ static int check_subject(lnode *r, event_t *e)
 							(&(r->s[cnt]), e);
 					if (rc == 0)
 						return 0;
+					// If there was an error, consider it
+					// a match since deny is likely
+					if (rc == -1)
+						return 1;
 			} else if (type >= COMM) {
 				// can't happen unless out of memory
 				if (subj->str == NULL) {

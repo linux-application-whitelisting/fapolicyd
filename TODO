@@ -4,7 +4,6 @@ Hand userspace fstat results for object with event (currently get a fd)
 
 Userspace
 =========
-Handle HAS_ERROR in elf pattern processing
 Handle double events (exec_perm/open_perm)
 Fix new pattern detection and swing between them based on exec_perm support
 Bring back LD_PRELOAD detection
