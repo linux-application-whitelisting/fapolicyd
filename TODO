@@ -6,6 +6,9 @@ Userspace
 =========
 Harden elf_gather by sanity checking sizes
 Handle HAS_ERROR in elf pattern processing
+Handle double events (exec_perm/open_perm)
+Fix new pattern detection and swing between them based on exec_perm support
+Bring back LD_PRELOAD detection
 Does reversing path string improve lookup performance?
 Handle long paths by hashing it (lmdb has 511 byte limit) (Which hash to use?)
 During startup, update database with current trust sources
