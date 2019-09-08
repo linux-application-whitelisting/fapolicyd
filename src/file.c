@@ -418,7 +418,7 @@ uint32_t gather_elf(int fd, off_t size)
 		// We want to do a basic size check to make sure
 		unsigned long sz =
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
-		if (sz > (unsigned long)size) {
+		if (sz > ((unsigned long)size - sizeof(Elf32_Ehdr))) {
 			info |= HAS_ERROR;
 			free(hdr);
 			goto rewind_out;
@@ -434,9 +434,7 @@ uint32_t gather_elf(int fd, off_t size)
 			goto err_out32;
 
 		// Read in complete table
-		if ((unsigned int)safe_read(fd, (char *)ph_tbl,
-			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum) !=
-			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum)
+		if ((unsigned int)safe_read(fd, (char *)ph_tbl, sz) != sz)
 			goto err_out32;
 
 		// Check for rpath record
@@ -539,7 +537,7 @@ done32:
 		// We want to do a basic size check to make sure
 		unsigned long sz =
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
-		if (sz > (unsigned long)size) {
+		if (sz > ((unsigned long)size - sizeof(Elf64_Ehdr))) {
 			info |= HAS_ERROR;
 			free(hdr);
 			goto rewind_out;
@@ -555,9 +553,7 @@ done32:
 			goto err_out64;
 
 		// Read in complete table
-		if ((unsigned int)safe_read(fd, (char *)ph_tbl,
-			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum) !=
-			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum)
+		if ((unsigned int)safe_read(fd, (char *)ph_tbl, sz) != sz)
 			goto err_out64;
 
 		// Check for rpath record
@@ -597,7 +593,8 @@ done32:
 
 				info |= HAS_DYNAMIC;
 
-				if (ph_tbl[i].p_filesz > size) goto err_out64;
+				if (ph_tbl[i].p_filesz>(long unsigned int)size)
+					goto err_out64;
 
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
 
