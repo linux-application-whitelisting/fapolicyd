@@ -54,6 +54,12 @@ static const char *interpreters[] = {
 };
 #define MAX_INTERPS (sizeof(interpreters)/sizeof(interpreters[0]))
 
+// Define a convience function to rewind a descriptor to the beginning
+static inline void rewind_fd(int fd)
+{
+	lseek(fd, 0, SEEK_SET);
+}
+
 // Initialize what we can now so that its not done each call
 void file_init(void)
 {
@@ -253,6 +259,7 @@ char *get_file_type_from_fd(int fd, size_t blen, char *buf)
 	const char *ptr;
 
 	ptr = magic_descriptor(magic_cookie, fd);
+	rewind_fd(fd);
 	if (ptr) {
 		char *str;
 		strncpy(buf, ptr, blen-1);
@@ -263,7 +270,6 @@ char *get_file_type_from_fd(int fd, size_t blen, char *buf)
 	} else
 		return NULL;
 
-	lseek(fd, 0, SEEK_SET);
 	return buf;
 }
 
@@ -307,7 +313,6 @@ char *get_hash_from_fd(int fd)
 		return NULL;
 
 	// read in a buffer at a time and hand to gcrypt
-	lseek(fd, 0, SEEK_SET);
 	while ((len = safe_read(fd, fbuf, 4096)) > 0) {
 		gcry_md_write(ctx, fbuf, len);
 		if (len != 4096)
@@ -327,7 +332,7 @@ char *get_hash_from_fd(int fd)
 	// Convert to ASCII string
 	bytes2hex(digest, hptr, len);
 	gcry_md_close(ctx);
-	lseek(fd, 0, SEEK_SET);
+	rewind_fd(fd);
 
 	return digest;
 }
@@ -389,10 +394,10 @@ uint32_t gather_elf(int fd, off_t size)
 	uint32_t info = 0;
 
 	if (read_preliminary_header(fd))
-		return 0;
+		goto rewind_out;
 
 	if (strncmp((char *)e_ident, ELFMAG, 4))
-		return 0;
+		goto rewind_out;
 
 	/* e = malloc(sizeof(struct elf_info));
 	if (e == NULL)
@@ -406,7 +411,7 @@ uint32_t gather_elf(int fd, off_t size)
 		Elf32_Ehdr *hdr = read_header32(fd);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
-			return info;
+			goto rewind_out;
 		}
 
 		// Look for program header information
@@ -416,13 +421,13 @@ uint32_t gather_elf(int fd, off_t size)
 		if (sz > (unsigned long)size) {
 			info |= HAS_ERROR;
 			free(hdr);
-			return info;
+			goto rewind_out;
 		}
 		ph_tbl = malloc(sz);
 		if (ph_tbl == NULL) {
 			info |= HAS_ERROR;
 			free(hdr);
-			return info;
+			goto rewind_out;
 		}
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
@@ -527,7 +532,7 @@ done32:
 		Elf64_Ehdr *hdr = read_header64(fd);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
-			return info;
+			goto rewind_out;
 		}
 
 		// Look for program header information
@@ -537,13 +542,13 @@ done32:
 		if (sz > (unsigned long)size) {
 			info |= HAS_ERROR;
 			free(hdr);
-			return info;
+			goto rewind_out;
 		}
 		ph_tbl = malloc(sz);
 		if (ph_tbl == NULL) {
 			info |= HAS_ERROR;
 			free(hdr);
-			return info;
+			goto rewind_out;
 		}
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
@@ -638,6 +643,7 @@ done64:
 		free(ph_tbl);
 		free(hdr);
 	}
-	lseek(fd, 0, SEEK_SET);
+rewind_out:
+	rewind_fd(fd);
 	return info;
 }
