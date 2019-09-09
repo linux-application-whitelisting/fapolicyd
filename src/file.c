@@ -153,7 +153,7 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 
 char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 {
-	char path[PATH_MAX+1];
+	char path[32];
 	ssize_t path_len;
 
 	snprintf(path, sizeof(path), "/proc/%d/cwd", pid);
@@ -195,7 +195,7 @@ static void resolve_path(const char *pcwd, char *path, size_t len)
 
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 {
-	char procfd_path[PATH_MAX+1];
+	char procfd_path[32];
 	ssize_t path_len;
 
 	snprintf(procfd_path, sizeof(procfd_path)-1,

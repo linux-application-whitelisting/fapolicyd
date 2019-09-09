@@ -244,7 +244,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			}
 			break;
 		case EXE_TYPE: {
-			char buf[PATH_MAX+1], *ptr;
+			char buf[128], *ptr;
 			ptr = get_type_from_pid(e->pid, sizeof(buf), buf);
 			if (ptr)
 				subj.str = strdup(buf);

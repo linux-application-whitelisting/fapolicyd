@@ -98,7 +98,7 @@ int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
 
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 {
-	char path[PATH_MAX+1];
+	char path[32];
 	ssize_t rc;
 	int fd;
 
@@ -129,7 +129,7 @@ char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 {
-	char path[PATH_MAX+1];
+	char path[32];
 	ssize_t path_len;
 
 	snprintf(path, sizeof(path), "/proc/%d/exe", pid);
@@ -154,7 +154,7 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 {
-	char path[PATH_MAX+1];
+	char path[32];
 	int fd;
 
 	snprintf(path, sizeof(path), "/proc/%d/exe", pid);
@@ -182,7 +182,7 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 }
 uid_t get_program_auid_from_pid(pid_t pid)
 {
-	char path[PATH_MAX+1];
+	char path[32];
 	ssize_t rc;
 	int fd;
 
@@ -191,7 +191,7 @@ uid_t get_program_auid_from_pid(pid_t pid)
 	if (fd >= 0) {
 		uid_t auid;
 
-		rc = read(fd, path, PATH_MAX);
+		rc = read(fd, path, sizeof(path));
 		close(fd);
 		if (rc > 0) {
 			path[rc] = 0;  // manually terminate, read doesn't
@@ -206,7 +206,7 @@ uid_t get_program_auid_from_pid(pid_t pid)
 
 int get_program_sessionid_from_pid(pid_t pid)
 {
-	char path[PATH_MAX+1];
+	char path[32];
 	ssize_t rc;
 	int fd;
 
@@ -215,7 +215,7 @@ int get_program_sessionid_from_pid(pid_t pid)
 	if (fd >= 0) {
 		int ses;
 
-		rc = read(fd, path, PATH_MAX);
+		rc = read(fd, path, sizeof(path));
 		close(fd);
 		if (rc > 0) {
 			path[rc] = 0;  // manually terminate, read doesn't
@@ -230,7 +230,7 @@ int get_program_sessionid_from_pid(pid_t pid)
 
 uid_t get_program_uid_from_pid(pid_t pid)
 {
-	char path[PATH_MAX+1];
+	char path[128];
 	int uid = -1;
 	FILE *f;
 
