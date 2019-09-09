@@ -304,7 +304,7 @@ static const struct kw_pair *kw_lookup(const char *val)
 {
 	int i = 0;
 	while (keywords[i].name != NULL) {
-		if (strcasecmp(keywords[i].name, val) == 0)
+		if (strcmp(keywords[i].name, val) == 0)
 			break;
 		i++;
 	}

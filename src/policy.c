@@ -28,7 +28,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
-#include <strings.h>
 #include <limits.h>
 #include <stdlib.h>
 #include "file.h"
@@ -55,7 +54,7 @@ int dec_name_to_val(const char *name)
 {
         unsigned int i = 0;
         while (i < MAX_DECISIONS) {
-                if (strcasecmp(name, table[i].name) == 0)
+                if (strcmp(name, table[i].name) == 0)
                         return table[i].value;
                 i++;
         }

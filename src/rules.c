@@ -201,19 +201,19 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 		}
 	} else {
 		if (n->s[i].type == PATTERN) {
-			if (strcasecmp(ptr2, PATTERN_LD_PRELOAD_STR) == 0) {
+			if (strcmp(ptr2, PATTERN_LD_PRELOAD_STR) == 0) {
 				msg(LOG_ERR,
 				"ld_preload is a deprecated pattern in line %d",
 					lineno);
 				return 3;
 //				n->s[i].val = PATTERN_LD_PRELOAD_VAL;
-//			} else if (strcasecmp(ptr2,
+//			} else if (strcmp(ptr2,
 //					PATTERN_BAD_INTERPRETER_STR) == 0) {
 //				n->s[i].val = PATTERN_BAD_INTERPRETER_VAL;
-			} else if (strcasecmp(ptr2,
+			} else if (strcmp(ptr2,
 					PATTERN_LD_SO_STR) == 0) {
 				n->s[i].val = PATTERN_LD_SO_VAL;
-			} else if (strcasecmp(ptr2, PATTERN_STATIC_STR) == 0) {
+			} else if (strcmp(ptr2, PATTERN_STATIC_STR) == 0) {
 				n->s[i].val = PATTERN_STATIC_VAL;
 			} else {
 				msg(LOG_ERR,
@@ -317,7 +317,7 @@ static int nv_split(char *buf, lnode *n, int lineno)
 			} else
 				if (assign_subject(n, type, ptr2, lineno) == 3)
 					return -1;
-		} else if (strcasecmp(ptr, "all") == 0) {
+		} else if (strcmp(ptr, "all") == 0) {
 			if (n->s_count == 0) {
 				type = ALL_SUBJ;
 				assign_subject(n, type, "", lineno);
@@ -420,13 +420,13 @@ static int check_dirs(unsigned int i, const char *path)
 // Returns 0 if no match, 1 if a match
 static int obj_dir_test(object_attr_t *o, object_attr_t *obj)
 {
-	// We allow a special 'systemdirs' macro
-	if ((o->len == 10) && strcmp(o->o, "systemdirs") == 0)
-		return check_dirs(0, obj->o);
 	// Execdirs doesn't have /etc in its list
-	else if ((o->len == 8) && strcmp(o->o, "execdirs") == 0)
+	if ((o->len == 8) && strcmp(o->o, "execdirs") == 0)
 		return check_dirs(1, obj->o);
-	else if ((o->len == 10) && strcasecmp(o->o, "untrusted") == 0) {
+	// We allow a special 'systemdirs' macro
+	else if ((o->len == 10) && strcmp(o->o, "systemdirs") == 0)
+		return check_dirs(0, obj->o);
+	else if ((o->len == 10) && strcmp(o->o, "untrusted") == 0) {
 		if (check_trust_database(obj->o))
 			return 0;
 	// Just a normal dir test
@@ -441,14 +441,13 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj)
 {
 	unsigned int len = strlen(s->str);
 
-	// We allow a special 'systemdirs' macro
-	if ((len == 10) && strcmp(s->str, "systemdirs") == 0)
-		return check_dirs(0, subj->str);
-
 	// Execdirs doesn't have /etc in its list
-	else if ((len == 8) && strcmp(s->str, "execdirs") == 0)
+	if ((len == 8) && strcmp(s->str, "execdirs") == 0)
 		return check_dirs(1, subj->str);
-	else if ((len == 10) && strcasecmp(s->str, "untrusted") == 0) {
+	// We allow a special 'systemdirs' macro
+	else if ((len == 10) && strcmp(s->str, "systemdirs") == 0)
+		return check_dirs(0, subj->str);
+	else if ((len == 10) && strcmp(s->str, "untrusted") == 0) {
 		if (check_trust_database(subj->str))
 			return 0;
 
@@ -697,7 +696,7 @@ static int check_subject(lnode *r, event_t *e)
 					if (rc == 0)
 						return 0;
 				} else if (type == EXE &&
-				   strcasecmp(r->s[cnt].str, "untrusted")==0) {
+				   strcmp(r->s[cnt].str, "untrusted")==0) {
 					if (check_trust_database(subj->str))
 						return 0;
 				} else if (strcmp(subj->str, r->s[cnt].str))
@@ -735,7 +734,7 @@ static decision_t check_object(lnode *r, event_t *e)
 			} else if (r->o[cnt].type == PATH &&
 				 (r->s[cnt].type == EXE ||
 				     r->s[cnt].type == EXE_DIR) &&
-				 strcasecmp(r->s[cnt].str, "untrusted") == 0) {
+				 strcmp(r->s[cnt].str, "untrusted") == 0) {
 				if (check_trust_database(obj->o))
 					return 0;
 			} else if (strcmp(obj->o, r->o[cnt].o))

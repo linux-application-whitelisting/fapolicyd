@@ -24,7 +24,7 @@
 
 #include "config.h"
 #include <stddef.h>	// For NULL
-#include <strings.h>
+#include <string.h>
 #include "object-attr.h"
 
 static const nv_t table[] = {
@@ -43,7 +43,7 @@ int obj_name_to_val(const char *name)
 {
 	unsigned int i = 0;
 	while (i < MAX_OBJECTS) {
-		if (strcasecmp(name, table[i].name) == 0)
+		if (strcmp(name, table[i].name) == 0)
 			return table[i].value;
 		i++;
 	}
