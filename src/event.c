@@ -232,6 +232,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 				subj.str = strdup("?");
 			}
 			break;
+		// If these 2 ever get separated, update subject_add
+		// and subject_access in subject.c
 		case EXE:
 		case EXE_DIR: {
 			char buf[PATH_MAX+1], *ptr;

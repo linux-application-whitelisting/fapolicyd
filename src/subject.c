@@ -66,6 +66,8 @@ static void sanity_check_array(const s_array *a, const char *id)
 subject_attr_t *subject_access(s_array *a, subject_type_t t)
 {
 	sanity_check_array(a, "subject_access");
+	// These store the same info, see get_subj_attr in event.c
+	if (t == EXE_DIR) t = EXE;
 	if (t >= SUBJ_START && t <= SUBJ_END)
 		return a->subj[t - SUBJ_START];
 	else
@@ -81,6 +83,8 @@ int subject_add(s_array *a, subject_attr_t *subj)
 	sanity_check_array(a, "subject_add 1");
 	if (subj) {
 		t = subj->type;
+		// These store the same info, see get_subj_attr in event.c
+		if (t == EXE_DIR) t = EXE;
 		if (t >= SUBJ_START && t <= SUBJ_END) {
 			newnode = malloc(sizeof(subject_attr_t));
 			newnode->type = t;
