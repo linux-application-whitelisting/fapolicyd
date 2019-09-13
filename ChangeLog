@@ -4,6 +4,7 @@
 - Add static pattern detection
 - Performance improvements
 - Switch from static mounts to hotplug configuration of mount points
+- Dont collect documentation in trust database
 
 0.8.10
 - Fix segfault for rules whose subject is number oriented

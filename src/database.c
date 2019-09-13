@@ -467,6 +467,14 @@ static int is_dir_rpm(void)
 		return 1;
 	return 0;
 }
+
+static int is_doc_rpm(void)
+{
+	if (rpmfiFFlags(fi) & RPMFILE_DOC)
+		return 1;
+	return 0;
+}
+
 static void close_rpm(void)
 {
 	rpmfiFree(fi);
@@ -500,6 +508,10 @@ static int load_rpmdb_into_memory()
 			// Multiple packages can own the same directory
 			// and that causes problems in the size info.
 			if (is_dir_rpm())
+				continue;
+
+			// We do not want any documentation in the database
+			if (is_doc_rpm())
 				continue;
 
 			// Get specific file information
@@ -568,6 +580,10 @@ static int check_database_copy(void)
 		while (!problems && get_next_file_rpm()) {
 			// Directories are not being kept, skip them.
 			if (is_dir_rpm())
+				continue;
+
+			// Documentation is not being kept, skip them
+			if (is_doc_rpm())
 				continue;
 
 			// Get specific file information
