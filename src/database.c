@@ -641,7 +641,7 @@ int init_database(struct daemon_conf *config)
 {
 	int rc = 0;
 
-	msg(LOG_INFO, "Initialization of the database");
+	msg(LOG_INFO, "Initializing the database");
 	if ((rc = init_db(config))) {
 		msg(LOG_ERR, "Cannot open the database, init_db() (%d)", rc);
 		return rc;
