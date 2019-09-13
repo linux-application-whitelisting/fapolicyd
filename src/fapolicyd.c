@@ -1,6 +1,6 @@
 /*
  * fapolicyd.c - Main file for the program
- * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-19 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -39,13 +39,15 @@
 #include <cap-ng.h>
 #include <sys/prctl.h>
 #include <linux/unistd.h>  /* syscall numbers */
-#include <sys/stat.h>	/* umask */
+#include <sys/stat.h>	   /* umask */
 #include <seccomp.h>
 #include <stdatomic.h>
+#include <limits.h>        /* PATH_MAX */
 
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
+#include "fd-fgets.h"
 #include "file.h"
 #include "database.h"
 #include "message.h"
@@ -180,6 +182,71 @@ static int become_daemon(void)
 	return 0;
 }
 
+// Returns 1 if we care about the entry and 0 if we do not
+static int check_mount_entry(const char *device, const char *point,
+	const char *type)
+{
+	// Some we know we don't want
+	if (strcmp(point, "/run") == 0)
+		return 0;
+	if (strncmp(point, "/sys", 4) == 0)
+		return 0;
+
+	// Some we do want
+	if (strcmp(type, "ext4") == 0)
+		return 1;
+	if (strcmp(type, "tmpfs") == 0)
+		return 1;
+	if (strcmp(type, "ext3") == 0)
+		return 1;
+	if (strcmp(type, "xfs") == 0)
+		return 1;
+	if (strcmp(type, "vfat") == 0)
+		return 1;
+	if (strcmp(type, "ext2") == 0)
+		return 1;
+
+	return 0;	
+}
+
+static mlist *m = NULL;
+static void handle_mounts(int fd)
+{
+	char buf[PATH_MAX * 2], device[1025], point[4097];
+	char type[32], mntops[128];
+	int fs_req, fs_passno;
+
+	if (m == NULL) {
+		m = malloc(sizeof(mlist));
+		mlist_create(m);
+	}
+
+	// Rewind the descriptor
+	lseek(fd, 0, SEEK_SET);
+	mlist_mark_all_deleted(m);
+	do {
+		// Get a line
+		if (fd_fgets(buf, sizeof(buf), fd)) {
+			// Parse it
+			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
+			    device, point, type, mntops, &fs_req, &fs_passno);
+			// Is this one that we care about?
+			if (check_mount_entry(device, point, type)) {
+				// Can we find it in the old list?
+				if (mlist_find(m, point)) {
+					// Mark no change
+					m->cur->status = NO_CHANGE;
+				} else
+					mlist_append(m, point);
+			}
+		} else if (fd_fgets_eof())
+			break;
+	} while (fd_fgets_more(sizeof(buf)));
+
+	// update marks
+	fanotify_update(m);
+}
+
 static void usage(void)
 {
 	fprintf(stderr,
@@ -191,7 +258,7 @@ static void usage(void)
 
 int main(int argc, char *argv[])
 {
-	struct pollfd pfd[1];
+	struct pollfd pfd[2];
 	struct sigaction sa;
 	struct rlimit limit;
 	int rc, i;
@@ -384,12 +451,15 @@ int main(int argc, char *argv[])
 	file_init();
 
 	// Initialize the file watch system
-	pfd[0].fd = init_fanotify(&config);
-	pfd[0].events = POLLIN;
+	pfd[0].fd = open("/proc/mounts", O_RDONLY);
+	pfd[0].events = POLLPRI;
+	handle_mounts(pfd[0].fd);
+	pfd[1].fd = init_fanotify(&config, m);
+	pfd[1].events = POLLIN;
 
 	msg(LOG_DEBUG, "Starting to listen for events");
 	while (!stop) {
-		rc = poll(pfd, 1, -1);
+		rc = poll(pfd, 2, -1);
 
 #ifdef DEBUG
 		msg(LOG_DEBUG, "Main poll interrupted");
@@ -403,10 +473,14 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 		} else if (rc > 0) {
-			if (pfd[0].revents & POLLIN) {
+			if (pfd[1].revents & POLLIN) {
 				lock_update_thread();
 				handle_events();
 				unlock_update_thread();
+			}
+			if (pfd[0].revents & POLLPRI) {
+				msg(LOG_DEBUG, "Mount change detected");
+				handle_mounts(pfd[0].fd);
 			}
 
 			// This will always need to be here as long as we
@@ -419,7 +493,10 @@ int main(int argc, char *argv[])
 		}
 	}
 	msg(LOG_DEBUG, "shutting down...");
-	shutdown_fanotify();
+	shutdown_fanotify(m);
+	close(pfd[0].fd);
+	mlist_clear(m);
+	free(m);
 	file_close();
 	close_database();
 	if (pidfile)

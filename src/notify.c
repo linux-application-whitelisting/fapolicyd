@@ -61,7 +61,7 @@ static pthread_cond_t do_decision;
 static volatile atomic_bool events_ready;
 static volatile pid_t decision_tid;
 static volatile int alive = 1;
-static int fd;
+static int fd = -1;
 static unsigned long allowed = 0, denied = 0;
 static uint64_t mask;
 
@@ -69,7 +69,7 @@ static uint64_t mask;
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
 
-int init_fanotify(struct daemon_conf *conf)
+int init_fanotify(struct daemon_conf *conf, mlist *m)
 {
 	const char *path;
 
@@ -81,9 +81,6 @@ int init_fanotify(struct daemon_conf *conf)
 		exit(1);
 	}
 	our_pid = getpid();
-
-	if (load_mounts())
-		exit(1);
 
 	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
 #ifdef USE_AUDIT
@@ -125,7 +122,7 @@ int init_fanotify(struct daemon_conf *conf)
 	mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
 
 	// Iterate through the mount points and add a mark
-	path = first_mounts();
+	path = mlist_first(m);
 	while (path) {
 retry_mark:
 		if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
@@ -142,27 +139,63 @@ retry_mark:
 				mask = FAN_OPEN_PERM;
 				goto retry_mark;
 			}
-			msg(LOG_ERR, "Failed setting up watches (%s)",
-				strerror(errno));
+			msg(LOG_ERR, "Error (%s) adding fanotify mark for %s",
+				strerror(errno), path);
 			exit(1);
 		}
 		msg(LOG_DEBUG, "added %s mount point", path);
-		path = next_mounts();
+		path = mlist_next(m);
 	}
 
 	return fd;
 }
 
-void shutdown_fanotify(void)
+void fanotify_update(mlist *m)
 {
-	const char *path = first_mounts();
+	// Make sure fanotify_init has run
+	if (fd < 0)
+		return;
+
+	mnode *prev = m->head;
+	mlist_first(m);
+	while (m->cur) {
+		if (m->cur->status == ADD) {
+			// We will trust that the mask was set correctly
+			if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+					mask, -1, m->cur->path) == -1) {
+				msg(LOG_ERR,
+				    "Error (%s) adding fanotify mark for %s",
+					strerror(errno), m->cur->path);
+			} else {
+				msg(LOG_DEBUG, "Added %s mount point",
+					m->cur->path);
+			}
+		}
+
+		// Now remove the deleted mount point
+		if (m->cur->status == DELETE) {
+			msg(LOG_DEBUG, "Deleted %s mount point", m->cur->path);
+			prev->next = m->cur->next;
+			free((void *)m->cur->path);
+			free((void *)m->cur);
+			m->cur = prev->next;
+		} else {
+			prev = m->cur;
+			mlist_next(m);
+		}
+	}
+}
+
+void shutdown_fanotify(mlist *m)
+{
+	const char *path = mlist_first(m);
 
 	// Stop the flow of events
 	while (path) {
 		if (fanotify_mark(fd, FAN_MARK_FLUSH, 0, -1, path) == -1)
 			msg(LOG_ERR, "Failed flushing path %s  (%s)",
 				path, strerror(errno));
-		path = next_mounts();
+		path = mlist_next(m);
 	}
 
 	// End the thread
@@ -176,7 +209,6 @@ void shutdown_fanotify(void)
 	// Clean up
 	q_close(q);
 	close(fd);
-	clear_mounts();
 
 	// Report results
 	msg(LOG_DEBUG, "Allowed accesses: %lu", allowed);

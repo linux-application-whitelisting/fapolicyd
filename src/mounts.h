@@ -1,6 +1,6 @@
 /*
  * mounts.h - Header file for mounts.c
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2019 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -25,11 +25,26 @@
 #ifndef MOUNTS_HEADER
 #define MOUNTS_HEADER
 
-#define MOUNTS_CONFIG_FILE "/etc/fapolicyd/fapolicyd.mounts"
+typedef enum { NO_CHANGE, ADD, DELETE } change_t;
 
-int load_mounts(void);
-const char *first_mounts(void);
-const char *next_mounts(void);
-void clear_mounts(void);
+typedef struct _mnode{
+	const char *path;
+	change_t status;
+	struct _mnode *next;  // Next node pointer
+} mnode;
+
+typedef struct {
+	mnode *head;          // List head
+	mnode *cur;           // Pointer to current node
+	unsigned int cnt;     // How many items in this list
+} mlist;
+
+void mlist_create(mlist *m);
+const char *mlist_first(mlist *m);
+const char *mlist_next(mlist *m);
+void mlist_mark_all_deleted(mlist *l);
+int mlist_find(mlist *m, const char *p);
+int mlist_append(mlist *m, const char *p);
+void mlist_clear(mlist *m);
 
 #endif

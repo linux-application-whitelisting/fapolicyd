@@ -15,8 +15,6 @@ Add file verification scrubber and update database status
 Use the verified status in decisions
 Handle rpm updates including updating the database
 Add admin defined whitelist of dirs or files
-Automate mounpoints to watch so that fapolicyd.mounts is not needed
-Automatically add watches to hotplug mount points
 Add sighup handler
 Support SWID as trust source
 Allow globbing

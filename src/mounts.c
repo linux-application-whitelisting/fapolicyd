@@ -1,6 +1,6 @@
 /*
  * mounts.c - Minimal linked list set of mount points
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2019 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -33,181 +33,110 @@
 #include "mounts.h"
 #include "message.h"
 
-typedef struct _lnode{
-	const char *path;
-	struct _lnode *next;  // Next node pointer
-} lnode;
-
-typedef struct {
-	lnode *head;          // List head
-	lnode *cur;           // Pointer to current node
-	unsigned int cnt;     // How many items in this list
-} llist;
-
-static llist mounts;
-
-static void mounts_create(llist *l)
+void mlist_create(mlist *m)
 {
-        l->head = NULL;
-        l->cur = NULL;
-        l->cnt = 0;
+        m->head = NULL;
+        m->cur = NULL;
+        m->cnt = 0;
 }
 
-static void mounts_last(llist *l)
+static void mlist_last(mlist *m)
 {
-	register lnode* window;
+	register mnode* window;
 
-	if (l->head == NULL)
+	if (m->head == NULL)
 		return;
 
-	window = l->head;
+	window = m->head;
 	while (window->next)
 		window = window->next;
 
-	l->cur = window;
+	m->cur = window;
 }
 
-static int mounts_append(llist *l, const char *buf, unsigned int lineno)
+int mlist_append(mlist *m, const char *p)
 {
-        lnode* newnode;
+        mnode* newnode;
 
-	if (buf) {
-		newnode = malloc(sizeof(lnode));
-		newnode->path = strdup(buf);
+	if (p) {
+		newnode = malloc(sizeof(mnode));
+		newnode->path = strdup(p);
+		newnode->status = ADD;
 	} else
 		return 1;
 
 	newnode->next = NULL;
-	mounts_last(l);
+	mlist_last(m);
 
 	// if we are at top, fix this up
-	if (l->head == NULL)
-		l->head = newnode;
+	if (m->head == NULL)
+		m->head = newnode;
 	else    // Otherwise add pointer to newnode
-		l->cur->next = newnode;
+		m->cur->next = newnode;
 
 	// make newnode current
-	l->cur = newnode;
-	l->cnt++;
+	m->cur = newnode;
+	m->cnt++;
 
 	return 0;
 }
 
-static char *get_line(FILE *f, char *buf, int size)
+const char *mlist_first(mlist *m)
 {
-	if (fgets_unlocked(buf, size, f)) {
-		/* remove newline */
-		char *ptr = strchr(buf, 0x0a);
-		if (ptr)
-			*ptr = 0;
-		return buf;
-	}
-	return NULL;
+	m->cur = m->head;
+
+	if (m->cur == NULL)
+		return NULL;
+	return m->cur->path;
 }
 
-int load_mounts(void)
+const char *mlist_next(mlist *m)
 {
-	int fd, lineno = 1;
-	FILE *f;
-	char buf[PATH_MAX+1];
+	if (m->cur == NULL)
+		return NULL;
 
-	mounts_create(&mounts);
+	m->cur = m->cur->next;
+	if (m->cur == NULL)
+		return NULL;
+	return m->cur->path;
+}
 
-	// Now open the file and load them one by one.
-	fd = open(MOUNTS_CONFIG_FILE, O_NOFOLLOW|O_RDONLY);
-	if (fd < 0) {
-		msg(LOG_ERR, "Error opening mounts (%s)",
-			strerror(errno));
-		exit(1);
+void mlist_mark_all_deleted(mlist *m)
+{
+	register mnode *n = m->head;
+	while (n) {
+		n->status = DELETE;
+		n = n->next;
 	}
+}
 
-	f = fdopen(fd, "r");
-	if (f == NULL) {
-		msg(LOG_ERR, "Error - fdopen failed (%s)",
-			strerror(errno));
-		exit(1);
-	}
-
-	while (get_line(f, buf, PATH_MAX)) {
-		if (buf[0] != '#') {
-			char *ptr = buf;
-
-			while (*ptr == ' ')
-				ptr++;
-
-			/* Only proceed if it appears to be an absolute path */
-			if (*ptr == '/') {
-				struct stat sb;
-
-				if (stat(ptr, &sb) == -1) {
-					msg(LOG_INFO, "Invalid entry \"%s\". "
-						"Failed to stat object, %s."
-						" Skipping", ptr,
-						strerror(errno));
-					continue; /* Don't return to caller */
-				}
-
-				if (!S_ISDIR(sb.st_mode)) {
-					msg(LOG_INFO, "Invalid entry \"%s\". "
-						"Is not directory. Skipping",
-						 ptr);
-					continue; /* Don't return to caller */
-				}
-
-				mounts_append(&mounts, ptr, lineno);
-			}
+int mlist_find(mlist *m, const char *p)
+{
+	register mnode *n = m->head;
+	while (n) {
+		if (strcmp(p, n->path) == 0) {
+			m->cur = n;
+			return 1;
 		}
-
-		lineno++;
+		n = n->next;
 	}
-
-	fclose(f);
-
-	/* Only return true if no mounts found in configuration file */
-	if (mounts.cnt == 0) {
-		msg(LOG_INFO, "No mount points - exiting");
-		return 1;
-	}
-
 	return 0;
 }
 
-const char *first_mounts(void)
+void mlist_clear(mlist *m)
 {
-	llist *l = &mounts;
-	l->cur = l->head;
+	mnode* nextnode;
+	register mnode* current;
 
-	if (l->cur == NULL)
-		return NULL;
-	return l->cur->path;
-}
-
-const char *next_mounts(void)
-{
-	llist *l = &mounts;
-	if (l->cur == NULL)
-		return NULL;
-
-	l->cur = l->cur->next;
-	if (l->cur == NULL)
-		return NULL;
-	return l->cur->path;
-}
-
-void clear_mounts(void)
-{
-	llist *l = &mounts;
-	lnode* nextnode;
-        register lnode* current;
-
-        current = l->head;
+	current = m->head;
 	while (current) {
 		nextnode=current->next;
 		free((void *)current->path);
 		free((void *)current);
 		current=nextnode;
 	}
-	l->head = NULL;
-	l->cur = NULL;
-	l->cnt = 0;
+	m->head = NULL;
+	m->cur = NULL;
+	m->cnt = 0;
 }
+

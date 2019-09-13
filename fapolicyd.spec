@@ -57,7 +57,6 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %license COPYING
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
-%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.mounts
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf

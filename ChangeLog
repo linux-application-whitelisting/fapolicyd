@@ -3,6 +3,7 @@
 - Use FAN_OPEN_EXEC_PERM for subject cache management
 - Add static pattern detection
 - Performance improvements
+- Switch from static mounts to hotplug configuration of mount points
 
 0.8.10
 - Fix segfault for rules whose subject is number oriented

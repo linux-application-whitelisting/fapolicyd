@@ -9,8 +9,8 @@ fapolicyd \- File Access Policy Daemon
 Configuring \fBfapolicyd\fP is done with the files in \fI/etc/fapolicyd/\fP. There are two files,
 .B fapolicyd.rules
 and
-.B fapolicyd.mounts
- . The first one sets the access rights and the second one determines which partitions to watch.
+.B fapolicyd.conf
+ . The first one sets the access rights and the second determines the daemon's configuration.
 .SH OPTIONS
 .TP
 .B \-\-debug
@@ -50,9 +50,6 @@ To get audit events, you must have auditing enabled and at least one systemcall 
 .P
 .B /etc/fapolicyd/fapolicyd.rules
 - access control rules
-.P
-.B /etc/fapolicyd/fapolicyd.mounts
-- lists partitions to control access to
 .P
 .B /var/log/fapolicyd-access.log
 - information about what was being accessed.
