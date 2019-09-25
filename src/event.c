@@ -423,7 +423,11 @@ void run_usage_report(struct daemon_conf *config, FILE *f)
 			else
 				comm = sc->str ? sc->str : "?";
 
-			asprintf(&text, "%s (%s)", exe, comm);
+			if (asprintf(&text, "%s (%s)", exe, comm) < 0) {
+				fprintf(f, "?\n");
+				goto next_subj;
+			}
+
 			len = strlen(text);
 			if (len > 62)
 				fprintf(f, "%s\t%lu\n", text, q_node->uses);

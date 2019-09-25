@@ -114,6 +114,7 @@ int main(int argc, char const *argv[])
 
         if (ret == -1) {
             fprintf(stderr, "Write: %s -> %s\n", _pipe, strerror(errno));
+            close(fd);
             return 1;
         }
 
