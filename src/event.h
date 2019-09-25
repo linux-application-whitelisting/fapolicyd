@@ -1,6 +1,6 @@
 /*
  * event.h - Header file for event.c
- * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-19 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -32,6 +32,11 @@
 #include "subject.h"
 #include "object.h"
 #include "daemon-config.h"
+
+#ifndef FAN_OPEN_EXEC	// If kernel doesn't know these, set to 0 to disable
+#define FAN_OPEN_EXEC		0
+#define FAN_OPEN_EXEC_PERM	0
+#endif
 
 typedef struct ev {
 	pid_t pid;

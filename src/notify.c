@@ -41,10 +41,6 @@
 #include "queue.h"
 #include "mounts.h"
 
-#ifndef FAN_OPEN_EXEC_PERM
-#define FAN_OPEN_EXEC_PERM 0x00040000
-#endif
-
 #define FANOTIFY_BUFFER_SIZE 8192
 
 // External variables
