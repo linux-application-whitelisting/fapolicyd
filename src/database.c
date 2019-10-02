@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <gcrypt.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -48,12 +49,14 @@
 #include "message.h"
 #include "event.h"
 #include "temporary_db.h"
+#include "file.h"
 
 #define BUFFER_SIZE 1024
 
 static MDB_env *env;
 static MDB_dbi dbi;
 static int dbi_init = 0;
+static unsigned MDB_maxkeysize;
 const char *data_dir = "/var/lib/fapolicyd";
 const char *db = "trust.db";
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
@@ -143,6 +146,8 @@ static int init_db(struct daemon_conf *config)
 	if (rc)
 		return 5;
 
+	MDB_maxkeysize = mdb_env_get_maxkeysize(env);
+
 	lib_symlink = is_link("/lib");
 	lib64_symlink = is_link("/lib64");
 	bin_symlink = is_link("/bin");
@@ -185,6 +190,34 @@ static void abort_transaction(MDB_txn *txn)
 }
 
 /*
+ * Convert path to a hash value. Used when the path exceeds the LMDB key limit(511).
+ * Note: Returned value must be deallocated.
+*/
+static char *path_to_hash(const char *path, const size_t path_len)
+{
+	gcry_md_hd_t h;
+	unsigned int len;
+	char *digest, *hptr;
+
+	gcry_md_open(&h, GCRY_MD_SHA512, GCRY_MD_FLAG_SECURE);
+	gcry_md_write(h, path, path_len);
+
+	hptr = (char *)gcry_md_read(h, GCRY_MD_SHA512);
+
+	len = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * sizeof(char);
+	digest = malloc((2 * len) + 1);
+	if (digest == NULL) {
+		gcry_md_close(h);
+		return digest;
+	}
+
+	bytes2hex(digest, hptr, len);
+	gcry_md_close(h);
+
+	return digest;
+}
+
+/*
  * path - key
  * status, file size, sha256 hash - data
  * status means if data is confirmed: unknown, yes, no
@@ -194,6 +227,8 @@ static int write_db(const char *index, const char *data)
 	MDB_val key, value;
 	MDB_txn *txn;
 	int rc;
+	size_t len;
+	char *hash = NULL;
 
 	if (mdb_txn_begin(env, NULL, 0, &txn))
 		return 1;
@@ -203,10 +238,20 @@ static int write_db(const char *index, const char *data)
 		return 2;
 	}
 
-	key.mv_data = (void *)index;
-	key.mv_size = strlen(index);
+	len = strlen(index);
+	if (len > MDB_maxkeysize) {
+		hash = path_to_hash(index, len);
+		if (hash == NULL)
+			return 5;
+		key.mv_data = (void *)hash;
+		key.mv_size = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * 2 + 1;
+	} else {
+		key.mv_data = (void *)index;
+		key.mv_size = len;
+	}
 	value.mv_data = (void *)data;
 	value.mv_size = strlen(data);
+
 	if ((rc = mdb_put(txn, dbi, &key, &value, 0))) {
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
 		abort_transaction(txn);
@@ -217,6 +262,9 @@ static int write_db(const char *index, const char *data)
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
 		return 4;
 	}
+
+	if (len > MDB_maxkeysize)
+		free(hash);
 
 	return 0;
 }
@@ -291,23 +339,35 @@ static void end_long_term_read_ops(void)
 static char *lt_read_db(const char *index, int only_check_key)
 {
 	int rc;
-	char *data;
+	char *data, *hash = NULL;
 	MDB_val key, value;
+	size_t len;
 
 	if (start_long_term_read_ops())
 		return NULL;
 
-	key.mv_data = (void *)index;
-	key.mv_size = strlen(index);
+	len = strlen(index);
+	if (len > MDB_maxkeysize) {
+		hash = path_to_hash(index, len);
+		if (hash == NULL)
+			return NULL;
+		key.mv_data = (void *)hash;
+		key.mv_size = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * 2 + 1;
+	} else {
+		key.mv_data = (void *)index;
+		key.mv_size = len;
+	}
 	value.mv_data = NULL;
 	value.mv_size = 0;
-
 	if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET_KEY))) {
 		if (rc == MDB_NOTFOUND)
 			return NULL;
 		msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 		return NULL;
 	}
+
+	if (len > MDB_maxkeysize)
+		free(hash);
 
 	// Failure means NULL was returned. Need to return a non-null value
 	// for success. Using the db name since its non-NULL.
@@ -524,7 +584,6 @@ static int load_rpmdb_into_memory()
 						verified, sz, sha) == -1) {
 				data = NULL;
 			}
-
 			if (data) append_db_list(file_name, data);
 			else {
 				free((void*)file_name);

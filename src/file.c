@@ -274,7 +274,7 @@ char *get_file_type_from_fd(int fd, size_t blen, char *buf)
 }
 
 // This function converts byte array into asciie hex
-static char *bytes2hex(char *final, const char *buf, unsigned int size)
+char *bytes2hex(char *final, const char *buf, unsigned int size)
 {
 	unsigned int i;
 	char *ptr = final;
