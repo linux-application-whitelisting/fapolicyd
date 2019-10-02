@@ -389,7 +389,7 @@ static char *lt_read_db(const char *index, int only_check_key)
 /*
  * This function takes a path as input and looks it up. If found it
  * will delete the entry.
- */
+ *
 static int delete_entry_db(const char *index)
 {
 	MDB_txn *txn;
@@ -403,6 +403,8 @@ static int delete_entry_db(const char *index)
 		return 1;
 	}
 
+	// FIXME: if we ever use this function, it will need patching
+	// to use hashes if the path is larger than MDB_maxkeysize.
 	key.mv_data = (void *)index;
 	key.mv_size = strlen(index);
 	value.mv_data = NULL;
@@ -417,7 +419,7 @@ static int delete_entry_db(const char *index)
 		return 1;
 
 	return 0;
-}
+}*/
 
 static int database_empty(void)
 {
