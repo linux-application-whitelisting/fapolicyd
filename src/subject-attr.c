@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
 #include "config.h"
@@ -39,6 +40,7 @@ static const nv_t table[] = {
 {	EXE_DIR,    "exe_dir"	},
 {	EXE_TYPE,   "exe_type"	},
 {	EXE_DEVICE, "exe_device" },
+{	SUBJ_TRUST, "subj_trust" },
 };
 
 #define MAX_SUBJECTS (sizeof(table)/sizeof(table[0]))

@@ -20,9 +20,11 @@
 *
 * Authors:
 *   Steve Grubb <sgrubb@redhat.com>
+*   Radovan Sroka <rsroka@redhat.com>
 */
 
 #include "config.h"
+#include "stdbool.h"
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -184,6 +186,18 @@ static void sanity_check_list(llist *l, const char *id)
 #else
 #define sanity_check_list(a, b) do {} while(0)
 #endif
+
+/*
+ * If subject is trusted function return true, false otherwise.
+ */
+static bool is_subj_trusted(event_t *e)
+{
+  subject_attr_t *trusted = get_subj_attr(e, SUBJ_TRUST);
+
+  if (!trusted) return 0;
+  return trusted->val;
+}
+
 
 static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 {
@@ -437,7 +451,7 @@ static int obj_dir_test(object_attr_t *o, object_attr_t *obj)
 }
 
 // Returns 0 if no match, 1 if a match
-static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj)
+static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj, int trusted)
 {
 	unsigned int len = strlen(s->str);
 
@@ -448,7 +462,7 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj)
 	else if ((len == 10) && strcmp(s->str, "systemdirs") == 0)
 		return check_dirs(0, subj->str);
 	else if ((len == 10) && strcmp(s->str, "untrusted") == 0) {
-		if (check_trust_database(subj->str))
+		if (trusted)
 			return 0;
 
 	// Just a normal dir test.
@@ -692,12 +706,13 @@ static int check_subject(lnode *r, event_t *e)
 				//  match.  Any child dir would also match.
 				if (type == EXE_DIR) {
 					int rc = subj_dir_test(&(r->s[cnt]),
-								subj);
+								subj,
+								is_subj_trusted(e));
 					if (rc == 0)
 						return 0;
 				} else if (type == EXE &&
 				   strcmp(r->s[cnt].str, "untrusted")==0) {
-					if (check_trust_database(subj->str))
+					if (is_subj_trusted(e))
 						return 0;
 				} else if (strcmp(subj->str, r->s[cnt].str))
 					return 0;
