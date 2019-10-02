@@ -36,7 +36,7 @@
 #include "message.h"
 
 #define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
-	FAN_OPEN_EXEC|FAN_OPEN_EXEC_PERM)
+	FAN_OPEN_EXEC_PERM)
 
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
@@ -109,7 +109,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	if (s) {
 		rc = compare_proc_infos(pinfo, s->info);
 		// If not same proc or we detect execution, evict
-		evict = rc || e->type & (FAN_OPEN_EXEC|FAN_OPEN_EXEC_PERM);
+		evict = rc || e->type & FAN_OPEN_EXEC_PERM;
 		if (evict) {
 			lru_evict(subj_cache, key);
 			q_node = check_lru_cache(subj_cache, key);
