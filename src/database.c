@@ -56,7 +56,7 @@
 static MDB_env *env;
 static MDB_dbi dbi;
 static int dbi_init = 0;
-static unsigned MDB_MAXKEYSIZE;
+static unsigned MDB_maxkeysize;
 const char *data_dir = "/var/lib/fapolicyd";
 const char *db = "trust.db";
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
@@ -146,7 +146,7 @@ static int init_db(struct daemon_conf *config)
 	if (rc)
 		return 5;
 
-	MDB_MAXKEYSIZE = mdb_env_get_maxkeysize(env);
+	MDB_maxkeysize = mdb_env_get_maxkeysize(env);
 
 	lib_symlink = is_link("/lib");
 	lib64_symlink = is_link("/lib64");
@@ -208,7 +208,7 @@ static char *path_to_hash(const char *path, const size_t path_len)
 	digest = malloc((2 * len) + 1);
 	if (digest == NULL) {
 		gcry_md_close(h);
-		return NULL;
+		return digest;
 	}
 
 	bytes2hex(digest, hptr, len);
@@ -239,7 +239,7 @@ static int write_db(const char *index, const char *data)
 	}
 
 	len = strlen(index);
-	if (len > MDB_MAXKEYSIZE) { /* key size is greater than LMDB key limit */
+	if (len > MDB_maxkeysize) {
 		hash = path_to_hash(index, len);
 		if (hash == NULL)
 			return 5;
@@ -263,7 +263,7 @@ static int write_db(const char *index, const char *data)
 		return 4;
 	}
 
-	if (len > MDB_MAXKEYSIZE) /* key size is greater than LMDB key limit */
+	if (len > MDB_maxkeysize)
 		free(hash);
 
 	return 0;
@@ -347,7 +347,7 @@ static char *lt_read_db(const char *index, int only_check_key)
 		return NULL;
 
 	len = strlen(index);
-	if (len > MDB_MAXKEYSIZE) { /* key size is greater than LMDB key limit */
+	if (len > MDB_maxkeysize) {
 		hash = path_to_hash(index, len);
 		if (hash == NULL)
 			return NULL;
@@ -366,7 +366,7 @@ static char *lt_read_db(const char *index, int only_check_key)
 		return NULL;
 	}
 
-	if (len > MDB_MAXKEYSIZE) /* key size is greater than LMDB key limit */
+	if (len > MDB_maxkeysize)
 		free(hash);
 
 	// Failure means NULL was returned. Need to return a non-null value
