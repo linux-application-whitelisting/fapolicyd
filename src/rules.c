@@ -192,10 +192,10 @@ static void sanity_check_list(llist *l, const char *id)
  */
 static bool is_subj_trusted(event_t *e)
 {
-  subject_attr_t *trusted = get_subj_attr(e, SUBJ_TRUST);
+ 	subject_attr_t *trusted = get_subj_attr(e, SUBJ_TRUST);
 
-  if (!trusted) return 0;
-  return trusted->val;
+	if (!trusted) return 0;
+	return trusted->val;
 }
 
 

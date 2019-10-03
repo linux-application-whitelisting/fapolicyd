@@ -35,12 +35,12 @@ static const nv_t table[] = {
 {	SESSIONID,  "sessionid"	},
 {	PID,        "pid"	},
 {	PATTERN,    "pattern"	},
+/*{	SUBJ_TRUST, "subj_trust" },*/
 {	COMM,       "comm"	},
 {	EXE,        "exe"	},
 {	EXE_DIR,    "exe_dir"	},
 {	EXE_TYPE,   "exe_type"	},
 {	EXE_DEVICE, "exe_device" },
-{	SUBJ_TRUST, "subj_trust" },
 };
 
 #define MAX_SUBJECTS (sizeof(table)/sizeof(table[0]))

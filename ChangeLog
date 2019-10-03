@@ -6,6 +6,7 @@
 - Switch from static mounts to hotplug configuration of mount points
 - Dont collect documentation in trust database
 - When path is longer than lmdb can store, use a sha512 hash (Attila Lakatos)
+- Cache subject trustworthiness information after lookup (Radovan Sroka)
 
 0.8.10
 - Fix segfault for rules whose subject is number oriented
