@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "event.h"
+#include "database.h"
 #include "file.h"
 #include "lru.h"
 #include "message.h"
@@ -59,7 +60,7 @@ int init_event_system(struct daemon_conf *config)
 
 int flush_cache(struct daemon_conf *config)
 {
-	if (obj_cache->count == 0) 
+	if (obj_cache->count == 0)
 		return 0;
 	msg(LOG_DEBUG, "Flushing object cache");
 	destroy_lru(obj_cache);
@@ -258,6 +259,16 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			// FIXME: write real code for this
 			subj.str = strdup("?");
 			break;
+		case SUBJ_TRUST: {
+			subject_attr_t *exe = get_subj_attr(e, EXE);
+
+			subj.val = 0;
+			if (exe) {
+				if (exe->str && check_trust_database(exe->str))
+					subj.val = 1;
+			}
+			}
+			break;
 		default:
 			return NULL;
 	};
@@ -267,9 +278,12 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		return sn;
 	}
 
-	free(subj.str);
+	// free .str only when it was really used
+	// otherwise invalid free is possible
+	if (t >= COMM) free(subj.str);
 	return NULL;
 }
+
 
 /*
  * This function will search the list for a nv pair of the right type.
