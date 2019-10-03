@@ -20,6 +20,7 @@
  *
  * Authors:
  *  Steve Grubb <sgrubb@redhat.com>
+ *  Radovan Sroka <rsroka@redhat.com>
  */
 
 #ifndef OBJECT_ATTR_HEADER
@@ -29,7 +30,7 @@
 #include "nv.h"
 
 typedef enum { ALL_OBJ = OBJ_START, PATH, ODIR, DEVICE, FTYPE,
-		SHA256HASH, FMODE } object_type_t;
+		OBJ_TRUST, SHA256HASH, FMODE } object_type_t;
 
 #define OBJ_END FMODE
 

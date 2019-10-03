@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
 #include "config.h"
@@ -33,6 +34,7 @@ static const nv_t table[] = {
 {	ODIR, 		"dir" },
 {	DEVICE,		"device" },
 {	FTYPE,		"ftype" },
+/*{	OBJ_TRUST,	"obj_trust"},*/
 {	SHA256HASH,	"sha256hash" },
 {	FMODE,		"mode" },
 };
