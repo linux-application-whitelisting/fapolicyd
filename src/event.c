@@ -338,6 +338,13 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		case SHA256HASH:
 			obj.o = get_hash_from_fd(e->fd);
 			break;
+		case OBJ_TRUST: {
+			object_attr_t * path =  get_obj_attr(e, PATH);
+
+			if (path && path->o && check_trust_database(path->o))
+				obj.len = 1;
+			}
+			break;
 		case FMODE:
 		default:
 			obj.o = NULL;

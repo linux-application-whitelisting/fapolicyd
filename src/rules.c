@@ -188,16 +188,26 @@ static void sanity_check_list(llist *l, const char *id)
 #endif
 
 /*
- * If subject is trusted function return true, false otherwise.
+ * If subject is trusted function returns true, false otherwise.
  */
 static bool is_subj_trusted(event_t *e)
 {
- 	subject_attr_t *trusted = get_subj_attr(e, SUBJ_TRUST);
+	subject_attr_t *trusted = get_subj_attr(e, SUBJ_TRUST);
 
 	if (!trusted) return 0;
 	return trusted->val;
 }
 
+/*
+ * If object is trusted function returns true, false otherwise.
+ */
+static bool is_obj_trusted(event_t *e)
+{
+	object_attr_t *trusted = get_obj_attr(e, OBJ_TRUST);
+
+	if (!trusted) return 0;
+	return trusted->len;
+}
 
 static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 {
@@ -432,7 +442,7 @@ static int check_dirs(unsigned int i, const char *path)
 }
 
 // Returns 0 if no match, 1 if a match
-static int obj_dir_test(object_attr_t *o, object_attr_t *obj)
+static int obj_dir_test(object_attr_t *o, object_attr_t *obj, bool trusted)
 {
 	// Execdirs doesn't have /etc in its list
 	if ((o->len == 8) && strcmp(o->o, "execdirs") == 0)
@@ -441,7 +451,7 @@ static int obj_dir_test(object_attr_t *o, object_attr_t *obj)
 	else if ((o->len == 10) && strcmp(o->o, "systemdirs") == 0)
 		return check_dirs(0, obj->o);
 	else if ((o->len == 10) && strcmp(o->o, "untrusted") == 0) {
-		if (check_trust_database(obj->o))
+		if (trusted)
 			return 0;
 	// Just a normal dir test
 	} else if (strncmp(obj->o, o->o, o->len))
@@ -464,7 +474,6 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj, int trusted)
 	else if ((len == 10) && strcmp(s->str, "untrusted") == 0) {
 		if (trusted)
 			return 0;
-
 	// Just a normal dir test.
 	} else if (strncmp(subj->str, s->str, len))
 		return 0;
@@ -743,14 +752,16 @@ static decision_t check_object(lnode *r, event_t *e)
 			//  For directories (and untrusted), we only do a
 			//  partial match.  Any child dir would also match.
 			if (r->o[cnt].type == ODIR) {
-				int rc = obj_dir_test(&(r->o[cnt]), obj);
+				int rc = obj_dir_test(&(r->o[cnt]),
+						obj,
+						is_obj_trusted(e));
 				if (rc == 0)
 					return 0;
 			} else if (r->o[cnt].type == PATH &&
 				 (r->s[cnt].type == EXE ||
 				     r->s[cnt].type == EXE_DIR) &&
 				 strcmp(r->s[cnt].str, "untrusted") == 0) {
-				if (check_trust_database(obj->o))
+				if (is_obj_trusted(e))
 					return 0;
 			} else if (strcmp(obj->o, r->o[cnt].o))
 					return 0;
