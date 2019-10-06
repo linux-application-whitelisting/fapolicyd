@@ -1,4 +1,4 @@
-0.8.11
+0.9
 - Convert hashes to lowercase like sha256sum outputs
 - Use FAN_OPEN_EXEC_PERM for subject cache management
 - Add static pattern detection
