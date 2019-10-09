@@ -44,18 +44,6 @@ and fapolicyd.mounts files go there.
 
 RUNNING
 -------
-You need to setup the fapolicyd.mounts file because every system
-is potentially partitioned differently. The daemon has to place a watch
-on each partition in order to get events occurring on the partition.
-If the daemon does not get notifications, then it cannot make access
-control decisions.
-
-To get an initial watch list, you can run this:
-
-```
-mount | egrep '^tmpfs| ext4| ext3| xfs' | awk '{ printf "%s\n", $3 }' >> /etc/fapolicyd/fapolicyd.mounts
-```
-
 You might want to look at the fapolicyd.rules file to see what the sample
 policy looks like. The policy is designed with 4 goals in mind.
 
