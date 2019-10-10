@@ -5,13 +5,13 @@ fapolicyd.rules \- fapolicyd rules to determine access rights
 \fBfapolicyd.rules\fP is a file that contains the rules that \fBfapolicyd\fP uses to make decisions about access rights. The rules follow a simple format of:
 
 .nf
-.B access subject object
+.B decision subject object
 .fi
 
 They are evaluated from top to bottom with the first rule to match being used
 for the access control decision.
 
-.SS Access
+.SS Decision
 The decision is either
 .IR allow ", " deny ", " allow_audit ", or " deny_audit ".
 If the rule triggers, this is the access decision that fapolicyd will tell the kernel. If the decision is one of the audit variety, then the decision will trigger a FANOTIFY audit event with all relevant information.
