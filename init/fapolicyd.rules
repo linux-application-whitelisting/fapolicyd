@@ -1,9 +1,9 @@
 # This is some sample rules that demonstrate some of the capabilities
-# of the fapolicyd. This is written as a blacklist. If you wanted a
-# whitelist, then you would end with deny all all. But be very careful
-# with that and run in permissive for a while to confirm. Also, the
-# versions of python and the update utilities may need adjusting for
-# your distribution.
+# of the fapolicyd. The way that it works is that for each kind of
+# executable you may have, you carve out what is acceptable (the whitelist)
+# and then deny anything else of that type. The rules end with an allow
+# anything to prevent unintended blockag to things like media files, documents,
+# or anything else applications access that is not a computer langauge.
 
 # Prevent execution by ld.so
 deny_audit pattern=ld_so all
@@ -13,31 +13,23 @@ deny_audit pattern=ld_so all
 allow exe=/usr/bin/rpm all
 allow exe=%python3_path% comm=dnf all
 
-# Don't allow untrusted executables
-deny_audit exe_dir=execdirs exe=untrusted all
-
-# Only allow system ELF Applications - note: depends on above check
-# for untrusted executables.
-allow all dir=execdirs ftype=application/x-executable
-allow all dir=execdirs ftype=application/x-pie-executable
-deny_audit all ftype=application/x-executable
-deny_audit all ftype=application/x-pie-executable
-
-# If you have a LD_LIBRARY_PATH, you may need to allow those here
-# allow all dir=/usr/local/cuda/lib64 ftype=application/x-sharedlib
-
-# Only allow system ELF libs
-allow all dir=execdirs ftype=application/x-sharedlib
+# Only allow known ELF libs - this is ahead of executable because typical
+# executable is linked with a dozen or more libraries.
+allow all ftype=application/x-sharedlib obj_trust=1
 deny_audit all ftype=application/x-sharedlib
+
+# Only allow known ELF Applications
+allow perm=execute all ftype=application/x-pie-executable obj_trust=1
+allow perm=execute all ftype=application/x-executable obj_trust=1
+deny_audit perm=execute all ftype=application/x-pie-executable
+deny_audit perm=execute all ftype=application/x-executable
 
 # Only allow system python executables and libs
 # File type by: file --mime-type /path-to-file
-allow all dir=execdirs ftype=text/x-python
-allow exe=%python3_path% dir=execdirs ftype=text/x-python
-allow exe=%python3_path% dir=execdirs ftype=application/octet-stream
-allow exe=%python2_path% dir=execdirs ftype=text/x-python
-allow exe=%python2_path% dir=execdirs ftype=application/octet-stream
-deny_audit  all ftype=text/x-python
+allow all ftype=text/x-python obj_trust=1 dir=execdirs
+allow exe=%python3_path% ftype=application/octet-stream obj_trust=1 dir=execdirs
+allow exe=%python2_path% ftype=application/octet-stream obj_trust=1 dir=execdirs
+deny_audit all ftype=text/x-python
 #deny_audit all ftype=application/octet-stream path=*.pyc
 
 #
@@ -50,21 +42,21 @@ deny_audit  all ftype=text/x-python
 deny_audit exe=/usr/bin/perl all
 
 # Perl
-#allow all dir=execdirs ftype=text/x-perl
+#allow all dir=execdirs ftype=text/x-perl obj_trust=1
 #deny_audit all ftype=text/x-perl
 
 # Block all PHP
 deny_audit exe=/usr/bin/php all
 
 # PHP
-#allow all dir=execdirs ftype=text/x-php
+#allow all dir=execdirs ftype=text/x-php obj_trust=1
 #deny_audit all ftype=text/x-php
 
 # Block all Ruby
 deny_audit exe=/usr/bin/ruby all
 
 # Ruby
-#allow all dir=execdirs ftype=text/x-ruby
+#allow all dir=execdirs ftype=text/x-ruby obj_trust=1
 #deny_audit  all ftype=text/x-ruby
 
 # Data exfiltration

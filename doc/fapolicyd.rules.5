@@ -1,11 +1,11 @@
-.TH FAPOLICYD.RULES: "7" "July 2019" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.RULES: "7" "Oct 2019" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd.rules \- fapolicyd rules to determine access rights
 .SH DESCRIPTION
 \fBfapolicyd.rules\fP is a file that contains the rules that \fBfapolicyd\fP uses to make decisions about access rights. The rules follow a simple format of:
 
 .nf
-.B decision subject object
+.B decision perm subject object
 .fi
 
 They are evaluated from top to bottom with the first rule to match being used
@@ -15,6 +15,11 @@ for the access control decision.
 The decision is either
 .IR allow ", " deny ", " allow_audit ", or " deny_audit ".
 If the rule triggers, this is the access decision that fapolicyd will tell the kernel. If the decision is one of the audit variety, then the decision will trigger a FANOTIFY audit event with all relevant information.
+
+.SS Perm
+Perm describes what kind permission is being asked for. The permission is either
+.IR open " or "execute ".
+If none is given, the open is assumed.
 
 .SS Subject
 The subject is the process that is performing actions on system resources. The fields in the rule that describe the subject are written in a name=value format.i There can be one or more subject fields. Each field is and'ed with others to decide if a rule triggers. The name can be any of the following:
@@ -35,6 +40,9 @@ This is the numeric session id that the audit system assigns to users when they 
 .TP
 .B pid
 This is the numeric process id that a program has.
+.TP
+.B subj_trust
+This is a boolean describing whether it is required for the subject to be in the trust database or not. A value of 1 means its required while 0 means its not.
 .TP
 .B comm
 This is the shortened command name. When an interpreter starts a program, it usually renames the program to the script rather than the interpreter.
@@ -62,7 +70,9 @@ The \fIexecdirs\fP option will match against the following list of directories:
 The \fIexecdirs\fP option will match against the same list as \fIexecdirs\fP but also includes /etc/.
 .TP 12
 .B untrusted
-The \fIuntrusted\fP option will look up the current executable's full path in the rpm database to see if the executable is known to the system. The rule will trigger if the file in question is not packaged.
+The \fIuntrusted\fP option will look up the current executable's full path in the rpm database to see if the executable is known to the system. The rule will trigger if the file in question is not in the trust database. This option is
+.B deprecated
+in favor of using obj_trust with execute permission when writing rules.
 .RE
 .TP
 .B exe_type
@@ -117,6 +127,9 @@ This option will match against the device that the file being accessed resides o
 .TP
 .B ftype
 This option matches against the mime type of the file being accessed. See \fBexe_type\fP for more information on determining the mime type.
+.TP
+.B obj_trust
+This is a boolean describing whether it is required for the object to be in the trust database or not. A value of 1 means its required while 0 means its not.
 .TP
 .B sha256hash
 This option matches against the sha256 hash of the file being accessed. The hash in the rules should be all lowercase letters and do NOT start with 0x. Lowercase is the default output of sha256sum.

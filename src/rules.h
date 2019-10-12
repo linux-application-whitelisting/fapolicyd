@@ -32,10 +32,13 @@
 
 #define MAX_FIELDS 8
 
+typedef enum { OPEN_ACC, EXEC_ACC } access_t;
+
 /* This is one node of the linked list. Any data elements that are per
  * rule goes here. */
 typedef struct _lnode{
   decision_t d;
+  access_t a;
   unsigned int num;
   unsigned int s_count;
   unsigned int o_count;

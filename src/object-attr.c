@@ -34,7 +34,7 @@ static const nv_t table[] = {
 {	ODIR, 		"dir" },
 {	DEVICE,		"device" },
 {	FTYPE,		"ftype" },
-/*{	OBJ_TRUST,	"obj_trust"},*/
+{	OBJ_TRUST,	"obj_trust"},
 {	SHA256HASH,	"sha256hash" },
 {	FMODE,		"mode" },
 };
