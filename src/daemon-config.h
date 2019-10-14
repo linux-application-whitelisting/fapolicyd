@@ -1,5 +1,5 @@
 /* daemon-config.h --
- * Copyright 2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2018-19 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -38,10 +38,10 @@ struct daemon_conf
 	unsigned int db_max_size;
 	unsigned int subj_cache_size;
 	unsigned int obj_cache_size;
+	const char *watch_fs;
 };
 
 int load_daemon_config(struct daemon_conf *config);
-void clear_daemon_config(struct daemon_conf *config);
 void free_daemon_config(struct daemon_conf *config);
 
 #endif

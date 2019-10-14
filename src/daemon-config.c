@@ -1,7 +1,7 @@
 /*
  * daemon-config.c - This is a config file parser
  *
- * Copyright 2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2018-19 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -80,6 +80,8 @@ static int obj_cache_size_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 static int do_stat_report_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config);
+static int watch_fs_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -93,13 +95,14 @@ static const struct kw_pair keywords[] =
   {"subj_cache_size",	subj_cache_size_parser },
   {"obj_cache_size",	obj_cache_size_parser },
   {"do_stat_report",	do_stat_report_parser },
+  {"watch_fs",		watch_fs_parser },
   { NULL,		NULL }
 };
 
 /*
  * Set everything to its default value
 */
-void clear_daemon_config(struct daemon_conf *config)
+static void clear_daemon_config(struct daemon_conf *config)
 {
 	config->permissive = 0;
 	config->nice_val = 10;
@@ -111,6 +114,7 @@ void clear_daemon_config(struct daemon_conf *config)
 	config->db_max_size = 100;
 	config->subj_cache_size = 1024;
 	config->obj_cache_size = 4096;
+	config->watch_fs = strdup("ext4,xfs,tmpfs");
 }
 
 int load_daemon_config(struct daemon_conf *config)
@@ -314,6 +318,7 @@ static const struct kw_pair *kw_lookup(const char *val)
 void free_daemon_config(struct daemon_conf *config)
 {
 //	free((void*)config->file);
+	free((void*)config->watch_fs);
 }
 
 static int unsigned_int_parser(unsigned *i, const char *str, int line)
@@ -368,6 +373,7 @@ static int nice_val_parser(struct nv_pair *nv, int line,
 	}
 	return rc;
 }
+
 static int q_size_parser(struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
@@ -482,3 +488,15 @@ static int do_stat_report_parser(struct nv_pair *nv, int line,
 	}
 	return rc;
 }
+
+
+static int watch_fs_parser(struct nv_pair *nv, int line,
+		struct daemon_conf *config)
+{
+	free((void *)config->watch_fs);
+	config->watch_fs = strdup(nv->value);
+	if (config->watch_fs)
+		return 0;
+	return 1;
+}
+

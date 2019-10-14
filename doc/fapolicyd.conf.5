@@ -46,6 +46,10 @@ This option controls how many entries the subject cache holds. You want the size
 .I obj_cache_size
 This option controls how many entries the object cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. The default value is 4096.
 
+.TP
+.I watch_fs
+This is a comma separated list of file systems that should be watched for access permission. No attempt is made to validate the file systems names. They should exactly match the name presented in the first column of /proc/mounts. If this is not configured, it will default to watching ext4, xfs, and tmpfs.
+
 .SH "SEE ALSO"
 .BR fapolicyd (8),
 .BR fapolicyd-cli (1)

@@ -8,7 +8,7 @@ fapolicyd_LDADD = -lpthread
 fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
 fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 
-fapolicyd_SOURCES = database.c daemon-config.c event.c \
+fapolicyd_SOURCES = avl.c database.c daemon-config.c event.c \
 	fapolicyd.c fd-fgets.c file.c lru.c message.c \
 	mounts.c notify.c object-attr.c object.c \
 	policy.c process.c queue.c rules.c \
@@ -16,7 +16,7 @@ fapolicyd_SOURCES = database.c daemon-config.c event.c \
 
 fapolicyd_cli_SOURCES = fapolicyd-cli.c
 
-noinst_HEADERS = database.h daemon-config.h event.h \
+noinst_HEADERS = avl.h database.h daemon-config.h event.h \
 	fd-fgets.h file.h lru.h message.h mounts.h notify.h \
 	nv.h object-attr.h object.h policy.h \
 	process.h queue.h rules.h subject-attr.h subject.h \

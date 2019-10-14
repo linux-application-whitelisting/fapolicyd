@@ -53,6 +53,7 @@
 #include "message.h"
 #include "daemon-config.h"
 #include "queue.h"
+#include "avl.h"
 
 
 // Global program variables
@@ -65,6 +66,16 @@ volatile atomic_bool stop = 0;
 static const char *pidfile = "/run/fapolicyd.pid";
 #define REPORT "/var/log/fapolicyd-access.log"
 static struct daemon_conf config;
+// This holds info about all file systems to watch
+struct fs_avl {
+	avl_tree index;
+};
+// This is the data about a specific file system to watch
+typedef struct fs_data {
+        avl avl;        // This has to be first
+        const char *fs_name;
+} fs_data_t;
+static struct fs_avl filesystems;
 
 
 static void install_syscall_filter(void)
@@ -98,6 +109,82 @@ err_out:
 	if (rc < 0)
 		msg(LOG_ERR, "Failed installing seccomp filter");
 	seccomp_release(ctx);
+}
+
+static int cmp_fs(void *a, void *b)
+{
+	return strcmp(((fs_data_t *)a)->fs_name, ((fs_data_t *)b)->fs_name);
+}
+
+static void free_filesystem(fs_data_t *s)
+{
+	free((void *)s->fs_name);
+	free((void *)s);
+}
+
+static void destroy_filesystem(void)
+{
+	avl *cur = filesystems.index.root;
+
+	fs_data_t *tmp =(fs_data_t *)avl_remove(&filesystems.index, cur);
+	if ((avl *)tmp != cur)
+		msg(LOG_DEBUG, "filesystem: removal of invalid node");
+	free_filesystem(tmp);
+}
+
+static void destroy_fs_list(void)
+{
+	while (filesystems.index.root)
+		destroy_filesystem();
+}
+
+static int add_filesystem(fs_data_t *f)
+{
+	fs_data_t *tmp = (fs_data_t *)avl_insert(&filesystems.index,(avl *)(f));
+	if (tmp) {
+		if (tmp != f) {
+			msg(LOG_DEBUG, "fs_list: duplicate filesystem found");
+			free_filesystem(f);
+		}
+		return 1;
+	}
+	return 0;
+}
+
+static fs_data_t *new_filesystem(const char *fs)
+{
+	fs_data_t *tmp = malloc(sizeof(fs_data_t));
+	if (tmp) {
+		tmp->fs_name = fs ? strdup(fs) : strdup("");
+		add_filesystem(tmp);
+	}
+	return tmp;
+}
+
+static fs_data_t *find_filesystem(const char *f)
+{
+	fs_data_t tmp;
+
+	tmp.fs_name = f;
+	return (fs_data_t *)avl_search(&filesystems.index, (avl *) &tmp);
+}
+
+static void init_fs_list(const char *watch_fs)
+{
+	if (watch_fs == NULL) {
+		msg(LOG_ERR, "File systems to watch is empty");
+		exit(1);
+	}
+	avl_init(&filesystems.index, cmp_fs);
+
+	// Now parse up list and push into avl
+	char *ptr, *saved, *tmp = strdup(watch_fs);
+	ptr = strtok_r(tmp, ",", &saved);
+	while (ptr) {
+		new_filesystem(ptr);
+		ptr = strtok_r(NULL, ",", &saved);
+	}
+	free(tmp);
 }
 
 static void term_handler(int sig)
@@ -192,21 +279,10 @@ static int check_mount_entry(const char *device, const char *point,
 	if (strncmp(point, "/sys", 4) == 0)
 		return 0;
 
-	// Some we do want
-	if (strcmp(type, "ext4") == 0)
+	if (find_filesystem(type))
 		return 1;
-	if (strcmp(type, "tmpfs") == 0)
-		return 1;
-	if (strcmp(type, "ext3") == 0)
-		return 1;
-	if (strcmp(type, "xfs") == 0)
-		return 1;
-	if (strcmp(type, "vfat") == 0)
-		return 1;
-	if (strcmp(type, "ext2") == 0)
-		return 1;
-
-	return 0;	
+	else
+		return 0;
 }
 
 static mlist *m = NULL;
@@ -419,6 +495,9 @@ int main(int argc, char *argv[])
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
 	}
 
+	// Setup filesystem to watch list
+	init_fs_list(config.watch_fs);
+
 	// Write the pid file for the init system
 	write_pid_file();
 
@@ -519,6 +598,7 @@ int main(int argc, char *argv[])
 	}
 	destroy_event_system();
 	destroy_config();
+	destroy_fs_list();
 	free_daemon_config(&config);
 
 	return 0;
