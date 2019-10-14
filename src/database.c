@@ -199,9 +199,10 @@ static char *path_to_hash(const char *path, const size_t path_len)
 	unsigned int len;
 	char *digest, *hptr;
 
-	gcry_md_open(&h, GCRY_MD_SHA512, GCRY_MD_FLAG_SECURE);
-	gcry_md_write(h, path, path_len);
+	if (gcry_md_open(&h, GCRY_MD_SHA512, GCRY_MD_FLAG_SECURE))
+		return NULL;
 
+	gcry_md_write(h, path, path_len);
 	hptr = (char *)gcry_md_read(h, GCRY_MD_SHA512);
 
 	len = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * sizeof(char);

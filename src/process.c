@@ -191,7 +191,7 @@ uid_t get_program_auid_from_pid(pid_t pid)
 	if (fd >= 0) {
 		uid_t auid;
 
-		rc = read(fd, path, sizeof(path));
+		rc = read(fd, path, sizeof(path)-1);
 		close(fd);
 		if (rc > 0) {
 			path[rc] = 0;  // manually terminate, read doesn't
@@ -215,7 +215,7 @@ int get_program_sessionid_from_pid(pid_t pid)
 	if (fd >= 0) {
 		int ses;
 
-		rc = read(fd, path, sizeof(path));
+		rc = read(fd, path, sizeof(path)-1);
 		close(fd);
 		if (rc > 0) {
 			path[rc] = 0;  // manually terminate, read doesn't

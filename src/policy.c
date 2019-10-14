@@ -146,7 +146,7 @@ static void log_it(unsigned int num, decision_t results, event_t *e)
 		num+1,
 		dec_val_to_name(results),
 		subj2->val, subj3->val, subj->str,
-		obj->o);
+		obj ? obj->o : "?");
 }
 
 decision_t process_event(event_t *e)
