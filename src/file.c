@@ -262,17 +262,17 @@ char *get_file_type_from_fd(int fd, struct file_info *i, size_t blen, char *buf)
 	// We need to do it ourselves for consistency.
 	uint32_t elf = gather_elf(fd, i->size);
 	if (elf) {
-		if (elf & HAS_INTERP) // dynamic app
+		if (elf & HAS_EXEC)
+			ptr = "application/x-executable";
+		else if (elf & HAS_CORE)
+			ptr = "application/x-coredump";
+		else if (elf & HAS_INTERP) // dynamic app
 			ptr = "application/x-executable";
 		else {
 			if (elf & HAS_DYNAMIC) // shared obj
 				ptr = "application/x-sharedlib";
-			else {
-				if (elf & HAS_LOAD) //static app
-					ptr = "application/x-executable";
-				else
-					return NULL;
-			}
+			else 
+				return NULL;
 		}
 		return strncpy(buf, ptr, blen-1);
 	}
@@ -432,6 +432,11 @@ uint32_t gather_elf(int fd, off_t size)
 			goto rewind_out;
 		}
 
+		if (hdr->e_type == ET_EXEC)
+			info |= HAS_EXEC;
+		else if (hdr->e_type == ET_CORE)
+			info |= HAS_CORE;
+
 		// Look for program header information
 		// We want to do a basic size check to make sure
 		unsigned long sz =
@@ -551,6 +556,11 @@ done32:
 			info |= HAS_ERROR;
 			goto rewind_out;
 		}
+
+		if (hdr->e_type == ET_EXEC)
+			info |= HAS_EXEC;
+		else if (hdr->e_type == ET_CORE)
+			info |= HAS_CORE;
 
 		// Look for program header information
 		// We want to do a basic size check to make sure

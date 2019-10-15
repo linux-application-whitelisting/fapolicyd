@@ -34,13 +34,15 @@ typedef enum { STATE_COLLECTING=0, STATE_PARTIAL, STATE_FULL, STATE_NORMAL,
 
 // This is used to determine what kind of elf file we are looking at.
 // HAS_LOAD but no HAS_DYNAMIC is staticly linked app. Normally you see both.
-#define IS_ELF		0x01
-#define HAS_ERROR	0x02
-#define HAS_RPATH	0x04
-#define HAS_DYNAMIC	0x08
-#define HAS_LOAD	0x10
-#define HAS_INTERP	0x20
-#define HAS_BAD_INTERP	0x40
+#define IS_ELF		0x001
+#define HAS_ERROR	0x002
+#define HAS_RPATH	0x004
+#define HAS_DYNAMIC	0x008
+#define HAS_LOAD	0x010
+#define HAS_INTERP	0x020
+#define HAS_BAD_INTERP	0x040
+#define HAS_EXEC	0x080
+#define HAS_CORE	0x100
 
 // Information we will cache to identify the same executable
 struct proc_info
