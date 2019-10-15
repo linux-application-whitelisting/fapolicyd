@@ -39,7 +39,8 @@ typedef enum { STATE_COLLECTING=0, STATE_PARTIAL, STATE_FULL, STATE_NORMAL,
 #define HAS_RPATH	0x04
 #define HAS_DYNAMIC	0x08
 #define HAS_LOAD	0x10
-#define HAS_BAD_INTERP	0x20
+#define HAS_INTERP	0x20
+#define HAS_BAD_INTERP	0x40
 
 // Information we will cache to identify the same executable
 struct proc_info

@@ -26,6 +26,7 @@
 #define OBJECT_HEADER
 
 #include "object-attr.h"
+#include "file.h"
 
 /* This is the linked list head. Only data elements that are 1 per
  * event goes here. */

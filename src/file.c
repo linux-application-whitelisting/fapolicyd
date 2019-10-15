@@ -254,10 +254,28 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 
 // NOTE: This is probably risky to do from a root running program.
 // Consider pushing this to a child process that has no permissions.
-char *get_file_type_from_fd(int fd, size_t blen, char *buf)
+char *get_file_type_from_fd(int fd, struct file_info *i, size_t blen, char *buf)
 {
 	const char *ptr;
 
+	// libmagic is unpredictable in determining elf files.
+	// We need to do it ourselves for consistency.
+	uint32_t elf = gather_elf(fd, i->size);
+	if (elf) {
+		if (elf & HAS_INTERP) // dynamic app
+			ptr = "application/x-executable";
+		else {
+			if (elf & HAS_DYNAMIC) // shared obj
+				ptr = "application/x-sharedlib";
+			else {
+				if (elf & HAS_LOAD) //static app
+					ptr = "application/x-executable";
+				else
+					return NULL;
+			}
+		}
+		return strncpy(buf, ptr, blen-1);
+	}
 	ptr = magic_descriptor(magic_cookie, fd);
 	rewind_fd(fd);
 	if (ptr) {
@@ -449,6 +467,7 @@ uint32_t gather_elf(int fd, off_t size)
 				uint32_t filesz = ph_tbl[i].p_filesz;
 				uint32_t offset = ph_tbl[i].p_offset;
 
+				info |= HAS_INTERP;
 				if ((unsigned int) lseek(fd, offset, SEEK_SET)
 								!= offset) {
 					goto err_out32;
@@ -568,6 +587,7 @@ done32:
 				uint64_t filesz = ph_tbl[i].p_filesz;
 				uint64_t offset = ph_tbl[i].p_offset;
 
+				info |= HAS_INTERP;
 				if ((unsigned int) lseek(fd, offset, SEEK_SET)
 								!= offset) {
 					goto err_out64;

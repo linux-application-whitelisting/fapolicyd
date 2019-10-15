@@ -329,7 +329,8 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 				obj.o = strdup("?");
 			break;
 		case FTYPE:
-			ptr = get_file_type_from_fd(e->fd, sizeof(buf), buf);
+			ptr = get_file_type_from_fd(e->fd, o->info,
+							sizeof(buf), buf);
 			if (ptr)
 				obj.o = strdup(buf);
 			else
