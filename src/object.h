@@ -1,6 +1,6 @@
 /*
 * object.h - Header file for object.c
-* Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2016,2019 Red Hat Inc.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
