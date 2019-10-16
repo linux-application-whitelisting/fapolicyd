@@ -51,32 +51,33 @@
 #include "temporary_db.h"
 #include "file.h"
 
+// Local defines
 #define BUFFER_SIZE 1024
-
-static MDB_env *env;
-static MDB_dbi dbi;
-static int dbi_init = 0;
-static unsigned MDB_maxkeysize;
-const char *data_dir = "/var/lib/fapolicyd";
-const char *db = "trust.db";
-static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
-static struct pollfd ffd[1] =  { {0, 0, 0} };
-
-// External variables
-extern volatile atomic_bool stop;
-
-static const char* fifo_path = "/run/fapolicyd/fapolicyd.fifo";
-
-
-static pthread_t update_thread;
-static pthread_mutex_t update_lock;
-
 #define READ_DATA	0
 #define READ_TEST_KEY	1
 #define MEGABYTE	1024*1024
 #define DATA_FORMAT "%i %lu %s"
 
+// Local variables
+static MDB_env *env;
+static MDB_dbi dbi;
+static int dbi_init = 0;
+static unsigned MDB_maxkeysize;
+static const char *data_dir = "/var/lib/fapolicyd";
+static const char *db = "trust.db";
+static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
+static struct pollfd ffd[1] =  { {0, 0, 0} };
+static const char* fifo_path = "/run/fapolicyd/fapolicyd.fifo";
+static pthread_t update_thread;
+static pthread_mutex_t update_lock;
+
+// Local functions
 static void *update_thread_main(void *arg);
+static int update_database(struct daemon_conf *config)
+
+// External variables
+extern volatile atomic_bool stop;
+
 
 static int is_link(const char *path)
 {
@@ -812,7 +813,7 @@ void unlock_update_thread(void) {
  * This function reloads updated rpmdb into our internal database
  */
 
-int update_database(struct daemon_conf *config)
+static int update_database(struct daemon_conf *config)
 {
 	int rc = 0;
 	msg(LOG_INFO, "Updating database");
