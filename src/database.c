@@ -73,7 +73,7 @@ static pthread_mutex_t update_lock;
 
 // Local functions
 static void *update_thread_main(void *arg);
-static int update_database(struct daemon_conf *config)
+static int update_database(struct daemon_conf *config);
 
 // External variables
 extern volatile atomic_bool stop;
