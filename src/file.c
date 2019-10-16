@@ -264,6 +264,8 @@ char *get_file_type_from_fd(int fd, struct file_info *i, size_t blen, char *buf)
 	if (elf) {
 		if (elf & HAS_EXEC)
 			ptr = "application/x-executable";
+		else if (elf & HAS_REL)
+			ptr = "application/x-object";
 		else if (elf & HAS_CORE)
 			ptr = "application/x-coredump";
 		else if (elf & HAS_INTERP) // dynamic app
@@ -434,6 +436,8 @@ uint32_t gather_elf(int fd, off_t size)
 
 		if (hdr->e_type == ET_EXEC)
 			info |= HAS_EXEC;
+		else if (hdr->e_type == ET_REL)
+			info |= HAS_REL;
 		else if (hdr->e_type == ET_CORE)
 			info |= HAS_CORE;
 
@@ -559,6 +563,8 @@ done32:
 
 		if (hdr->e_type == ET_EXEC)
 			info |= HAS_EXEC;
+		else if (hdr->e_type == ET_REL)
+			info |= HAS_REL;
 		else if (hdr->e_type == ET_CORE)
 			info |= HAS_CORE;
 
