@@ -553,9 +553,7 @@ int main(int argc, char *argv[])
 			}
 		} else if (rc > 0) {
 			if (pfd[1].revents & POLLIN) {
-				lock_update_thread();
 				handle_events();
-				unlock_update_thread();
 			}
 			if (pfd[0].revents & POLLPRI) {
 				msg(LOG_DEBUG, "Mount change detected");
