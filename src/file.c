@@ -254,7 +254,8 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 
 // NOTE: This is probably risky to do from a root running program.
 // Consider pushing this to a child process that has no permissions.
-char *get_file_type_from_fd(int fd, struct file_info *i, size_t blen, char *buf)
+char *get_file_type_from_fd(int fd, struct file_info *i, const char *path,
+	size_t blen, char *buf)
 {
 	const char *ptr;
 
@@ -268,9 +269,16 @@ char *get_file_type_from_fd(int fd, struct file_info *i, size_t blen, char *buf)
 			ptr = "application/x-object";
 		else if (elf & HAS_CORE)
 			ptr = "application/x-coredump";
-		else if (elf & HAS_INTERP) // dynamic app
+		else if (elf & HAS_INTERP) { // dynamic app
 			ptr = "application/x-executable";
-		else {
+			// libc and pthread actually have an interpreter?!?
+			// Need to carve out an exception to reclassify them.
+			if (strncmp("/usr/lib64/lib", path, 14) == 0) {
+				if (strncmp(&path[14], "c-2", 3) == 0 ||
+				    strncmp(&path[14], "pthreads-2", 10) == 0)
+					ptr = "application/x-sharedlib";
+			} 
+		} else {
 			if (elf & HAS_DYNAMIC) // shared obj
 				ptr = "application/x-sharedlib";
 			else 

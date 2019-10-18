@@ -328,13 +328,16 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			else
 				obj.o = strdup("?");
 			break;
-		case FTYPE:
+		case FTYPE: {
+			object_attr_t * path =  get_obj_attr(e, PATH);
 			ptr = get_file_type_from_fd(e->fd, o->info,
+							path ? path->o : "?",
 							sizeof(buf), buf);
 			if (ptr)
 				obj.o = strdup(buf);
 			else
 				obj.o = strdup("?");
+			}
 			break;
 		case SHA256HASH:
 			obj.o = get_hash_from_fd(e->fd);
