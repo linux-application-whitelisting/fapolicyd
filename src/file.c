@@ -275,7 +275,7 @@ char *get_file_type_from_fd(int fd, struct file_info *i, const char *path,
 			// Need to carve out an exception to reclassify them.
 			if (strncmp("/usr/lib64/lib", path, 14) == 0) {
 				if (strncmp(&path[14], "c-2", 3) == 0 ||
-				    strncmp(&path[14], "pthreads-2", 10) == 0)
+				    strncmp(&path[14], "pthread-2", 9) == 0)
 					ptr = "application/x-sharedlib";
 			} 
 		} else {
