@@ -664,12 +664,14 @@ static int check_database_copy(void)
 			}
 
 			data2 = lt_read_db(file_name, READ_DATA);
-			if (data2 && strcmp(data1, data2)) {
-				// FIXME: can we correct?
-				msg(LOG_DEBUG,
-				    "Data miscompare for %s:%s vs %s",
-					file_name, data1, data2);
-				problems++;
+			if (data2) {
+				if (strcmp(data1, data2)) {
+					// FIXME: can we correct?
+					msg(LOG_DEBUG,
+					    "Data miscompare for %s:%s vs %s",
+						file_name, data1, data2);
+					problems++;
+				}
 			} else	{ // FIXME: should we add it? If we need to
 				  // fix this, then we have to switch to
 				  // write mode, do the update, and come back
