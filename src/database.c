@@ -21,6 +21,7 @@
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
  *   Radovan Sroka <rsroka@redhat.com>
+ *   Marek Tamaskovic <mtamasko@redhat.com>
  */
 
 #include "config.h"
@@ -666,7 +667,7 @@ static int check_database_copy(void)
 			if (data2) {
 				if (strcmp(data1, data2)) {
 					// FIXME: can we correct?
-					msg(LOG_WARNING,
+					msg(LOG_DEBUG,
 					    "Data miscompare for %s:%s vs %s",
 						file_name, data1, data2);
 					problems++;
