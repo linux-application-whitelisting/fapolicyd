@@ -5,6 +5,10 @@
 # versions of python and the update utilities may need adjusting for
 # your distribution.
 
+# Carve out an exception for dracut
+allow uid=0 dir=/var/tmp/
+allow uid=0 exe=/usr/lib64/ld-2.28.so dir=systemdir
+
 # Prevent execution by ld.so
 deny_audit pattern=ld_so all
 
@@ -27,6 +31,10 @@ deny_audit all ftype=application/x-executable
 # Only allow system ELF libs
 allow all dir=execdirs ftype=application/x-sharedlib
 deny_audit all ftype=application/x-sharedlib
+
+# Need to carve out an exception for ansible
+allow uid=0 dir=/tmp/ansible
+allow uid=0 dir=/root/.ansible/tmp/
 
 # Only allow system python executables and libs
 # File type by: file --mime-type /path-to-file
