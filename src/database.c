@@ -540,6 +540,16 @@ static int is_doc_rpm(void)
 	return 0;
 }
 
+/* Config files can have a changed hash. We want them in the db since
+ * they are trusted. */
+static int is_config_rpm(void)
+{
+		if (rpmfiFFlags(fi) &
+			  (RPMFILE_CONFIG|RPMFILE_MISSINGOK|RPMFILE_NOREPLACE))
+			return 1;
+		return 0;
+}
+
 static void close_rpm(void)
 {
 	rpmfiFree(fi);
@@ -665,7 +675,8 @@ static int check_database_copy(void)
 
 			data2 = lt_read_db(file_name, READ_DATA);
 			if (data2) {
-				if (strcmp(data1, data2)) {
+				// config files can miscompare but not a problm
+				if (strcmp(data1, data2) && !is_config_rpm()) {
 					// FIXME: can we correct?
 					msg(LOG_DEBUG,
 					    "Data miscompare for %s:%s vs %s",

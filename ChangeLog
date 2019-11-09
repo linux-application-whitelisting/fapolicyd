@@ -3,6 +3,7 @@
 - Improve ELF file classification
 - Expose file type in debug output
 - Update rules for ansible and dracut
+- Skip config files in database check
 
 0.9
 - Convert hashes to lowercase like sha256sum outputs
