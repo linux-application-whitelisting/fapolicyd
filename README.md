@@ -118,6 +118,10 @@ About shell script restrictions...there's not much difference between
 running a script or someone typing things in by hand. The aim at this
 point is to check that any programs it calls meets the policy.
 
+If on startup you find that the database has a miscompare every single time,
+then you probably have some i686 rpms which is causing duplicate entries
+where the sha256 hash is different. To fix, remove the offending i686 rpm.
+
 If for some reason rpm database errors are detected, you may need to do
 the following:
 

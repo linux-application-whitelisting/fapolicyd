@@ -1,6 +1,6 @@
 # This is some sample rules that demonstrate some of the capabilities
 # of the fapolicyd. This is written as a blacklist. If you wanted a
-# whitelist, then you would end with deny all all. But be very careful
+# whitelist, then you would end with deny_audit all all. But be very careful
 # with that and run in permissive for a while to confirm. Also, the
 # versions of python and the update utilities may need adjusting for
 # your distribution.
