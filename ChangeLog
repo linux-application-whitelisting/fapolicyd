@@ -1,4 +1,8 @@
 0.9.1
+- Make watched filesystems configurable
+- Improve ELF file classification
+- Expose file type in debug output
+- Update rules for ansible and dracut
 
 0.9
 - Convert hashes to lowercase like sha256sum outputs
