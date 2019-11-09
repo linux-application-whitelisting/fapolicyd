@@ -533,9 +533,11 @@ static int is_dir_rpm(void)
 	return 0;
 }
 
+/* We don't want doc files in the database */
 static int is_doc_rpm(void)
 {
-	if (rpmfiFFlags(fi) & RPMFILE_DOC)
+	if (rpmfiFFlags(fi) & (RPMFILE_DOC|RPMFILE_README|
+				RPMFILE_GHOST|RPMFILE_LICENSE|RPMFILE_PUBKEY))
 		return 1;
 	return 0;
 }
