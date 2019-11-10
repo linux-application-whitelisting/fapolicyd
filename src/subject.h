@@ -37,7 +37,7 @@ typedef struct {
 } s_array;
 
 void subject_create(s_array *a);
-subject_attr_t *subject_access(s_array *a, subject_type_t t);
+subject_attr_t *subject_access(const s_array *a, subject_type_t t);
 int subject_add(s_array *a, subject_attr_t *subj);
 subject_attr_t *subject_find_exe(const s_array *a);
 subject_attr_t *subject_find_comm(const s_array *a);

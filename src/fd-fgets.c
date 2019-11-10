@@ -30,7 +30,7 @@
 #define BUF_SIZE 8192
 static char buffer[2*BUF_SIZE+1] = { 0 };
 static char *current = buffer;
-static char *const eptr = buffer+(2*BUF_SIZE);
+static const char *eptr = buffer+(2*BUF_SIZE);
 static int eof = 0;
 
 int fd_fgets_eof(void)

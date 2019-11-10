@@ -56,7 +56,6 @@ static pthread_mutexattr_t decision_lock_attr;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
 static volatile atomic_bool events_ready;
-static volatile pid_t decision_tid;
 static volatile int alive = 1;
 static int fd = -1;
 static unsigned long allowed = 0, denied = 0;
@@ -66,7 +65,7 @@ static uint64_t mask;
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
 
-int init_fanotify(struct daemon_conf *conf, mlist *m)
+int init_fanotify(const struct daemon_conf *conf, mlist *m)
 {
 	const char *path;
 

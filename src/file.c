@@ -498,7 +498,10 @@ uint32_t gather_elf(int fd, off_t size)
 				}
 
 				// Explictly terminate the string
-				interp[len - 1] = '\0';
+				if (len == 0)
+					interp[0] = 0;
+				else
+					interp[len - 1] = '\0';
 
 				// Perform ELF interpreter validation
 				if (check_interpreter(interp))
@@ -624,7 +627,11 @@ done32:
 					goto err_out64;
 				}
 
-				interp[len - 1] = '\0';
+				/* Explicitly terminate the string */
+				if (len == 0)
+					interp[0] = 0;
+				else
+					interp[len - 1] = '\0';
 
 				// Perform ELF interpreter validation
 				if (check_interpreter(interp))

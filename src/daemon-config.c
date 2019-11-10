@@ -47,40 +47,34 @@ struct nv_pair
 struct kw_pair
 {
 	const char *name;
-	int (*parser)(struct nv_pair *, int, struct daemon_conf *);
-};
-
-struct nv_list
-{
-	const char *name;
-	int option;
+	int (*parser)(const struct nv_pair *, int, struct daemon_conf *);
 };
 
 static char *get_line(FILE *f, char *buf, unsigned size, int *lineno,
 		const char *file);
 static int nv_split(char *buf, struct nv_pair *nv);
 static const struct kw_pair *kw_lookup(const char *val);
-static int permissive_parser(struct nv_pair *nv, int line,
+static int permissive_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int nice_val_parser(struct nv_pair *nv, int line,
+static int nice_val_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int q_size_parser(struct nv_pair *nv, int line,
+static int q_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int uid_parser(struct nv_pair *nv, int line,
+static int uid_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int gid_parser(struct nv_pair *nv, int line,
+static int gid_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int detailed_report_parser(struct nv_pair *nv, int line,
+static int detailed_report_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int db_max_size_parser(struct nv_pair *nv, int line,
+static int db_max_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int subj_cache_size_parser(struct nv_pair *nv, int line,
+static int subj_cache_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int obj_cache_size_parser(struct nv_pair *nv, int line,
+static int obj_cache_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int do_stat_report_parser(struct nv_pair *nv, int line,
+static int do_stat_report_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
-static int watch_fs_parser(struct nv_pair *nv, int line,
+static int watch_fs_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config);
 
 static const struct kw_pair keywords[] =
@@ -349,7 +343,7 @@ static int unsigned_int_parser(unsigned *i, const char *str, int line)
 	return 0;
 }
 
-static int permissive_parser(struct nv_pair *nv, int line,
+static int permissive_parser(const struct nv_pair *nv, int line,
                 struct daemon_conf *config)
 {
 	int rc = unsigned_int_parser(&(config->permissive), nv->value, line);
@@ -361,7 +355,7 @@ static int permissive_parser(struct nv_pair *nv, int line,
 	return rc;
 }
 
-static int nice_val_parser(struct nv_pair *nv, int line,
+static int nice_val_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	int rc = unsigned_int_parser(&(config->nice_val), nv->value, line);
@@ -374,7 +368,7 @@ static int nice_val_parser(struct nv_pair *nv, int line,
 	return rc;
 }
 
-static int q_size_parser(struct nv_pair *nv, int line,
+static int q_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	int rc = unsigned_int_parser(&(config->q_size), nv->value, line);
@@ -384,7 +378,7 @@ static int q_size_parser(struct nv_pair *nv, int line,
 	return rc;
 }
 
-static int uid_parser(struct nv_pair *nv, int line,
+static int uid_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	uid_t uid = 0;
@@ -415,7 +409,7 @@ static int uid_parser(struct nv_pair *nv, int line,
 	return 0;
 }
 
-static int gid_parser(struct nv_pair *nv, int line,
+static int gid_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	gid_t gid = 0;
@@ -443,19 +437,19 @@ static int gid_parser(struct nv_pair *nv, int line,
 	return 0;
 }
 
-static int detailed_report_parser(struct nv_pair *nv, int line,
+static int detailed_report_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	return unsigned_int_parser(&(config->detailed_report), nv->value, line);
 }
 
-static int db_max_size_parser(struct nv_pair *nv, int line,
+static int db_max_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	return unsigned_int_parser(&(config->db_max_size), nv->value, line);
 }
 
-static int subj_cache_size_parser(struct nv_pair *nv, int line,
+static int subj_cache_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	int rc=unsigned_int_parser(&(config->subj_cache_size), nv->value, line);
@@ -466,7 +460,7 @@ static int subj_cache_size_parser(struct nv_pair *nv, int line,
 	return rc;
 }
 
-static int obj_cache_size_parser(struct nv_pair *nv, int line,
+static int obj_cache_size_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	int rc=unsigned_int_parser(&(config->obj_cache_size), nv->value, line);
@@ -477,7 +471,7 @@ static int obj_cache_size_parser(struct nv_pair *nv, int line,
 	return rc;
 }
 
-static int do_stat_report_parser(struct nv_pair *nv, int line,
+static int do_stat_report_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	int rc=unsigned_int_parser(&(config->do_stat_report), nv->value, line);
@@ -490,7 +484,7 @@ static int do_stat_report_parser(struct nv_pair *nv, int line,
 }
 
 
-static int watch_fs_parser(struct nv_pair *nv, int line,
+static int watch_fs_parser(const struct nv_pair *nv, int line,
 		struct daemon_conf *config)
 {
 	free((void *)config->watch_fs);

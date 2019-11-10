@@ -63,7 +63,7 @@ static void sanity_check_array(const s_array *a, const char *id)
 #define sanity_check_array(a, b) do {} while(0)
 #endif
 
-subject_attr_t *subject_access(s_array *a, subject_type_t t)
+subject_attr_t *subject_access(const s_array *a, subject_type_t t)
 {
 	sanity_check_array(a, "subject_access");
 	// These store the same info, see get_subj_attr in event.c

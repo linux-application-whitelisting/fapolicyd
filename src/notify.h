@@ -29,7 +29,7 @@
 #include "daemon-config.h"
 #include "mounts.h"
 
-int init_fanotify(struct daemon_conf *config, mlist *m);
+int init_fanotify(const struct daemon_conf *config, mlist *m);
 void fanotify_update(mlist *m);
 void shutdown_fanotify(mlist *m);
 void decision_report(FILE *f);
