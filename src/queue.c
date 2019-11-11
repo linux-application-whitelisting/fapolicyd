@@ -53,8 +53,7 @@ struct queue *q_open(size_t num_entries)
 		errno = EINVAL;
 		return NULL;
 	}
-	if (entry_size > SIZE_MAX ||
-			num_entries > SIZE_MAX / sizeof(*q->memory)) {
+	if (num_entries > SIZE_MAX / sizeof(*q->memory)) {
 		errno = EINVAL;
 		return NULL;
 	}
