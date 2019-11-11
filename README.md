@@ -109,24 +109,25 @@ The report gives some basic forensic information about what was being accessed.
 
 NOTES
 -----
-Its highly recommended to run in permissive mode while you are testing the
+* Its highly recommended to run in permissive mode while you are testing the
 daemon's policy.
 
-Stracing the daemon can deadlock the system.
+* Stracing the daemon can deadlock the system.
 
-About shell script restrictions...there's not much difference between
+* About shell script restrictions...there's not much difference between
 running a script or someone typing things in by hand. The aim at this
 point is to check that any programs it calls meets the policy.
 
-If on startup you find that the database has a miscompare every single time,
+* If on startup you find that the database has a miscompare every single time,
 then you probably have some i686 rpms which is causing duplicate entries
 where the sha256 hash is different. To fix, remove the offending i686 rpm.
 
-If for some reason rpm database errors are detected, you may need to do
+* If for some reason rpm database errors are detected, you may need to do
 the following:
 
+```
 1. db_verify /var/lib/rpm/Packages
 if OK, then
 2. rm -f /var/lib/rpm/__db*
 3. rpm --rebuilddb
-
+```
