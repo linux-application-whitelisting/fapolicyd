@@ -43,6 +43,6 @@ typedef struct s {
 } subject_attr_t;
 
 int subj_name_to_val(const char *name, int format);
-const char *subj_val_to_name(unsigned int v, int format);
+//const char *subj_val_to_name(unsigned int v, int format);
 
 #endif

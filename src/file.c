@@ -151,7 +151,7 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 	return 0;
 }
 
-char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
+static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	char path[32];
 	ssize_t path_len;

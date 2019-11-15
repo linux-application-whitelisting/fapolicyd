@@ -52,10 +52,10 @@ int obj_name_to_val(const char *name)
 	return -1;
 }
 
-const char *obj_val_to_name(unsigned int v)
+/* const char *obj_val_to_name(unsigned int v)
 {
 	if (v < MAX_OBJECTS)
 		return table[v].name;
 
 	return NULL;
-}
+} */

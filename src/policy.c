@@ -61,7 +61,7 @@ int dec_name_to_val(const char *name)
         return -1;
 }
 
-const char *dec_val_to_name(unsigned int v)
+static const char *dec_val_to_name(unsigned int v)
 {
 	unsigned int i = 0;
         while (i < MAX_DECISIONS) {

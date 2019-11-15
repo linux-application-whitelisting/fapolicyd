@@ -56,7 +56,7 @@
 #define BUFFER_SIZE 1024
 #define READ_DATA	0
 #define READ_TEST_KEY	1
-#define MEGABYTE	1024*1024
+#define MEGABYTE	(1024*1024)
 #define DATA_FORMAT "%i %lu %s"
 
 // Local variables
@@ -130,7 +130,7 @@ int preconstruct_fifo(struct daemon_conf *config)
 	return 0;
 }
 
-static int init_db(struct daemon_conf *config)
+static int init_db(const struct daemon_conf *config)
 {
 	if (mdb_env_create(&env))
 		return 1;
@@ -426,10 +426,10 @@ static int delete_entry_db(const char *index)
 
 static int database_empty(void)
 {
-	MDB_stat stat;
-	if (mdb_env_stat(env, &stat))
+	MDB_stat status;
+	if (mdb_env_stat(env, &status))
 		return 1;
-	if (stat.ms_entries == 0)
+	if (status.ms_entries == 0)
 		return 1;
 	return 0;
 }
@@ -570,8 +570,9 @@ static void close_rpm(void)
 
 static int load_rpmdb_into_memory()
 {
+	int rc;
+
 	msg(LOG_INFO, "Reading RPMDB into memory");
-	int rc = 0;
 	if ((rc = init_rpm())) {
 		msg(LOG_ERR, "init_rpm() failed (%d)", rc);
 		return rc;
@@ -640,8 +641,8 @@ static int create_database(int with_sync)
  */
 static int check_database_copy(void)
 {
-	int problems = 0;
-	int rc = 0;
+	int rc, problems = 0;
+
 	msg(LOG_INFO, "Checking database");
 	if ((rc = init_rpm())) {
 		msg(LOG_ERR, "Cannot open the rpm database, rpm_init() (%d)", rc);
@@ -732,7 +733,7 @@ static int verify_database_entries(void)
  */
 int init_database(struct daemon_conf *config)
 {
-	int rc = 0;
+	int rc;
 
 	msg(LOG_INFO, "Initializing the database");
 	if ((rc = init_db(config))) {
@@ -829,10 +830,11 @@ void unlock_update_thread(void) {
 
 static int update_database(struct daemon_conf *config)
 {
-	int rc = 0;
-	msg(LOG_INFO, "Updating database");
+	int rc;
 
+	msg(LOG_INFO, "Updating database");
 	msg(LOG_DEBUG, "Loading RPM database");
+
 	if ((rc = load_rpmdb_into_memory())) {
 		msg(LOG_ERR, "Cannot open the rpm database (%d)", rc);
 		return rc;

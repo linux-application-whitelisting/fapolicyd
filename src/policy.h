@@ -51,7 +51,6 @@ extern int debug;
 extern int permissive;
 
 int dec_name_to_val(const char *name);
-const char *dec_val_to_name(unsigned int v);
 int load_config(void);
 int reload_config(void);
 decision_t process_event(event_t *e);

@@ -41,6 +41,6 @@ typedef struct o {
 } object_attr_t;
 
 int obj_name_to_val(const char *name);
-const char *obj_val_to_name(unsigned int v);
+//const char *obj_val_to_name(unsigned int v);
 
 #endif

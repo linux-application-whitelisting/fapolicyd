@@ -42,12 +42,10 @@ void file_init(void);
 void file_close(void);
 struct file_info *stat_file_entry(int fd);
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
-char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf);
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf);
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf);
 char *get_file_type_from_fd(int fd, struct file_info *i, const char *path,
 	size_t blen, char *buf);
-int  check_packaged_from_file(const char *filename);
 char *bytes2hex(char *final, const char *buf, unsigned int size);
 char *get_hash_from_fd(int fd);
 uint32_t gather_elf(int fd, off_t size);

@@ -65,7 +65,7 @@ void rules_first(llist *l)
 	l->cur = l->head;
 }
 
-void rules_last(llist *l)
+static void rules_last(llist *l)
 {
         register lnode* window;
 

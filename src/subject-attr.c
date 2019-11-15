@@ -78,7 +78,7 @@ int subj_name_to_val(const char *name, int format)
 	return -1;
 }
 
-const char *subj_val_to_name(unsigned int v, int format)
+/* const char *subj_val_to_name(unsigned int v, int format)
 {
 	if (format == 1) {
 		if (v < MAX_SUBJECTS1)
@@ -89,4 +89,4 @@ const char *subj_val_to_name(unsigned int v, int format)
 	}
 
 	return NULL;
-}
+} */
