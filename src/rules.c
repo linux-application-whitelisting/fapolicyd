@@ -543,7 +543,7 @@ static int obj_dir_test(object_attr_t *o, object_attr_t *obj, bool trusted)
 		if (trusted)
 			return 0;
 	// Just a normal dir test
-	} else if (strncmp(obj->o, o->o, o->len))
+	} else if (obj->o && strncmp(obj->o, o->o, o->len))
 		return 0;
 
 	return 1;

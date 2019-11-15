@@ -156,7 +156,8 @@ static fs_data_t *new_filesystem(const char *fs)
 	fs_data_t *tmp = malloc(sizeof(fs_data_t));
 	if (tmp) {
 		tmp->fs_name = fs ? strdup(fs) : strdup("");
-		add_filesystem(tmp);
+		if (add_filesystem(tmp) != 0)
+			return NULL;
 	}
 	return tmp;
 }
