@@ -300,12 +300,70 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 	return 0;
 }
 
+static int parse_new_format(lnode *n, int lineno)
+{
+	int state = 0;  // 0 == subj, 1 == obj
+	char *ptr;
+
+	while ((ptr = strtok(NULL, " "))) {
+		int type;
+		char *ptr2 = strchr(ptr, '=');
+
+                if (ptr2) {
+			*ptr2 = 0;
+			ptr2++;
+			if (state == 0) {
+				type = subj_name_to_val(ptr, 2);
+				if (type == -1) {
+					msg(LOG_ERR,
+					"Field type (%s) is unknown in line %d",
+						ptr, lineno);
+					return 1;
+				}
+				if (assign_subject(n, type, ptr2, lineno) == 3)
+					return -1;
+			} else {
+				type = obj_name_to_val(ptr);
+				if (type == -1) {
+					msg(LOG_ERR,
+					"Field type (%s) is unknown in line %d",
+						ptr, lineno);
+					return 2;
+				} else
+					assign_object(n, type, ptr2, lineno);
+			}
+		} else if (state == 0 && strcmp(ptr, ":") == 0)
+			state = 1;
+		else if (strcmp(ptr, "all") == 0) {
+			if (state == 0) {
+				type = ALL_SUBJ;
+				assign_subject(n, type, "", lineno);
+			} else {
+				type = ALL_OBJ;
+				assign_object(n, type, "", lineno);
+			}
+		} else {
+			msg(LOG_ERR, "'=' is missing for field %s, in line %d",
+				ptr, lineno);
+			return 5;
+		}
+	}
+	return 0;
+}
+
+
 /*
+ * This function take a whole rule as input and parses it up.
  * Returns: -1 nothing, 0 OK, >0 error
  */
 static int nv_split(char *buf, lnode *n, int lineno)
 {
 	char *ptr, *ptr2;
+	int format = 1;  // This is the rules format 1 original, 2 permission
+
+	if (strchr(buf, ':'))
+		format = 2;
+	n->format = format;
 
 	ptr = strtok(buf, " ");
 	if (ptr == NULL)
@@ -321,6 +379,9 @@ static int nv_split(char *buf, lnode *n, int lineno)
 		return 1;
 	}
 
+	// Default access permission is open
+	n->a = OPEN_ACC;
+
 	while ((ptr = strtok(NULL, " "))) {
 		int type;
 
@@ -328,14 +389,40 @@ static int nv_split(char *buf, lnode *n, int lineno)
 		if (ptr2) {
 			*ptr2 = 0;
 			ptr2++;
-			type = subj_name_to_val(ptr);
+			if (format == 2) {
+				if (strcmp(ptr, "perm") == 0) {
+					if (strcmp(ptr2, "execute") == 0)
+						n->a = EXEC_ACC;
+					else if (strcmp(ptr2, "any") == 0)
+						n->a = ANY_ACC;
+					else if (strcmp(ptr2, "open")) {
+						msg(LOG_ERR,
+				"Access permission (%s) is unknown in line %d",
+							ptr2, lineno);
+						return 2;
+					}
+				} else {
+					type = subj_name_to_val(ptr, 2);
+					if (type == -1) {
+						msg(LOG_ERR,
+					"Field type (%s) is unknown in line %d",
+							ptr, lineno);
+						return 1;
+					}
+					if (assign_subject(n, type, ptr2, lineno) == 3)
+						return -1;
+				}
+				parse_new_format(n, lineno);
+				goto finish_up;
+			}
+			type = subj_name_to_val(ptr, format);
 			if (type == -1) {
 				type = obj_name_to_val(ptr);
 				if (type == -1) {
 					msg(LOG_ERR,
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
-					return 2;
+					return 3;
 				} else
 					assign_object(n, type, ptr2, lineno);
 			} else
@@ -351,27 +438,29 @@ static int nv_split(char *buf, lnode *n, int lineno)
 			} else {
 				msg(LOG_ERR,
 			"All can only be used in place of a subject or object");
-				return 3;
+				return 4;
 			}
 		} else {
 			msg(LOG_ERR, "'=' is missing for field %s, in line %d",
 				ptr, lineno);
-			return 4;
+			return 5;
 		}
 	}
 
+finish_up:
 	// do one last sanity check for missing subj or obj
 	if (n->s_count == 0) {
 		msg(LOG_ERR, "Subject is missing in line %d", lineno);
-		return 5;
+		return 6;
 	}
 	if (n->o_count == 0) {
 		msg(LOG_ERR, "Object is missing in line %d", lineno);
-		return 6;
+		return 7;
 	}
 	return 0;
 }
 
+// This function take a whole rule as input and passes it to nv_split.
 // Returns 0 if success and 1 on rule failure.
 int rules_append(llist *l, char *buf, unsigned int lineno)
 {
@@ -680,6 +769,22 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 	return rc;
 }
 
+// Returns 0 if no match, 1 if a match
+static int check_access(lnode *r, event_t *e)
+{
+	access_t perm;
+
+	if (r->a == ANY_ACC)
+		return 1;
+
+	if (e->type & FAN_OPEN_EXEC_PERM)
+		perm = EXEC_ACC;
+	else
+		perm = OPEN_ACC;
+
+	return r->a == perm;
+}
+
 // Returns 0 if no match, 1 if a match, -1 on error
 static int check_subject(lnode *r, event_t *e)
 {
@@ -742,7 +847,8 @@ static decision_t check_object(lnode *r, event_t *e)
 		if (r->o[cnt].type != ALL_OBJ) {
 			object_attr_t *obj = get_obj_attr(e, r->o[cnt].type);
 			// can't happen unless out of memory
-			if (obj == NULL || obj->o == NULL) {
+			if (obj == NULL || (obj->o == NULL &&
+						r->o[cnt].type != OBJ_TRUST)) {
 				cnt++;
 				continue;
 			}
@@ -759,8 +865,21 @@ static decision_t check_object(lnode *r, event_t *e)
 				    strcmp(r->s[cnt].str, "untrusted") == 0) {
 				if (is_obj_trusted(e))
 					return 0;
-			} else if (strcmp(obj->o, r->o[cnt].o))
+			} else if (r->o[cnt].type == OBJ_TRUST) {
+				const char *val;
+				if (obj->len == 0)
+					val = "0";
+				else
+					val = "1";
+				if (val[0] != r->o[cnt].o[0])
 					return 0;
+			} else if ((r->o[cnt].type == FTYPE) &&
+					strcmp(r->o[cnt].o, "any") == 0) {
+				// If the rule has any for the file type, we
+				// match no matter what. Intentionally blank.
+				;
+			} else if (strcmp(obj->o, r->o[cnt].o))
+				return 0;
 		}
 		cnt++;
 	}
@@ -772,6 +891,11 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 {
 	int d;
 
+	// Check access permission
+	d = check_access(r, e);
+	if (d == 0)	// No match
+		return NO_OPINION;
+
 	// Check the subject
 	d = check_subject(r, e);
 	if (d == 0)	// No match
@@ -781,6 +905,7 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 	d = check_object(r, e);
 	if (d == 0)	// No match
 		return NO_OPINION;
+
 	return r->d;
 }
 

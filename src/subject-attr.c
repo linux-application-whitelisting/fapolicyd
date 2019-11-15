@@ -1,6 +1,6 @@
 /*
  * rules.c - functions to abstract subject attributes
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2019 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -28,38 +28,65 @@
 #include <string.h>
 #include "subject-attr.h"
 
-static const nv_t table[] = {
+static const nv_t table1[] = {
 {	ALL_SUBJ,   "all"	},
 {	AUID,       "auid"	},
 {	UID,        "uid"	},
 {	SESSIONID,  "sessionid"	},
 {	PID,        "pid"	},
 {	PATTERN,    "pattern"	},
-/*{	SUBJ_TRUST, "subj_trust" },*/
 {	COMM,       "comm"	},
 {	EXE,        "exe"	},
 {	EXE_DIR,    "exe_dir"	},
 {	EXE_TYPE,   "exe_type"	},
 {	EXE_DEVICE, "exe_device" },
 };
+#define MAX_SUBJECTS1 (sizeof(table1)/sizeof(table1[0]))
 
-#define MAX_SUBJECTS (sizeof(table)/sizeof(table[0]))
+static const nv_t table2[] = {
+{	ALL_SUBJ,   "all"	},
+{	AUID,       "auid"	},
+{	UID,        "uid"	},
+{	SESSIONID,  "sessionid"	},
+{	PID,        "pid"	},
+{	PATTERN,    "pattern"	},
+{	SUBJ_TRUST, "trust"	},
+{	COMM,       "comm"	},
+{	EXE,        "exe"	},
+{	EXE_DIR,    "dir"	},
+{	EXE_TYPE,   "ftype"	},
+{	EXE_DEVICE, "device"	},
+};
+#define MAX_SUBJECTS2 (sizeof(table2)/sizeof(table2[0]))
 
-int subj_name_to_val(const char *name)
+int subj_name_to_val(const char *name, int format)
 {
 	unsigned int i = 0;
-	while (i < MAX_SUBJECTS) {
-		if (strcmp(name, table[i].name) == 0)
-			return table[i].value;
-		i++;
+	if (format == 1) {
+		while (i < MAX_SUBJECTS1) {
+			if (strcmp(name, table1[i].name) == 0)
+				return table1[i].value;
+			i++;
+		}
+	} else {
+		while (i < MAX_SUBJECTS2) {
+			if (strcmp(name, table2[i].name) == 0)
+				return table2[i].value;
+			i++;
+		}
 	}
 	return -1;
 }
 
-const char *subj_val_to_name(unsigned int v)
+const char *subj_val_to_name(unsigned int v, int format)
 {
-	if (v < MAX_SUBJECTS)
-		return table[v].name;
+	if (format == 1) {
+		if (v < MAX_SUBJECTS1)
+			return table1[v].name;
+	} else {
+		if (v < MAX_SUBJECTS2)
+			return table2[v].name;
+	}
 
 	return NULL;
 }

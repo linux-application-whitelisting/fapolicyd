@@ -1,6 +1,6 @@
 /*
 * rules.h - Header file for rules.c
-* Copyright (c) 2016-17 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2016-17,2019 Red Hat Inc., Durham, North Carolina.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -32,11 +32,15 @@
 
 #define MAX_FIELDS 8
 
+typedef enum { OPEN_ACC, EXEC_ACC , ANY_ACC } access_t;
+
 /* This is one node of the linked list. Any data elements that are per
  * rule goes here. */
 typedef struct _lnode{
   decision_t d;
+  access_t a;
   unsigned int num;
+  unsigned int format;
   unsigned int s_count;
   unsigned int o_count;
   subject_attr_t s[MAX_FIELDS];

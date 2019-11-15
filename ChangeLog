@@ -5,6 +5,8 @@
 - Update rules for ansible and dracut
 - Skip config files in database check
 - Expand definition of doc files
+- Create new rule format exposing Subj and Obj trust
+- Redesign the rules for trust based rules
 
 0.9
 - Convert hashes to lowercase like sha256sum outputs

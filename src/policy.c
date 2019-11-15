@@ -1,6 +1,6 @@
 /*
  * policy.c - functions that encapsulate the notion of a policy
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2019 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -133,7 +133,7 @@ int reload_config(void)
 	return load_config();
 }
 
-static void log_it(unsigned int num, decision_t results, event_t *e)
+static void log_it(unsigned int num, int format, decision_t results, event_t *e)
 {
 	subject_attr_t *subj, *subj2, *subj3;
 	object_attr_t *obj, *obj2;
@@ -143,11 +143,23 @@ static void log_it(unsigned int num, decision_t results, event_t *e)
 	subj3 = get_subj_attr(e, PID);
 	obj = get_obj_attr(e, PATH);
 	obj2 = get_obj_attr(e, FTYPE);
-	msg(LOG_DEBUG, "rule:%u dec=%s auid=%d pid=%d exe=%s file=%s ftype=%s",
-		num+1,
-		dec_val_to_name(results),
-		subj2->val, subj3->val, subj->str,
-		obj ? obj->o : "?", obj2 ? obj2->o : "?");
+	if (format == 1) {
+		msg(LOG_DEBUG,
+		    "rule:%u dec=%s auid=%d pid=%d exe=%s file=%s ftype=%s",
+			num+1,
+			dec_val_to_name(results),
+			subj2->val, subj3->val, subj->str,
+			obj ? obj->o : "?", obj2 ? obj2->o : "?");
+	} else {
+		msg(LOG_DEBUG,
+			"rule:%u dec=%s perm=%s auid=%d pid=%d exe=%s : "
+			"file=%s ftype=%s",
+			num+1,
+			dec_val_to_name(results),
+			e->type & FAN_OPEN_EXEC_PERM ? "execute" : "open",
+			subj2->val, subj3->val, subj->str,
+			obj ? obj->o : "?", obj2 ? obj2->o : "?");
+	}
 }
 
 decision_t process_event(event_t *e)
@@ -167,7 +179,8 @@ decision_t process_event(event_t *e)
 
 	// Output some information if debugging on
 	if ((debug > 1 && (results & ~AUDIT) == DENY) || (debug == 1))
-		log_it(r ? r->num : 0xFFFFFFFF, results, e);
+		log_it(r ? r->num : 0xFFFFFFFF, 
+			r ? r->format : 2, results, e);
 
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)

@@ -1,6 +1,6 @@
 /*
  * object-attr.c - abstract object attribute access
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2019 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -34,7 +34,7 @@ static const nv_t table[] = {
 {	ODIR, 		"dir" },
 {	DEVICE,		"device" },
 {	FTYPE,		"ftype" },
-/*{	OBJ_TRUST,	"obj_trust"},*/
+{	OBJ_TRUST,	"trust"},
 {	SHA256HASH,	"sha256hash" },
 {	FMODE,		"mode" },
 };

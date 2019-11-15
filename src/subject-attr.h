@@ -1,6 +1,6 @@
 /*
  * subject-attr.h - Header file for subject-attr.c
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2019 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -42,7 +42,7 @@ typedef struct s {
 	};
 } subject_attr_t;
 
-int subj_name_to_val(const char *name);
-const char *subj_val_to_name(unsigned int v);
+int subj_name_to_val(const char *name, int format);
+const char *subj_val_to_name(unsigned int v, int format);
 
 #endif
