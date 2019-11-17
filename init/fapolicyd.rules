@@ -72,7 +72,7 @@ allow perm=execute all : ftype=text/plain trust=1
 
 # This is a workaround for kernel thinking this is being executed. We
 # catch actual execution in rule 3.
-allow perm=execute all : path=%ldso_path% trust=1
+allow perm=execute all : path=%ld_so_path% trust=1
 deny_audit perm=execute all : ftype=any
 
 # Data exfiltration
