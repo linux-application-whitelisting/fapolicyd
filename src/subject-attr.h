@@ -27,6 +27,7 @@
 
 #include <sys/types.h>
 #include "nv.h"
+#include "fapolicyd-defs.h"
 
 // Top is numbers, bottom is strings
 typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, PATTERN,
@@ -42,7 +43,6 @@ typedef struct s {
 	};
 } subject_attr_t;
 
-int subj_name_to_val(const char *name, int format);
-//const char *subj_val_to_name(unsigned int v, int format);
+int subj_name_to_val(const char *name, rformat_t format);
 
 #endif

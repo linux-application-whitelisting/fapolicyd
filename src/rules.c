@@ -359,10 +359,10 @@ static int parse_new_format(lnode *n, int lineno)
 static int nv_split(char *buf, lnode *n, int lineno)
 {
 	char *ptr, *ptr2;
-	int format = 1;  // This is the rules format 1 original, 2 permission
+	rformat_t format = RULE_FMT_ORIG;
 
 	if (strchr(buf, ':'))
-		format = 2;
+		format = RULE_FMT_COLON;
 	n->format = format;
 
 	ptr = strtok(buf, " ");
@@ -389,7 +389,7 @@ static int nv_split(char *buf, lnode *n, int lineno)
 		if (ptr2) {
 			*ptr2 = 0;
 			ptr2++;
-			if (format == 2) {
+			if (format == RULE_FMT_COLON) {
 				if (strcmp(ptr, "perm") == 0) {
 					if (strcmp(ptr2, "execute") == 0)
 						n->a = EXEC_ACC;

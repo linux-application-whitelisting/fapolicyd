@@ -133,7 +133,8 @@ int reload_config(void)
 	return load_config();
 }
 
-static void log_it(unsigned int num, int format, decision_t results, event_t *e)
+static void log_it(unsigned int num, rformat_t format, decision_t results,
+	       event_t *e)
 {
 	subject_attr_t *subj, *subj2, *subj3;
 	object_attr_t *obj, *obj2;
@@ -143,7 +144,7 @@ static void log_it(unsigned int num, int format, decision_t results, event_t *e)
 	subj3 = get_subj_attr(e, PID);
 	obj = get_obj_attr(e, PATH);
 	obj2 = get_obj_attr(e, FTYPE);
-	if (format == 1) {
+	if (format == RULE_FMT_ORIG) {
 		msg(LOG_DEBUG,
 		    "rule:%u dec=%s auid=%d pid=%d exe=%s file=%s ftype=%s",
 			num+1,
@@ -180,7 +181,7 @@ decision_t process_event(event_t *e)
 	// Output some information if debugging on
 	if ((debug > 1 && (results & ~AUDIT) == DENY) || (debug == 1))
 		log_it(r ? r->num : 0xFFFFFFFF, 
-			r ? r->format : 2, results, e);
+			r ? r->format : RULE_FMT_COLON, results, e);
 
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)

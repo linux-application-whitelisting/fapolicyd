@@ -59,10 +59,10 @@ static const nv_t table2[] = {
 };
 #define MAX_SUBJECTS2 (sizeof(table2)/sizeof(table2[0]))
 
-int subj_name_to_val(const char *name, int format)
+int subj_name_to_val(const char *name, rformat_t format)
 {
 	unsigned int i = 0;
-	if (format == 1) {
+	if (format == RULE_FMT_ORIG) {
 		while (i < MAX_SUBJECTS1) {
 			if (strcmp(name, table1[i].name) == 0)
 				return table1[i].value;
@@ -80,7 +80,7 @@ int subj_name_to_val(const char *name, int format)
 
 /* const char *subj_val_to_name(unsigned int v, int format)
 {
-	if (format == 1) {
+	if (format == RULE_FMT_ORIG) {
 		if (v < MAX_SUBJECTS1)
 			return table1[v].name;
 	} else {

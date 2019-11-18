@@ -16,8 +16,9 @@ fapolicyd_SOURCES = avl.c database.c daemon-config.c event.c \
 
 fapolicyd_cli_SOURCES = fapolicyd-cli.c
 
-noinst_HEADERS = avl.h database.h daemon-config.h event.h \
-	fd-fgets.h file.h lru.h message.h mounts.h notify.h \
-	nv.h object-attr.h object.h policy.h \
+noinst_HEADERS = avl.h database.h daemon-config.h \
+	event.h fapolicyd-defs.h fd-fgets.h file.h \
+	lru.h message.h mounts.h notify.h nv.h \
+	object-attr.h object.h policy.h \
 	process.h queue.h rules.h subject-attr.h subject.h \
 	temporary_db.h
