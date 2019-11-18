@@ -26,6 +26,7 @@
 #include "config.h"
 #include "daemon-config.h"
 #include "message.h"
+
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>

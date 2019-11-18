@@ -43,7 +43,6 @@
 #include <seccomp.h>
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
-
 #include "notify.h"
 #include "policy.h"
 #include "event.h"

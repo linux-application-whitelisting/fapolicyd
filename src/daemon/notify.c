@@ -34,7 +34,6 @@
 #include <signal.h>
 #include <sys/syscall.h>
 #include <stdatomic.h>
-#include "file.h"
 #include "policy.h"
 #include "event.h"
 #include "message.h"

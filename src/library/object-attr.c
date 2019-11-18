@@ -26,6 +26,7 @@
 #include "config.h"
 #include <stddef.h>	// For NULL
 #include <string.h>
+
 #include "object-attr.h"
 
 static const nv_t table[] = {

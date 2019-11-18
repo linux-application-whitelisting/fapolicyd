@@ -45,7 +45,6 @@
 #include <rpm/rpmmacro.h>
 #include <rpm/rpmlog.h>
 #include <rpm/rpmdb.h>
-
 #include "database.h"
 #include "message.h"
 #include "event.h"
