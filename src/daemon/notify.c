@@ -57,7 +57,6 @@ static pthread_cond_t do_decision;
 static volatile atomic_bool events_ready;
 static volatile int alive = 1;
 static int fd = -1;
-static unsigned long allowed = 0, denied = 0;
 static uint64_t mask;
 
 // Local functions
@@ -206,8 +205,8 @@ void shutdown_fanotify(mlist *m)
 	close(fd);
 
 	// Report results
-	msg(LOG_DEBUG, "Allowed accesses: %lu", allowed);
-	msg(LOG_DEBUG, "Denied accesses: %lu", denied);
+	msg(LOG_DEBUG, "Allowed accesses: %lu", getAllowed());
+	msg(LOG_DEBUG, "Denied accesses: %lu", getDenied());
 }
 
 void decision_report(FILE *f)
@@ -216,8 +215,8 @@ void decision_report(FILE *f)
 		return;
 
 	// Report results
-	fprintf(f, "Allowed accesses: %lu\n", allowed);
-	fprintf(f, "Denied accesses: %lu\n\n", denied);
+	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
+	fprintf(f, "Denied accesses: %lu\n\n", getDenied());
 }
 
 static int get_ready(void)
@@ -233,32 +232,6 @@ static void set_ready(void)
 static void clear_ready(void)
 {
 	events_ready = 0;
-}
-
-static void make_policy_decision(const struct fanotify_event_metadata *metadata)
-{
-	struct fanotify_response response;
-	event_t e;
-	int decision;
-
-	if (new_event(metadata, &e))
-		decision = FAN_DENY;
-	else
-		decision = process_event(&e);
-
-	if ((decision & ~AUDIT) == DENY)
-		denied++;
-	else
-		allowed++;
-
-	if (metadata->mask & mask) {
-		response.fd = metadata->fd;
-		if (permissive)
-			response.response = FAN_ALLOW;
-		else
-			response.response = decision;
-		write(fd, &response, sizeof(struct fanotify_response));
-	}
 }
 
 static void *deadmans_switch_thread_main(void *arg)
@@ -324,7 +297,7 @@ static void *decision_thread_main(void *arg)
 			clear_ready();
 		pthread_mutex_unlock(&decision_lock);
 
-		make_policy_decision(&metadata);
+		make_policy_decision(&metadata, fd, mask);
 		close(metadata.fd);
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");

@@ -26,7 +26,7 @@
 #define NOTIFY_HEADER
 
 #include <stdio.h>
-#include "daemon-config.h"
+#include "conf.h"
 #include "mounts.h"
 
 int init_fanotify(const conf_t *config, mlist *m);

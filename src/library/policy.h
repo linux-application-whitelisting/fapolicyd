@@ -54,6 +54,9 @@ int dec_name_to_val(const char *name);
 int load_config(void);
 int reload_config(void);
 decision_t process_event(event_t *e);
+void make_policy_decision(const struct fanotify_event_metadata *metadata, int fd, uint64_t mask);
+unsigned long getAllowed();
+unsigned long getDenied();
 void policy_no_audit(void);
 void destroy_config(void);
 

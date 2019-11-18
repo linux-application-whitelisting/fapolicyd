@@ -37,6 +37,7 @@
 #include "message.h"
 
 static llist rules;
+static unsigned long allowed = 0, denied = 0;
 
 static const nv_t table[] = {
 {       NO_OPINION, "no-opinion" },
@@ -188,6 +189,42 @@ decision_t process_event(event_t *e)
 		return results;
 
 	return ALLOW;
+}
+
+void make_policy_decision(const struct fanotify_event_metadata *metadata, int fd, uint64_t mask)
+{
+	struct fanotify_response response;
+	event_t e;
+	int decision;
+
+	if (new_event(metadata, &e))
+		decision = FAN_DENY;
+	else
+		decision = process_event(&e);
+
+	if ((decision & ~AUDIT) == DENY)
+		denied++;
+	else
+		allowed++;
+
+	if (metadata->mask & mask) {
+		response.fd = metadata->fd;
+		if (permissive)
+			response.response = FAN_ALLOW;
+		else
+			response.response = decision;
+		write(fd, &response, sizeof(struct fanotify_response));
+	}
+}
+
+unsigned long getAllowed()
+{
+	return allowed;
+}
+
+unsigned long getDenied()
+{
+	return denied;
 }
 
 void policy_no_audit(void)
