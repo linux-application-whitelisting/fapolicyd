@@ -25,7 +25,7 @@
 #ifndef TEMPORARY_DB
 #define TEMPORARY_DB
 
-#include "daemon-config.h"
+#include "config.h"
 
 typedef struct db_item {
     const char* index;

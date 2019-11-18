@@ -3,7 +3,6 @@ AUTOMAKE_OPTIONS = subdir-objects
 CONFIG_CLEAN_FILES = *.loT *.rej *.orig
 AM_CPPFLAGS = \
 	-I${top_srcdir} \
-	-I${top_srcdir}/src/daemon \
 	-I${top_srcdir}/src/library
 
 sbin_PROGRAMS = fapolicyd fapolicyd-cli
@@ -18,6 +17,7 @@ fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 libfapolicyd_la_SOURCES = \
 	library/avl.c \
 	library/avl.h \
+	library/conf.h \
 	library/database.c \
 	library/database.h \
 	library/event.c \

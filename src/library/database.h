@@ -26,13 +26,13 @@
 #ifndef DATABASE_HEADER
 #define DATABASE_HEADER
 
-#include "daemon-config.h"
+#include "conf.h"
 
 void lock_update_thread(void);
 void unlock_update_thread(void);
 
-int preconstruct_fifo(struct daemon_conf *config);
-int init_database(struct daemon_conf *config);
+int preconstruct_fifo(conf_t *config);
+int init_database(conf_t *config);
 int check_trust_database(const char *path);
 void close_database(void);
 

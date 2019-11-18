@@ -64,7 +64,7 @@ static uint64_t mask;
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
 
-int init_fanotify(const struct daemon_conf *conf, mlist *m)
+int init_fanotify(const conf_t *conf, mlist *m)
 {
 	const char *path;
 
