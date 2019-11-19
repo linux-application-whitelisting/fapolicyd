@@ -48,11 +48,10 @@ You might want to look at the fapolicyd.rules file to see what the sample
 policy looks like. The policy is designed with 4 goals in mind.
 
 1. No bypass of security by executing programs via ld.so.
-2. All approved executables are packaged. Unpackaged programs can't run
-3. Elf and python files/shared objects must come from system directories.
-This prevents LD_LIBRARY & PYTHON_LIBRARY redirection to an attacker
-controlled dir.
-4. Other languages are not allowed or must be enabled.
+2. All approved executables are trusted (packaged). Untrusted programs
+   can't run.
+3. Elf binaries, python, and shell scripts  are enabled for trusted
+   applications/libraries. Other languages are not allowed or must be enabled.
 
 You can test by starting the daemon from the command line. Before starting
 the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. When
@@ -64,7 +63,7 @@ system. Continuing on with the tutorial, as root start the daemon as follows:
 ```
 Then in another window do the following:
 
-1. /usr/lib64/ld-2.22.so /usr/bin/ls
+1. /usr/lib64/ld-2.29.so /usr/bin/ls
 2. my-ls
 3. run a python file in your home directory.
 4. run a program from /tmp
@@ -95,8 +94,8 @@ application wanted to access /etc/ld.so.cache which is the object.
 
 WRITING RULES
 -------------
-The rules follow a simple "decision subject object" recipe. For more
-information, see the fapolicyd.rules man page.
+The rules follow a simple "decision permission subject : object" recipe. For
+more information, see the fapolicyd.rules man page.
 
 
 REPORT
