@@ -26,7 +26,7 @@ makes use of the kernel's fanotify interface to determine file access rights.
 # generate rules for python
 sed -i "s/%python2_path%/`readlink -f %{__python2} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
 sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
-sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2.2*.so' | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
+sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
 
 %build
 %configure --with-audit
