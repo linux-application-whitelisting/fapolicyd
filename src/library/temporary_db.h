@@ -1,6 +1,6 @@
 /*
- * database.h - Header file for trust database
- * Copyright (c) 2018-19 Red Hat Inc.
+ * temporary_db.h - Header file for linked list
+ * Copyright (c) 2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -19,21 +19,29 @@
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
- *   Steve Grubb <sgrubb@redhat.com>
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
-#ifndef DATABASE_HEADER
-#define DATABASE_HEADER
+#ifndef TEMPORARY_DB
+#define TEMPORARY_DB
 
-#include "daemon-config.h"
+#include "config.h"
 
-void lock_update_thread(void);
-void unlock_update_thread(void);
+typedef struct db_item {
+    const char* index;
+    const char* data;
+    struct db_item* next;
+} db_item_t;
 
-int preconstruct_fifo(struct daemon_conf *config);
-int init_database(struct daemon_conf *config);
-int check_trust_database(const char *path);
-void close_database(void);
+typedef struct db_list_header {
+    long count;
+    struct db_item* first;
+    struct db_item* last;
+} db_list_t;
+
+void init_db_list(void);
+db_item_t* get_first_from_db_list(void);
+int append_db_list(const char * index, const char * data);
+void empty_db_list(void);
 
 #endif

@@ -20,6 +20,7 @@ to decide file access rights. Applications that are known via a reputation
 source are allowed access while unknown applications are not. The daemon
 makes use of the kernel's fanotify interface to determine file access rights.
 
+
 %prep
 %setup -q
 
@@ -29,7 +30,10 @@ sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" ini
 sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
 
 %build
-%configure --with-audit
+%configure \
+    --with-audit \
+    --disable-shared
+
 make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
@@ -39,6 +43,9 @@ install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-
 install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
+
+#cleanup
+find %{buildroot} \( -name '*.la' -o -name '*.a' \) -exec rm -f {} ';'
 
 %pre
 getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{name} -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}

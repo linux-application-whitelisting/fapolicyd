@@ -26,6 +26,7 @@
 #include "config.h"
 #include <stdio.h>
 #include <poll.h>
+#include <pwd.h>
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -43,7 +44,6 @@
 #include <seccomp.h>
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
-
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -52,6 +52,7 @@
 #include "database.h"
 #include "message.h"
 #include "daemon-config.h"
+#include "conf.h"
 #include "queue.h"
 #include "avl.h"
 
@@ -65,7 +66,7 @@ volatile atomic_bool stop = 0;
 // Local variables
 static const char *pidfile = "/run/fapolicyd.pid";
 #define REPORT "/var/log/fapolicyd-access.log"
-static struct daemon_conf config;
+static conf_t config;
 // This holds info about all file systems to watch
 struct fs_avl {
 	avl_tree index;

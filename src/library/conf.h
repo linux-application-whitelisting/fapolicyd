@@ -1,4 +1,4 @@
-/* daemon-config.h --
+/* conf.h --
  * Copyright 2018-19 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
@@ -17,16 +17,16 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors:
- *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  *
  */
 
-#ifndef DAEMON_CONFIG_H
-#define DAEMON_CONFIG_H
+#ifndef CONF_H
+#define CONF_H
 
 #include <pwd.h>
 
-struct daemon_conf
+typedef struct conf
 {
 	unsigned int permissive;
 	unsigned int nice_val;
@@ -39,9 +39,6 @@ struct daemon_conf
 	unsigned int subj_cache_size;
 	unsigned int obj_cache_size;
 	const char *watch_fs;
-};
-
-int load_daemon_config(struct daemon_conf *config);
-void free_daemon_config(struct daemon_conf *config);
+} conf_t;
 
 #endif

@@ -26,6 +26,7 @@
 #include "config.h"
 #include "daemon-config.h"
 #include "message.h"
+
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -47,7 +48,7 @@ struct nv_pair
 struct kw_pair
 {
 	const char *name;
-	int (*parser)(const struct nv_pair *, int, struct daemon_conf *);
+	int (*parser)(const struct nv_pair *, int, conf_t *);
 };
 
 static char *get_line(FILE *f, char *buf, unsigned size, int *lineno,
@@ -55,27 +56,27 @@ static char *get_line(FILE *f, char *buf, unsigned size, int *lineno,
 static int nv_split(char *buf, struct nv_pair *nv);
 static const struct kw_pair *kw_lookup(const char *val);
 static int permissive_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int nice_val_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int q_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int uid_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int gid_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int detailed_report_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int db_max_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int subj_cache_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int obj_cache_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int do_stat_report_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 static int watch_fs_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config);
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -96,7 +97,7 @@ static const struct kw_pair keywords[] =
 /*
  * Set everything to its default value
 */
-static void clear_daemon_config(struct daemon_conf *config)
+static void clear_daemon_config(conf_t *config)
 {
 	config->permissive = 0;
 	config->nice_val = 10;
@@ -111,7 +112,7 @@ static void clear_daemon_config(struct daemon_conf *config)
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
 }
 
-int load_daemon_config(struct daemon_conf *config)
+int load_daemon_config(conf_t *config)
 {
 	int fd, lineno = 1;
 	FILE *f;
@@ -309,7 +310,7 @@ static const struct kw_pair *kw_lookup(const char *val)
 	return &keywords[i];
 }
 
-void free_daemon_config(struct daemon_conf *config)
+void free_daemon_config(conf_t *config)
 {
 //	free((void*)config->file);
 	free((void*)config->watch_fs);
@@ -344,7 +345,7 @@ static int unsigned_int_parser(unsigned *i, const char *str, int line)
 }
 
 static int permissive_parser(const struct nv_pair *nv, int line,
-                struct daemon_conf *config)
+                conf_t *config)
 {
 	int rc = unsigned_int_parser(&(config->permissive), nv->value, line);
 	if (rc == 0 && config->permissive > 1) {
@@ -356,7 +357,7 @@ static int permissive_parser(const struct nv_pair *nv, int line,
 }
 
 static int nice_val_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	int rc = unsigned_int_parser(&(config->nice_val), nv->value, line);
 	if (rc == 0 && config->nice_val > 20) {
@@ -369,7 +370,7 @@ static int nice_val_parser(const struct nv_pair *nv, int line,
 }
 
 static int q_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	int rc = unsigned_int_parser(&(config->q_size), nv->value, line);
 	if (rc == 0 && config->q_size > 10480)
@@ -379,7 +380,7 @@ static int q_size_parser(const struct nv_pair *nv, int line,
 }
 
 static int uid_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	uid_t uid = 0;
 	gid_t gid = 0;
@@ -410,7 +411,7 @@ static int uid_parser(const struct nv_pair *nv, int line,
 }
 
 static int gid_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	gid_t gid = 0;
 
@@ -438,19 +439,19 @@ static int gid_parser(const struct nv_pair *nv, int line,
 }
 
 static int detailed_report_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	return unsigned_int_parser(&(config->detailed_report), nv->value, line);
 }
 
 static int db_max_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	return unsigned_int_parser(&(config->db_max_size), nv->value, line);
 }
 
 static int subj_cache_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	int rc=unsigned_int_parser(&(config->subj_cache_size), nv->value, line);
 	if (rc == 0 && config->subj_cache_size > 16384)
@@ -461,7 +462,7 @@ static int subj_cache_size_parser(const struct nv_pair *nv, int line,
 }
 
 static int obj_cache_size_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	int rc=unsigned_int_parser(&(config->obj_cache_size), nv->value, line);
 	if (rc == 0 && config->obj_cache_size > 32768)
@@ -472,7 +473,7 @@ static int obj_cache_size_parser(const struct nv_pair *nv, int line,
 }
 
 static int do_stat_report_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	int rc=unsigned_int_parser(&(config->do_stat_report), nv->value, line);
 	if (rc == 0 && config->do_stat_report > 2) {
@@ -485,7 +486,7 @@ static int do_stat_report_parser(const struct nv_pair *nv, int line,
 
 
 static int watch_fs_parser(const struct nv_pair *nv, int line,
-		struct daemon_conf *config)
+		conf_t *config)
 {
 	free((void *)config->watch_fs);
 	config->watch_fs = strdup(nv->value);

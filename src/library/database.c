@@ -45,7 +45,6 @@
 #include <rpm/rpmmacro.h>
 #include <rpm/rpmlog.h>
 #include <rpm/rpmdb.h>
-
 #include "database.h"
 #include "message.h"
 #include "event.h"
@@ -74,7 +73,7 @@ static pthread_mutex_t update_lock;
 
 // Local functions
 static void *update_thread_main(void *arg);
-static int update_database(struct daemon_conf *config);
+static int update_database(conf_t *config);
 
 // External variables
 extern volatile atomic_bool stop;
@@ -93,7 +92,7 @@ static int is_link(const char *path)
 	return 0;
 }
 
-int preconstruct_fifo(struct daemon_conf *config)
+int preconstruct_fifo(conf_t *config)
 {
 	int rc;
 	char err_buff[BUFFER_SIZE];
@@ -130,7 +129,7 @@ int preconstruct_fifo(struct daemon_conf *config)
 	return 0;
 }
 
-static int init_db(const struct daemon_conf *config)
+static int init_db(const conf_t *config)
 {
 	if (mdb_env_create(&env))
 		return 1;
@@ -731,7 +730,7 @@ static int verify_database_entries(void)
  * it will verify it against the rpm database just in case something
  * has changed. If the database does not exist, then it will create one.
  */
-int init_database(struct daemon_conf *config)
+int init_database(conf_t *config)
 {
 	int rc;
 
@@ -828,7 +827,7 @@ void unlock_update_thread(void) {
  * This function reloads updated rpmdb into our internal database
  */
 
-static int update_database(struct daemon_conf *config)
+static int update_database(conf_t *config)
 {
 	int rc;
 
@@ -869,7 +868,7 @@ static void *update_thread_main(void *arg)
 	sigset_t sigs;
 	char buff[BUFFER_SIZE];
 	char err_buff[BUFFER_SIZE];
-	struct daemon_conf *config = (struct daemon_conf *)arg;
+	conf_t *config = (conf_t *)arg;
 
 #ifdef DEBUG
 	msg(LOG_DEBUG, "Update thread main started");

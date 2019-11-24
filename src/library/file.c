@@ -119,7 +119,6 @@ struct file_info *stat_file_entry(int fd)
 }
 
 // Returns 0 if equal and 1 if not equal
-#include "message.h"
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 {
 	if (p1 == NULL || p2 == NULL)
