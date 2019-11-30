@@ -5,15 +5,14 @@ Fix ld.so to not be an execution unless it really is
 Userspace
 =========
 Does reversing path string improve lookup performance?
-Add admin defined whitelist of dirs or files
+Improve startup time to enforcement
+Add admin defined trusted dirs or files
 Make use of librpm optional
-Fix new pattern detection and swing between them based on exec_perm support
-Bring back LD_PRELOAD detection
-During startup, update database with current trust sources
-During startup, block accesses while sync'ing trust database
 Add file verification scrubber and update database status
 Use the verified status in decisions
+Fix new pattern detection and swing between them based on exec_perm support
+Bring back LD_PRELOAD detection
 Add sighup handler
-Allow globbing
+Allow rules to express paths using globbing
 Support SWID as trust source
 
