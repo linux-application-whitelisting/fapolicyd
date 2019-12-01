@@ -35,5 +35,6 @@ int preconstruct_fifo(conf_t *config);
 int init_database(conf_t *config);
 int check_trust_database(const char *path);
 void close_database(void);
+void unlink_fifo(void);
 
 #endif

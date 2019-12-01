@@ -194,6 +194,13 @@ static void term_handler(int sig)
 	stop = 1 + sig; // Just so its used...
 }
 
+static void segv_handler(int signum)
+{
+	unlink_fifo();
+	signal(signum, SIG_DFL);
+	kill(getpid(), signum);
+}
+
 // This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031
 #define UNUSED(x) (void)(x)
 extern int rpmsqEnable (int signum, void *handler);
@@ -469,6 +476,8 @@ int main(int argc, char *argv[])
 	sa.sa_handler = term_handler;
 	sigaction(SIGTERM, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
+	sa.sa_handler = segv_handler;
+	sigaction(SIGSEGV, &sa, NULL);
 
 	// Bump up resources
 	limit.rlim_cur = RLIM_INFINITY;

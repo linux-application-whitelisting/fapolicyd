@@ -807,6 +807,11 @@ void close_database(void)
 	unlink(fifo_path);
 }
 
+void unlink_fifo(void)
+{
+	unlink(fifo_path);
+}
+
 /*
  * Lock wrapper for update mutex
  */
