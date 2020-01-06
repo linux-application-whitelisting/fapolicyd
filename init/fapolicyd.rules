@@ -3,7 +3,7 @@
 # executable you may have, you carve out what is acceptable (the whitelist)
 # and then deny anything else of that type. The rules end with an allow
 # anything to prevent unintended blockage to things like media files, documents,
-# or anything else applications access that is not a computer langauge.
+# or anything else applications access that is not a computer language.
 
 # Carve out an exception for dracut
 allow perm=any uid=0 : dir=/var/tmp/

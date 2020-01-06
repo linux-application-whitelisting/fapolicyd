@@ -1,4 +1,4 @@
-.TH FAPOLICYD.RULES: "7" "Nov 2019" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.RULES: "5" "Jan 2020" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd.rules \- fapolicyd rules to determine access rights
 .SH DESCRIPTION
@@ -51,7 +51,7 @@ This is the shortened command name. When an interpreter starts a program, it usu
 This is the full path to the executable. Globbing is not supported. You may also use the special keyword \fBuntrusted\fP to match on the subject not being listed in the rpm database.
 .TP
 .B dir
-If you wish to match a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIexe_dir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBuntrusted\fP.
+If you wish to match a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIdir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBuntrusted\fP.
 .RS
 .TP 12
 .B execdirs
@@ -67,7 +67,7 @@ The \fIexecdirs\fP option will match against the following list of directories:
 .RE
 .TP 12
 .B systemdirs
-The \fIexecdirs\fP option will match against the same list as \fIexecdirs\fP but also includes /etc/.
+The \fIsystemdirs\fP option will match against the same list as \fIexecdirs\fP but also includes /etc/.
 .TP 12
 .B untrusted
 The \fIuntrusted\fP option will look up the current executable's full path in the rpm database to see if the executable is known to the system. The rule will trigger if the file in question is not in the trust database. This option is
@@ -96,7 +96,7 @@ There are various ways that an attacker may try to execute code that may reveal 
 This matches against any ELF program that is dynamically linked.
 .TP
 .B bad_interpreter
-This matches against access patterns that indicate that the defaul ELF interpreter is not being used.
+This matches against access patterns that indicate that the default ELF interpreter is not being used.
 .TP
 .B ld_so
 This matches against access patterns that indicate that the program is being started directly by the runtime linker.
@@ -120,13 +120,13 @@ This matches against any subject. When used, this must be the only subject in th
 This is the full path to the file that will be accessed. Globbing is not supported. You may also use the special keyword \fBuntrusted\fP to match on the subject not being listed in the rpm database.
 .TP
 .B dir
-If you wish to match on access to any file in a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIexe_dir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBuntrusted\fP. See the \fBexe_dir\fP for an explanation of these keywords.
+If you wish to match on access to any file in a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIdir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBuntrusted\fP. See the \fBdir\fP option under Subject for an explanation of these keywords.
 .TP
 .B device
 This option will match against the device that the file being accessed resides on. To use it, start with /dev/ and add the target device name.
 .TP
 .B ftype
-This option matches against the mime type of the file being accessed. See \fBexe_type\fP for more information on determining the mime type.
+This option matches against the mime type of the file being accessed. See \fBftype\fP under Subject for more information on determining the mime type.
 .TP
 .B trust
 This is a boolean describing whether it is required for the object to be in the trust database or not. A value of 1 means its required while 0 means its not.
