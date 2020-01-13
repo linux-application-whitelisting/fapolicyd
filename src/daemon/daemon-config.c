@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  *
  */
 
@@ -77,6 +78,8 @@ static int do_stat_report_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int watch_fs_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
+static int trust_parser(const struct nv_pair *nv, int line,
+			   conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -91,6 +94,7 @@ static const struct kw_pair keywords[] =
   {"obj_cache_size",	obj_cache_size_parser },
   {"do_stat_report",	do_stat_report_parser },
   {"watch_fs",		watch_fs_parser },
+  {"trust",		trust_parser },
   { NULL,		NULL }
 };
 
@@ -110,6 +114,7 @@ static void clear_daemon_config(conf_t *config)
 	config->subj_cache_size = 1024;
 	config->obj_cache_size = 4096;
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
+	config->trust = strdup("file");
 }
 
 int load_daemon_config(conf_t *config)
@@ -314,6 +319,7 @@ void free_daemon_config(conf_t *config)
 {
 //	free((void*)config->file);
 	free((void*)config->watch_fs);
+	free((void*)config->trust);
 }
 
 static int unsigned_int_parser(unsigned *i, const char *str, int line)
@@ -495,3 +501,12 @@ static int watch_fs_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+static int trust_parser(const struct nv_pair *nv, int line,
+			   conf_t *config)
+{
+	free((void *)config->trust);
+	config->trust = strdup(nv->value);
+	if (config->trust)
+		return 0;
+	return 1;
+}

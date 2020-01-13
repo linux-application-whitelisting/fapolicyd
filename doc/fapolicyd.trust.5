@@ -1,0 +1,31 @@
+.TH FAPOLICYD.TRUST: "13" "January 2020" "Red Hat" "System Administration Utilities"
+.SH NAME
+fapolicyd.trust \- fapolicyd's file of trust
+.SH DESCRIPTION
+The file
+.I /etc/fapolicyd/fapolicyd.trust
+contains list of trusted files/binaries for the application whitelisting daemon. You may add comments to the file by starting the line with a '#' character.
+Each line has to contain three columns and space is a valid separator. The first column contains full path to the file, the second is size of the file in bytes
+and the third is valid sha256 hash.
+
+.SH EXAMPLE
+.PP
+.EX
+[root@Desktop ~]# cat /etc/fapolicyd/fapolicyd.trust
+/home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87
+/home/user/my-ls2 5555 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87
+.EE
+
+.SH FILES
+.B /etc/fapolicyd/fapolicyd.trust
+- list of trusted files/binaries
+
+.SH "SEE ALSO"
+.BR fapolicyd (8),
+.BR fapolicyd-cli (1)
+.BR fapolicy.rules (5)
+and
+.BR fapolicy.conf (5).
+
+.SH AUTHOR
+Radovan Sroka

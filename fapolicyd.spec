@@ -66,6 +66,7 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
+%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}

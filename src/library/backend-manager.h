@@ -1,6 +1,6 @@
 /*
- * temporary_db.h - Header file for linked list
- * Copyright (c) 2018 Red Hat Inc., Durham, North Carolina.
+ * backend-manager.h - Header file for backend manager
+ * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -22,26 +22,23 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
-#ifndef TEMPORARY_DB
-#define TEMPORARY_DB
+#ifndef BACKEND_MANAGER_H
+#define BACKEND_MANAGER_H
 
-#include "config.h"
+#include <stdbool.h>
 
-typedef struct db_item {
-    const char* index;
-    const char* data;
-    struct db_item* next;
-} db_item_t;
+#include "conf.h"
+#include "fapolicyd-backend.h"
 
-typedef struct db_list_header {
-    long count;
-    struct db_item* first;
-    struct db_item* last;
-} db_list_t;
+typedef struct _backend_entry {
+	backend * backend;
+	struct _backend_entry * next;
+} backend_entry;
 
-void init_db_list(void);
-db_item_t* get_first_from_db_list(void);
-int append_db_list(const char * index, const char * data);
-void empty_db_list(void);
+
+int backend_init(const conf_t * conf);
+int backend_load(void);
+void backend_close(void);
+backend_entry* backend_get_first(void);
 
 #endif
