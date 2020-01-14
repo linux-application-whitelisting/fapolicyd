@@ -40,23 +40,22 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <rpm/rpmlib.h>
-#include <rpm/rpmts.h>
-#include <rpm/rpmmacro.h>
-#include <rpm/rpmlog.h>
-#include <rpm/rpmdb.h>
+
 #include "database.h"
 #include "message.h"
 #include "event.h"
-#include "temporary_db.h"
+#include "llist.h"
 #include "file.h"
+
+#include "fapolicyd-backend.h"
+#include "backend-manager.h"
+
 
 // Local defines
 #define BUFFER_SIZE 1024
 #define READ_DATA	0
 #define READ_TEST_KEY	1
 #define MEGABYTE	(1024*1024)
-#define DATA_FORMAT "%i %lu %s"
 
 // Local variables
 static MDB_env *env;
@@ -68,6 +67,7 @@ static const char *db = "trust.db";
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static const char* fifo_path = "/run/fapolicyd/fapolicyd.fifo";
+
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
 
@@ -154,16 +154,16 @@ static int init_db(const conf_t *config)
 	bin_symlink = is_link("/bin");
 	sbin_symlink = is_link("/sbin");
 
-	init_db_list();
+	backend_init(config);
+
 	return 0;
 }
 
 static void close_db(void)
 {
+	backend_close();
 	mdb_close(env, dbi);
 	mdb_env_close(env);
-
-	empty_db_list();
 }
 
 /*
@@ -460,177 +460,23 @@ static int delete_all_entries_db()
 }
 
 
-static rpmts ts = NULL;
-static rpmdbMatchIterator mi = NULL;
-static int init_rpm(void)
-{
-	return rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);
-}
-
-static Header h = NULL;
-static int get_next_package_rpm(void)
-{
-	// If this is the first time, create a package iterator
-	if (mi == NULL) {
-		ts = rpmtsCreate();
-		mi = rpmtsInitIterator(ts, RPMDBI_PACKAGES, NULL, 0);
-		if (mi == NULL)
-			return 0;
-	}
-
-	if (h)	// Decrement reference count, and free memory
-		headerFree(h);
-
-	h = rpmdbNextIterator(mi);
-	if (h == NULL)
-		return 0;	// No more packages, done
-
-	// Increment reference count
-	headerLink(h);
-
-	return 1;
-}
-
-static rpmfi fi = NULL;
-static int get_next_file_rpm(void)
-{
-	// If its the first time, make file iterator
-	if (fi == NULL)
-		fi = rpmfiNew(NULL, h, RPMTAG_BASENAMES, RPMFI_KEEPHEADER);
-
-	if (fi) {
-		if (rpmfiNext(fi) == -1) {
-			// No more files, cleanup iterator
-			rpmfiFree(fi);
-			fi = NULL;
-			return 0;
-		}
-        }
-	return 1;
-}
-
-static const char *get_file_name_rpm(void)
-{
-	return strdup(rpmfiFN(fi));
-}
-
-static off_t get_file_size_rpm(void)
-{
-	return rpmfiFSize(fi);
-}
-
-static char *get_sha256_rpm(void)
-{
-	return rpmfiFDigestHex(fi, NULL);
-}
-
-static int is_dir_rpm(void)
-{
-	mode_t mode = rpmfiFMode(fi);
-	if (S_ISDIR(mode))
-		return 1;
-	return 0;
-}
-
-/* We don't want doc files in the database */
-static int is_doc_rpm(void)
-{
-	if (rpmfiFFlags(fi) & (RPMFILE_DOC|RPMFILE_README|
-				RPMFILE_GHOST|RPMFILE_LICENSE|RPMFILE_PUBKEY))
-		return 1;
-	return 0;
-}
-
-/* Config files can have a changed hash. We want them in the db since
- * they are trusted. */
-static int is_config_rpm(void)
-{
-		if (rpmfiFFlags(fi) &
-			  (RPMFILE_CONFIG|RPMFILE_MISSINGOK|RPMFILE_NOREPLACE))
-			return 1;
-		return 0;
-}
-
-static void close_rpm(void)
-{
-	rpmfiFree(fi);
-	fi = NULL;
-	headerFree(h);
-	h = NULL;
-	rpmdbFreeIterator(mi);
-	mi = NULL;
-	rpmtsFree(ts);
-	ts = NULL;
-	rpmFreeCrypto();
-	rpmFreeRpmrc();
-	rpmFreeMacros(NULL);
-	rpmlogClose();
-}
-
-static int load_rpmdb_into_memory()
-{
-	int rc;
-
-	msg(LOG_INFO, "Reading RPMDB into memory");
-	if ((rc = init_rpm())) {
-		msg(LOG_ERR, "init_rpm() failed (%d)", rc);
-		return rc;
-	}
-
-	// Loop across the rpm database
-	while (get_next_package_rpm()) {
-		// Loop across the packages
-		while (get_next_file_rpm()) {
-			// We do not want directories in the database
-			// Multiple packages can own the same directory
-			// and that causes problems in the size info.
-			if (is_dir_rpm())
-				continue;
-
-			// We do not want any documentation in the database
-			if (is_doc_rpm())
-				continue;
-
-			// Get specific file information
-			const char *file_name = get_file_name_rpm();
-			off_t sz = get_file_size_rpm();
-			const char *sha = get_sha256_rpm();
-			char *data;
-			int verified = 0;
-			if (asprintf(&data, DATA_FORMAT,
-						verified, sz, sha) == -1) {
-				data = NULL;
-			}
-			if (data) append_db_list(file_name, data);
-			else {
-				free((void*)file_name);
-			}
-
-			free((void *)sha);
-		}
-	}
-
-	close_rpm();
-	return 0;
-}
-
 static int create_database(int with_sync)
 {
 	msg(LOG_INFO, "Creating database");
 	int rc = 0;
 
-	db_item_t * item = get_first_from_db_list();
+	for (backend_entry* be = backend_get_first() ; be != NULL ; be = be->next ) {
+		msg(LOG_INFO, "Loading data from %s backend", be->backend->name);
 
-	for (; item != NULL; item = item->next) {
-
-		if ((rc = write_db(item->index, item->data)))
-			msg(LOG_ERR, "Error (%d) writing %s",
-					rc, item->index);
+		list_item_t * item = list_get_first(&be->backend->list);
+		for (; item != NULL; item = item->next) {
+			if ((rc = write_db(item->index, item->data)))
+				msg(LOG_ERR, "Error (%d) writing key=\"%s\" data=\"%s\"",
+				    rc, (const char*)item->index, (const char*)item->data);
+		}
 	}
-
 	// Flush everything to disk
 	if (with_sync) mdb_env_sync(env, 1);
-	empty_db_list();
 	return rc;
 }
 
@@ -640,80 +486,44 @@ static int create_database(int with_sync)
  */
 static int check_database_copy(void)
 {
-	int rc, problems = 0;
-
 	msg(LOG_INFO, "Checking database");
-	if ((rc = init_rpm())) {
-		msg(LOG_ERR, "Cannot open the rpm database, rpm_init() (%d)", rc);
-		return rc;
-	}
+	long problems = 0;
 
 	start_long_term_read_ops();
+	for (backend_entry* be = backend_get_first() ; be != NULL ; be = be->next ) {
+		msg(LOG_INFO, "Importing data from %s backend", be->backend->name);
 
-	// Loop across the rpm database - breakout when problem detected
-	while (!problems && get_next_package_rpm()) {
-		// Loop across the packages
-		while (!problems && get_next_file_rpm()) {
-			// Directories are not being kept, skip them.
-			if (is_dir_rpm())
-				continue;
+		list_item_t * item = list_get_first(&be->backend->list);
+		for (; item != NULL; item = item->next) {
 
-			// Documentation is not being kept, skip them
-			if (is_doc_rpm())
-				continue;
-
-			// Get specific file information
-			const char *file_name = get_file_name_rpm();
-			off_t sz = get_file_size_rpm();
-			const char *sha = get_sha256_rpm();
-			char *data1, *data2;
-			int verified = 0;
-			if (asprintf(&data1, DATA_FORMAT,
-						verified, sz, sha) == -1) {
-				msg(LOG_WARNING, "asprintf error");
-				data2 = NULL;
-				goto out2;
-			}
-
-			data2 = lt_read_db(file_name, READ_DATA);
-			if (data2) {
-				// config files can miscompare but not a problm
-				if (strcmp(data1, data2) && !is_config_rpm()) {
-					// FIXME: can we correct?
-					msg(LOG_DEBUG,
-					    "Data miscompare for %s:%s vs %s",
-						file_name, data1, data2);
+			char * data = lt_read_db(item->index, READ_DATA);
+			if (data) {
+				if (strcmp(item->data, data)) {
+					msg(	LOG_DEBUG,
+						"Data miscompare for %s:%s vs %s",
+						(const char *)item->index, (const char *)item->data, data);
 					problems++;
 				}
-			} else	{ // FIXME: should we add it? If we need to
-				  // fix this, then we have to switch to
-				  // write mode, do the update, and come back
-				  // to read mode.
+			} else {
 				msg(LOG_WARNING, "%s is not in database",
-						file_name);
+				    (const char *)item->index);
 				problems++;
 			}
 
-out2:
-			free((void *)file_name);
-			free((void *)sha);
-			free(data1);
-			free(data2);
+			free(data);
 		}
 	}
 
-	// Flush everything to disk - only if fixed
-	// mdb_env_sync(env, 1);
-	close_rpm();
 	end_long_term_read_ops();
+
 	if (problems) {
-		msg(LOG_WARNING, "Found %d problems", problems);
+		msg(LOG_WARNING, "Found %ld problems", problems);
 		return 1;
-	}
-	else
+	} else
 		msg(LOG_INFO, "Database checks OK");
 	return 0;
 }
+
 
 /*
  * This function compares the database against the files on disk. This
@@ -740,13 +550,13 @@ int init_database(conf_t *config)
 		return rc;
 	}
 
-	if (database_empty()) {
-		if ((rc = load_rpmdb_into_memory())) {
-			msg(LOG_ERR, "Failed to load rpm database (%d)", rc);
-			close_db();
-			return rc;
-		}
+	if ((rc = backend_load())) {
+		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
+		close_db();
+		return rc;
+	}
 
+	if (database_empty()) {
 		if ((rc = create_database(/*with_sync*/1))) {
 			msg(LOG_ERR, "Failed to create database, create_database() (%d)", rc);
 			close_db();
@@ -837,12 +647,16 @@ static int update_database(conf_t *config)
 	int rc;
 
 	msg(LOG_INFO, "Updating database");
-	msg(LOG_DEBUG, "Loading RPM database");
+	msg(LOG_DEBUG, "Loading database backends");
 
-	if ((rc = load_rpmdb_into_memory())) {
-		msg(LOG_ERR, "Cannot open the rpm database (%d)", rc);
+	/*
+	 * backend loading/reloading should be done in upper level
+	 */
+	/*
+	if ((rc = backend_load())) {
+		msg(LOG_ERR, "Cannot open the backend database (%d)", rc);
 		return rc;
-	}
+		}*/
 
 	lock_update_thread();
 
@@ -947,9 +761,14 @@ static void *update_thread_main(void *arg)
 				if (check) {
 					msg(LOG_INFO, "It looks like there was an update of the system... Syncing DB.");
 
+					backend_close();
+					backend_init(config);
+					backend_load();
+
 					if ((rc = update_database(config))) {
 						msg(LOG_ERR, "Cannot update a database!");
 						close(ffd[0].fd);
+						backend_close();
 						unlink(fifo_path);
 						exit(rc);
 					} else {

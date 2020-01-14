@@ -535,7 +535,13 @@ int main(int argc, char *argv[])
 	init_event_system(&config);
 
 	// Init the database
-	init_database(&config);
+	if (init_database(&config)) {
+		destroy_event_system();
+		destroy_config();
+		destroy_fs_list();
+		free_daemon_config(&config);
+		exit(1);
+	}
 
 	// Init the file test libraries
 	file_init();

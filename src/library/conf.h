@@ -1,4 +1,4 @@
-/* conf.h --
+/* conf.h configuration structure
  * Copyright 2018-19 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
@@ -39,6 +39,7 @@ typedef struct conf
 	unsigned int subj_cache_size;
 	unsigned int obj_cache_size;
 	const char *watch_fs;
+	const char *trust;
 } conf_t;
 
 #endif

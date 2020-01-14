@@ -17,14 +17,20 @@ fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 libfapolicyd_la_SOURCES = \
 	library/avl.c \
 	library/avl.h \
+	library/backend-manager.c \
+	library/backend-manager.h \
 	library/conf.h \
 	library/database.c \
 	library/database.h \
 	library/event.c \
 	library/event.h \
 	library/fapolicyd-defs.h \
+	library/fapolicyd-backend.h \
 	library/file.c \
 	library/file.h \
+	library/file-backend.c \
+	library/llist.c \
+	library/llist.h \
 	library/lru.c \
 	library/lru.h \
 	library/message.c \
@@ -40,14 +46,13 @@ libfapolicyd_la_SOURCES = \
 	library/process.h \
 	library/queue.c \
 	library/queue.h \
+	library/rpm-backend.c \
 	library/rules.c \
 	library/rules.h \
 	library/subject-attr.c \
 	library/subject-attr.h \
 	library/subject.c \
-	library/subject.h \
-	library/temporary_db.c \
-	library/temporary_db.h
+	library/subject.h
 
 libfapolicyd_la_CFLAGS = $(fapolicyd_CFLAGS)
 libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread

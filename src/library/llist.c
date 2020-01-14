@@ -1,5 +1,5 @@
 /*
- * temporary_db.c - Linked list as a temporary memory storage
+ * llist.c - Linked list as a temporary memory storage
  * for rpm databse data
  * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
@@ -28,24 +28,25 @@
 #include <string.h>
 
 #include "message.h"
-#include "temporary_db.h"
+#include "llist.h"
 
-static db_list_t list_header;
-
-void init_db_list() {
-    list_header.count = 0;
-    list_header.first = NULL;
-    list_header.last = NULL;
+void list_init(list_t * list)
+{
+    list->count = 0;
+    list->first = NULL;
+    list->last = NULL;
 }
 
-db_item_t* get_first_from_db_list(void) {
-    return list_header.first;
+list_item_t* list_get_first(list_t * list)
+{
+    return list->first;
 }
 
-int append_db_list(const char * index, const char * data) {
-    db_item_t* item;
+int list_append(list_t * list, const char * index, const char * data)
+{
+    list_item_t* item;
 
-    if ((item = (db_item_t*)malloc(sizeof(db_item_t))) == NULL) {
+    if ((item = (list_item_t*)malloc(sizeof(list_item_t))) == NULL) {
         msg(LOG_ERR, "Malloc failed");
         return 1;
     }
@@ -54,39 +55,41 @@ int append_db_list(const char * index, const char * data) {
     item->data = data;
     item->next = NULL;
 
-    if (list_header.first == NULL) {
-        list_header.first = item;
-        list_header.last = item;
+    if (list->first == NULL) {
+        list->first = item;
+        list->last = item;
     } else {
-        db_item_t* tmp = list_header.last;
-        list_header.last = item;
+        list_item_t* tmp = list->last;
+        list->last = item;
         tmp->next = item;
     }
 
-    list_header.count++;
+    list->count++;
     return 0;
 }
 
-static void destroy_db_item(db_item_t** item) {
+static void list_destroy_item(list_item_t** item)
+{
     free((void*)(*item)->index);
     free((void*)(*item)->data);
     free((*item));
     *item = NULL;
 }
 
-void empty_db_list(void) {
-    if (list_header.first == NULL) {
+void list_empty(list_t * list)
+{
+    if (list->first == NULL) {
         return;
     } else {
-        db_item_t* actual = list_header.first;
-        db_item_t* next = NULL;
+        list_item_t* actual = list->first;
+        list_item_t* next = NULL;
         for (; actual != NULL ; actual = next) {
             next = actual->next;
-            destroy_db_item(&actual);
+            list_destroy_item(&actual);
         }
 
-        list_header.first = NULL;
-        list_header.last = NULL;
-        list_header.count = 0;
+        list->first = NULL;
+        list->last = NULL;
+        list->count = 0;
     }
 }
