@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 #include "message.h"
 
 #include "fapolicyd-backend.h"
@@ -118,9 +119,9 @@ static int file_load_list(void)
 			ptr = strtok_r(NULL, DELIMITER, &saved);
 		}
 
-		char * eptr = NULL;
-		unsigned long sz = strtoul(size, &eptr , 10);
-		if (*eptr != '\0') {
+		errno = 0;
+		unsigned long sz = strtoul(size, NULL, 10);
+		if (errno) {
 			msg(	LOG_ERR,
 				"%s:%ld Cannot convert size to number.",
 				FILE_PATH,
