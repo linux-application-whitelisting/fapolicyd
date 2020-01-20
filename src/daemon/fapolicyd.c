@@ -473,11 +473,11 @@ int main(int argc, char *argv[])
 	// Set a couple signal handlers
 	sa.sa_flags = 0;
 	sigemptyset(&sa.sa_mask);
+	sa.sa_handler = segv_handler;
+	sigaction(SIGSEGV, &sa, NULL);
 	sa.sa_handler = term_handler;
 	sigaction(SIGTERM, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
-	sa.sa_handler = segv_handler;
-	sigaction(SIGSEGV, &sa, NULL);
 
 	// Bump up resources
 	limit.rlim_cur = RLIM_INFINITY;
