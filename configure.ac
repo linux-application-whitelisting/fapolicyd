@@ -35,6 +35,18 @@ AC_DEFINE(USE_AUDIT,1,[Define if you want to enable decision auditing.]),
 [])
 AC_CHECK_DECLS([FAN_AUDIT], [], [], [[#include <linux/fanotify.h>]])
 
+withval=""
+AC_ARG_WITH(rpm,
+AS_HELP_STRING([--with-rpm],[Use the rpm database as a trust source]),
+use_rpm=$withval,use_rpm=yes)
+
+if test x$use_rpm = xyes ; then
+    AC_CHECK_LIB(rpm, rpmtsInitIterator, , [AC_MSG_ERROR([librpm not found])], -lrpm)
+    AC_CHECK_LIB(rpmio, rpmFreeCrypto, , [AC_MSG_ERROR([librpmio not found])], -lrpmio)
+    AC_DEFINE(USE_RPM,1,[Define if you want to use the rpm database as trust source.])
+fi
+AM_CONDITIONAL(WITH_RPM, test x$use_rpm = xyes)
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
@@ -50,8 +62,6 @@ echo .
 echo Checking for required libraries
 AC_CHECK_LIB(udev, udev_device_get_devnode, , [AC_MSG_ERROR([libudev not found])], -ludev)
 AC_CHECK_LIB(gcrypt, gcry_md_open, , [AC_MSG_ERROR([libgcrypt not found])], -lgcrypt)
-AC_CHECK_LIB(rpm, rpmtsInitIterator, , [AC_MSG_ERROR([librpm not found])], -lrpm)
-AC_CHECK_LIB(rpmio, rpmFreeCrypto, , [AC_MSG_ERROR([librpmio not found])], -lrpmio)
 AC_CHECK_LIB(magic, magic_descriptor, , [AC_MSG_ERROR([libmagic not found])], -lmagic)
 AC_CHECK_LIB(cap-ng, capng_change_id, , [AC_MSG_ERROR([libcap-ng not found])], -lcap-ng)
 AC_CHECK_LIB(seccomp, seccomp_rule_add, , [AC_MSG_ERROR([libseccomp not found])], -lseccomp)

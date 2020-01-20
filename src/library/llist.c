@@ -1,6 +1,6 @@
 /*
  * llist.c - Linked list as a temporary memory storage
- * for rpm databse data
+ * for trust database data
  * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *

@@ -481,7 +481,7 @@ static int create_database(int with_sync)
 }
 
 /*
- * This function will compare the rpm database against our copy
+ * This function will compare the backend database against our copy
  * of the database. It returns a 1 if they do not match.
  */
 static int check_database_copy(void)
@@ -537,7 +537,7 @@ static int verify_database_entries(void)
 /*
  * This function is responsible for getting the database ready to use.
  * It will first check to see if a database is populated. If so, then
- * it will verify it against the rpm database just in case something
+ * it will verify it against the backend database just in case something
  * has changed. If the database does not exist, then it will create one.
  */
 int init_database(conf_t *config)
@@ -639,9 +639,8 @@ void unlock_update_thread(void) {
 }
 
 /*
- * This function reloads updated rpmdb into our internal database
+ * This function reloads updated backend db into our internal database
  */
-
 static int update_database(conf_t *config)
 {
 	int rc;

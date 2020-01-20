@@ -6,7 +6,6 @@ Userspace
 =========
 Does reversing path string improve lookup performance?
 Improve startup time to enforcement
-Make use of librpm optional
 Add file verification scrubber and update database status
 Use the verified status in decisions
 Fix new pattern detection and swing between them based on exec_perm support

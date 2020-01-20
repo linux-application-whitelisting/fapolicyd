@@ -54,6 +54,10 @@ libfapolicyd_la_SOURCES = \
 	library/subject.c \
 	library/subject.h
 
+if WITH_RPM
+libfapolicyd_la_SOURCES += library/rpm-backend.c
+endif
+
 libfapolicyd_la_CFLAGS = $(fapolicyd_CFLAGS)
 libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread
 

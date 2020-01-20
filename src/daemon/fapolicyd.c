@@ -203,6 +203,7 @@ static void segv_handler(int signum)
 
 // This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031
 #define UNUSED(x) (void)(x)
+#ifdef USE_RPM
 extern int rpmsqEnable (int signum, void *handler);
 int rpmsqEnable (int signum, void *handler)
 {
@@ -210,6 +211,7 @@ int rpmsqEnable (int signum, void *handler)
 	UNUSED(handler);
 	return 0;
 }
+#endif
 
 static int write_pid_file(void)
 {
@@ -582,8 +584,10 @@ int main(int argc, char *argv[])
 			// signals to prevent corrupted databases during an
 			// update. Since we only do read access, we can turn
 			// them back on.
+#ifdef USE_RPM
 			sigaction(SIGTERM, &sa, NULL);
 			sigaction(SIGINT, &sa, NULL);
+#endif
 		}
 	}
 	msg(LOG_DEBUG, "shutting down...");
