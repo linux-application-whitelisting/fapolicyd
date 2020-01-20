@@ -6,7 +6,6 @@ Userspace
 =========
 Does reversing path string improve lookup performance?
 Improve startup time to enforcement
-Add admin defined trusted dirs or files
 Make use of librpm optional
 Add file verification scrubber and update database status
 Use the verified status in decisions
