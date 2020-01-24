@@ -105,7 +105,7 @@ static const char *get_file_name_rpm(void)
 	return strdup(rpmfiFN(fi));
 }
 
-static off_t get_file_size_rpm(void)
+static rpm_loff_t get_file_size_rpm(void)
 {
 	return rpmfiFSize(fi);
 }
@@ -192,7 +192,7 @@ static int rpm_load_list(void)
 
 			// Get specific file information
 			const char *file_name = get_file_name_rpm();
-			off_t sz = get_file_size_rpm();
+			rpm_loff_t sz = get_file_size_rpm();
 			const char *sha = get_sha256_rpm();
 			char *data;
 			int verified = 0;
