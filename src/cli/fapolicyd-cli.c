@@ -39,7 +39,7 @@ const char * usage =
 
 const char * _pipe = "/run/fapolicyd/fapolicyd.fifo";
 
-int main(int argc, char const *argv[])
+int main(int argc, const char *argv[])
 {
     if (argc == 1) {
         fprintf(stderr, "Too few arguments\n\n");

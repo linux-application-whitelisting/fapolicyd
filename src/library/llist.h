@@ -38,7 +38,7 @@ typedef struct list_header {
 } list_t;
 
 void list_init(list_t * list);
-list_item_t* list_get_first(list_t * list);
+list_item_t* list_get_first(const list_t * list);
 int list_append(list_t * list, const char * index, const char * data);
 void list_empty(list_t * list);
 

@@ -75,7 +75,7 @@ subject_attr_t *subject_access(const s_array *a, subject_type_t t)
 }
 
 // Returns 1 on failure and 0 on success
-int subject_add(s_array *a, subject_attr_t *subj)
+int subject_add(s_array *a, const subject_attr_t *subj)
 {
 	subject_attr_t* newnode;
 	subject_type_t t;

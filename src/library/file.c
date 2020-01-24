@@ -253,7 +253,7 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 
 // NOTE: This is probably risky to do from a root running program.
 // Consider pushing this to a child process that has no permissions.
-char *get_file_type_from_fd(int fd, struct file_info *i, const char *path,
+char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf)
 {
 	const char *ptr;

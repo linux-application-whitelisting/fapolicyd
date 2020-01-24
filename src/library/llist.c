@@ -37,7 +37,7 @@ void list_init(list_t * list)
     list->last = NULL;
 }
 
-list_item_t* list_get_first(list_t * list)
+list_item_t* list_get_first(const list_t * list)
 {
     return list->first;
 }

@@ -531,7 +531,8 @@ static int check_dirs(unsigned int i, const char *path)
 }
 
 // Returns 0 if no match, 1 if a match
-static int obj_dir_test(object_attr_t *o, object_attr_t *obj, bool trusted)
+static int obj_dir_test(const object_attr_t *o, const object_attr_t *obj,
+	bool trusted)
 {
 	// Execdirs doesn't have /etc in its list
 	if ((o->len == 8) && strcmp(o->o, "execdirs") == 0)
@@ -550,7 +551,8 @@ static int obj_dir_test(object_attr_t *o, object_attr_t *obj, bool trusted)
 }
 
 // Returns 0 if no match, 1 if a match
-static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj, int trusted)
+static int subj_dir_test(const subject_attr_t *s, const subject_attr_t *subj,
+	int trusted)
 {
 	unsigned int len = strlen(s->str);
 
@@ -634,7 +636,7 @@ static int subj_dir_test(subject_attr_t *s, subject_attr_t *subj, int trusted)
 //#define NEW_WAY 1
 
 // Returns 0 if no match, 1 if a match, -1 on error
-static int subj_pattern_test(subject_attr_t *s, event_t *e)
+static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 {
 	int rc = 0;
 	struct proc_info *pinfo = e->s->info;
@@ -770,7 +772,7 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 }
 
 // Returns 0 if no match, 1 if a match
-static int check_access(lnode *r, event_t *e)
+static int check_access(const lnode *r, const event_t *e)
 {
 	access_t perm;
 
@@ -909,7 +911,7 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 	return r->d;
 }
 
-void rules_unsupport_audit(llist *l)
+void rules_unsupport_audit(const llist *l)
 {
 #ifdef USE_AUDIT
 	register lnode *current = l->head;

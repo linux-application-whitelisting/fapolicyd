@@ -31,7 +31,7 @@
 void lock_update_thread(void);
 void unlock_update_thread(void);
 
-int preconstruct_fifo(conf_t *config);
+int preconstruct_fifo(const conf_t *config);
 int init_database(conf_t *config);
 int check_trust_database(const char *path);
 void close_database(void);

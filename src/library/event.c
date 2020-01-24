@@ -43,7 +43,7 @@ static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 
 // Return 0 on success and 1 on error
-int init_event_system(conf_t *config)
+int init_event_system(const conf_t *config)
 {
 	subj_cache=init_lru(config->subj_cache_size,
 				(void (*)(void *))subject_clear, "Subject");
@@ -58,7 +58,7 @@ int init_event_system(conf_t *config)
 	return 0;
 }
 
-int flush_cache(conf_t *config)
+int flush_cache(const conf_t *config)
 {
 	if (obj_cache->count == 0)
 		return 0;
@@ -374,7 +374,7 @@ static void print_queue_stats(FILE *f, const Queue *q)
 	fprintf(f, "%s evictions: %lu\n", q->name, q->evictions);
 }
 
-void run_usage_report(conf_t *config, FILE *f)
+void run_usage_report(const conf_t *config, FILE *f)
 {
 	time_t t;
 	QNode *q_node;

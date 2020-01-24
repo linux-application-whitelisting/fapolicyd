@@ -92,7 +92,7 @@ static int is_link(const char *path)
 	return 0;
 }
 
-int preconstruct_fifo(conf_t *config)
+int preconstruct_fifo(const conf_t *config)
 {
 	int rc;
 	char err_buff[BUFFER_SIZE];
@@ -103,7 +103,7 @@ int preconstruct_fifo(conf_t *config)
 	rc = mkfifo(fifo_path, 0660);
 
 	if (rc != 0) {
-	msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path,
+		msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path,
 			strerror_r(errno, err_buff, BUFFER_SIZE));
 		return 1;
 	}
@@ -224,7 +224,7 @@ static char *path_to_hash(const char *path, const size_t path_len)
  * status, file size, sha256 hash - data
  * status means if data is confirmed: unknown, yes, no
 */
-static int write_db(const char *index, const char *data)
+static int write_db(const char *idx, const char *data)
 {
 	MDB_val key, value;
 	MDB_txn *txn;
@@ -240,15 +240,15 @@ static int write_db(const char *index, const char *data)
 		return 2;
 	}
 
-	len = strlen(index);
+	len = strlen(idx);
 	if (len > MDB_maxkeysize) {
-		hash = path_to_hash(index, len);
+		hash = path_to_hash(idx, len);
 		if (hash == NULL)
 			return 5;
 		key.mv_data = (void *)hash;
 		key.mv_size = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * 2 + 1;
 	} else {
-		key.mv_data = (void *)index;
+		key.mv_data = (void *)idx;
 		key.mv_size = len;
 	}
 	value.mv_data = (void *)data;
