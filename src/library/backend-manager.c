@@ -77,8 +77,14 @@ static int backend_push(const char* name)
 
 		if (!backends)
 			backends = tmp;
-		else
-			backends->next = tmp;
+		else {
+			// Find the last entry
+			backend_entry *cur = backends;
+			while (cur->next)
+				cur = cur->next;
+			cur->next = tmp;
+		}
+		msg(LOG_DEBUG, "backend %s registered", name);
 	}
 	return 0;
 }

@@ -114,7 +114,11 @@ static void clear_daemon_config(conf_t *config)
 	config->subj_cache_size = 1024;
 	config->obj_cache_size = 4096;
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
+#ifdef USE_RPM
+	config->trust = strdup("rpmdb,file");
+#else
 	config->trust = strdup("file");
+#endif
 }
 
 int load_daemon_config(conf_t *config)
