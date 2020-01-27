@@ -3,6 +3,7 @@
 - Add Admin defined trust database
 - Make use of librpm optional
 - Updated the man pages
+- Setting boost, queue, user, and group on the command line are deprecated
 
 0.9.1
 - Make watched filesystems configurable

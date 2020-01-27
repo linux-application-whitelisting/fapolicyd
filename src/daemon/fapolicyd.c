@@ -1,6 +1,6 @@
 /*
  * fapolicyd.c - Main file for the program
- * Copyright (c) 2016,2018-19 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-20 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -26,7 +26,6 @@
 #include "config.h"
 #include <stdio.h>
 #include <poll.h>
-#include <pwd.h>
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -36,7 +35,6 @@
 #include <sys/resource.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <grp.h>
 #include <cap-ng.h>
 #include <sys/prctl.h>
 #include <linux/unistd.h>  /* syscall numbers */
@@ -338,7 +336,6 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
-		"[--boost xxx]\n\t\t[--queue xxx] [--user xx] [--group xx]"
 		"[--no-details]\n");
 	exit(1);
 }
@@ -369,101 +366,20 @@ int main(int argc, const char *argv[])
 			permissive = 1;
 		} else if (strcmp(argv[i], "--boost") == 0) {
 			i++;
-			if (i == argc || !isdigit(*argv[i])) {
-				msg(LOG_ERR, "boost takes a numeric argument");
-				exit(1);
-			}
-			errno = 0;
-			config.nice_val = strtoul(argv[i], NULL, 10);
-			if (errno) {
-				msg(LOG_ERR, "Error converting boost value");
-				exit(1);
-			}
-			if (config.nice_val > 20) {
-				msg(LOG_ERR,
-					"boost value must be less than or"
-					" equal to 20");
-				exit(1);
-			}
+			msg(LOG_ERR, "boost value on the command line is"
+				" deprecated - ignoring");
 		} else if (strcmp(argv[i], "--queue") == 0) {
 			i++;
-			if (i == argc || !isdigit(*argv[i])) {
-				msg(LOG_ERR, "queue takes a numeric argument");
-				exit(1);
-			}
-			errno = 0;
-			config.q_size = strtoul(argv[i], NULL, 10);
-			if (errno) {
-				msg(LOG_ERR, "Error converting queue value");
-				exit(1);
-			}
-			if (config.q_size >= 10480) {
-				msg(LOG_WARNING,
-					"q_size might be unnecessarily large");
-			}
+			msg(LOG_ERR, "queue value on the command line is"
+				" deprecated - ignoring");
 		} else if (strcmp(argv[i], "--user") == 0) {
 			i++;
-			if (i == argc || *argv[i] == '-') {
-				msg(LOG_ERR, "user takes an argument");
-				exit(1);
-			}
-			if (isdigit(*argv[i])) {
-				errno = 0;
-				struct passwd *pw;
-
-				config.uid = strtoul(argv[i], NULL, 10);
-
-				if (errno) {
-					msg(LOG_ERR,
-						"Error converting user value");
-					exit(1);
-				}
-
-				pw = getpwuid(config.uid);
-
-				if (pw == NULL) {
-					msg(LOG_ERR, "user entry with uid %d"
-						" not found", config.uid);
-					exit(1);
-				}
-
-				config.gid = pw->pw_gid;
-				endpwent();
-			} else {
-				struct passwd *pw = getpwnam(argv[i]);
-				if (pw == NULL) {
-					msg(LOG_ERR, "user %s is unknown",
-							argv[i]);
-					exit(1);
-				}
-				config.uid = pw->pw_uid;
-				config.gid = pw->pw_gid;
-				endpwent();
-			}
+			msg(LOG_ERR, "user value on the command line is"
+				" deprecated - ignoring");
 		} else if (strcmp(argv[i], "--group") == 0) {
 			i++;
-			if (i == argc || *argv[i] == '-') {
-				msg(LOG_ERR, "group takes an argument");
-				exit(1);
-			}
-			if (isdigit(*argv[i])) {
-				errno = 0;
-				config.gid = strtoul(argv[i], NULL, 10);
-				if (errno) {
-					msg(LOG_ERR,
-						"Error converting group value");
-					exit(1);
-				}
-			} else {
-				struct group *gr = getgrnam(argv[i]);
-				if (gr == NULL) {
-					msg(LOG_ERR, "group %s is unknown",
-							argv[i]);
-					exit(1);
-				}
-				config.gid = gr->gr_gid;
-				endgrent();
-			}
+			msg(LOG_ERR, "group value on the command line is"
+				" deprecated - ignoring");
 		} else if (strcmp(argv[i], "--no-details") == 0) {
 			config.detailed_report = 0;
 		} else {

@@ -34,18 +34,6 @@ leave the daemon in the foreground for debugging. Event information is written t
 .B \-\-permissive
 the daemon will allow file access regardless of the policy decision. This is useful for debugging rules before making them permanent.
 .TP
-.B \-\-boost\ NN
-increase the daemon's scheduling priority by this much. The number should be positive and less than or equal to 20. The default boost is 10.
-.TP
-.B \-\-queue\ NNNN
-the internal queue of pending decisions is set by this number. It should be a positive number. The default size is 1024.
-.TP
-.B \-\-user\ NN
-run as a particular user rather than root. This may either be numeric or a user name from the passwd database.
-.TP
-.B \-\-group\ NN
-run using a particular group rather than root. This may either be numeric or a user name from the passwd database.
-.TP
 .B \-\-no-details
 when fapolicyd ends, it dumps a usage report with various statistics that may be useful for tuning performance. It can also detail which processes it knew about and files being accessed by them. This can be useful for forensics investigations. In some settings, this may not be desirable as the file names may be sensitive. Using this option removes process and file names leaving only the statistics. The default without giving this option is to generate a full report.
 .SH SIGNALS
