@@ -10,6 +10,6 @@ Add file verification scrubber and update database status
 Use the verified status in decisions
 Fix new pattern detection and swing between them based on exec_perm support
 Bring back LD_PRELOAD detection
-Allow rules to express paths using globbing
+Allow rules to express paths using globbing (fnmatch)
 Support SWID as trust source
 
