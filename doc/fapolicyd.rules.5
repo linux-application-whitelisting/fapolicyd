@@ -18,11 +18,11 @@ If the rule triggers, this is the access decision that fapolicyd will tell the k
 
 .SS Perm
 Perm describes what kind permission is being asked for. The permission is either
-.IR open " or "execute " or "any".
-If none is given, the open is assumed.
+.IR open ", " execute ", or " any ".
+If none are given, then open is assumed.
 
 .SS Subject
-The subject is the process that is performing actions on system resources. The fields in the rule that describe the subject are written in a name=value format.i There can be one or more subject fields. Each field is and'ed with others to decide if a rule triggers. The name can be any of the following:
+The subject is the process that is performing actions on system resources. The fields in the rule that describe the subject are written in a name=value format. There can be one or more subject fields. Each field is and'ed with others to decide if a rule triggers. The name values can be any of the following:
 
 .RS
 .TP 12
@@ -79,7 +79,7 @@ in favor of using obj_trust with execute permission when writing rules.
 This option takes the mime type of a file as an argument. If you wish to check the mime type of a file while writing rules, run the following command:
 
 .nf
-.B file --mime-type /path-to-file
+.B file \-\-mime-type /path-to-file
 .fi
 
 .TP
@@ -109,7 +109,7 @@ This matches against ELF files that are statically linked.
 .RE
 
 .SS Object
-The object is the file that the subject is interacting with. The fields in the rule that describe the object are written in a name=value format. There can be one or more object fields. Each field is and'ed with others to decide if a rule triggers. The name can be any of the following:
+The object is the file that the subject is interacting with. The fields in the rule that describe the object are written in a name=value format. There can be one or more object fields. Each field is and'ed with others to decide if a rule triggers. The name values can be any of the following:
 
 .RS
 .TP 12
@@ -145,7 +145,7 @@ If you are writing rules that use patterns, just select
 as the permission to be clear that this applies to anything. In reality, pattern matching ignores the permission but the suggestion is for documentation purposes.
 
 .SH EXAMPLES
-The following rules show how rules may look.
+The following rules illustrate the rule syntax.
 
 .nf
 .B deny_audit perm=open exe=/usr/bin/wget : dir=/tmp

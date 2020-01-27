@@ -1,16 +1,28 @@
-.TH "FAPOLICYD" "8" "July 2019" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD" "8" "January 2020" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd \- File Access Policy Daemon
 .SH SYNOPSIS
 \fBfapolicyd\fP [\fIoptions\fP]
 .SH DESCRIPTION
-\fBfapolicyd\fP is a userspace daemon that determines access rights to files based on attributes of the process and file. It can be used to either blacklist or whitelist processes or file access.
+\fBfapolicyd\fP is a userspace daemon that determines access rights to files based on a trust database and file or process attributes. It can be used to either blacklist or whitelist file access and execution.
 
-Configuring \fBfapolicyd\fP is done with the files in \fI/etc/fapolicyd/\fP. There are two files,
+Configuring \fBfapolicyd\fP is done with the files in the \fI/etc/fapolicyd/\fP directory. There are three files:
 .B fapolicyd.rules
-and
+,
 .B fapolicyd.conf
- . The first one sets the access rights and the second determines the daemon's configuration.
+, and
+.B fapolicyd.trust
+ . The first one sets the access rights, the second determines the daemon's configuration, and the last allows admin defined trusted files.
+
+The default rules will generate audit events whenever there is a denial. To see if you have any denials, you can run the following command:
+
+.RS
+.TP 2
+.B ausearch \-\-start today \-m fanotify \-i
+.RE
+
+or instead of \-i, you can add \-\-format text to get an easier to read audit event.
+
 .SH OPTIONS
 .TP
 .B \-\-debug
@@ -44,6 +56,14 @@ caused fapolicyd to discontinue processing events and exit.
 .SH NOTES
 To get audit events, you must have auditing enabled and at least one systemcall rule loaded. Otherwise you will not get any events.
 
+If the rpmdb is set as a trust source, you should minimize the number of 32 bit packages on the system. In such cases, there may be a 32 bit and 64 file with the same pathname. Obviously only one can exist on the disk. So, this will always cause database miscompares and cause a delay in the daemon being operational.
+
+If you are running in the debug mode and wish to compare rule numbers reported in the output with which rule is actually triggering, you can see the rules with the corresponding number by running the following command:
+
+.nf
+.B cat /etc/fapolicyd/fapolicyd.rules | egrep \-v '^#|^[[:space:]]*$' | awk '{ printf \(dq%s %s\(rsn\(dq, NR, $0 }'
+.fi
+
 .SH FILES
 .B /etc/fapolicyd/fapolicyd.conf
 - daemon configuration
@@ -51,12 +71,16 @@ To get audit events, you must have auditing enabled and at least one systemcall 
 .B /etc/fapolicyd/fapolicyd.rules
 - access control rules
 .P
+.B /etc/fapolicyd/fapolicyd.trust
+- admin defined trusted files
+.P
 .B /var/log/fapolicyd-access.log
 - information about what was being accessed.
 
 .SH "SEE ALSO"
 .BR fapolicyd-cli (1),
-.BR fapolicyd.rules (5)
+.BR fapolicyd.rules (5),
+.BR fapolicyd.trust (5),
 and
 .BR fapolicyd.conf (5)
 

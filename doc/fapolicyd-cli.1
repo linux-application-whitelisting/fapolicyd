@@ -1,20 +1,21 @@
-.TH "FAPOLICYD-CLI" "1" "July 2019" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD-CLI" "1" "January 2020" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd-cli \- Fapolicyd CLI Tool
 .SH SYNOPSIS
 \fBfapolicyd-cli\fP [\fIoptions\fP]
 .SH DESCRIPTION
-Fapolicyd CLI Tool.
+The fapolicyd command line utility is a tool to tell the daemon that it needs to update the trust database. Normally, the daemon learns that the trust database needs updating because it uses a dnf plugin to inform it. However, you may install an rpm by hand and it can't see that a system package was installed or updated. Or perhaps the admin updates the fapolicyd.trust file and would like the changes to take effect immediately. In either of these cases, you would need to tell the daemon that it needs to do an update by running this command.
 .SH OPTIONS
 .TP
 .B \-h, \-\-help
 Prints this help message.
 .TP
 .B \-u, \-\-update
-Notifies fapolicyd to perform update of database.
+Notifies fapolicyd to perform an update of the trust database.
 .SH "SEE ALSO"
 .BR fapolicyd (8),
-.BR fapolicyd.rules (5)
+.BR fapolicyd.rules (5),
+.BR fapolicyd.trust (5),
 and
 .BR fapolicyd.conf (5)
 
