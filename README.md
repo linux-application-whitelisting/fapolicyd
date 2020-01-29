@@ -113,8 +113,8 @@ On shutdown the daemon will write an object access report to
 Timestamps are not included because that would be a severe performance hit.
 The report gives some basic forensic information about what was being accessed.
 
-PERFORMANCE IMPACT
-------------------
+PERFORMANCE
+-----------
 When a program opens a file or calls execve, that thread has to wait for 
 fapolicyd to make a decision. Fapolicyd caches everything it looks up so
 that subsequent access uses the cache rather than looking things up from
