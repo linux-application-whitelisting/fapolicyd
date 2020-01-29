@@ -124,26 +124,34 @@ The report gives some basic forensic information about what was being accessed.
 PERFORMANCE
 -----------
 When a program opens a file or calls execve, that thread has to wait for 
-fapolicyd to make a decision. Fapolicyd caches everything it looks up so
-that subsequent access uses the cache rather than looking things up from
-scratch. But the cache is only so big. You are in control of it though.
+fapolicyd to make a decision. To make a decision, fapolicyd has to lookup
+information about the process and the file being accessed. Each system call
+slows down the system.  
+
+To speed things up, fapolicyd caches everything it looks up so that
+subsequent access uses the cache rather than looking things up from
+scratch. But the cache is only so big. You are in control of it, though.
 You can make both subject and object caches bigger. When the program ends,
-it will output some performance statistic like this:
+it will output some performance statistic like this into
+/var/log/fapolicyd-access.log or the screen:
 
 ```
+Permissive: false
 Inter-thread max queue depth 7
 Allowed accesses: 116103
 Denied accesses: 17
-Subject cache size: 1031
-Subject slots in use: 1023
-Subject hits: 115097
-Subject misses: 6770
-Subject evictions: 5747
+
 Object cache size: 6151
 Object slots in use: 6086
 Object hits: 110034
 Object misses: 34984
 Object evictions: 28898
+
+Subject cache size: 1031
+Subject slots in use: 1023
+Subject hits: 115097
+Subject misses: 6770
+Subject evictions: 5747
 ```
 
 In this report, you can see that the internal request queue maxed out at 7.
@@ -162,6 +170,11 @@ but could be better. This would suggest that for the workload on that system,
 the cache could be a little bigger. If the number used for the cache size is
 a prime number, you will get less cache churn due to collisions than if it
 had a common denominator.
+
+Also, it should be mentioned that the more rules in the policy, the more
+rules it may have to iterate over to make a decision. As for the system
+performance impact, this is very workload dependent. For a typical desktop
+scenario, you won't notice it's running.
 
 
 TROUBLESHOOTING
