@@ -97,6 +97,7 @@ The Decision is to deny access and create an audit event. The subject is the
 user that logged in as user id 1001. The subject's process id that is trying
 to perform an action is 14137. The current executable that subject is using
 is bash. Bash wanted permission to execute /home/joe/my-ls which is the object.
+And the object is an ELF executable.
 
 
 WRITING RULES
