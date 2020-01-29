@@ -41,6 +41,9 @@ run make with no arguments. It should run fine from where it was built as
 long as you put the configuration files in /etc/fapolicyd. The fapolicyd.rules
 and fapolicyd.mounts files go there.
 
+Note that the shipped policy expects that auditing is enabled. This is done
+by passing --with-audit to ./configure.
+
 The use of rpm as a trust source is now optional. You can run ./configure
 passing --without-rpm and it will not link against librpm. In this mode, it
 purely uses the file database in fapolicyd.trust. If rpm is used, then the
