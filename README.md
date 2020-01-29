@@ -99,6 +99,13 @@ to perform an action is 14137. The current executable that the subject is
 using is bash. Bash wanted permission to execute /home/joe/my-ls which is the
 object. And the object is an ELF executable.
 
+Sometimes you want to list out the rules to see what rule 9 might be. You can
+easily do that by running this little script:
+
+```
+cat /etc/fapolicyd/fapolicyd.rules | egrep -v '^#|^[[:space:]]*$' | awk '{ printf "%s %s\n", NR, $0 }'
+```
+
 
 WRITING RULES
 -------------
@@ -112,6 +119,7 @@ On shutdown the daemon will write an object access report to
 /var/log/fapolicyd-access.log. The report is from oldest access to newest.
 Timestamps are not included because that would be a severe performance hit.
 The report gives some basic forensic information about what was being accessed.
+
 
 PERFORMANCE
 -----------
@@ -154,6 +162,35 @@ but could be better. This would suggest that for the workload on that system,
 the cache could be a little bigger. If the number used for the cache size is
 a prime number, you will get less cache churn due to collisions than if it
 had a common denominator.
+
+
+TROUBLESHOOTING
+---------------
+When fapolicyd blocks something, it will generate an audit event. To see if
+you have any denials, you can run:
+
+```
+ausearch --start today -m fanotify --raw | aureport --file --summary
+
+File Summary Report
+===========================
+total  file
+===========================
+16  /sbin/ldconfig
+1  /home/joe/./my-ls
+```
+
+You can also see which executables are involved like this:
+
+```
+ausearch --start today -m fanotify -f /sbin/ldconfig --raw | aureport -x --summary
+
+Executable Summary Report
+=================================
+total  file
+=================================
+16  /usr/bin/python3.7
+```
 
 
 NOTES
