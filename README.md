@@ -16,7 +16,7 @@ DEPENDENCIES (fedora)
 * kernel-headers
 * systemd-devel
 * libgcrypt-devel
-* rpm-devel
+* rpm-devel (optional)
 * file-devel
 * libcap-ng-devel
 * libseccomp-devel
@@ -41,16 +41,20 @@ run make with no arguments. It should run fine from where it was built as
 long as you put the configuration files in /etc/fapolicyd. The fapolicyd.rules
 and fapolicyd.mounts files go there.
 
+The use of rpm as a trust source is now optional. You can run ./configure
+passing --without-rpm and it will not link against librpm. In this mode, it
+purely uses the file database in fapolicyd.trust. If rpm is used, then the
+file trust database can be used in addition to rpmdb.
+
 
 RUNNING
 -------
 You might want to look at the fapolicyd.rules file to see what the sample
-policy looks like. The policy is designed with 4 goals in mind.
+policy looks like. The policy is designed with 3 goals in mind.
 
 1. No bypass of security by executing programs via ld.so.
-2. All approved executables are trusted (packaged). Untrusted programs
-   can't run.
-3. Elf binaries, python, and shell scripts  are enabled for trusted
+2. All approved executables are trusted. Untrusted programs can't run.
+3. Elf binaries, python, and shell scripts are enabled for trusted
    applications/libraries. Other languages are not allowed or must be enabled.
 
 You can test by starting the daemon from the command line. Before starting
@@ -82,14 +86,14 @@ DEBUG MODE
 In debug mode, you will see events such as this:
 
 ```
-rule:4 dec=deny auid=1000 pid=7792 exe=/usr/bin/my-ls file=/etc/ld.so.cache
+rule:9 dec=deny_audit perm=execute auid=1001 pid=14137 exe=/usr/bin/bash : file=/home/joe/my-ls ftype=application/x-executable
 ```
 
-What this is saying is rule 4 made the ultimate Decision that was followed.
-The Decision is to deny access. The subject is the user that logged in as
-user id 1000. The subject's process id that is trying to perform an action
-is 7792. The current executable that subject is using is my-ls. The my-ls
-application wanted to access /etc/ld.so.cache which is the object.
+What this is saying is rule 9 made the ultimate Decision that was followed.
+The Decision is to deny access and create an audit event. The subject is the
+user that logged in as user id 1001. The subject's process id that is trying
+to perform an action is 14137. The current executable that subject is using
+is bash. Bash wanted to access /home/joe/my-ls which is the object.
 
 
 WRITING RULES
