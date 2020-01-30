@@ -155,26 +155,29 @@ Subject evictions: 5747
 ```
 
 In this report, you can see that the internal request queue maxed out at 7.
-This means that the application at most had 7 threads/processes waiting at
-the most. This shows that it got a little backed up but was handling requests
-pretty quick.
+This means that the daemon had at most 7 threads/processes waiting. This
+shows that it got a little backed up but was handling requests pretty quick.
+If this number were big, like more than 200, then some action might need to
+be taken.
 
 Another statistic worth looking at is the hits to evictions ratio. When a
 request has nowhere to put information, it has to evict something to make
 room. This is done by a LRU cache which naturally determines what's not
-getting used and makes it available for recycling.
+getting used and makes it's available for re-use.
 
 In the above statistics, the subject hit ratio was 95%. The object cache was
 not quite as lucky. For it, we get a hit ration of 79%. This is still good,
 but could be better. This would suggest that for the workload on that system,
 the cache could be a little bigger. If the number used for the cache size is
 a prime number, you will get less cache churn due to collisions than if it
-had a common denominator.
+had a common denominator. Some primes you might consider for cache size are:
+1021, 2039, 4099, 6143, 8191, 10243, 12281, 16381, 20483, etc.
 
 Also, it should be mentioned that the more rules in the policy, the more
-rules it may have to iterate over to make a decision. As for the system
+rules it will have to iterate over to make a decision. As for the system
 performance impact, this is very workload dependent. For a typical desktop
-scenario, you won't notice it's running.
+scenario, you won't notice it's running. A system that opens lots of random
+files for short periods of time will have more impact.
 
 
 TROUBLESHOOTING
