@@ -182,8 +182,9 @@ files for short periods of time will have more impact.
 
 TROUBLESHOOTING
 ---------------
-When fapolicyd blocks something, it will generate an audit event. To see if
-you have any denials, you can run:
+When fapolicyd blocks something, it will generate an audit event if the
+Decision is deny_audit and it has been compiled with the auditing option. To
+see if you have any denials, you can run:
 
 ```
 ausearch --start today -m fanotify --raw | aureport --file --summary
@@ -207,6 +208,18 @@ total  file
 =================================
 16  /usr/bin/python3.7
 ```
+
+MANAGING TRUST
+--------------
+Fapolicyd use lmdb as a backend database for its trusted software list. You
+can find this database in /var/lib/fapolicyd/. This list gets updated
+whenever packages are installed by dnf. This is done by a dnf plugin. If
+packages are installed by rpm, fapolicyd does not get a notification. In
+that case, you would also need to tell the daemon that it needs to update
+the trust database. This is done by running fapolicyd-cli and passing
+along the --update option. Also, if you add or delete files from the file
+trust list, fapolicyd.trust, then you will also have to run the fapolicyd-cli
+utility.
 
 
 NOTES
