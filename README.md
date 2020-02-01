@@ -163,7 +163,7 @@ be taken.
 Another statistic worth looking at is the hits to evictions ratio. When a
 request has nowhere to put information, it has to evict something to make
 room. This is done by a LRU cache which naturally determines what's not
-getting used and makes it's available for re-use.
+getting used and makes it's memory available for re-use.
 
 In the above statistics, the subject hit ratio was 95%. The object cache was
 not quite as lucky. For it, we get a hit ration of 79%. This is still good,
@@ -226,8 +226,10 @@ FAQ
 1) Can this work with other distributions?
 
 Absolutely! There is a backend API that any trust source has to implement.
-So, someone who knows the debian package database could implement a new
-backend and send a pull request. We are looking for collaborators.
+This API is located in fapolicyd-backend.h. A new backend needs an init, load,
+and destroy function. So, someone who knows the debian package database,
+for example, could implement a new backend and send a pull request. We are
+looking for collaborators.
 
 2) Can Se Linux or AppArmor do this instead?
 
