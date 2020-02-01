@@ -258,9 +258,19 @@ The design is to take control before users can login. Users are the main
 problem being addressed. They can pip install apps to the home dir or do
 other things you wish to prevent. Only root can install things that run
 before login. And again, root can change the rules or turn off the daemon.
-That said, we have it in the roadmap to improve startup performance so that
-we take control earlier. But there is a limit to how early because trust
-sources need to be online before the daemon starts.
+
+Another design goal is to prevent malicious apps from running. Suppose someone
+guesses your password and they login to your account. Perhaps they wish to
+ransomeware your home dir. The app they try to run is not known to the system
+and will be stopped. Or suppose there is an exploiatble service on your system.
+The attacker is lucky enough to pop a shell. Now they want to download
+privilege escalation tools or perhaps a LD_PRELOAD key logger. Since neither
+of these are in the trust database, they won't be allowed to run.
+
+Wrt to the second question being asked, we have it in the roadmap to improve
+startup performance so that the damoen takes control earlier. But there is
+a limit to how early because trust sources need to be available before the
+daemon starts.
 
 
 NOTES
