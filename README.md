@@ -244,7 +244,7 @@ Not today, but it's on the roadmap.
 4) This is only looking at location. Can't this be defeated by simply moving
 the files to another location?
 
-Yes, this is checking to see if this is a known file. Know files have a known
+Yes, this is checking to see if this is a known file. Known files have a known
 location. The shipped policy prevents execution from /tmp, /var/tmp, and $HOME.
 So, where could an unprivileged user move the file to? And if you are thinking,
 I have root permissions, I'll move the file somewhere else. OK, if you are
@@ -259,7 +259,7 @@ problem being addressed. They can pip install apps to the home dir or do
 other things you wish to prevent. Only root can install things that run
 before login. And again, root can change the rules or turn off the daemon.
 That said, we have it in the roadmap to improve startup performance so that
-we take control earlir. But there is a limit to how early because trust
+we take control earlier. But there is a limit to how early because trust
 sources need to be online before the daemon starts.
 
 
