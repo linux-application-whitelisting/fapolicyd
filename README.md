@@ -233,9 +233,13 @@ backend and send a pull request. We are looking for collaborators.
 
 SE Linux is modeling how an application behaves. It is not concerned about
 where the application came from or whether its known to the system. Basically,
-anything in /bin gets bin_t type by default. So, it serves a different purpose.
-Fapolicyd by design cares solely about if this is a known application/library.
-These are complimentary security subsystems.
+anything in /bin gets bin_t type by default which is not a very restrive label.
+MAC systems serve a different purpose. Fapolicyd by design cares solely about
+if this is a known application/library. These are complimentary security
+subsystems. There is more information about application whitelisting use cases
+at the following NIST website:
+
+https://www.nist.gov/publications/guide-application-whitelisting
 
 3) Does the daemon check file integrity?
 
@@ -261,14 +265,14 @@ before login. And again, root can change the rules or turn off the daemon.
 
 Another design goal is to prevent malicious apps from running. Suppose someone
 guesses your password and they login to your account. Perhaps they wish to
-ransomeware your home dir. The app they try to run is not known to the system
-and will be stopped. Or suppose there is an exploiatble service on your system.
+ransomware your home dir. The app they try to run is not known to the system
+and will be stopped. Or suppose there is an exploitable service on your system.
 The attacker is lucky enough to pop a shell. Now they want to download
 privilege escalation tools or perhaps a LD_PRELOAD key logger. Since neither
 of these are in the trust database, they won't be allowed to run.
 
 Wrt to the second question being asked, we have it in the roadmap to improve
-startup performance so that the damoen takes control earlier. But there is
+startup performance so that the daemon takes control earlier. But there is
 a limit to how early because trust sources need to be available before the
 daemon starts.
 
