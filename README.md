@@ -221,6 +221,43 @@ along the --update option. Also, if you add or delete files from the file
 trust list, fapolicyd.trust, then you will also have to run the fapolicyd-cli
 utility.
 
+FAQ
+---
+1) Can this work with other distributions?
+
+Absolutely! There is a backend API that any trust source has to implement.
+So, someone who knows the debian package database could implement a new
+backend and send a pull request. We are looking for collaborators.
+
+2) Can Se Linux or AppArmor do this instead?
+
+SE Linux is modeling how an application behaves. It is not concerned about
+where the application came from or whether its known to the system. Basically,
+anything in /bin gets bin_t type by default. So, it serves a different purpose.
+Fapolicyd by design cares solely about if this is a known application/library.
+
+3) Do we do integrity checks?
+
+Not today, but it's on the roadmap.
+
+4) This is only looking at location. Can't this be defeated by simply moving
+the files to another location?
+
+Yes, this is checking to see if this is a known file. The shipped policy
+prevents execution from /tmp, /var/tmp, and $HOME. So, where could you move
+the file to? And if you are thinking, well I have root permissions, I'll move
+the file somewhere else. OK, if you are root, you can change the rules or
+simply turn off the deamon.
+
+5) How do you prevent race conditions on startup? Can something execute before
+the daemon takes control?
+
+The design is to take control before users can login. Users are the problem.
+They can install apps or do other things you wish to prevent. Only root
+can install things that run before login. And again, root can change the
+rules or turn off the daemon. That said, we have it in the roadmap to improve startup performance so that we take control earlir. But there is a limit to how
+early because trust sources need to be online first.
+
 
 NOTES
 -----
