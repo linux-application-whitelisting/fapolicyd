@@ -245,7 +245,7 @@ https://www.nist.gov/publications/guide-application-whitelisting
 
 3) Does the daemon check file integrity?
 
-Not today, but it's on the roadmap.
+Not today, but it's on the roadmap. The roadmap is in the TODO file.
 
 4) This is only looking at location. Can't this be defeated by simply moving
 the files to another location?
