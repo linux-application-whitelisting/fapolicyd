@@ -231,7 +231,7 @@ and destroy function. So, someone who knows the debian package database,
 for example, could implement a new backend and send a pull request. We are
 looking for collaborators.
 
-2) Can Se Linux or AppArmor do this instead?
+2) Can SE Linux or AppArmor do this instead?
 
 SE Linux is modeling how an application behaves. It is not concerned about
 where the application came from or whether its known to the system. Basically,
@@ -260,10 +260,11 @@ is not designed to prevent root from doing things.
 5) How do you prevent race conditions on startup? Can something execute before
 the daemon takes control?
 
-The design is to take control before users can login. Users are the main
-problem being addressed. They can pip install apps to the home dir or do
-other things you wish to prevent. Only root can install things that run
-before login. And again, root can change the rules or turn off the daemon.
+One of the design goals is to take control before users can login. Users are
+the main problem being addressed. They can pip install apps to the home dir
+or do other things an admin may wish to prevent. Only root can install things
+that run before login. And again, root can change the rules or turn off the
+daemon.
 
 Another design goal is to prevent malicious apps from running. Suppose someone
 guesses your password and they login to your account. Perhaps they wish to
@@ -272,6 +273,10 @@ and will be stopped. Or suppose there is an exploitable service on your system.
 The attacker is lucky enough to pop a shell. Now they want to download
 privilege escalation tools or perhaps a LD_PRELOAD key logger. Since neither
 of these are in the trust database, they won't be allowed to run.
+
+This is really about stopping escalation or exploitation before the attacker
+can gain any advantage to install root kits. If we can do that, UEFI secure
+boot can make sure no other problems exist during boot.
 
 Wrt to the second question being asked, we have it in the roadmap to improve
 startup performance so that the daemon takes control earlier. But there is
