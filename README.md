@@ -255,7 +255,8 @@ location. The shipped policy prevents execution from /tmp, /var/tmp, and $HOME.
 So, where could an unprivileged user move the file to? And if you are thinking,
 I have root permissions, I'll move the file somewhere else. OK, if you are
 root, you can change the rules or simply turn off the deamon, too. So, this
-is not designed to prevent root from doing things.
+is not designed to prevent root from doing things. Also, moving a file means
+it's no longer "known" and will be blocked from executing.
 
 5) How do you prevent race conditions on startup? Can something execute before
 the daemon takes control?
