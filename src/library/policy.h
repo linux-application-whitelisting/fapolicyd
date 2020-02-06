@@ -28,7 +28,7 @@
 #include <sys/fanotify.h>
 #include "event.h"
 
-#define CONFIG_FILE "/etc/fapolicyd/fapolicyd.rules"
+#define RULES_FILE "/etc/fapolicyd/fapolicyd.rules"
 
 #ifdef USE_AUDIT
 #if HAVE_DECL_FAN_AUDIT

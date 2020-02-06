@@ -1,6 +1,6 @@
 /*
  * fapolicy-cli.c - CLI tool for fapolicyd
- * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2019,2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -22,7 +22,7 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
-
+#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -30,14 +30,44 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <ctype.h>
+#include "policy.h"
 
 const char * usage =
 "Fapolicyd CLI Tool\n\n"
 "-h\t--help\t\tPrints this help message\n"
+"-l\t--list\t\tPrints a list of the daemon's rules with numbers\n"
 "-u\t--update\t\tNotifies fapolicyd to perform update of database\n"
 ;
 
 const char * _pipe = "/run/fapolicyd/fapolicyd.fifo";
+
+static char *get_line(FILE *f, char *buf, unsigned size, unsigned *lineno)
+{
+    int too_long = 0;
+
+    while (fgets_unlocked(buf, size, f)) {
+        /* remove newline */
+        char *ptr = strchr(buf, 0x0a);
+        if (ptr) {
+            if (!too_long) {
+                *ptr = 0;
+                return buf;
+            }
+            // Reset and start with the next line
+            too_long = 0;
+            *lineno = *lineno + 1;
+        } else {
+            // If a line is too long skip it.
+            // Only output 1 warning
+            if (!too_long)
+                fprintf(stderr, "Skipping line %u: too long\n", *lineno);
+                    too_long = 1;
+        }
+    }
+    return NULL;
+}
+
 
 int main(int argc, const char *argv[])
 {
@@ -125,6 +155,30 @@ int main(int argc, const char *argv[])
 
         printf("Fapolicyd was notified\n");
 
+    } else if ((strcmp(argv[1], "-l") == 0)||(strcmp(argv[1], "--list") == 0)){
+        unsigned count = 1, lineno = 0;
+        char buf[160];
+        FILE *f = fopen(RULES_FILE, "rm");
+        if (f == NULL) {
+            fprintf(stderr, "Cannot open rules file (%s)\n", strerror(errno));
+            return 1;
+        }
+        while (get_line(f, buf, sizeof(buf), &lineno)) {
+            char *str = buf;
+            lineno++;
+            while (*str) {
+                if (!isblank(*str))
+                    break;
+                str++;
+            }
+            if (*str == 0) // blank line
+                continue;
+            if (*str == '#') //comment line
+                continue;
+            printf("%u. %s\n", count, buf);
+            count++;
+        }
+        fclose(f);
     } else {
         fprintf(stderr, "Unexpected argument -> %s\n\n", argv[1]);
         printf("%s", usage);

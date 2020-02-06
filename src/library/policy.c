@@ -95,7 +95,7 @@ int load_config(void)
 	rules_create(&rules);
 
 	// Now open the file and load them one by one.
-	fd = open(CONFIG_FILE, O_NOFOLLOW|O_RDONLY);
+	fd = open(RULES_FILE, O_NOFOLLOW|O_RDONLY);
 	if (fd < 0) {
 		msg(LOG_ERR, "Error opening config (%s)",
 			strerror(errno));
