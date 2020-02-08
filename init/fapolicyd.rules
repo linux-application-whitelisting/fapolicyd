@@ -15,7 +15,7 @@ deny_audit perm=any pattern=ld_so : all
 # We have to carve out an exception for the system updaters
 # or things go very bad (deadlock).
 allow perm=open exe=/usr/bin/rpm : all
-allow perm=open comm=dnf exe=%python3_path% : all
+allow perm=open exe=%python3_path% comm=dnf : all
 
 # Only allow known ELF libs - this is ahead of executable because typical
 # executable is linked with a dozen or more libraries.
