@@ -39,6 +39,10 @@ allow exe=%python2_path% : ftype=application/octet-stream trust=1
 deny_audit perm=any all : ftype=text/x-python
 #deny_audit perm=any all : ftype=application/octet-stream path=*.pyc
 
+# Allow shell script but block all other languages
+allow perm=execute all : ftype=text/x-shellscript
+allow perm=execute all : ftype=text/plain trust=1
+
 #
 # In this next optional languages section, choose either to
 # block (default) or allow by commenting or uncommenting the
@@ -65,10 +69,6 @@ deny_audit perm=any exe=/usr/bin/ruby : all
 # Ruby
 #allow perm=open all : ftype=text/x-ruby trust=1
 #deny_audit perm=any all : ftype=text/x-ruby
-
-# Allow shell script but block all other languages
-allow perm=execute all : ftype=text/x-shellscript trust=1
-allow perm=execute all : ftype=text/plain trust=1
 
 # This is a workaround for kernel thinking this is being executed. We
 # catch actual execution in rule 3.
