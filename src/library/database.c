@@ -131,6 +131,10 @@ int preconstruct_fifo(const conf_t *config)
 
 static int init_db(const conf_t *config)
 {
+	unsigned int flags = MDB_MAPASYNC|MDB_NOSYNC;
+#ifndef DEBUG
+	flags |= MDB_WRITEMAP;
+#endif
 	if (mdb_env_create(&env))
 		return 1;
 
@@ -143,7 +147,7 @@ static int init_db(const conf_t *config)
 	if (mdb_env_set_maxreaders(env, 4))
 		return 4;
 
-	int rc = mdb_env_open(env, data_dir, MDB_MAPASYNC|MDB_NOSYNC , 0660);
+	int rc = mdb_env_open(env, data_dir, flags, 0660);
 	if (rc)
 		return 5;
 
