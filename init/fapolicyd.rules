@@ -44,7 +44,7 @@ allow perm=open exe=%python2_path% : ftype=application/octet-stream trust=1
 deny_audit perm=any all : ftype=text/x-python
 #deny_audit perm=any all : ftype=application/octet-stream path=*.pyc
 
-# Allow shell script but block all other languages
+# Allow shell script
 allow perm=execute all : ftype=text/x-shellscript
 allow perm=execute all : ftype=text/plain trust=1
 
