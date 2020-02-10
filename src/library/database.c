@@ -52,9 +52,8 @@
 
 
 // Local defines
+enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
 #define BUFFER_SIZE 1024
-#define READ_DATA	0
-#define READ_TEST_KEY	1
 #define MEGABYTE	(1024*1024)
 
 // Local variables
@@ -179,7 +178,7 @@ static int open_dbi(MDB_txn *txn)
 {
 	if (!dbi_init) {
 		int rc;
-		if ((rc = mdb_open(txn, db, MDB_CREATE, &dbi))) {
+		if ((rc = mdb_dbi_open(txn, db, MDB_CREATE|MDB_DUPSORT, &dbi))){
 			msg(LOG_ERR, "%s", mdb_strerror(rc));
 			return rc;
 		}
@@ -365,11 +364,34 @@ static char *lt_read_db(const char *index, int only_check_key)
 	}
 	value.mv_data = NULL;
 	value.mv_size = 0;
-	if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET_KEY))) {
+	if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET))) {
+		free(hash);
 		if (rc == MDB_NOTFOUND)
 			return NULL;
 		msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 		return NULL;
+	}
+	if (only_check_key == READ_DATA_DUP) {
+		size_t nleaves;
+		mdb_cursor_count(lt_cursor, &nleaves);
+		if (nleaves <= 1) {
+			free(hash);
+			return NULL;
+		}
+
+		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
+							MDB_NEXT_DUP))) {
+			free(hash);
+			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
+			return NULL;
+		}
+
+		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
+							MDB_GET_CURRENT))) {
+			free(hash);
+			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
+			return NULL;
+		}
 	}
 
 	if (len > MDB_maxkeysize)
@@ -503,10 +525,17 @@ static int check_database_copy(void)
 			char * data = lt_read_db(item->index, READ_DATA);
 			if (data) {
 				if (strcmp(item->data, data)) {
-					msg(	LOG_DEBUG,
-						"Data miscompare for %s:%s vs %s",
-						(const char *)item->index, (const char *)item->data, data);
-					problems++;
+					// Let's retry its duplicate
+					data = lt_read_db(item->index,
+								READ_DATA_DUP);
+					// If no dup or miscompare, problems
+					if (!data || strcmp(item->data, data)) {
+						msg(LOG_DEBUG,
+					      "Data miscompare for %s:%s vs %s",
+						(const char *)item->index,
+						(const char *)item->data, data);
+						problems++;
+					}
 				}
 			} else {
 				msg(LOG_WARNING, "%s is not in database",
