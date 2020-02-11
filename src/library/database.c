@@ -351,6 +351,7 @@ static char *lt_read_db(const char *index, int only_check_key)
 	if (start_long_term_read_ops())
 		return NULL;
 
+	// If the path is too long, convert to a hash
 	len = strlen(index);
 	if (len > MDB_maxkeysize) {
 		hash = path_to_hash(index, len);
@@ -364,6 +365,8 @@ static char *lt_read_db(const char *index, int only_check_key)
 	}
 	value.mv_data = NULL;
 	value.mv_size = 0;
+
+	// Read the value pointed to by key
 	if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET))) {
 		free(hash);
 		if (rc == MDB_NOTFOUND)
@@ -371,6 +374,9 @@ static char *lt_read_db(const char *index, int only_check_key)
 		msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 		return NULL;
 	}
+
+	// Some packages have the same file and thus duplicate entries
+	// If one hash miscompares, we can try again to see if there's a dup
 	if (only_check_key == READ_DATA_DUP) {
 		size_t nleaves;
 		mdb_cursor_count(lt_cursor, &nleaves);
@@ -379,6 +385,7 @@ static char *lt_read_db(const char *index, int only_check_key)
 			return NULL;
 		}
 
+		// There's duplicate, grab the second one.
 		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
 							MDB_NEXT_DUP))) {
 			free(hash);
@@ -590,6 +597,7 @@ static int migrate_database(void)
 		snprintf(path, sizeof(path), "%s/lock.mdb", data_dir);
 		unlink(path);
 
+		// Create the new, db version tracker and write current version
 		fd = open(vpath, O_CREAT|O_EXCL|O_WRONLY, 0640);
 		if (fd < 0) {
 			msg(LOG_ERR, "Failed writing db version %s",
@@ -601,6 +609,7 @@ static int migrate_database(void)
 
 		return 0;
 	} else {
+		// We have a version file, read it and check the version
 		read(fd, vpath, 2);
 		close(fd);
 		if (vpath[0] == '2')
