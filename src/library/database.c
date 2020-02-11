@@ -567,6 +567,49 @@ static int verify_database_entries(void)
 	return 0;
 }
 
+/* 
+ * This function is used to detect if we are using version1 of the database.
+ * If so, we have to delete the database and rebuild it. We cannot mix
+ * database versions because lmdb doesn't do that.
+ * Returns 0 success and 1 for failure.
+ */
+static int migrate_database(void)
+{
+	int fd;
+	char vpath[64];
+
+	snprintf(vpath, sizeof(vpath), "%s/db.ver", data_dir);
+	fd = open(vpath, O_RDONLY);
+	if (fd < 0) {
+		char path[64];
+		msg(LOG_INFO, "Database migration will be perfomed.");
+
+		// Then we have a version1 db since it does not track versions
+		snprintf(path, sizeof(path), "%s/data.mdb", data_dir);
+		unlink(path);
+		snprintf(path, sizeof(path), "%s/lock.mdb", data_dir);
+		unlink(path);
+
+		fd = open(vpath, O_CREAT|O_EXCL|O_WRONLY, 0640);
+		if (fd < 0) {
+			msg(LOG_ERR, "Failed writing db version %s",
+							strerror(errno));
+			return 1;
+		}
+		write(fd, "2", 1);
+		close(fd);
+
+		return 0;
+	} else {
+		read(fd, vpath, 2);
+		close(fd);
+		if (vpath[0] == '2')
+			return 0;
+	}
+
+	return 1;
+}
+
 /*
  * This function is responsible for getting the database ready to use.
  * It will first check to see if a database is populated. If so, then
@@ -578,6 +621,9 @@ int init_database(conf_t *config)
 	int rc;
 
 	msg(LOG_INFO, "Initializing the database");
+
+	migrate_database();
+
 	if ((rc = init_db(config))) {
 		msg(LOG_ERR, "Cannot open the database, init_db() (%d)", rc);
 		return rc;
