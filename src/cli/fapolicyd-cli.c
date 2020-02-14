@@ -185,15 +185,16 @@ int main(int argc, const char *argv[])
     } else if ((strcmp(argv[1], "-f") == 0)||(strcmp(argv[1], "--ftype") == 0)){
         int fd;
         magic_t magic_cookie;
-        const char *ptr;
+        const char *ptr, *path = argv[2];
+        struct stat sb;
 
         if (argc != 3) {
             printf("Path to file is missing\n");
             exit(1);
         }
-        fd = open(argv[2], O_RDONLY);
+        fd = open(path, O_RDONLY);
         if (fd < 0) {
-            printf("Cannot open %s - %s\n", argv[2], strerror(errno));
+            printf("Cannot open %s - %s\n", path, strerror(errno));
             exit(1);
         }
 
@@ -212,7 +213,32 @@ int main(int argc, const char *argv[])
             magic_close(magic_cookie); 
             exit(1);
         }
-	ptr = magic_descriptor(magic_cookie, fd);
+	fstat(fd, &sb);
+        uint32_t elf = gather_elf(fd, sb.st_size);
+        if (elf) {
+            if (elf & HAS_EXEC)
+                ptr = "application/x-executable";
+            else if (elf & HAS_REL)
+                ptr = "application/x-object";
+            else if (elf & HAS_CORE)
+                ptr = "application/x-coredump";
+            else if (elf & HAS_INTERP) { // dynamic app
+                ptr = "application/x-executable";
+                // libc and pthread actually have an interpreter?!?
+                // Need to carve out an exception to reclassify them.
+                if (strncmp("/usr/lib64/lib", path, 14) == 0) {
+                    if (strncmp(&path[14], "c-2", 3) == 0 ||
+                        strncmp(&path[14], "pthread-2", 9) == 0)
+                            ptr = "application/x-sharedlib";
+                }
+            } else {
+                if (elf & HAS_DYNAMIC) // shared obj
+                    ptr = "application/x-sharedlib";
+                else
+                    ptr = "unknown";
+            }
+        } else
+	    ptr = magic_descriptor(magic_cookie, fd);
         if (ptr) {
            char buf[80], *str;
            strncpy(buf, ptr, 79);

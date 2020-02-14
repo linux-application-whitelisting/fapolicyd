@@ -78,3 +78,4 @@ fapolicyd_LDFLAGS += -static
 
 
 fapolicyd_cli_SOURCES = cli/fapolicyd-cli.c
+fapolicyd_cli_LDADD = libfapolicyd.la
