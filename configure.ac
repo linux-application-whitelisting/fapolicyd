@@ -16,6 +16,10 @@ AM_PROG_CC_C_O
 AC_PROG_INSTALL
 AC_PROG_AWK
 PKG_PROG_PKG_CONFIG
+AC_CHECK_PROG([FILE_COMM], "file", "yes", "no")
+if test "$FILE_COMM" = "no"; then
+	AC_MSG_ERROR([Unable to find the file program need to build magic databases])
+fi
 
 echo .
 echo Checking compiler options

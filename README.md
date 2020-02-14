@@ -17,6 +17,7 @@ DEPENDENCIES (fedora)
 * systemd-devel
 * libgcrypt-devel
 * rpm-devel (optional)
+* file
 * file-devel
 * libcap-ng-devel
 * libseccomp-devel
