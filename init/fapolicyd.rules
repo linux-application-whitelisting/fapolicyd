@@ -39,15 +39,13 @@ allow perm=any uid=0 : dir=/root/.ansible/tmp/
 # File type by: file --mime-type /path-to-file
 allow perm=open all : ftype=text/x-python trust=1
 allow perm=execute all : ftype=text/x-python trust=1
-allow perm=open exe=%python3_path% : ftype=application/octet-stream trust=1
-allow perm=open exe=%python2_path% : ftype=application/octet-stream trust=1
+allow perm=open exe=%python3_path% : ftype=application/x-bytecode.python trust=1
+allow perm=open exe=%python2_path% : ftype=application/x-bytecode.python trust=1
 deny_audit perm=any all : ftype=text/x-python
-#deny_audit perm=any all : ftype=application/octet-stream path=*.pyc
+#deny_audit perm=any all : ftype=application/x-bytecode.python path=*.pyc
 
 # Allow shell script and sourcing
-allow perm=execute all : ftype=text/x-shellscript
-# Note: libmagic detects #!/usr/bin/sh as the next item. Seems like a bug.
-allow perm=any all : ftype=text/plain
+allow perm=any all : ftype=text/x-shellscript
 
 #
 # In this next optional languages section, choose either to
@@ -59,21 +57,27 @@ allow perm=any all : ftype=text/plain
 # Block all perl
 deny_audit perm=open exe=/usr/bin/perl : all
 # or optionally allow it by uncommenting the following
-#allow perm=open all : ftype=text/x-perl trust=1
+#allow perm=any all : ftype=text/x-perl trust=1
 #deny_audit perm=any all : ftype=text/x-perl
+
+# Ocaml
+deny_audit perm=open exe=/usr/bin/ocamlrun : all
+# or optionally allow it by uncommenting the following
+#allow perm=any all : ftype=application/x-bytecode.ocaml trust=1
+#deny_audit perm=any all : ftype=application/x-bytecode.ocam
 
 # PHP
 # Block all PHP
 deny_audit perm=any exe=/usr/bin/php : all
 # or optionally allow it by uncommenting the following
-#allow perm=open all : ftype=text/x-php trust=1
+#allow perm=any all : ftype=text/x-php trust=1
 #deny_audit perm=any all : ftype=text/x-php
 
 # Ruby
 # Block all Ruby
 deny_audit perm=any exe=/usr/bin/ruby : all
 # or optionally allow it by uncommenting the following
-#allow perm=open all : ftype=text/x-ruby trust=1
+#allow perm=any all : ftype=text/x-ruby trust=1
 #deny_audit perm=any all : ftype=text/x-ruby
 
 # Block any other execution

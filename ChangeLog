@@ -3,6 +3,7 @@
 - Change lmdb to use writable mmap for startup performance improvment
 - Change the database to support duplicate keys
 - Provide a magic override file and use it during file inspection
+- Update rules to match new magic overrides
 
 0.9.2
 - Split codebase into daemon, library and cli
