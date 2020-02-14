@@ -1,0 +1,51 @@
+0	string/wt	#!\ /usr/bin/bash	Bourne-Again shell script text executable
+!:mime	text/x-shellscript
+
+0	string/w	#!\ /usr/bin/sh		Shell script text executable
+!:mime	text/x-shellscript
+
+0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
+!:mime	text/x-plan9-shellscript
+
+0	string/wb	#!\ /usr/bin/ocamlrun	Ocaml Bytecode
+!:mime	application/x-bytecode.ocaml
+
+0	string/wt	#!\ /usr/bin/lua	Lua script executable
+!:mime	text/x-lua
+
+0	string/wt	#!\ /usr/bin/Rscript	R script executable
+!:mime	text/x-R
+
+0	string/wt	#!\ /usr/bin/wish	Tk windowing shell executable
+!:mime	text/x-tcl
+
+0	string/wt	#!\ /usr/bin/gjs	Gnome Javascript executable
+!:mime	text/javascript
+
+0	string/wt	#!\ /usr/bin/jimsh	Jim TCL executable
+!:mime  text/x-tcl
+
+0	belong		0xd1f20d0a	python 2.6 byte-compiled
+!:mime	application/x-bytecode.python
+
+0	belong		0x03f30d0a	python 2.7 byte-compiled
+!:mime	application/x-bytecode.python
+
+0	belong		0x330d0d0a	python 3.6 byte-compiled
+!:mime	application/x-bytecode.python
+
+0	belong		0x420d0d0a	python 3.7 byte-compiled
+!:mime	application/x-bytecode.python
+
+0	search/1/w	#!\ /usr/bin/python3	Python script text executable
+!:strength + 15
+!:mime text/x-python
+
+0	search/1/w	#!\ /usr/bin/python2	Python script text executable
+!:strength + 15
+!:mime text/x-python
+
+0	search/1/w	#!\ /usr/bin/python	Python script text executable
+!:strength + 15
+!:mime text/x-python
+

@@ -1,6 +1,6 @@
 /*
  * file.c - functions for accessing attributes of files
- * Copyright (c) 2016,2018-19 Red Hat Inc.
+ * Copyright (c) 2016,2018-20 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -74,7 +74,9 @@ void file_init(void)
 		msg(LOG_ERR, "Unable to init libmagic");
 		exit(1);
 	}
-	if (magic_load(magic_cookie, NULL) != 0) {
+	// Load our overrides and the default magic definitions
+	if (magic_load(magic_cookie,
+		  "/usr/share/fapolicyd/fapolicyd-magic.mgc:/usr/share/misc/magic.mgc") != 0) {
 		msg(LOG_ERR, "Unable to load magic database");
 		exit(1);
 	}
