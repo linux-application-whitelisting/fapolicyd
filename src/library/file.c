@@ -45,6 +45,7 @@ magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
 struct cache c = { 0, NULL };
 
+// readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
 	"/lib64/ld-linux-x86-64.so.2",
 	"/lib/ld-linux.so.2",
