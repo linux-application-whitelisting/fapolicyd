@@ -10,6 +10,9 @@ The fapolicyd command line utility is a tool to tell the daemon that it needs to
 .B \-h, \-\-help
 Prints this help message.
 .TP
+.B \-f, \-\-ftype /path/to/file
+Prints the mime type of the file given. A full path must be specified. This command is intended to help get the ftype parameter of rules correct by seeing how fapolicyd will classify it. Fapolicyd may differ from the \fBfile\fP command.
+.TP
 .B \-l, \-\-list
 Prints a listing of the fapolicyd rules file with a rule number to aid in troubleshooting or understanding of the debug messages.
 .TP

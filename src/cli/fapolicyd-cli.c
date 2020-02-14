@@ -31,11 +31,14 @@
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
+#include <magic.h>
+#include <stdlib.h>
 #include "policy.h"
 
 const char * usage =
 "Fapolicyd CLI Tool\n\n"
 "-h\t--help\t\tPrints this help message\n"
+"-f\t--ftype\t\tPrints out the mime type of a file\n"
 "-l\t--list\t\tPrints a list of the daemon's rules with numbers\n"
 "-u\t--update\t\tNotifies fapolicyd to perform update of database\n"
 ;
@@ -77,7 +80,7 @@ int main(int argc, const char *argv[])
         return 1;
     }
 
-    if (argc > 2) {
+    if (argc > 3) {
         fprintf(stderr, "Too many arguments\n\n");
         fprintf(stderr, "%s", usage);
         return 1;
@@ -179,6 +182,49 @@ int main(int argc, const char *argv[])
             count++;
         }
         fclose(f);
+    } else if ((strcmp(argv[1], "-f") == 0)||(strcmp(argv[1], "--ftype") == 0)){
+        int fd;
+        magic_t magic_cookie;
+        const char *ptr;
+
+        if (argc != 3) {
+            printf("Path to file is missing\n");
+            exit(1);
+        }
+        fd = open(argv[2], O_RDONLY);
+        if (fd < 0) {
+            printf("Cannot open %s - %s\n", argv[2], strerror(errno));
+            exit(1);
+        }
+
+        unsetenv("MAGIC");
+        magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
+                                   MAGIC_NO_CHECK_ELF);
+        if (magic_cookie == NULL) {
+            printf("Unable to init libmagic");
+            close(fd);
+            exit(1);
+        }
+        if (magic_load(magic_cookie,
+                 "/usr/share/fapolicyd/fapolicyd-magic.mgc:/usr/share/misc/magic.mgc") != 0) {
+            printf("Unable to load magic database");
+            close(fd);
+            magic_close(magic_cookie); 
+            exit(1);
+        }
+	ptr = magic_descriptor(magic_cookie, fd);
+        if (ptr) {
+           char buf[80], *str;
+           strncpy(buf, ptr, 79);
+           buf[79] = 0;
+           str = strchr(buf, ';');
+           if (str)
+               *str = 0;
+           printf("%s\n", buf);
+       } else
+           printf("unknown\n");
+       close(fd);
+       magic_close(magic_cookie); 
     } else {
         fprintf(stderr, "Unexpected argument -> %s\n\n", argv[1]);
         printf("%s", usage);
