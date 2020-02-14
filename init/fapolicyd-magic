@@ -7,22 +7,22 @@
 0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
 !:mime	text/x-plan9-shellscript
 
-0	string/wb	#!\ /usr/bin/ocamlrun	Ocaml Bytecode
+0	string/wb	#!\ /usr/bin/ocamlrun	Ocaml byte-compiled executable 
 !:mime	application/x-bytecode.ocaml
 
-0	string/wt	#!\ /usr/bin/lua	Lua script executable
+0	string/wt	#!\ /usr/bin/lua	Lua script text executable
 !:mime	text/x-lua
 
-0	string/wt	#!\ /usr/bin/Rscript	R script executable
+0	string/wt	#!\ /usr/bin/Rscript	R script text executable
 !:mime	text/x-R
 
-0	string/wt	#!\ /usr/bin/wish	Tk windowing shell executable
+0	string/wt	#!\ /usr/bin/wish	Tk windowing shell text executable
 !:mime	text/x-tcl
 
-0	string/wt	#!\ /usr/bin/gjs	Gnome Javascript executable
+0	string/wt	#!\ /usr/bin/gjs	Gnome Javascript text executable
 !:mime	text/javascript
 
-0	string/wt	#!\ /usr/bin/jimsh	Jim TCL executable
+0	string/wt	#!\ /usr/bin/jimsh	Jim TCL text executable
 !:mime  text/x-tcl
 
 0	belong		0xd1f20d0a	python 2.6 byte-compiled
@@ -48,4 +48,7 @@
 0	search/1/w	#!\ /usr/bin/python	Python script text executable
 !:strength + 15
 !:mime text/x-python
+
+0	string/wt	#!\ /usr/bin/guile	Guile script text executable
+!:mime  text/x-script.guile
 
