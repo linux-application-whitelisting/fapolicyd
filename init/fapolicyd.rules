@@ -44,7 +44,7 @@ allow perm=open exe=%python2_path% : ftype=application/x-bytecode.python trust=1
 deny_audit perm=any all : ftype=text/x-python
 #deny_audit perm=any all : ftype=application/x-bytecode.python path=*.pyc
 
-# Allow shell script and sourcing
+# Allow shell script execution and sourcing
 allow perm=any all : ftype=text/x-shellscript
 
 #
@@ -61,10 +61,11 @@ deny_audit perm=open exe=/usr/bin/perl : all
 #deny_audit perm=any all : ftype=text/x-perl
 
 # Ocaml
+# Block all ocaml
 deny_audit perm=open exe=/usr/bin/ocamlrun : all
 # or optionally allow it by uncommenting the following
 #allow perm=any all : ftype=application/x-bytecode.ocaml trust=1
-#deny_audit perm=any all : ftype=application/x-bytecode.ocam
+#deny_audit perm=any all : ftype=application/x-bytecode.ocaml
 
 # PHP
 # Block all PHP
