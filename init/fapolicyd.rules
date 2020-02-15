@@ -42,7 +42,7 @@ allow perm=execute all : ftype=text/x-python trust=1
 allow perm=open exe=%python3_path% : ftype=application/x-bytecode.python trust=1
 allow perm=open exe=%python2_path% : ftype=application/x-bytecode.python trust=1
 deny_audit perm=any all : ftype=text/x-python
-#deny_audit perm=any all : ftype=application/x-bytecode.python path=*.pyc
+deny_audit perm=any all : ftype=application/x-bytecode.python path=*.pyc
 
 # Allow shell script execution and sourcing
 allow perm=any all : ftype=text/x-shellscript
