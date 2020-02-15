@@ -44,6 +44,7 @@ typedef enum { STATE_COLLECTING=0, STATE_PARTIAL, STATE_FULL, STATE_NORMAL,
 #define HAS_EXEC	0x080
 #define HAS_CORE	0x100
 #define HAS_REL		0x200
+#define HAS_DEBUG	0x400
 
 // Information we will cache to identify the same executable
 struct proc_info

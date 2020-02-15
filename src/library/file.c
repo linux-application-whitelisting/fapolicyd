@@ -281,9 +281,12 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 					ptr = "application/x-sharedlib";
 			} 
 		} else {
-			if (elf & HAS_DYNAMIC) // shared obj
-				ptr = "application/x-sharedlib";
-			else 
+			if (elf & HAS_DYNAMIC) { // shared obj
+				if (elf & HAS_DEBUG)
+					ptr = "application/x-executable";
+				else
+					ptr = "application/x-sharedlib";
+			} else 
 				return NULL;
 		}
 		return strncpy(buf, ptr, blen-1);
@@ -544,10 +547,11 @@ uint32_t gather_elf(int fd, off_t size)
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
 					} else if (dyn_tbl[j].d_tag == DT_RUNPATH)
 						info |= HAS_RPATH;
-					else if (dyn_tbl[j].d_tag == DT_RPATH) {
-						info |= HAS_RPATH;
+					else if (dyn_tbl[j].d_tag == DT_DEBUG) {
+						info |= HAS_DEBUG;
 						break;
-					}
+					} else if (dyn_tbl[j].d_tag == DT_RPATH)
+						info |= HAS_RPATH;
 					j++;
 				}
 				free(dyn_tbl);
@@ -672,10 +676,11 @@ done32:
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
 					} else if (dyn_tbl[j].d_tag == DT_RUNPATH)
 						info |= HAS_RPATH;
-					else if (dyn_tbl[j].d_tag == DT_RPATH) {
-						info |= HAS_RPATH;
+					else if (dyn_tbl[j].d_tag == DT_DEBUG) {
+						info |= HAS_DEBUG;
 						break;
-					}
+					} else if (dyn_tbl[j].d_tag == DT_RPATH)
+						info |= HAS_RPATH;
 					j++;
 				}
 				free(dyn_tbl);

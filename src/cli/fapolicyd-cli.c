@@ -232,9 +232,12 @@ int main(int argc, const char *argv[])
                             ptr = "application/x-sharedlib";
                 }
             } else {
-                if (elf & HAS_DYNAMIC) // shared obj
-                    ptr = "application/x-sharedlib";
-                else
+                if (elf & HAS_DYNAMIC) { // shared obj
+                    if (elf & HAS_DEBUG)
+                        ptr = "application/x-executable";
+                    else
+                        ptr = "application/x-sharedlib";
+                } else
                     ptr = "unknown";
             }
         } else
