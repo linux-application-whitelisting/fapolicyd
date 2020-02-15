@@ -254,6 +254,38 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 	return buf;
 }
 
+const char *classify_elf_info(uint32_t elf, const char *path)
+{
+	const char *ptr;
+
+	if (elf & HAS_EXEC)
+		ptr = "application/x-executable";
+	else if (elf & HAS_REL)
+		ptr = "application/x-object";
+	else if (elf & HAS_CORE)
+		ptr = "application/x-coredump";
+	else if (elf & HAS_INTERP) { // dynamic app
+		ptr = "application/x-executable";
+		// libc and pthread actually have an interpreter?!?
+		// Need to carve out an exception to reclassify them.
+		if (strncmp("/usr/lib64/lib", path, 14) == 0) {
+			if (strncmp(&path[14], "c-2", 3) == 0 ||
+				    strncmp(&path[14], "pthread-2", 9) == 0)
+				ptr = "application/x-sharedlib";
+		} 
+	} else {
+		if (elf & HAS_DYNAMIC) { // shared obj
+			if (elf & HAS_DEBUG)
+				ptr = "application/x-executable";
+			else
+				ptr = "application/x-sharedlib";
+		} else 
+			return NULL;
+	}
+	return ptr;
+}
+
+
 // NOTE: This is probably risky to do from a root running program.
 // Consider pushing this to a child process that has no permissions.
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
@@ -265,30 +297,9 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	// We need to do it ourselves for consistency.
 	uint32_t elf = gather_elf(fd, i->size);
 	if (elf) {
-		if (elf & HAS_EXEC)
-			ptr = "application/x-executable";
-		else if (elf & HAS_REL)
-			ptr = "application/x-object";
-		else if (elf & HAS_CORE)
-			ptr = "application/x-coredump";
-		else if (elf & HAS_INTERP) { // dynamic app
-			ptr = "application/x-executable";
-			// libc and pthread actually have an interpreter?!?
-			// Need to carve out an exception to reclassify them.
-			if (strncmp("/usr/lib64/lib", path, 14) == 0) {
-				if (strncmp(&path[14], "c-2", 3) == 0 ||
-				    strncmp(&path[14], "pthread-2", 9) == 0)
-					ptr = "application/x-sharedlib";
-			} 
-		} else {
-			if (elf & HAS_DYNAMIC) { // shared obj
-				if (elf & HAS_DEBUG)
-					ptr = "application/x-executable";
-				else
-					ptr = "application/x-sharedlib";
-			} else 
-				return NULL;
-		}
+		ptr = classify_elf_info(elf, path);
+		if (ptr == NULL)
+			return (char *)ptr;
 		return strncpy(buf, ptr, blen-1);
 	}
 	ptr = magic_descriptor(magic_cookie, fd);

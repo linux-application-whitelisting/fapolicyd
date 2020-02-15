@@ -215,32 +215,9 @@ int main(int argc, const char *argv[])
         }
 	fstat(fd, &sb);
         uint32_t elf = gather_elf(fd, sb.st_size);
-        if (elf) {
-            if (elf & HAS_EXEC)
-                ptr = "application/x-executable";
-            else if (elf & HAS_REL)
-                ptr = "application/x-object";
-            else if (elf & HAS_CORE)
-                ptr = "application/x-coredump";
-            else if (elf & HAS_INTERP) { // dynamic app
-                ptr = "application/x-executable";
-                // libc and pthread actually have an interpreter?!?
-                // Need to carve out an exception to reclassify them.
-                if (strncmp("/usr/lib64/lib", path, 14) == 0) {
-                    if (strncmp(&path[14], "c-2", 3) == 0 ||
-                        strncmp(&path[14], "pthread-2", 9) == 0)
-                            ptr = "application/x-sharedlib";
-                }
-            } else {
-                if (elf & HAS_DYNAMIC) { // shared obj
-                    if (elf & HAS_DEBUG)
-                        ptr = "application/x-executable";
-                    else
-                        ptr = "application/x-sharedlib";
-                } else
-                    ptr = "unknown";
-            }
-        } else
+        if (elf)
+            ptr = classify_elf_info(elf, path);
+        else
 	    ptr = magic_descriptor(magic_cookie, fd);
         if (ptr) {
            char buf[80], *str;
