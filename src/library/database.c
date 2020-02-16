@@ -1,6 +1,6 @@
 /*
  * database.c - Trust database
- * Copyright (c) 2016,2018-19 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-20 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -162,16 +162,16 @@ static int init_db(const conf_t *config)
 	return 0;
 }
 
-static void get_pages_in_use(void);
+static unsigned get_pages_in_use(void);
 static unsigned long pages, max_pages;
 static void close_db(void)
 {
 	MDB_envinfo stat;
 
 	// Collect useful stats
-	get_pages_in_use();
+	unsigned size = get_pages_in_use();
 	mdb_env_info(env, &stat);
-	max_pages = stat.me_mapsize / 4096;
+	max_pages = stat.me_mapsize / size;
 	msg(LOG_DEBUG, "Database max pages: %lu", max_pages);
 	msg(LOG_DEBUG, "Database pages in use: %lu", pages);
 
@@ -354,7 +354,7 @@ static void end_long_term_read_ops(void)
 	lt_txn = NULL;
 }
 
-static void get_pages_in_use(void)
+static unsigned get_pages_in_use(void)
 {
 	MDB_stat stat;
 
@@ -363,6 +363,7 @@ static void get_pages_in_use(void)
 	end_long_term_read_ops();
 	pages = stat.ms_leaf_pages + stat.ms_branch_pages + 
 						stat.ms_overflow_pages;
+	return stat.ms_psize;
 }
 
 /*

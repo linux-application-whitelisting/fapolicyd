@@ -1,6 +1,6 @@
 /*
  * database.h - Header file for trust database
- * Copyright (c) 2018-19 Red Hat Inc.
+ * Copyright (c) 2018-20 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
