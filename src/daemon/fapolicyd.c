@@ -527,6 +527,7 @@ int main(int argc, const char *argv[])
 			fprintf(f, "q_size: %u\n", config.q_size);
 			q_report(f);
 			decision_report(f);
+			database_report(f);
 			run_usage_report(&config, f);
 			fclose(f);
 		}

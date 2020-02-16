@@ -162,11 +162,29 @@ static int init_db(const conf_t *config)
 	return 0;
 }
 
+static void get_pages_in_use(void);
+static unsigned long pages, max_pages;
 static void close_db(void)
 {
+	MDB_envinfo stat;
+
+	// Collect useful stats
+	get_pages_in_use();
+	mdb_env_info(env, &stat);
+	max_pages = stat.me_mapsize / 4096;
+	msg(LOG_DEBUG, "Database max pages: %lu", max_pages);
+	msg(LOG_DEBUG, "Database pages in use: %lu", pages);
+
+	// Now close down
 	backend_close();
 	mdb_close(env, dbi);
 	mdb_env_close(env);
+}
+
+void database_report(FILE *f)
+{
+	fprintf(f, "Database max pages: %lu", max_pages);
+	fprintf(f, "Database pages in use: %lu", pages);
 }
 
 /*
@@ -334,6 +352,17 @@ static void end_long_term_read_ops(void)
 	lt_cursor = NULL;
 	abort_transaction(lt_txn);
 	lt_txn = NULL;
+}
+
+static void get_pages_in_use(void)
+{
+	MDB_stat stat;
+
+	start_long_term_read_ops();
+	mdb_stat(lt_txn, dbi, &stat);
+	end_long_term_read_ops();
+	pages = stat.ms_leaf_pages + stat.ms_branch_pages + 
+						stat.ms_overflow_pages;
 }
 
 /*
