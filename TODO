@@ -4,10 +4,11 @@ Fix ld.so to not be an execution unless it really is
 
 Userspace
 =========
+Add file database management to cli
+Review pattern detection in light of EXEC_PERM events
 Does reversing path string improve lookup performance?
 Add file verification scrubber and update database status
 Use the verified status in decisions
-Review pattern detection in light of EXEC_PERM events
 Allow rules to express paths using globbing (fnmatch)
 Support SWID as trust source
 
