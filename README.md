@@ -23,6 +23,7 @@ DEPENDENCIES (fedora)
 * libseccomp-devel
 * lmdb-devel
 * python3-devel
+* kernel >= 4.20 (must support FANOTIFY_OPEN_EXEC_PERM)
 
 BUILDING
 --------

@@ -13,6 +13,7 @@ echo .
 echo Checking for programs
 AC_PROG_CC
 AM_PROG_CC_C_O
+AC_PROG_CC_C99
 AC_PROG_INSTALL
 AC_PROG_AWK
 PKG_PROG_PKG_CONFIG
