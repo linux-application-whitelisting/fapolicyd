@@ -173,7 +173,8 @@ static void close_db(void)
 	mdb_env_info(env, &stat);
 	max_pages = stat.me_mapsize / size;
 	msg(LOG_DEBUG, "Database max pages: %lu", max_pages);
-	msg(LOG_DEBUG, "Database pages in use: %lu", pages);
+	msg(LOG_DEBUG, "Database pages in use: %lu (%lu%%)", pages,
+							(100*pages)/max_pages);
 
 	// Now close down
 	backend_close();
