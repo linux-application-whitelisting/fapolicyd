@@ -183,8 +183,8 @@ static void close_db(void)
 
 void database_report(FILE *f)
 {
-	fprintf(f, "Database max pages: %lu", max_pages);
-	fprintf(f, "Database pages in use: %lu", pages);
+	fprintf(f, "Database max pages: %lu\n", max_pages);
+	fprintf(f, "Database pages in use: %lu\n", pages);
 }
 
 /*
