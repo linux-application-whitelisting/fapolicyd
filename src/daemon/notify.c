@@ -216,7 +216,7 @@ void decision_report(FILE *f)
 
 	// Report results
 	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
-	fprintf(f, "Denied accesses: %lu\n\n", getDenied());
+	fprintf(f, "Denied accesses: %lu\n", getDenied());
 }
 
 static int get_ready(void)

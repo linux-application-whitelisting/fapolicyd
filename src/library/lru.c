@@ -78,10 +78,12 @@ static void destroy_hash(Hash *hash)
 static void dump_queue_stats(const Queue *q)
 {
 	msg(LOG_DEBUG, "%s cache size: %u", q->name, q->total);
-	msg(LOG_DEBUG, "%s slots in use: %u", q->name, q->count);
+	msg(LOG_DEBUG, "%s slots in use: %u (%u%%)", q->name, q->count,
+					(100*q->count)/q->total);
 	msg(LOG_DEBUG, "%s hits: %lu", q->name, q->hits);
 	msg(LOG_DEBUG, "%s misses: %lu", q->name, q->misses);
-	msg(LOG_DEBUG, "%s evictions: %lu", q->name, q->evictions);
+	msg(LOG_DEBUG, "%s evictions: %lu (%lu%%)", q->name, q->evictions,
+					(100*q->evictions)/q->hits);
 }
 
 static Queue *create_queue(unsigned int qsize, const char *name)

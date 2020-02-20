@@ -371,7 +371,8 @@ static void print_queue_stats(FILE *f, const Queue *q)
 					(100*q->count)/q->total);
 	fprintf(f, "%s hits: %lu\n", q->name, q->hits);
 	fprintf(f, "%s misses: %lu\n", q->name, q->misses);
-	fprintf(f, "%s evictions: %lu\n", q->name, q->evictions);
+	fprintf(f, "%s evictions: %lu (%lu%%)\n", q->name, q->evictions,
+					(100*q->evictions)/q->hits);
 }
 
 void run_usage_report(const conf_t *config, FILE *f)
