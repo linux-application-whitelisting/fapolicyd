@@ -258,7 +258,9 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 {
 	const char *ptr;
 
-	if (elf & HAS_EXEC)
+	if (elf & HAS_ERROR)
+		ptr = "application/x-bad-elf";
+	else if (elf & HAS_EXEC)
 		ptr = "application/x-executable";
 	else if (elf & HAS_REL)
 		ptr = "application/x-object";
