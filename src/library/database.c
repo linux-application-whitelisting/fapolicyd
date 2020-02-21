@@ -561,10 +561,11 @@ static int check_database_copy(void)
 		list_item_t * item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
 
-			char * data = lt_read_db(item->index, READ_DATA);
+			char *data = lt_read_db(item->index, READ_DATA);
 			if (data) {
 				if (strcmp(item->data, data)) {
 					// Let's retry its duplicate
+					free(data);
 					data = lt_read_db(item->index,
 								READ_DATA_DUP);
 					// If no dup or miscompare, problems
