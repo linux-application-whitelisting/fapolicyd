@@ -1,3 +1,5 @@
+0.9.4
+
 0.9.3
 - In fapolicyd-cli, add a --list option to list rules
 - Change lmdb to use writable mmap for startup performance improvment
