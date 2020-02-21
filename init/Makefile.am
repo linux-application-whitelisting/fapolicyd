@@ -21,4 +21,4 @@ pkgdata_DATA = ${MAGIC}
 CLEANFILES = ${MAGIC}
 
 ${MAGIC}: $(EXTRA_DIST)
-	file -C -m fapolicyd-magic
+	file -C -m ${top_srcdir}/init/fapolicyd-magic
