@@ -41,7 +41,7 @@ This will create a tarball. You can use the new tarball with the spec file
 and create your own rpm. If you want to experiment without installing, just
 run make with no arguments. It should run fine from where it was built as
 long as you put the configuration files in /etc/fapolicyd. The fapolicyd.rules
-and fapolicyd.mounts files go there.
+and fapolicyd.trust files go there.
 
 Note that the shipped policy expects that auditing is enabled. This is done
 by passing --with-audit to ./configure.
@@ -102,10 +102,10 @@ using is bash. Bash wanted permission to execute /home/joe/my-ls which is the
 object. And the object is an ELF executable.
 
 Sometimes you want to list out the rules to see what rule 9 might be. You can
-easily do that by running this little script:
+easily do that by running:
 
 ```
-cat /etc/fapolicyd/fapolicyd.rules | egrep -v '^#|^[[:space:]]*$' | awk '{ printf "%s %s\n", NR, $0 }'
+fapolicyd-cli --list
 ```
 
 
