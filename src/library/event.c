@@ -164,6 +164,12 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// give custody of the list to the cache
 		q_node->item = e->s;
 		((s_array *)q_node->item)->info = pinfo;
+
+		// If this is the first time we've seen this process
+		// and its doing a file open, its likely to be a running
+		// process. That means we should not do pattern detection.
+		if (!s && (e->type & FAN_OPEN_PERM))
+			pinfo->state = STATE_NORMAL;
 	} else	{ // Use the one from the cache
 		e->s = s;
 		clear_proc_info(pinfo);
@@ -213,6 +219,8 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		if (on) {
 			const char *file = on->o;
 			if (pinfo->path1 == NULL) {
+				// In this step, we gather info on what is
+				// being asked permission to execute.
 				pinfo->path1 = strdup(file);
 				pinfo->elf_info = gather_elf(e->fd,
 							e->o->info->size);
