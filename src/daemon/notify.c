@@ -60,8 +60,8 @@ static int fd = -1;
 static uint64_t mask;
 
 // Local functions
-static void *decision_thread_main(const void *arg);
-static void *deadmans_switch_thread_main(const void *arg);
+static void *decision_thread_main(void *arg);
+static void *deadmans_switch_thread_main(void *arg);
 
 int init_fanotify(const conf_t *conf, mlist *m)
 {
@@ -234,7 +234,7 @@ static void clear_ready(void)
 	events_ready = 0;
 }
 
-static void *deadmans_switch_thread_main(const void *arg)
+static void *deadmans_switch_thread_main(void *arg)
 {
 	sigset_t sigs;
 
@@ -260,7 +260,7 @@ static void *deadmans_switch_thread_main(const void *arg)
 	return NULL;
 }
 
-static void *decision_thread_main(const void *arg)
+static void *decision_thread_main(void *arg)
 {
 	sigset_t sigs;
 
