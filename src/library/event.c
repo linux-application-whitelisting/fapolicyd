@@ -86,7 +86,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
 	subject_attr_t subj;
 	QNode *q_node;
-	unsigned int key, rc, evict = 1;
+	unsigned int key, rc, evict = 1, skip_path = 0;
 	s_array *s;
 	o_array *o;
 	struct proc_info *pinfo;
@@ -109,8 +109,42 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// Check the subject to see if its what its supposed to be
 	if (s) {
 		rc = compare_proc_infos(pinfo, s->info);
+
+		// EXEC_PERM causes 2 events for every execute. First is an
+		// execute request. This is followed by an open request of
+		// the same file. So, if we are collecting and perm is open,
+		// that means this is the second step, open. We also need
+		// be sure we are the same process. We skip collecting path
+		// because it was collected on perm = execute.
+		if ((s->info->state == STATE_COLLECTING) &&
+			(e->type & FAN_OPEN_PERM) && !rc) {
+			skip_path = 1;
+			s->info->state = STATE_REOPEN;
+		}
+
 		// If not same proc or we detect execution, evict
 		evict = rc || e->type & FAN_OPEN_EXEC_PERM;
+
+		// Static has to do eviction here to pick up the real
+		// executable and all its properties
+		if ((s->info->state == STATE_STATIC_REOPEN) &&
+			(e->type & FAN_OPEN_PERM) && !rc) {
+			s->info->state = STATE_STATIC;
+			evict = 1;
+		}
+
+		// If we've seen the reopen and its an execute and process
+		// has an interpreter and we're the same process, don't evict
+		// and don't collect the path since reopen interp will. The
+		// !skip_path is to prevent the STATE_REOPEN change above from
+		// falling into this.
+		if ((s->info->state == STATE_REOPEN) && !skip_path &&
+			(e->type & FAN_OPEN_EXEC_PERM) &&
+			(s->info->elf_info & HAS_INTERP) && !rc) {
+			evict = 0;
+			skip_path = 1;
+		}
+
 		if (evict) {
 			lru_evict(subj_cache, key);
 			q_node = check_lru_cache(subj_cache, key);
@@ -171,9 +205,10 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		e->o = o;
 		free(finfo);
 	}
+
 	// Setup pattern info
 	pinfo = e->s->info;
-	if (pinfo && pinfo->state < STATE_FULL) {
+	if (pinfo && !skip_path && pinfo->state < STATE_FULL) {
 		object_attr_t *on = get_obj_attr(e, PATH);
 		if (on) {
 			const char *file = on->o;
@@ -181,6 +216,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				pinfo->path1 = strdup(file);
 				pinfo->elf_info = gather_elf(e->fd,
 							e->o->info->size);
+			//	pinfo->state = STATE_COLLECTING;Just for clarity
 			} else if (pinfo->path2 == NULL) {
 				pinfo->path2 = strdup(file);
 				pinfo->state = STATE_PARTIAL;
@@ -189,7 +225,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				pinfo->state = STATE_FULL;
 				subject_reset(e->s, EXE);
 			}
-		}
+		} 
 	}
 	return 0;
 }

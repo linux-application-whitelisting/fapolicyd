@@ -33,11 +33,6 @@
 #include "object.h"
 #include "conf.h"
 
-#ifndef FAN_OPEN_EXEC	// If kernel doesn't know these, set to 0 to disable
-#define FAN_OPEN_EXEC		0
-#define FAN_OPEN_EXEC_PERM	0
-#endif
-
 typedef struct ev {
 	pid_t pid;
 	int fd;

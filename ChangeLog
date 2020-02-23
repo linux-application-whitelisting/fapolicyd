@@ -1,4 +1,5 @@
 0.9.4
+- Fix pattern detection in light of EXEC_PERM events
 
 0.9.3
 - In fapolicyd-cli, add a --list option to list rules

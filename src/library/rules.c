@@ -44,14 +44,10 @@
 #define SYSTEM_LD_CACHE "/etc/ld.so.cache"
 #define PATTERN_NORMAL_STR "normal"
 #define PATTERN_NORMAL_VAL 0
-#define PATTERN_LD_PRELOAD_STR "ld_preload"
-//#define PATTERN_LD_PRELOAD_VAL 1
-#define PATTERN_BAD_INTERPRETER_STR "bad_interpreter"
-#define PATTERN_BAD_INTERPRETER_VAL 2
 #define PATTERN_LD_SO_STR "ld_so"
-#define PATTERN_LD_SO_VAL 3
+#define PATTERN_LD_SO_VAL 1
 #define PATTERN_STATIC_STR "static"
-#define PATTERN_STATIC_VAL 4
+#define PATTERN_STATIC_VAL 2
 
 void rules_create(llist *l)
 {
@@ -225,16 +221,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 		}
 	} else {
 		if (n->s[i].type == PATTERN) {
-			if (strcmp(ptr2, PATTERN_LD_PRELOAD_STR) == 0) {
-				msg(LOG_ERR,
-				"ld_preload is a deprecated pattern in line %d",
-					lineno);
-				return 3;
-//				n->s[i].val = PATTERN_LD_PRELOAD_VAL;
-//			} else if (strcmp(ptr2,
-//					PATTERN_BAD_INTERPRETER_STR) == 0) {
-//				n->s[i].val = PATTERN_BAD_INTERPRETER_VAL;
-			} else if (strcmp(ptr2,
+			if (strcmp(ptr2,
 					PATTERN_LD_SO_STR) == 0) {
 				n->s[i].val = PATTERN_LD_SO_VAL;
 			} else if (strcmp(ptr2, PATTERN_STATIC_STR) == 0) {
@@ -633,72 +620,39 @@ static int subj_dir_test(const subject_attr_t *s, const subject_attr_t *subj,
  *    is no good because its almost the last option.
  */
 
-//#define NEW_WAY 1
-
 // Returns 0 if no match, 1 if a match, -1 on error
 static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 {
 	int rc = 0;
 	struct proc_info *pinfo = e->s->info;
 
-	// If still collecting, and its an elf file, we can't decide yet.
-	if (pinfo->state == STATE_COLLECTING) {
+	// At this point, we have only 1 path.
+	if (pinfo->state < STATE_PARTIAL) {
+		// if it's not an elf file, we're done
 		if (pinfo->elf_info == 0) {
 			pinfo->state = STATE_NOT_ELF;
 			clear_proc_info(pinfo);
 		}
+		// If its a static, make a decision. EXEC_PERM will cause
+		// a follow up open request. We change state here and will
+		// go all the way to static on the open request.
+		else if ((pinfo->elf_info & IS_ELF) &&
+				((pinfo->elf_info & HAS_DYNAMIC) == 0)) {
+			pinfo->state = STATE_STATIC_REOPEN;
+			goto make_decision;
+		}
+		// otherwise, we don't have enough info for a decision
 		return rc;
 	}
 
 	// Do the analysis
-#ifdef NEW_WAY
-	// What if this is already running pgm and we were
-	// evicted from cache and are now recovering?
-	if (pinfo->state == STATE_PARTIAL) {
-msg(LOG_DEBUG, "path1: %s", pinfo->path1);
-msg(LOG_DEBUG, "path2: %s", pinfo->path2);
-		if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0)
-			pinfo->state = STATE_LD_SO;
-		else if (strcmp(pinfo->path2, SYSTEM_LD_SO)) {
-			// When programs start, its either ld.so or themselves
-			// There is no other way they start. So, if there is a
-			// miscompare, then we must have started a while ago.
-			subject_attr_t *sub = get_subj_attr(e, EXE);
-			// FIXME: The problem here is that the exe name
-			// gets set by ld.so. At partial match we do not
-			// know if we are recovering from eviction or
-			// this is the wrong interp. If we got the execve
-			// access notification, we can fix this use case.
-			if (strcmp(pinfo->path1, sub->str) == 0)
-				pinfo->state = STATE_BAD_INTERPRETER;
-		}
-	} else if (pinfo->state == STATE_FULL) {
-		if (pinfo->elf_info & HAS_ERROR) {
-			pinfo->state = STATE_BAD_ELF;
-			clear_proc_info(pinfo);
-			return -1;
-		}
-		// When programs start, its either ld.so or themselves
-		// There is no other way they start. So, if there is a
-		// miscompare, then we must have started a while ago.
-		subject_attr_t *sub = get_subj_attr(e, EXE);
-		if (strcmp(pinfo->path1, sub->str)) {
-			pinfo->state = STATE_NORMAL;
-		} else {
-			if (strcmp(pinfo->path3, SYSTEM_LD_CACHE) == 0)
-				pinfo->state = STATE_NORMAL;
-//			else
-//				pinfo->state = STATE_LD_PRELOAD;
-		}
-	}
-
-#else  //  OLD WAY
 	if (pinfo->state == STATE_FULL) {
 		if (pinfo->elf_info & HAS_ERROR) {
 			pinfo->state = STATE_BAD_ELF;
 			clear_proc_info(pinfo);
 			return -1;
 		}
+
 		// When programs start, its either ld.so or themselves
 		// There is no other way they start. So, if there is a
 		// miscompare, then we must have started a while ago.
@@ -717,19 +671,8 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				   || (pinfo->elf_info & HAS_RPATH))
 					// ld.so normally checks cache first
 					pinfo->state = STATE_NORMAL;
-//				else
-					// but preload does the preload
-//					pinfo->state = STATE_LD_PRELOAD;
-			} else
-				// To get here wrong interp used
-				pinfo->state = STATE_BAD_INTERPRETER;
+			} 
 		}
-	}
-#endif
-	if (pinfo->state == STATE_PARTIAL) {
-		if ((pinfo->elf_info & IS_ELF) &&
-				((pinfo->elf_info & HAS_DYNAMIC) == 0))
-			pinfo->state = STATE_STATIC;
 	}
 
 	// If nothing detected, then we cannot decide yet
@@ -737,22 +680,11 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 		return rc;
 
 	// Make a decision
+make_decision:
 	switch (s->val)
 	{
 		case PATTERN_NORMAL_VAL:
 			if (pinfo->state == STATE_NORMAL)
-				rc = 1;
-			break;
-/*		case PATTERN_LD_PRELOAD_VAL:
-			if (pinfo->state == STATE_LD_PRELOAD) {
-				rc = 1;
-				//msg(LOG_DEBUG, "path1: %s", pinfo->path1);
-				//msg(LOG_DEBUG, "path2: %s", pinfo->path2);
-				//msg(LOG_DEBUG, "path3: %s", pinfo->path3);
-			}
-			break; */
-		case PATTERN_BAD_INTERPRETER_VAL:
-			if (pinfo->state == STATE_BAD_INTERPRETER)
 				rc = 1;
 			break;
 		case PATTERN_LD_SO_VAL:
@@ -760,7 +692,8 @@ msg(LOG_DEBUG, "path2: %s", pinfo->path2);
 				rc = 1;
 			break;
 		case PATTERN_STATIC_VAL:
-			if (pinfo->state == STATE_STATIC)
+			if ((pinfo->state == STATE_STATIC) ||
+				(pinfo->state == STATE_STATIC_REOPEN))
 				rc = 1;
 			break;
 	}

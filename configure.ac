@@ -39,6 +39,10 @@ AS_HELP_STRING([--with-audit],[turn on decision auditing (default=no)]),
 AC_DEFINE(USE_AUDIT,1,[Define if you want to enable decision auditing.]),
 [])
 AC_CHECK_DECLS([FAN_AUDIT], [], [], [[#include <linux/fanotify.h>]])
+AC_CHECK_DECLS([FAN_OPEN_EXEC_PERM], [perm=yes], [perm=no], [[#include <linux/fanotify.h>]])
+if test $perm = "no"; then
+	AC_MSG_ERROR([FAN_OPEN_EXEC_PERM is not defined in linux/fanotify.h. It is required for the kernel to support it])
+fi
 
 withval=""
 AC_ARG_WITH(rpm,
