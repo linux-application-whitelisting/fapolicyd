@@ -142,6 +142,8 @@ Permissive: false
 Inter-thread max queue depth 7
 Allowed accesses: 116103
 Denied accesses: 17
+Database max pages: 40960
+Database pages in use: 27954 (68%)
 
 Object cache size: 6151
 Object slots in use: 6086
@@ -180,6 +182,53 @@ rules it will have to iterate over to make a decision. As for the system
 performance impact, this is very workload dependent. For a typical desktop
 scenario, you won't notice it's running. A system that opens lots of random
 files for short periods of time will have more impact.
+
+
+MEMORY USAGE
+------------
+Fapolicyd uses lmdb as its trust database. The database has very fast
+performance because it uses the kernel virtual memory system to put the
+whole database in memory. If the database is sized wrongly, then fapolicyd
+will reserve too much memory. Don't worry too much about this. The kernel is
+very smart and doesn't actually allocate the memory unless its used. However,
+we'd like to get it right sized.
+
+Starting with the 0.9.3 version of fapolicyd, statistics about the database
+is output when the program shuts down. On my system, it looks like this:
+
+```
+Database max pages: 40960
+Database pages in use: 27954 (68%)
+```
+
+This also correlates to the following setting in the fapolicyd.conf file:
+
+```
+db_max_size = 160
+```
+
+This size is in megabytes. So, if you take that and multiply by 1024, we get
+163840. A page of memory is defined as 4096. So, if we divide max_size by
+the page size, we get 40960. Each entry in the lmdb database is 512 bytes. So,
+for each 4k page, we can have data on 8 trusted files.
+
+An ideal size for the database is for the statistics to come up aound 75% in
+case you decide to install new software some day. So, working backwards from
+my numbers, (68 x 160) / 75 = 145.
+
+If you have an embedded system and are not using rpm. But instead use the file
+trust source and you have a list of files, then your calculation is very
+different. Suppose for the sake of discussion, you have 317 files that are
+trusted. We take that number and divide by 8. We'll round that up to 40. Take
+that number and multiply by 100 and divide by 75. We come up with 53.33. So,
+let's call it 54. This is how many pages is needed. Turning that into real
+memory, it's 216K. One megabyte is the smallest allocation, so you would set
+```
+db_max_size = 1
+```
+
+We are still studying how to reduce the amount of data in the trust database.
+In future releases, the number required should go down.
 
 
 TROUBLESHOOTING
