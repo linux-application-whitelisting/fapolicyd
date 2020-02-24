@@ -1,6 +1,7 @@
 0.9.4
 - Fix pattern detection in light of EXEC_PERM events
 - Conserve memory by dropping unneeded lists after startup
+- Do full reset of subject credentials when execve finishes 
 
 0.9.3
 - In fapolicyd-cli, add a --list option to list rules

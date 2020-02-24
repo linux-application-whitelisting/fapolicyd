@@ -31,7 +31,8 @@
 typedef enum {	STATE_COLLECTING=0,	// initial state - execute
 		STATE_REOPEN,		// anticipating open perm next
 		STATE_STATIC_REOPEN,	// static app aniticipating
-		STATE_FULL,		// second path collected - decision time
+		STATE_PARTIAL,		// second path collected
+		STATE_FULL,		// third path seen - decision time
 		STATE_NORMAL,		// normal pattern
 		STATE_NOT_ELF,		// not elf, ignore
 		STATE_LD_SO,		// app started by ld.so

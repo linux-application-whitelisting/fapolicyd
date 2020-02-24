@@ -626,7 +626,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 	int rc = 0;
 	struct proc_info *pinfo = e->s->info;
 
-	// At this point, we have only 1 path.
+	// At this point, we have only 1 or 2 paths.
 	if (pinfo->state < STATE_FULL) {
 		// if it's not an elf file, we're done
 		if (pinfo->elf_info == 0) {

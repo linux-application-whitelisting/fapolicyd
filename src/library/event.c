@@ -227,7 +227,17 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			//	pinfo->state = STATE_COLLECTING;Just for clarity
 			} else if (pinfo->path2 == NULL) {
 				pinfo->path2 = strdup(file);
+				pinfo->state = STATE_PARTIAL;
+			} else {
+				// This third look is needed because the first
+				// two are still the old process as far as
+				// procfs is concerned. Reset things that could
+				// change based on the new process name.
 				pinfo->state = STATE_FULL;
+				subject_reset(e->s, EXE);
+				subject_reset(e->s, COMM);
+				subject_reset(e->s, EXE_TYPE);
+				subject_reset(e->s, SUBJ_TRUST);
 			}
 		} 
 	}
