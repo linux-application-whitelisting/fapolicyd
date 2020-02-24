@@ -690,6 +690,8 @@ int init_database(conf_t *config)
 		}
 	}
 
+	// Conserve memory by dumping the linked lists
+	backend_close();
 
 	pthread_mutex_init(&update_lock, NULL);
 	pthread_create(&update_thread, NULL, update_thread_main, config);
