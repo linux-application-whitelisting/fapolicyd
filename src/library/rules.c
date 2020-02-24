@@ -627,7 +627,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 	struct proc_info *pinfo = e->s->info;
 
 	// At this point, we have only 1 path.
-	if (pinfo->state < STATE_PARTIAL) {
+	if (pinfo->state <= STATE_PARTIAL) {
 		// if it's not an elf file, we're done
 		if (pinfo->elf_info == 0) {
 			pinfo->state = STATE_NOT_ELF;
@@ -653,31 +653,14 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 			return -1;
 		}
 
-		// When programs start, its either ld.so or themselves
-		// There is no other way they start. So, if there is a
-		// miscompare, then we must have started a while ago.
-		subject_attr_t *sub = get_subj_attr(e, EXE);
-		if (strcmp(pinfo->path1, sub->str))
-			// If we hit this, we assume program is already running
-			pinfo->state = STATE_NORMAL;
-		else if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0)
+		// Pattern detection is only static or not, ld.so started or
+		// not. That means everything else is normal.
+		if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0)
 			// First thing is ld.so when its used
 			pinfo->state = STATE_LD_SO;
-		else {
-			// To get here, pgm matched path1
-			if (strcmp(pinfo->path2, SYSTEM_LD_SO) == 0) {
-				// To get here interp is ld.so
-				if (strcmp(pinfo->path3, SYSTEM_LD_CACHE) == 0
-				   || (pinfo->elf_info & HAS_RPATH))
-					// ld.so normally checks cache first
-					pinfo->state = STATE_NORMAL;
-			} 
-		}
+		else	// To get here, pgm matched path1
+			pinfo->state = STATE_NORMAL;
 	}
-
-	// If nothing detected, then we cannot decide yet
-	if (pinfo->state == STATE_PARTIAL)
-		return rc;
 
 	// Make a decision
 make_decision:
