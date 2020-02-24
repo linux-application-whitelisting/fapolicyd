@@ -1,6 +1,6 @@
 /*
  * event.c - Functions to access event attributes
- * Copyright (c) 2016,2018-19 Red Hat Inc.
+ * Copyright (c) 2016,2018-20 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -227,11 +227,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			//	pinfo->state = STATE_COLLECTING;Just for clarity
 			} else if (pinfo->path2 == NULL) {
 				pinfo->path2 = strdup(file);
-				pinfo->state = STATE_PARTIAL;
-			} else if (pinfo->path3 == NULL) {
-				pinfo->path3 = strdup(file);
 				pinfo->state = STATE_FULL;
-				subject_reset(e->s, EXE);
 			}
 		} 
 	}

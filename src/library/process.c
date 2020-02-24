@@ -1,6 +1,6 @@
 /*
  * process.c - functions to access attributes of processes
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -56,7 +56,6 @@ struct proc_info *stat_proc_entry(pid_t pid)
 		// Make all paths empty
 		info->path1 = NULL;
 		info->path2 = NULL;
-		info->path3 = NULL;
 		info->state = STATE_COLLECTING;
 		info->elf_info = 0;
 
@@ -69,10 +68,8 @@ void clear_proc_info(struct proc_info *info)
 {
 	free(info->path1);
 	free(info->path2);
-	free(info->path3);
 	info->path1 = NULL;
 	info->path2 = NULL;
-	info->path3 = NULL;
 }
 
 // Returns 0 if equal and 1 if not equal

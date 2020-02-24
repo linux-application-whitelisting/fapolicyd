@@ -1,6 +1,6 @@
 /*
 * rules.c - Minimal linked list set of rules
-* Copyright (c) 2016,2018,2019 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2016,2018,2019-20 Red Hat Inc.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -627,7 +627,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 	struct proc_info *pinfo = e->s->info;
 
 	// At this point, we have only 1 path.
-	if (pinfo->state <= STATE_PARTIAL) {
+	if (pinfo->state < STATE_FULL) {
 		// if it's not an elf file, we're done
 		if (pinfo->elf_info == 0) {
 			pinfo->state = STATE_NOT_ELF;

@@ -1,6 +1,6 @@
 /*
  * process.h - Header file for process.c
- * Copyright (c) 2016,2019 Red Hat Inc.
+ * Copyright (c) 2016,2019-20 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -30,9 +30,8 @@
 
 typedef enum {	STATE_COLLECTING=0,	// initial state - execute
 		STATE_REOPEN,		// anticipating open perm next
-		STATE_PARTIAL,		// second path collected
 		STATE_STATIC_REOPEN,	// static app aniticipating
-		STATE_FULL,		// third path collected - decision time
+		STATE_FULL,		// second path collected - decision time
 		STATE_NORMAL,		// normal pattern
 		STATE_NOT_ELF,		// not elf, ignore
 		STATE_LD_SO,		// app started by ld.so
@@ -64,7 +63,6 @@ struct proc_info
 	state_t state;
 	char *path1;
 	char *path2;
-	char *path3;
 	uint32_t elf_info;
 };
 
