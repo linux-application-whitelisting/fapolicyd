@@ -243,6 +243,7 @@ static void *deadmans_switch_thread_main(void *arg)
 	sigaddset(&sigs, SIGTERM);
 	sigaddset(&sigs, SIGHUP);
 	sigaddset(&sigs, SIGINT);
+	sigaddset(&sigs, SIGSEGV);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	do {
@@ -269,6 +270,7 @@ static void *decision_thread_main(void *arg)
 	sigaddset(&sigs, SIGTERM);
 	sigaddset(&sigs, SIGHUP);
 	sigaddset(&sigs, SIGINT);
+	sigaddset(&sigs, SIGSEGV);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	while (!stop) {

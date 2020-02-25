@@ -820,6 +820,7 @@ static void *update_thread_main(void *arg)
 	sigaddset(&sigs, SIGTERM);
 	sigaddset(&sigs, SIGHUP);
 	sigaddset(&sigs, SIGINT);
+	sigaddset(&sigs, SIGSEGV);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	if (ffd[0].fd == 0) {
