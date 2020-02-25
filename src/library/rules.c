@@ -637,8 +637,15 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 		// a follow up open request. We change state here and will
 		// go all the way to static on the open request.
 		else if ((pinfo->elf_info & IS_ELF) &&
+				(pinfo->state == STATE_COLLECTING) &&
 				((pinfo->elf_info & HAS_DYNAMIC) == 0)) {
 			pinfo->state = STATE_STATIC_REOPEN;
+			goto make_decision;
+		} else if (pinfo->state == STATE_STATIC_PARTIAL)
+			goto make_decision;
+		else if ((e->type & FAN_OPEN_EXEC_PERM) && pinfo->path1 &&
+				strcmp(pinfo->path1, SYSTEM_LD_SO) == 0) {
+			pinfo->state = STATE_LD_SO;
 			goto make_decision;
 		}
 		// otherwise, we don't have enough info for a decision
@@ -656,7 +663,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 		// Pattern detection is only static or not, ld.so started or
 		// not. That means everything else is normal.
 		if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0)
-			// First thing is ld.so when its used
+			// First thing is ld.so when its used - detected above
 			pinfo->state = STATE_LD_SO;
 		else	// To get here, pgm matched path1
 			pinfo->state = STATE_NORMAL;
@@ -675,8 +682,9 @@ make_decision:
 				rc = 1;
 			break;
 		case PATTERN_STATIC_VAL:
-			if ((pinfo->state == STATE_STATIC) ||
-				(pinfo->state == STATE_STATIC_REOPEN))
+			if ((pinfo->state == STATE_STATIC_REOPEN) ||
+				(pinfo->state == STATE_STATIC_PARTIAL) ||
+				(pinfo->state == STATE_STATIC))
 				rc = 1;
 			break;
 	}

@@ -125,12 +125,24 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// If not same proc or we detect execution, evict
 		evict = rc || e->type & FAN_OPEN_EXEC_PERM;
 
-		// Static has to do eviction here to pick up the real
-		// executable and all its properties
-		if ((s->info->state == STATE_STATIC_REOPEN) &&
-			(e->type & FAN_OPEN_PERM) && !rc) {
+		// We need to reset everything now that execve has finished
+		if (s->info->state == STATE_STATIC_PARTIAL && !rc) {
 			s->info->state = STATE_STATIC;
-			evict = 1;
+			evict = 0;
+			skip_path = 1;
+			subject_reset(s, EXE);
+			subject_reset(s, COMM);
+			subject_reset(s, EXE_TYPE);
+			subject_reset(s, SUBJ_TRUST);
+		}
+		// Static has to sequence through a state machine to get to
+		// the point where we can do a full subject reset. Still
+		// in execve at this point.
+		if ((s->info->state == STATE_STATIC_REOPEN) &&
+					(e->type & FAN_OPEN_PERM) && !rc) {
+			s->info->state = STATE_STATIC_PARTIAL;
+			evict = 0;
+			skip_path = 1;
 		}
 
 		// If we've seen the reopen and its an execute and process
@@ -139,8 +151,8 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// !skip_path is to prevent the STATE_REOPEN change above from
 		// falling into this.
 		if ((s->info->state == STATE_REOPEN) && !skip_path &&
-			(e->type & FAN_OPEN_EXEC_PERM) &&
-			(s->info->elf_info & HAS_INTERP) && !rc) {
+				(e->type & FAN_OPEN_EXEC_PERM) &&
+				(s->info->elf_info & HAS_INTERP) && !rc) {
 			evict = 0;
 			skip_path = 1;
 		}
