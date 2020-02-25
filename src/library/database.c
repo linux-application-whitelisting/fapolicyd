@@ -896,6 +896,8 @@ static void *update_thread_main(void *arg)
 					} else {
 						msg(LOG_INFO, "Updated");
 					}
+					// Conserve memory
+					backend_close();
 				}
 			}
 		}
