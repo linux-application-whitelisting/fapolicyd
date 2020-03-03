@@ -622,7 +622,7 @@ static int migrate_database(void)
 	fd = open(vpath, O_RDONLY);
 	if (fd < 0) {
 		char path[64];
-		msg(LOG_INFO, "Database migration will be perfomed.");
+		msg(LOG_INFO, "Database migration will be performed.");
 
 		// Then we have a version1 db since it does not track versions
 		snprintf(path, sizeof(path), "%s/data.mdb", data_dir);
