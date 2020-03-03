@@ -55,7 +55,7 @@ static pthread_mutexattr_t decision_lock_attr;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
 static volatile atomic_bool events_ready;
-static volatile int alive = 1;
+static volatile atomic_int alive = 1;
 static int fd = -1;
 static uint64_t mask;
 
