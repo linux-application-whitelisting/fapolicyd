@@ -172,6 +172,39 @@ static void close_rpm(void)
 	rpmlogClose();
 }
 
+// This function will check a passed file name to see if the path should
+// be kept or dropped. 1 means discard it, and 0 means keep it.
+static int drop_path(const char *file_name)
+{
+	if (file_name[1] == 'u') {
+		if (file_name[5] == 's') {
+			// Drop anything in /usr/share that's
+			// not python or has a libexec dir
+			if (file_name[6] == 'h' ) {
+				if (fnmatch("*/__pycache__/*",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*/libexec/*",
+						file_name, 0) == 0)
+					return 0;
+				return 1;
+			// Akmod need scripts in /usr/src/kernel
+			} else if (file_name[6] == 'r' ) {
+				if (fnmatch("*/scripts/*",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch(
+					"*/tools/objtool/*",
+						 file_name, 0) == 0)
+					return 0;
+				return 1;
+			}
+		// Drop anything in /usr/include
+		} else if (file_name[5] == 'i')
+			return 1;
+	}
+	return 0;
+}
 
 static int rpm_load_list(void)
 {
@@ -214,38 +247,9 @@ static int rpm_load_list(void)
 			if (file_name == NULL)
 				continue;
 
-			if (file_name[1] == 'u') {
-				if (file_name[5] == 's') {
-					// Drop anything in /usr/share that's
-					// not python or has a libexec dir
-					if (file_name[6] == 'h' ) {
-						if (fnmatch("*/__pycache__/*",
-								file_name, 0)) {
-							free((void *)file_name);
-							continue;
-						}else if (fnmatch("*/libexec/*",
-								file_name, 0)) {
-							free((void *)file_name);
-							continue;
-						}
-					// Akmod need scripts in /usr/src/kernel
-					} else if (file_name[6] == 'r' ) {
-						if (fnmatch("*/scripts/*",
-								file_name, 0)) {
-							free((void *)file_name);
-							continue;
-						} else if (fnmatch(
-							"*/tools/objtool/*",
-								file_name, 0)) {
-							free((void *)file_name);
-							continue;
-						}
-					}
-				// Drop anything in /usr/include
-				} else if (file_name[5] == 'i') {
-					free((void *)file_name);
-					continue;
-				}
+			if (drop_path(file_name)) {
+				free((void *)file_name);
+				continue;
 			}
 
 			if (asprintf(	&data,
