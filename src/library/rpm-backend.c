@@ -216,9 +216,14 @@ static int rpm_load_list(void)
 
 			if (file_name[1] == 'u') {
 				if (file_name[5] == 's') {
-					// Drop anything in /usr/share !python
+					// Drop anything in /usr/share that's
+					// not python or has a libexec dir
 					if (file_name[6] == 'h' ) {
 						if (fnmatch("*/__pycache__/*",
+								file_name, 0)) {
+							free((void *)file_name);
+							continue;
+						}else if (fnmatch("*/libexec/*",
 								file_name, 0)) {
 							free((void *)file_name);
 							continue;
