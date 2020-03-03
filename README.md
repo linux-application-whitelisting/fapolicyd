@@ -213,8 +213,13 @@ the page size, we get 40960. Each entry in the lmdb database is 512 bytes. So,
 for each 4k page, we can have data on 8 trusted files.
 
 An ideal size for the database is for the statistics to come up aound 75% in
-case you decide to install new software some day. So, working backwards from
-my numbers, (68 x 160) / 75 = 145.
+case you decide to install new software some day. The formula is 
+
+```
+ (db_max_size x percentage in use) / desired percentage = new db_max_size
+```
+
+So, working from my numbers, (160 x 68) / 75 = 145.
 
 If you have an embedded system and are not using rpm. But instead use the file
 trust source and you have a list of files, then your calculation is very
