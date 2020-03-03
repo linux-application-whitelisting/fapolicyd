@@ -249,6 +249,7 @@ static int rpm_load_list(void)
 
 			if (drop_path(file_name)) {
 				free((void *)file_name);
+				free((void *)sha);
 				continue;
 			}
 
