@@ -229,6 +229,11 @@ static int rpm_load_list(void)
 								file_name, 0)) {
 							free((void *)file_name);
 							continue;
+						} else if (fnmatch(
+							"*/tools/objtool/*",
+								file_name, 0)) {
+							free((void *)file_name);
+							continue;
 						}
 					}
 				// Drop anything in /usr/include
