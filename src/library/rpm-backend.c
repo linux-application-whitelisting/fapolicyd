@@ -30,6 +30,7 @@
 #include <rpm/rpmmacro.h>
 #include <rpm/rpmlog.h>
 #include <rpm/rpmdb.h>
+#include <fnmatch.h>
 
 #include "message.h"
 
@@ -100,9 +101,22 @@ static int get_next_file_rpm(void)
 	return 1;
 }
 
+// Like strdup, but sets a minimum size for safety 
+static inline char *strmdup(const char *s, size_t min)
+{
+	char *new;
+	size_t len = strlen(s) + 1;
+
+	new = malloc(len < min ? min : len);
+	if (new == NULL)
+		return NULL;
+
+	return (char *)memcpy(new, s, len);
+}
+
 static const char *get_file_name_rpm(void)
 {
-	return strdup(rpmfiFN(fi));
+	return strmdup(rpmfiFN(fi), 6);
 }
 
 static rpm_loff_t get_file_size_rpm(void)
@@ -196,6 +210,34 @@ static int rpm_load_list(void)
 			const char *sha = get_sha256_rpm();
 			char *data;
 			int verified = 0;
+
+			if (file_name == NULL)
+				continue;
+
+			if (file_name[1] == 'u') {
+				if (file_name[5] == 's') {
+					// Drop anything in /usr/share !python
+					if (file_name[6] == 'h' ) {
+						if (fnmatch("*/__pycache__/*",
+								file_name, 0)) {
+							free((void *)file_name);
+							continue;
+						}
+					// Akmod need scripts in /usr/src/kernel
+					} else if (file_name[6] == 'r' ) {
+						if (fnmatch("*/scripts/*",
+								file_name, 0)) {
+							free((void *)file_name);
+							continue;
+						}
+					}
+				// Drop anything in /usr/include
+				} else if (file_name[5] == 'i') {
+					free((void *)file_name);
+					continue;
+				}
+			}
+
 			if (asprintf(	&data,
 					DATA_FORMAT,
 					verified,
