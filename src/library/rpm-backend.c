@@ -116,7 +116,7 @@ static inline char *strmdup(const char *s, size_t min)
 
 static const char *get_file_name_rpm(void)
 {
-	return strmdup(rpmfiFN(fi), 6);
+	return strmdup(rpmfiFN(fi), 7);
 }
 
 static rpm_loff_t get_file_size_rpm(void)
