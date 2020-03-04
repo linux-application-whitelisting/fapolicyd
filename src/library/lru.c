@@ -83,7 +83,7 @@ static void dump_queue_stats(const Queue *q)
 	msg(LOG_DEBUG, "%s hits: %lu", q->name, q->hits);
 	msg(LOG_DEBUG, "%s misses: %lu", q->name, q->misses);
 	msg(LOG_DEBUG, "%s evictions: %lu (%lu%%)", q->name, q->evictions,
-					(100*q->evictions)/q->hits);
+				q->hits ? (100*q->evictions)/q->hits : 0);
 }
 
 static Queue *create_queue(unsigned int qsize, const char *name)
