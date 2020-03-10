@@ -249,7 +249,7 @@ static void *deadmans_switch_thread_main(void *arg)
 	do {
 		// Are you alive decision thread?
 		if (alive == 0 && get_ready() && !stop &&
-					q_queue_length(q) > 2) {
+					q_queue_length(q) > 5) {
 			msg(LOG_ERR,
 				"Deadman's switch activated...killing process");
 			raise(SIGKILL);
