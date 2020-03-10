@@ -3,6 +3,7 @@
 - Conserve memory by dropping unneeded lists after startup
 - Do full reset of subject credentials when execve finishes 
 - Drop files in /usr/share, /usr/src, and /usr/include to reduce memory use
+- Add error checking of the trust database
 
 0.9.3
 - In fapolicyd-cli, add a --list option to list rules

@@ -297,7 +297,8 @@ static int write_db(const char *idx, const char *data)
 /*
  * The idea with this set of code is that we can set up ops once
  * and perform many read operations. This reduces the need to setup
- * a read lock every time and initial a whole transaction.
+ * a read lock every time and initial a whole transaction. It returns
+ * a 0 on success and a 1 on error.
  */
 static MDB_txn *lt_txn = NULL;
 static MDB_cursor *lt_cursor = NULL;
@@ -373,12 +374,13 @@ static unsigned get_pages_in_use(void)
  * search for the data. It returns NULL on error or if no data found.
  * The returned string must be freed by the caller.
  */
-static char *lt_read_db(const char *index, int only_check_key)
+static char *lt_read_db(const char *index, int only_check_key, int *error)
 {
 	int rc;
 	char *data, *hash = NULL;
 	MDB_val key, value;
 	size_t len;
+	*error = 1; // Assume an error
 
 	if (start_long_term_read_ops())
 		return NULL;
@@ -401,8 +403,10 @@ static char *lt_read_db(const char *index, int only_check_key)
 	// Read the value pointed to by key
 	if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET))) {
 		free(hash);
-		if (rc == MDB_NOTFOUND)
+		if (rc == MDB_NOTFOUND) {
+			*error = 0;
 			return NULL;
+		}
 		msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 		return NULL;
 	}
@@ -414,6 +418,7 @@ static char *lt_read_db(const char *index, int only_check_key)
 		mdb_cursor_count(lt_cursor, &nleaves);
 		if (nleaves <= 1) {
 			free(hash);
+			*error = 0;
 			return NULL;
 		}
 
@@ -436,10 +441,11 @@ static char *lt_read_db(const char *index, int only_check_key)
 	if (len > MDB_maxkeysize)
 		free(hash);
 
-	// Failure means NULL was returned. Need to return a non-null value
-	// for success. Using the db name since its non-NULL.
+	// Failure was already returned. Need to return a pointer of
+	// some kind. Using the db name since its non-NULL.
 	// A next step might be to check the status field to see that its
 	// trusted.
+	*error = 0;
 	if (only_check_key == READ_TEST_KEY)
 		return (char *)db;
 
@@ -488,11 +494,13 @@ static int delete_entry_db(const char *index)
 	return 0;
 }*/
 
+// This function checks the database to see if its empty. It returns
+// a 0 if it has entries, 1 on empty, and -1 if an error
 static int database_empty(void)
 {
 	MDB_stat status;
 	if (mdb_env_stat(env, &status))
-		return 1;
+		return -1;
 	if (status.ms_entries == 0)
 		return 1;
 	return 0;
@@ -547,27 +555,35 @@ static int create_database(int with_sync)
 
 /*
  * This function will compare the backend database against our copy
- * of the database. It returns a 1 if they do not match.
+ * of the database. It returns a 1 if they do not match, 0 if they do
+ * match, and -1 if there is an error.
  */
 static int check_database_copy(void)
 {
 	msg(LOG_INFO, "Checking database");
 	long problems = 0;
 
-	start_long_term_read_ops();
+	if (start_long_term_read_ops())
+		return -1;
 	for (backend_entry* be = backend_get_first() ; be != NULL ; be = be->next ) {
 		msg(LOG_INFO, "Importing data from %s backend", be->backend->name);
 
 		list_item_t * item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
-
-			char *data = lt_read_db(item->index, READ_DATA);
-			if (data) {
+			int error;
+			char *data = lt_read_db(item->index, READ_DATA, &error);
+			if (data && !error) {
 				if (strcmp(item->data, data)) {
 					// Let's retry its duplicate
 					free(data);
 					data = lt_read_db(item->index,
-								READ_DATA_DUP);
+							READ_DATA_DUP, &error);
+					if (error) {
+						free(data);
+						end_long_term_read_ops();
+						return -1;
+					}
+
 					// If no dup or miscompare, problems
 					if (!data || strcmp(item->data, data)) {
 						msg(LOG_DEBUG,
@@ -577,13 +593,17 @@ static int check_database_copy(void)
 						problems++;
 					}
 				}
-			} else {
+			} else if (!error) {
 				msg(LOG_WARNING, "%s is not in database",
 				    (const char *)item->index);
 				problems++;
 			}
 
 			free(data);
+			if (error) {
+				end_long_term_read_ops();
+				return -1;
+			}
 		}
 	}
 
@@ -657,6 +677,7 @@ static int migrate_database(void)
  * It will first check to see if a database is populated. If so, then
  * it will verify it against the backend database just in case something
  * has changed. If the database does not exist, then it will create one.
+ * It returns 0 on success and a non-zero on failure.
  */
 int init_database(conf_t *config)
 {
@@ -664,7 +685,8 @@ int init_database(conf_t *config)
 
 	msg(LOG_INFO, "Initializing the database");
 
-	migrate_database();
+	if (migrate_database())
+		return 1;
 
 	if ((rc = init_db(config))) {
 		msg(LOG_ERR, "Cannot open the database, init_db() (%d)", rc);
@@ -677,7 +699,8 @@ int init_database(conf_t *config)
 		return rc;
 	}
 
-	if (database_empty()) {
+	rc = database_empty();
+	if (rc > 0) {
 		if ((rc = create_database(/*with_sync*/1))) {
 			msg(LOG_ERR, "Failed to create database, create_database() (%d)", rc);
 			close_db();
@@ -685,8 +708,12 @@ int init_database(conf_t *config)
 		}
 	} else {
 		// check if our internal database is synced
-		if (check_database_copy()) {
-			update_database(config);
+		rc = check_database_copy();
+		if (rc > 0) {
+			rc = update_database(config);
+			if (rc)
+				msg(LOG_ERR,
+					"Failed updating the trust database");
 		}
 	}
 
@@ -699,14 +726,19 @@ int init_database(conf_t *config)
 	return rc;
 }
 
-// Returns a 1 if trusted and 0 if not
+// Returns a 1 if trusted and 0 if not and -1 on error
 int check_trust_database(const char *path)
 {
-	int rc = 0;
-	start_long_term_read_ops();
+	int retval = 0, error;
+	char *res;
+	if (start_long_term_read_ops())
+		return -1;
 
-	if (lt_read_db(path, READ_TEST_KEY))
-		rc = 1;
+	res = lt_read_db(path, READ_TEST_KEY, &error);
+	if (error)
+		retval = -1;
+	else if (res)
+		retval = 1;
 	else if (lib64_symlink || lib_symlink || bin_symlink || sbin_symlink) {
 		// If we are on a system that symlinks the top level
 		// directories to /usr, then let's try again without the /usr
@@ -721,15 +753,19 @@ int check_trust_database(const char *path)
 					strncmp(&path[5], "bin/", 4) == 0) ||
 				(sbin_symlink &&
 					strncmp(&path[5], "sbin/", 5) == 0)) {
-				// We h
-				if (lt_read_db(&path[4], READ_TEST_KEY))
-					rc = 1;
+				// We have a symlink, retry
+				if (lt_read_db(&path[4], READ_TEST_KEY, &error)) {
+					if (error)
+						retval = -1;
+					else
+						retval = 1;
+				}
 			}
 		}
 	}
 
 	end_long_term_read_ops();
-	return rc;
+	return retval;
 }
 
 void close_database(void)
@@ -762,7 +798,8 @@ void unlock_update_thread(void) {
 }
 
 /*
- * This function reloads updated backend db into our internal database
+ * This function reloads updated backend db into our internal database.
+ * It returns 0 on success and non-zero on error.
  */
 static int update_database(conf_t *config)
 {
