@@ -157,8 +157,6 @@ static int init_db(const conf_t *config)
 	bin_symlink = is_link("/bin");
 	sbin_symlink = is_link("/sbin");
 
-	backend_init(config);
-
 	return 0;
 }
 
@@ -177,7 +175,6 @@ static void close_db(void)
 							(100*pages)/max_pages);
 
 	// Now close down
-	backend_close();
 	mdb_close(env, dbi);
 	mdb_env_close(env);
 }
@@ -693,6 +690,12 @@ int init_database(conf_t *config)
 		return rc;
 	}
 
+	if ((rc = backend_init(config))) {
+		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
+		close_db();
+		return rc;
+	}
+
 	if ((rc = backend_load())) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
 		close_db();
@@ -770,9 +773,13 @@ int check_trust_database(const char *path)
 
 void close_database(void)
 {
-	close_db();
 	pthread_join(update_thread, NULL);
+
+	// we can close db when we are really sure update_thread does not exist
+	close_db();
 	pthread_mutex_destroy(&update_lock);
+
+	backend_close();
 	unlink(fifo_path);
 }
 
