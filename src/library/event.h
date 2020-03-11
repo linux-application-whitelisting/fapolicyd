@@ -42,7 +42,6 @@ typedef struct ev {
 } event_t;
 
 int init_event_system(const conf_t *config);
-int flush_cache(const conf_t *config);
 void destroy_event_system(void);
 int new_event(const struct fanotify_event_metadata *m, event_t *e);
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);

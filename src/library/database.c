@@ -43,7 +43,6 @@
 
 #include "database.h"
 #include "message.h"
-#include "event.h"
 #include "llist.h"
 #include "file.h"
 
@@ -76,7 +75,7 @@ static int update_database(conf_t *config);
 
 // External variables
 extern volatile atomic_bool stop;
-
+extern volatile atomic_bool needs_flush;
 
 static int is_link(const char *path)
 {
@@ -682,6 +681,9 @@ int init_database(conf_t *config)
 
 	msg(LOG_INFO, "Initializing the database");
 
+	// update_lock is used in update_database()
+	pthread_mutex_init(&update_lock, NULL);
+
 	if (migrate_database())
 		return 1;
 
@@ -723,7 +725,6 @@ int init_database(conf_t *config)
 	// Conserve memory by dumping the linked lists
 	backend_close();
 
-	pthread_mutex_init(&update_lock, NULL);
 	pthread_create(&update_thread, NULL, update_thread_main, config);
 
 	return rc;
@@ -734,6 +735,12 @@ int check_trust_database(const char *path)
 {
 	int retval = 0, error;
 	char *res;
+
+	// this function is going to be used from decision_thread
+	// that means we need to be sure database won't change under
+	// our hands
+	lock_update_thread();
+
 	if (start_long_term_read_ops())
 		return -1;
 
@@ -768,6 +775,9 @@ int check_trust_database(const char *path)
 	}
 
 	end_long_term_read_ops();
+
+	unlock_update_thread();
+
 	return retval;
 }
 
@@ -833,7 +843,9 @@ static int update_database(conf_t *config)
 	}
 
 	rc = create_database(/*with_sync*/0);
-	flush_cache(config);
+
+	// signal that cache need to be flushed
+	needs_flush = true;
 
 	unlock_update_thread();
 	mdb_env_sync(env, 1);

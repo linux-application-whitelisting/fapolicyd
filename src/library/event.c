@@ -27,9 +27,12 @@
 #include <string.h>
 #include <limits.h>
 #include <sys/fanotify.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <time.h>
+
 #include "event.h"
 #include "database.h"
 #include "file.h"
@@ -41,6 +44,8 @@
 
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
+
+volatile atomic_bool needs_flush = false;
 
 // Return 0 on success and 1 on error
 int init_event_system(const conf_t *config)
@@ -58,14 +63,17 @@ int init_event_system(const conf_t *config)
 	return 0;
 }
 
-int flush_cache(const conf_t *config)
+static int flush_cache(void)
 {
 	if (obj_cache->count == 0)
 		return 0;
+
+	const unsigned int size = obj_cache->total;
+
 	msg(LOG_DEBUG, "Flushing object cache");
 	destroy_lru(obj_cache);
 
-	obj_cache = init_lru(config->obj_cache_size,
+	obj_cache = init_lru(size,
 				(void (*)(void *))object_clear, "Object");
 	if (!obj_cache)
 		return 1;
@@ -91,6 +99,11 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	o_array *o;
 	struct proc_info *pinfo;
 	struct file_info *finfo;
+
+	if (needs_flush) {
+		flush_cache();
+		needs_flush = false;
+	}
 
 	// Transfer things from fanotify structs to ours
 	e->pid = m->pid;
