@@ -96,7 +96,7 @@ int preconstruct_fifo(const conf_t *config)
 	char err_buff[BUFFER_SIZE];
 
 	/* Make sure that there is no such file/fifo */
-	unlink(fifo_path);
+	unlink_fifo();
 
 	rc = mkfifo(fifo_path, 0660);
 
@@ -109,7 +109,7 @@ int preconstruct_fifo(const conf_t *config)
 	if ((ffd[0].fd = open(fifo_path, O_RDWR)) == -1) {
 		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path,
 			 strerror_r(errno, err_buff, BUFFER_SIZE));
-		unlink(fifo_path);
+		unlink_fifo();
 		return 1;
 	}
 
@@ -118,7 +118,7 @@ int preconstruct_fifo(const conf_t *config)
 			msg(LOG_ERR, "Failed to fix ownership of pipe %s (%s)",
 				fifo_path, strerror_r(errno, err_buff,
 				BUFFER_SIZE));
-			unlink(fifo_path);
+			unlink_fifo();
 			close(ffd[0].fd);
 			return 1;
 		}
@@ -790,7 +790,7 @@ void close_database(void)
 	pthread_mutex_destroy(&update_lock);
 
 	backend_close();
-	unlink(fifo_path);
+	unlink_fifo();
 }
 
 void unlink_fifo(void)
@@ -948,7 +948,7 @@ static void *update_thread_main(void *arg)
 						msg(LOG_ERR, "Cannot update a database!");
 						close(ffd[0].fd);
 						backend_close();
-						unlink(fifo_path);
+						unlink_fifo();
 						exit(rc);
 					} else {
 						msg(LOG_INFO, "Updated");
@@ -963,7 +963,7 @@ static void *update_thread_main(void *arg)
 
 err_out:
 	close(ffd[0].fd);
-	unlink(fifo_path);
+	unlink_fifo();
 
 	return NULL;
 }
