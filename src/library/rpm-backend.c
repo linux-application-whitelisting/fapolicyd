@@ -181,7 +181,10 @@ static int drop_path(const char *file_name)
 			// Drop anything in /usr/share that's
 			// not python or has a libexec dir
 			if (file_name[6] == 'h' ) {
-				if (fnmatch("*/__pycache__/*",
+				if (fnmatch("*.py?",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.py",
 						 file_name, 0) == 0)
 					return 0;
 				else if (fnmatch("*/libexec/*",
