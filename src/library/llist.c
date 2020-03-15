@@ -30,66 +30,67 @@
 #include "message.h"
 #include "llist.h"
 
-void list_init(list_t * list)
+void list_init(list_t *list)
 {
-    list->count = 0;
-    list->first = NULL;
-    list->last = NULL;
+	list->count = 0;
+	list->first = NULL;
+	list->last = NULL;
 }
 
-list_item_t* list_get_first(const list_t * list)
+list_item_t *list_get_first(const list_t *list)
 {
-    return list->first;
+	return list->first;
 }
 
-int list_append(list_t * list, const char * index, const char * data)
+int list_append(list_t *list, const char *index, const char *data)
 {
-    list_item_t* item;
+	list_item_t *item;
 
-    if ((item = (list_item_t*)malloc(sizeof(list_item_t))) == NULL) {
-        msg(LOG_ERR, "Malloc failed");
-        return 1;
-    }
+	if ((item = (list_item_t *)malloc(sizeof(list_item_t))) == NULL) {
+		msg(LOG_ERR, "Malloc failed");
+		return 1;
+	}
 
-    item->index = index;
-    item->data = data;
-    item->next = NULL;
+	item->index = index;
+	item->data = data;
+	item->next = NULL;
 
-    if (list->first == NULL) {
-        list->first = item;
-        list->last = item;
-    } else {
-        list_item_t* tmp = list->last;
-        list->last = item;
-        tmp->next = item;
-    }
+	if (list->first == NULL) {
+		list->first = item;
+		list->last = item;
+	} else {
+		list_item_t* tmp = list->last;
+		list->last = item;
+		tmp->next = item;
+	}
 
-    list->count++;
-    return 0;
+	list->count++;
+	return 0;
 }
 
-static void list_destroy_item(list_item_t** item)
+static void list_destroy_item(list_item_t **item)
 {
-    free((void*)(*item)->index);
-    free((void*)(*item)->data);
-    free((*item));
-    *item = NULL;
+	free((void *)(*item)->index);
+	free((void *)(*item)->data);
+	free((*item));
+	*item = NULL;
 }
 
-void list_empty(list_t * list)
+void list_empty(list_t *list)
 {
-    if (list->first == NULL) {
-        return;
-    } else {
-        list_item_t* actual = list->first;
-        list_item_t* next = NULL;
-        for (; actual != NULL ; actual = next) {
-            next = actual->next;
-            list_destroy_item(&actual);
-        }
+	if (list->first == NULL)
+		return;
+	else {
+		list_item_t* actual = list->first;
+		list_item_t* next = NULL;
+		for (; actual != NULL ; actual = next) {
+			next = actual->next;
+			list_destroy_item(&actual);
+		}
 
-        list->first = NULL;
-        list->last = NULL;
-        list->count = 0;
-    }
+		list->first = NULL;
+		list->last = NULL;
+		list->count = 0;
+	}
 }
+

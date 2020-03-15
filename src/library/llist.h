@@ -26,20 +26,20 @@
 #define LLIST_H
 
 typedef struct item {
-    const void * index;
-    const void * data;
-    struct item * next;
+	const void *index;
+	const void *data;
+	struct item *next;
 } list_item_t;
 
 typedef struct list_header {
-    long count;
-    struct item* first;
-    struct item* last;
+	long count;
+	struct item *first;
+	struct item *last;
 } list_t;
 
-void list_init(list_t * list);
-list_item_t* list_get_first(const list_t * list);
-int list_append(list_t * list, const char * index, const char * data);
-void list_empty(list_t * list);
+void list_init(list_t *list);
+list_item_t *list_get_first(const list_t *list);
+int list_append(list_t *list, const char *index, const char *data);
+void list_empty(list_t *list);
 
 #endif

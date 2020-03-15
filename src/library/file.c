@@ -55,11 +55,13 @@ static const char *interpreters[] = {
 };
 #define MAX_INTERPS (sizeof(interpreters)/sizeof(interpreters[0]))
 
+
 // Define a convience function to rewind a descriptor to the beginning
 static inline void rewind_fd(int fd)
 {
 	lseek(fd, 0, SEEK_SET);
 }
+
 
 // Initialize what we can now so that its not done each call
 void file_init(void)
@@ -77,11 +79,13 @@ void file_init(void)
 	}
 	// Load our overrides and the default magic definitions
 	if (magic_load(magic_cookie,
-		  "/usr/share/fapolicyd/fapolicyd-magic.mgc:/usr/share/misc/magic.mgc") != 0) {
+	  "/usr/share/fapolicyd/fapolicyd-magic.mgc:/usr/share/misc/magic.mgc")
+									!= 0) {
 		msg(LOG_ERR, "Unable to load magic database");
 		exit(1);
 	}
 }
+
 
 // Release memory during shutdown
 void file_close(void)
@@ -90,6 +94,7 @@ void file_close(void)
 	magic_close(magic_cookie);
 	free((void *)c.devname);
 }
+
 
 struct file_info *stat_file_entry(int fd)
 {
@@ -120,6 +125,7 @@ struct file_info *stat_file_entry(int fd)
 	}
 	return NULL;
 }
+
 
 // Returns 0 if equal and 1 if not equal
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
@@ -153,6 +159,7 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 	return 0;
 }
 
+
 static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	char path[32];
@@ -169,6 +176,7 @@ static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 		buf[blen-1] = 0;
 	return buf;
 }
+
 
 // If we had to build a path because it started out relative,
 // then put the pieces together and get the conanical name
@@ -194,6 +202,7 @@ static void resolve_path(const char *pcwd, char *path, size_t len)
 		path[len - 1] = 0;
 	}
 }
+
 
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 {
@@ -221,6 +230,7 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	}
 	return buf;
 }
+
 
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 {
@@ -254,6 +264,7 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 	return buf;
 }
 
+
 const char *classify_elf_info(uint32_t elf, const char *path)
 {
 	const char *ptr;
@@ -274,14 +285,14 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 			if (strncmp(&path[14], "c-2", 3) == 0 ||
 				    strncmp(&path[14], "pthread-2", 9) == 0)
 				ptr = "application/x-sharedlib";
-		} 
+		}
 	} else {
 		if (elf & HAS_DYNAMIC) { // shared obj
 			if (elf & HAS_DEBUG)
 				ptr = "application/x-executable";
 			else
 				ptr = "application/x-sharedlib";
-		} else 
+		} else
 			return NULL;
 	}
 	return ptr;
@@ -319,6 +330,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	return buf;
 }
 
+
 // This function converts byte array into asciie hex
 char *bytes2hex(char *final, const char *buf, unsigned int size)
 {
@@ -334,6 +346,7 @@ char *bytes2hex(char *final, const char *buf, unsigned int size)
 	return final;
 }
 
+
 // This function wraps read(2) so its signal-safe
 static ssize_t safe_read(int fd, char *buf, size_t size)
 {
@@ -345,6 +358,7 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 
 	return len;
 }
+
 
 char *get_hash_from_fd(int fd)
 {
@@ -383,8 +397,8 @@ char *get_hash_from_fd(int fd)
 	return digest;
 }
 
-static unsigned char e_ident[EI_NIDENT];
 
+static unsigned char e_ident[EI_NIDENT];
 static int read_preliminary_header(int fd)
 {
 	ssize_t rc = safe_read(fd, (char *)e_ident, EI_NIDENT);
@@ -392,6 +406,7 @@ static int read_preliminary_header(int fd)
 		return 0;
 	return 1;
 }
+
 
 static Elf32_Ehdr *read_header32(int fd)
 {
@@ -405,6 +420,7 @@ static Elf32_Ehdr *read_header32(int fd)
 	return NULL;
 }
 
+
 static Elf64_Ehdr *read_header64(int fd)
 {
 	Elf64_Ehdr *ptr = malloc(sizeof(Elf64_Ehdr));
@@ -416,6 +432,7 @@ static Elf64_Ehdr *read_header64(int fd)
 	free(ptr);
 	return NULL;
 }
+
 
 /**
  * Check interpreter provided as an argument obtained from the ELF against
@@ -432,6 +449,7 @@ static int check_interpreter(const char *interp)
 
 	return 1;
 }
+
 
 // size is the file size from fstat done when event was received
 uint32_t gather_elf(int fd, off_t size)
@@ -564,7 +582,8 @@ uint32_t gather_elf(int fd, off_t size)
 
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
-					} else if (dyn_tbl[j].d_tag == DT_RUNPATH)
+					} else if (dyn_tbl[j].d_tag ==
+								DT_RUNPATH)
 						info |= HAS_RPATH;
 					else if (dyn_tbl[j].d_tag == DT_DEBUG) {
 						info |= HAS_DEBUG;
@@ -699,7 +718,8 @@ done32:
 				}
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
-					} else if (dyn_tbl[j].d_tag == DT_RUNPATH)
+					} else if (dyn_tbl[j].d_tag ==
+								DT_RUNPATH)
 						info |= HAS_RPATH;
 					else if (dyn_tbl[j].d_tag == DT_DEBUG) {
 						info |= HAS_DEBUG;
@@ -727,3 +747,4 @@ rewind_out:
 	rewind_fd(fd);
 	return info;
 }
+

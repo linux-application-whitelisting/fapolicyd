@@ -551,11 +551,11 @@ static int create_database(int with_sync)
 	msg(LOG_INFO, "Creating database");
 	int rc = 0;
 
-	for (backend_entry* be = backend_get_first() ; be != NULL ;
+	for (backend_entry *be = backend_get_first() ; be != NULL ;
 						     be = be->next ) {
 		msg(LOG_INFO,"Loading data from %s backend", be->backend->name);
 
-		list_item_t * item = list_get_first(&be->backend->list);
+		list_item_t *item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
 			if ((rc = write_db(item->index, item->data)))
 				msg(LOG_ERR,
@@ -565,7 +565,8 @@ static int create_database(int with_sync)
 		}
 	}
 	// Flush everything to disk
-	if (with_sync) mdb_env_sync(env, 1);
+	if (with_sync)
+		mdb_env_sync(env, 1);
 	return rc;
 }
 
@@ -582,12 +583,12 @@ static int check_database_copy(void)
 
 	if (start_long_term_read_ops())
 		return -1;
-	for (backend_entry* be = backend_get_first() ; be != NULL ;
+	for (backend_entry *be = backend_get_first() ; be != NULL ;
 							 be = be->next ) {
 		msg(LOG_INFO, "Importing data from %s backend",
 							 be->backend->name);
 
-		list_item_t * item = list_get_first(&be->backend->list);
+		list_item_t *item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
 			int error;
 			char *data = lt_read_db(item->index, READ_DATA, &error);
@@ -815,7 +816,6 @@ int check_trust_database(const char *path)
 	}
 
 	end_long_term_read_ops();
-
 	unlock_update_thread();
 
 	return retval;
