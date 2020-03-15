@@ -623,6 +623,19 @@ static int verify_database_entries(void)
 	return 0;
 }
 
+/*
+ * This function removes the trust database files.
+ */
+void unlink_db(void)
+{
+	char path[64];
+
+	snprintf(path, sizeof(path), "%s/data.mdb", data_dir);
+	unlink(path);
+	snprintf(path, sizeof(path), "%s/lock.mdb", data_dir);
+	unlink(path);
+}
+
 /* 
  * This function is used to detect if we are using version1 of the database.
  * If so, we have to delete the database and rebuild it. We cannot mix
@@ -637,14 +650,10 @@ static int migrate_database(void)
 	snprintf(vpath, sizeof(vpath), "%s/db.ver", data_dir);
 	fd = open(vpath, O_RDONLY);
 	if (fd < 0) {
-		char path[64];
 		msg(LOG_INFO, "Database migration will be performed.");
 
 		// Then we have a version1 db since it does not track versions
-		snprintf(path, sizeof(path), "%s/data.mdb", data_dir);
-		unlink(path);
-		snprintf(path, sizeof(path), "%s/lock.mdb", data_dir);
-		unlink(path);
+		unlink_db();
 
 		// Create the new, db version tracker and write current version
 		fd = open(vpath, O_CREAT|O_EXCL|O_WRONLY, 0640);

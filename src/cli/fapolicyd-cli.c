@@ -35,10 +35,13 @@
 #include <magic.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <stdatomic.h>
 #include "policy.h"
+#include "database.h"
 
 const char * usage =
 "Fapolicyd CLI Tool\n\n"
+"-d, --delete-db\tDelete the trust database\n"
 "-h, --help\t\tPrints this help message\n"
 "-t, --ftype file-path\tPrints out the mime type of a file\n"
 "-l, --list\t\tPrints a list of the daemon's rules with numbers\n"
@@ -47,13 +50,16 @@ const char * usage =
 
 struct option long_opts[] =
 {
-	{"help", 0, NULL, 'h'},
-	{"ftype", 1, NULL, 't'},
-	{"list", 0, NULL, 'l'},
-	{"update", 0, NULL, 'u'},
+	{"delete-db",	0, NULL, 'd'},
+	{"help",	0, NULL, 'h'},
+	{"ftype",	1, NULL, 't'},
+	{"list",	0, NULL, 'l'},
+	{"update",	0, NULL, 'u'},
 };
 
 const char * _pipe = "/run/fapolicyd/fapolicyd.fifo";
+volatile atomic_bool stop = 0;  // Library needs this
+
 
 static char *get_line(FILE *f, char *buf, unsigned size, unsigned *lineno)
 {
@@ -81,6 +87,14 @@ static char *get_line(FILE *f, char *buf, unsigned size, unsigned *lineno)
 	}
 	return NULL;
 }
+
+
+int do_delete_db(void)
+{
+	unlink_db();
+	return 0;
+}
+
 
 int do_ftype(const char *path)
 {
@@ -254,9 +268,12 @@ int main(int argc, char * const argv[])
 		return rc;
 	}
 
-	opt = getopt_long(argc, argv, "ht:lu",
+	opt = getopt_long(argc, argv, "dht:lu",
 				 long_opts, &option_index);
 	switch (opt) {
+	case 'd':
+		rc = do_delete_db();
+		break;
 	case 'h':
 		printf("%s", usage);
 		rc = 0;

@@ -4,7 +4,6 @@ Fix ld.so to not be an execution unless it really is
 
 Userspace
 =========
-Add option to delete the trust database to cli
 Add file database management to cli
 Think about config option to ask if events should go to syslog, too
 Consider exe & ftype as lists (Use AVL code for matching)

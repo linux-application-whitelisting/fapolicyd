@@ -10,6 +10,9 @@ The fapolicyd command line utility is a tool to tell the daemon that it needs to
 .B \-h, \-\-help
 Prints this help message.
 .TP
+.B \-d, \-\-delete-db
+Deletes the trust database. Normally this never needs to be done. But if for some reason the trust database becomes corrupted, then the only method of recovery is to run this command.
+.TP
 .B \-t, \-\-ftype /path/to/file
 Prints the mime type of the file given. A full path must be specified. This command is intended to help get the ftype parameter of rules correct by seeing how fapolicyd will classify it. Fapolicyd may differ from the \fBfile\fP command.
 .TP

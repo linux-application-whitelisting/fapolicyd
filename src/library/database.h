@@ -36,6 +36,7 @@ int init_database(conf_t *config);
 int check_trust_database(const char *path);
 void close_database(void);
 void database_report(FILE *f);
+void unlink_db(void);
 void unlink_fifo(void);
 
 #endif
