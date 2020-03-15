@@ -39,16 +39,16 @@
 
 const char * usage =
 "Fapolicyd CLI Tool\n\n"
-"-h\t--help\t\tPrints this help message\n"
-"-t\t--ftype\t\tPrints out the mime type of a file\n"
-"-l\t--list\t\tPrints a list of the daemon's rules with numbers\n"
-"-u\t--update\t\tNotifies fapolicyd to perform update of database\n"
+"-h, --help\t\tPrints this help message\n"
+"-t, --ftype file-path\tPrints out the mime type of a file\n"
+"-l, --list\t\tPrints a list of the daemon's rules with numbers\n"
+"-u, --update\t\tNotifies fapolicyd to perform update of database\n"
 ;
 
 struct option long_opts[] =
 {
 	{"help", 0, NULL, 'h'},
-	{"ftype", 0, NULL, 't'},
+	{"ftype", 1, NULL, 't'},
 	{"list", 0, NULL, 'l'},
 	{"update", 0, NULL, 'u'},
 };
@@ -262,7 +262,6 @@ int main(int argc, char * const argv[])
 		rc = 0;
 		break;
 	case 't':
-		printf("Path to file is missing\n");
 		rc = do_ftype(optarg);
 		break;
 	case 'l':
@@ -272,7 +271,6 @@ int main(int argc, char * const argv[])
 		rc = do_update();
 		break;
 	default:
-		fprintf(stderr, "Unknown argument -> %s\n\n", argv[1]);
 		printf("%s", usage);
 		rc = 1;
 	}
