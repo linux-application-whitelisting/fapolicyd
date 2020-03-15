@@ -64,7 +64,7 @@ static const char *data_dir = "/var/lib/fapolicyd";
 static const char *db = "trust.db";
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
-static const char* fifo_path = "/run/fapolicyd/fapolicyd.fifo";
+static const char *fifo_path = "/run/fapolicyd/fapolicyd.fifo";
 
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
@@ -76,6 +76,7 @@ static int update_database(conf_t *config);
 // External variables
 extern volatile atomic_bool stop;
 extern volatile atomic_bool needs_flush;
+
 
 static int is_link(const char *path)
 {
@@ -90,6 +91,7 @@ static int is_link(const char *path)
 	return 0;
 }
 
+
 int preconstruct_fifo(const conf_t *config)
 {
 	int rc;
@@ -102,13 +104,13 @@ int preconstruct_fifo(const conf_t *config)
 
 	if (rc != 0) {
 		msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path,
-			strerror_r(errno, err_buff, BUFFER_SIZE));
+		    strerror_r(errno, err_buff, BUFFER_SIZE));
 		return 1;
 	}
 
 	if ((ffd[0].fd = open(fifo_path, O_RDWR)) == -1) {
 		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path,
-			 strerror_r(errno, err_buff, BUFFER_SIZE));
+		    strerror_r(errno, err_buff, BUFFER_SIZE));
 		unlink_fifo();
 		return 1;
 	}
@@ -116,8 +118,8 @@ int preconstruct_fifo(const conf_t *config)
 	if (config->gid != getgid()) {
 		if ((fchown(ffd[0].fd, 0, config->gid))) {
 			msg(LOG_ERR, "Failed to fix ownership of pipe %s (%s)",
-				fifo_path, strerror_r(errno, err_buff,
-				BUFFER_SIZE));
+			    fifo_path, strerror_r(errno, err_buff,
+						  BUFFER_SIZE));
 			unlink_fifo();
 			close(ffd[0].fd);
 			return 1;
@@ -126,6 +128,7 @@ int preconstruct_fifo(const conf_t *config)
 
 	return 0;
 }
+
 
 static int init_db(const conf_t *config)
 {
@@ -159,6 +162,7 @@ static int init_db(const conf_t *config)
 	return 0;
 }
 
+
 static unsigned get_pages_in_use(void);
 static unsigned long pages, max_pages;
 static void close_db(void)
@@ -171,7 +175,7 @@ static void close_db(void)
 	max_pages = stat.me_mapsize / size;
 	msg(LOG_DEBUG, "Database max pages: %lu", max_pages);
 	msg(LOG_DEBUG, "Database pages in use: %lu (%lu%%)", pages,
-							(100*pages)/max_pages);
+	    (100*pages)/max_pages);
 
 	// Now close down
 	mdb_close(env, dbi);
@@ -182,8 +186,9 @@ void database_report(FILE *f)
 {
 	fprintf(f, "Database max pages: %lu\n", max_pages);
 	fprintf(f, "Database pages in use: %lu (%lu%%)\n\n", pages,
-							(100*pages)/max_pages);
+		(100*pages)/max_pages);
 }
+
 
 /*
  * A DBI has to be associated with any new txn instance. It can be
@@ -203,16 +208,18 @@ static int open_dbi(MDB_txn *txn)
 	return 0;
 }
 
+
 static void abort_transaction(MDB_txn *txn)
 {
 	mdb_txn_abort(txn);
 	dbi_init = 0;
 }
 
+
 /*
- * Convert path to a hash value. Used when the path exceeds the LMDB key limit(511).
- * Note: Returned value must be deallocated.
-*/
+ * Convert path to a hash value. Used when the path exceeds the LMDB key
+ * limit(511).  Note: Returned value must be deallocated.
+ */
 static char *path_to_hash(const char *path, const size_t path_len)
 {
 	gcry_md_hd_t h;
@@ -238,11 +245,12 @@ static char *path_to_hash(const char *path, const size_t path_len)
 	return digest;
 }
 
+
 /*
  * path - key
  * status, file size, sha256 hash - data
  * status means if data is confirmed: unknown, yes, no
-*/
+ */
 static int write_db(const char *idx, const char *data)
 {
 	MDB_val key, value;
@@ -290,6 +298,7 @@ static int write_db(const char *idx, const char *data)
 	return 0;
 }
 
+
 /*
  * The idea with this set of code is that we can set up ops once
  * and perform many read operations. This reduces the need to setup
@@ -326,6 +335,7 @@ static int start_long_term_read_ops(void)
 	return 0;
 }
 
+
 /*
  * Periodically close the transaction. Next time we start a read operation
  * everything will get re-initialized.
@@ -342,6 +352,7 @@ static void long_term_read_abort(void)
 	}
 }
 
+
 /*
  * We are finished with read ops. Close it up.
  */
@@ -353,6 +364,7 @@ static void end_long_term_read_ops(void)
 	lt_txn = NULL;
 }
 
+
 static unsigned get_pages_in_use(void)
 {
 	MDB_stat stat;
@@ -360,10 +372,11 @@ static unsigned get_pages_in_use(void)
 	start_long_term_read_ops();
 	mdb_stat(lt_txn, dbi, &stat);
 	end_long_term_read_ops();
-	pages = stat.ms_leaf_pages + stat.ms_branch_pages + 
-						stat.ms_overflow_pages;
+	pages = stat.ms_leaf_pages + stat.ms_branch_pages +
+		stat.ms_overflow_pages;
 	return stat.ms_psize;
 }
+
 
 /*
  * This is the long term read operation. It takes a path as input and
@@ -420,14 +433,14 @@ static char *lt_read_db(const char *index, int only_check_key, int *error)
 
 		// There's duplicate, grab the second one.
 		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
-							MDB_NEXT_DUP))) {
+					 MDB_NEXT_DUP))) {
 			free(hash);
 			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 			return NULL;
 		}
 
 		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
-							MDB_GET_CURRENT))) {
+					 MDB_GET_CURRENT))) {
 			free(hash);
 			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 			return NULL;
@@ -455,12 +468,13 @@ static char *lt_read_db(const char *index, int only_check_key, int *error)
 	return data;
 }
 
+
 /*
  * This function takes a path as input and looks it up. If found it
  * will delete the entry.
  *
-static int delete_entry_db(const char *index)
-{
+ static int delete_entry_db(const char *index)
+ {
 	MDB_txn *txn;
 	MDB_val key, value;
 
@@ -472,8 +486,9 @@ static int delete_entry_db(const char *index)
 		return 1;
 	}
 
-	// FIXME: if we ever use this function, it will need patching
-	// to use hashes if the path is larger than MDB_maxkeysize.
+
+// FIXME: if we ever use this function, it will need patching
+// to use hashes if the path is larger than MDB_maxkeysize.
 	key.mv_data = (void *)index;
 	key.mv_size = strlen(index);
 	value.mv_data = NULL;
@@ -490,6 +505,7 @@ static int delete_entry_db(const char *index)
 	return 0;
 }*/
 
+
 // This function checks the database to see if its empty. It returns
 // a 0 if it has entries, 1 on empty, and -1 if an error
 static int database_empty(void)
@@ -501,6 +517,7 @@ static int database_empty(void)
 		return 1;
 	return 0;
 }
+
 
 static int delete_all_entries_db()
 {
@@ -534,20 +551,24 @@ static int create_database(int with_sync)
 	msg(LOG_INFO, "Creating database");
 	int rc = 0;
 
-	for (backend_entry* be = backend_get_first() ; be != NULL ; be = be->next ) {
-		msg(LOG_INFO, "Loading data from %s backend", be->backend->name);
+	for (backend_entry* be = backend_get_first() ; be != NULL ;
+						     be = be->next ) {
+		msg(LOG_INFO,"Loading data from %s backend", be->backend->name);
 
 		list_item_t * item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
 			if ((rc = write_db(item->index, item->data)))
-				msg(LOG_ERR, "Error (%d) writing key=\"%s\" data=\"%s\"",
-				    rc, (const char*)item->index, (const char*)item->data);
+				msg(LOG_ERR,
+				    "Error (%d) writing key=\"%s\" data=\"%s\"",
+				    rc, (const char*)item->index,
+				    (const char*)item->data);
 		}
 	}
 	// Flush everything to disk
 	if (with_sync) mdb_env_sync(env, 1);
 	return rc;
 }
+
 
 /*
  * This function will compare the backend database against our copy
@@ -561,8 +582,10 @@ static int check_database_copy(void)
 
 	if (start_long_term_read_ops())
 		return -1;
-	for (backend_entry* be = backend_get_first() ; be != NULL ; be = be->next ) {
-		msg(LOG_INFO, "Importing data from %s backend", be->backend->name);
+	for (backend_entry* be = backend_get_first() ; be != NULL ;
+							 be = be->next ) {
+		msg(LOG_INFO, "Importing data from %s backend",
+							 be->backend->name);
 
 		list_item_t * item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
@@ -583,9 +606,10 @@ static int check_database_copy(void)
 					// If no dup or miscompare, problems
 					if (!data || strcmp(item->data, data)) {
 						msg(LOG_DEBUG,
-					      "Data miscompare for %s:%s vs %s",
-						(const char *)item->index,
-						(const char *)item->data, data);
+					    "Data miscompare for %s:%s vs %s",
+						    (const char *)item->index,
+						    (const char *)item->data,
+						    data);
 						problems++;
 					}
 				}
@@ -623,6 +647,7 @@ static int verify_database_entries(void)
 	return 0;
 }
 
+
 /*
  * This function removes the trust database files.
  */
@@ -636,7 +661,8 @@ void unlink_db(void)
 	unlink(path);
 }
 
-/* 
+
+/*
  * This function is used to detect if we are using version1 of the database.
  * If so, we have to delete the database and rebuild it. We cannot mix
  * database versions because lmdb doesn't do that.
@@ -659,7 +685,7 @@ static int migrate_database(void)
 		fd = open(vpath, O_CREAT|O_EXCL|O_WRONLY, 0640);
 		if (fd < 0) {
 			msg(LOG_ERR, "Failed writing db version %s",
-							strerror(errno));
+			    strerror(errno));
 			return 1;
 		}
 		write(fd, "2", 1);
@@ -676,6 +702,7 @@ static int migrate_database(void)
 
 	return 1;
 }
+
 
 /*
  * This function is responsible for getting the database ready to use.
@@ -716,7 +743,9 @@ int init_database(conf_t *config)
 	rc = database_empty();
 	if (rc > 0) {
 		if ((rc = create_database(/*with_sync*/1))) {
-			msg(LOG_ERR, "Failed to create database, create_database() (%d)", rc);
+			msg(LOG_ERR,
+			   "Failed to create database, create_database() (%d)",
+			   rc);
 			close_db();
 			return rc;
 		}
@@ -727,7 +756,7 @@ int init_database(conf_t *config)
 			rc = update_database(config);
 			if (rc)
 				msg(LOG_ERR,
-					"Failed updating the trust database");
+				    "Failed updating the trust database");
 		}
 	}
 
@@ -738,6 +767,7 @@ int init_database(conf_t *config)
 
 	return rc;
 }
+
 
 // Returns a 1 if trusted and 0 if not and -1 on error
 int check_trust_database(const char *path)
@@ -765,15 +795,16 @@ int check_trust_database(const char *path)
 		// problem. These are sorted from most likely to least.
 		if (strncmp(path, "/usr/", 5) == 0) {
 			if ((lib64_symlink &&
-				 strncmp(&path[5], "lib64/", 6) == 0) ||
-				(lib_symlink &&
-					strncmp(&path[5], "lib/", 4) == 0) ||
-				(bin_symlink &&
-					strncmp(&path[5], "bin/", 4) == 0) ||
-				(sbin_symlink &&
-					strncmp(&path[5], "sbin/", 5) == 0)) {
+			     strncmp(&path[5], "lib64/", 6) == 0) ||
+			    (lib_symlink &&
+			     strncmp(&path[5], "lib/", 4) == 0) ||
+			    (bin_symlink &&
+			     strncmp(&path[5], "bin/", 4) == 0) ||
+			    (sbin_symlink &&
+			     strncmp(&path[5], "sbin/", 5) == 0)) {
 				// We have a symlink, retry
-				if (lt_read_db(&path[4], READ_TEST_KEY, &error)) {
+				if (lt_read_db(&path[4], READ_TEST_KEY,
+								&error)) {
 					if (error)
 						retval = -1;
 					else
@@ -790,6 +821,7 @@ int check_trust_database(const char *path)
 	return retval;
 }
 
+
 void close_database(void)
 {
 	pthread_join(update_thread, NULL);
@@ -802,10 +834,12 @@ void close_database(void)
 	unlink_fifo();
 }
 
+
 void unlink_fifo(void)
 {
 	unlink(fifo_path);
 }
+
 
 /*
  * Lock wrapper for update mutex
@@ -815,6 +849,7 @@ void lock_update_thread(void) {
 	//msg(LOG_DEBUG, "lock_update_thread()");
 }
 
+
 /*
  * Unlock wrapper for update mutex
  */
@@ -822,6 +857,7 @@ void unlock_update_thread(void) {
 	pthread_mutex_unlock(&update_lock);
 	//msg(LOG_DEBUG, "unlock_update_thread()");
 }
+
 
 /*
  * This function reloads updated backend db into our internal database.
@@ -838,10 +874,10 @@ static int update_database(conf_t *config)
 	 * backend loading/reloading should be done in upper level
 	 */
 	/*
-	if ((rc = backend_load())) {
-		msg(LOG_ERR, "Cannot open the backend database (%d)", rc);
-		return rc;
-		}*/
+	   if ((rc = backend_load())) {
+	   msg(LOG_ERR, "Cannot open the backend database (%d)", rc);
+	   return rc;
+	   }*/
 
 	lock_update_thread();
 
@@ -867,6 +903,7 @@ static int update_database(conf_t *config)
 
 	return 0;
 }
+
 
 static void *update_thread_main(void *arg)
 {
@@ -910,7 +947,8 @@ static void *update_thread_main(void *arg)
 #endif
 				continue;
 			} else {
-				msg(LOG_ERR, "Update poll error (%s)", strerror_r(errno, err_buff, BUFFER_SIZE));
+				msg(LOG_ERR, "Update poll error (%s)",
+				    strerror_r(errno, err_buff, BUFFER_SIZE));
 				goto err_out;
 			}
 		} else if (rc == 0) {
@@ -921,16 +959,22 @@ static void *update_thread_main(void *arg)
 		} else {
 			if (ffd[0].revents & POLLIN) {
 				memset(buff, 0, BUFFER_SIZE);
-				ssize_t count = read(ffd[0].fd, buff, BUFFER_SIZE);
+				ssize_t count = read(ffd[0].fd, buff,
+						     BUFFER_SIZE);
 
 				if (count == -1) {
-					msg(LOG_ERR, "Failed to read from a pipe %s (%s)", fifo_path, strerror_r(errno, err_buff, BUFFER_SIZE));
+					msg(LOG_ERR,
+					   "Failed to read from a pipe %s (%s)",
+					   fifo_path,
+					   strerror_r(errno, err_buff,
+						      BUFFER_SIZE));
 					goto err_out;
 				}
 
 				if (count == 0) {
 #ifdef DEBUG
-                                        msg(LOG_DEBUG, "Buffer contains zero bytes!");
+					msg(LOG_DEBUG,
+					    "Buffer contains zero bytes!");
 #endif
 					continue;
 				}
@@ -939,29 +983,34 @@ static void *update_thread_main(void *arg)
 #endif
 				int check = 1;
 				for (int i = 0 ; i < count ; i++) {
-					if (buff[i] != '1' && buff[i] != '\n' && buff[i] != '\0') {
+					if (buff[i] != '1' && buff[i] != '\n' &&
+							buff[i] != '\0') {
 						check = 0;
-						msg(LOG_ERR, "Read bad content from pipe %s", fifo_path);
+						msg(LOG_ERR,
+						"Read bad content from pipe %s",
+							fifo_path);
 						break;
 					}
 				}
 
 				if (check) {
-					msg(LOG_INFO, "It looks like there was an update of the system... Syncing DB.");
+					msg(LOG_INFO,
+	    "It looks like there was an update of the system... Syncing DB.");
 
 					backend_close();
 					backend_init(config);
 					backend_load();
 
 					if ((rc = update_database(config))) {
-						msg(LOG_ERR, "Cannot update a database!");
+						msg(LOG_ERR,
+						   "Cannot update a database!");
 						close(ffd[0].fd);
 						backend_close();
 						unlink_fifo();
 						exit(rc);
-					} else {
+					} else
 						msg(LOG_INFO, "Updated");
-					}
+
 					// Conserve memory
 					backend_close();
 				}
@@ -976,3 +1025,4 @@ err_out:
 
 	return NULL;
 }
+
