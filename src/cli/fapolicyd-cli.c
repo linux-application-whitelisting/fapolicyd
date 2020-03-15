@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Radovan Sroka <rsroka@redhat.com>
+ *   Steve Grubb <sgrubb@redhat.com>
  */
 
 #include "config.h"
@@ -33,15 +34,24 @@
 #include <ctype.h>
 #include <magic.h>
 #include <stdlib.h>
+#include <getopt.h>
 #include "policy.h"
 
 const char * usage =
 "Fapolicyd CLI Tool\n\n"
 "-h\t--help\t\tPrints this help message\n"
-"-f\t--ftype\t\tPrints out the mime type of a file\n"
+"-t\t--ftype\t\tPrints out the mime type of a file\n"
 "-l\t--list\t\tPrints a list of the daemon's rules with numbers\n"
 "-u\t--update\t\tNotifies fapolicyd to perform update of database\n"
 ;
+
+struct option long_opts[] =
+{
+	{"help", 0, NULL, 'h'},
+	{"ftype", 0, NULL, 't'},
+	{"list", 0, NULL, 'l'},
+	{"update", 0, NULL, 'u'},
+};
 
 const char * _pipe = "/run/fapolicyd/fapolicyd.fifo";
 
@@ -64,189 +74,208 @@ static char *get_line(FILE *f, char *buf, unsigned size, unsigned *lineno)
 			// If a line is too long skip it.
 			// Only output 1 warning
 			if (!too_long)
-				fprintf(stderr, "Skipping line %u: too long\n", *lineno);
+				fprintf(stderr, "Skipping line %u: too long\n",
+								*lineno);
 			too_long = 1;
 		}
 	}
 	return NULL;
 }
 
-
-int main(int argc, const char *argv[])
+int do_ftype(const char *path)
 {
+	int fd;
+	magic_t magic_cookie;
+	const char *ptr;
+	struct stat sb;
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		printf("Cannot open %s - %s\n", path, strerror(errno));
+		exit(1);
+	}
+
+	unsetenv("MAGIC");
+	magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
+						  MAGIC_NO_CHECK_ELF);
+	if (magic_cookie == NULL) {
+		printf("Unable to init libmagic");
+		close(fd);
+		return 1;
+	}
+	if (magic_load(magic_cookie,
+			"/usr/share/fapolicyd/fapolicyd-magic.mgc:"
+			"/usr/share/misc/magic.mgc") != 0) {
+		printf("Unable to load magic database");
+		close(fd);
+		magic_close(magic_cookie);
+		return 1;
+	}
+	fstat(fd, &sb);
+	uint32_t elf = gather_elf(fd, sb.st_size);
+	if (elf)
+		ptr = classify_elf_info(elf, path);
+	else
+		ptr = magic_descriptor(magic_cookie, fd);
+	if (ptr) {
+		char buf[80], *str;
+		strncpy(buf, ptr, 79);
+		buf[79] = 0;
+		str = strchr(buf, ';');
+		if (str)
+			*str = 0;
+		printf("%s\n", buf);
+	} else
+		printf("unknown\n");
+	close(fd);
+	magic_close(magic_cookie);
+
+	return 0;
+}
+
+
+int do_list(void)
+{
+	unsigned count = 1, lineno = 0;
+	char buf[160];
+	FILE *f = fopen(RULES_FILE, "rm");
+	if (f == NULL) {
+		fprintf(stderr, "Cannot open rules file (%s)\n",
+						strerror(errno));
+		return 1;
+	}
+	while (get_line(f, buf, sizeof(buf), &lineno)) {
+		char *str = buf;
+		lineno++;
+		while (*str) {
+			if (!isblank(*str))
+				break;
+			str++;
+		}
+		if (*str == 0) // blank line
+			continue;
+		if (*str == '#') //comment line
+			continue;
+		printf("%u. %s\n", count, buf);
+		count++;
+	}
+	fclose(f);
+	return 0;
+}
+
+
+int do_update(void)
+{
+	int fd = -1;
+	struct stat s;
+
+	fd = open(_pipe, O_WRONLY);
+	if (fd == -1) {
+		fprintf(stderr, "Open: %s -> %s\n", _pipe, strerror(errno));
+		return 1;
+	}
+
+	if (stat(_pipe, &s) == -1) {
+		fprintf(stderr, "Stat: %s -> %s\n", _pipe, strerror(errno));
+		close(fd);
+		return 1;
+	} else {
+		if (!S_ISFIFO(s.st_mode)) {
+			fprintf(stderr,
+				"File: %s exists but it is not a pipe!\n",
+				 _pipe);
+			close(fd);
+			return 1;
+		}
+		// we will require pipe to have 0660 permissions
+		if (!(
+		      (s.st_mode & S_IRUSR) &&
+		      (s.st_mode & S_IWUSR) &&
+		      !(s.st_mode & S_IXUSR) &&
+
+		      (s.st_mode & S_IRGRP) &&
+		      (s.st_mode & S_IWGRP) &&
+		      !(s.st_mode & S_IXGRP) &&
+
+		      !(s.st_mode & S_IROTH) &&
+		      !(s.st_mode & S_IWOTH) &&
+		      !(s.st_mode & S_IXOTH)
+		     )) {
+			fprintf(stderr,
+				"File: %s has 0%d%d%d instead of 0660 \n",
+				_pipe,
+				((s.st_mode & S_IRUSR) ? 4 : 0) +
+				((s.st_mode & S_IWUSR) ? 2 : 0) +
+				((s.st_mode & S_IXUSR) ? 1 : 0)
+				,
+				((s.st_mode & S_IRGRP) ? 4 : 0) +
+				((s.st_mode & S_IWGRP) ? 2 : 0) +
+				((s.st_mode & S_IXGRP) ? 1 : 0)
+				,
+				((s.st_mode & S_IROTH) ? 4 : 0) +
+				((s.st_mode & S_IWOTH) ? 2 : 0) +
+				((s.st_mode & S_IXOTH) ? 1 : 0) );
+			close(fd);
+			return 1;
+		}
+	}
+
+	ssize_t ret = write(fd, "1", 2);
+
+	if (ret == -1) {
+		fprintf(stderr, "Write: %s -> %s\n", _pipe, strerror(errno));
+		close(fd);
+		return 1;
+	}
+
+	if (close(fd)) {
+		fprintf(stderr, "Close: %s -> %s\n", _pipe, strerror(errno));
+		return 1;
+	}
+
+	printf("Fapolicyd was notified\n");
+	return 0;
+}
+
+
+int main(int argc, char * const argv[])
+{
+	int opt, option_index, rc = 1;
+
 	if (argc == 1) {
 		fprintf(stderr, "Too few arguments\n\n");
 		fprintf(stderr, "%s", usage);
-		return 1;
+		return rc;
 	}
 
 	if (argc > 3) {
 		fprintf(stderr, "Too many arguments\n\n");
 		fprintf(stderr, "%s", usage);
-		return 1;
+		return rc;
 	}
 
-	if ((strcmp(argv[1], "-h") == 0) || (strcmp(argv[1], "--help") == 0)) {
+	opt = getopt_long(argc, argv, "ht:lu",
+				 long_opts, &option_index);
+	switch (opt) {
+	case 'h':
 		printf("%s", usage);
-		return 0;
-	} else if ((strcmp(argv[1], "-u") == 0) ||
-					(strcmp(argv[1], "--update") == 0)) {
-		int fd = -1;
-		struct stat s;
-
-		fd = open(_pipe, O_WRONLY);
-		if (fd == -1) {
-			fprintf(stderr, "Open: %s -> %s\n", _pipe,
-							strerror(errno));
-			return 1;
-		}
-
-		if (stat(_pipe, &s) == -1) {
-			fprintf(stderr, "Stat: %s -> %s\n", _pipe,
-							strerror(errno));
-			close(fd);
-			return 1;
-		} else {
-			if (!S_ISFIFO(s.st_mode)) {
-				fprintf(stderr,
-				    "File: %s exists but it is not a pipe!\n",
-				    _pipe);
-				close(fd);
-				return 1;
-			}
-			// we will require pipe to have 0660 permissions
-			if (!(
-			      (s.st_mode & S_IRUSR) &&
-			      (s.st_mode & S_IWUSR) &&
-			      !(s.st_mode & S_IXUSR) &&
-
-			      (s.st_mode & S_IRGRP) &&
-			      (s.st_mode & S_IWGRP) &&
-			      !(s.st_mode & S_IXGRP) &&
-
-			      !(s.st_mode & S_IROTH) &&
-			      !(s.st_mode & S_IWOTH) &&
-			      !(s.st_mode & S_IXOTH)
-			     )) {
-				fprintf(stderr,
-				    "File: %s has 0%d%d%d instead of 0660 \n",
-					_pipe,
-					((s.st_mode & S_IRUSR) ? 4 : 0) +
-					((s.st_mode & S_IWUSR) ? 2 : 0) +
-					((s.st_mode & S_IXUSR) ? 1 : 0)
-					,
-					((s.st_mode & S_IRGRP) ? 4 : 0) +
-					((s.st_mode & S_IWGRP) ? 2 : 0) +
-					((s.st_mode & S_IXGRP) ? 1 : 0)
-					,
-					((s.st_mode & S_IROTH) ? 4 : 0) +
-					((s.st_mode & S_IWOTH) ? 2 : 0) +
-					((s.st_mode & S_IXOTH) ? 1 : 0) );
-				close(fd);
-				return 1;
-			}
-		}
-
-		ssize_t ret = write(fd, "1", 2);
-
-		if (ret == -1) {
-			fprintf(stderr, "Write: %s -> %s\n", _pipe,
-							strerror(errno));
-			close(fd);
-			return 1;
-		}
-
-		if (close(fd)) {
-			fprintf(stderr, "Close: %s -> %s\n", _pipe,
-							strerror(errno));
-			return 1;
-		}
-
-		printf("Fapolicyd was notified\n");
-
-	} else if ((strcmp(argv[1], "-l") == 0) ||
-		   (strcmp(argv[1], "--list") == 0)) {
-		unsigned count = 1, lineno = 0;
-		char buf[160];
-		FILE *f = fopen(RULES_FILE, "rm");
-		if (f == NULL) {
-			fprintf(stderr, "Cannot open rules file (%s)\n",
-							strerror(errno));
-			return 1;
-		}
-		while (get_line(f, buf, sizeof(buf), &lineno)) {
-			char *str = buf;
-			lineno++;
-			while (*str) {
-				if (!isblank(*str))
-					break;
-				str++;
-			}
-			if (*str == 0) // blank line
-				continue;
-			if (*str == '#') //comment line
-				continue;
-			printf("%u. %s\n", count, buf);
-			count++;
-		}
-		fclose(f);
-	} else if ((strcmp(argv[1], "-f") == 0) ||
-		   (strcmp(argv[1], "--ftype") == 0)) {
-		int fd;
-		magic_t magic_cookie;
-		const char *ptr, *path = argv[2];
-		struct stat sb;
-
-		if (argc != 3) {
-			printf("Path to file is missing\n");
-			exit(1);
-		}
-		fd = open(path, O_RDONLY);
-		if (fd < 0) {
-			printf("Cannot open %s - %s\n", path, strerror(errno));
-			exit(1);
-		}
-
-		unsetenv("MAGIC");
-		magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|
-					  MAGIC_NO_CHECK_CDF|
-					  MAGIC_NO_CHECK_ELF);
-		if (magic_cookie == NULL) {
-			printf("Unable to init libmagic");
-			close(fd);
-			exit(1);
-		}
-		if (magic_load(magic_cookie,
-				"/usr/share/fapolicyd/fapolicyd-magic.mgc:"
-				"/usr/share/misc/magic.mgc") != 0) {
-			printf("Unable to load magic database");
-			close(fd);
-			magic_close(magic_cookie);
-			exit(1);
-		}
-		fstat(fd, &sb);
-		uint32_t elf = gather_elf(fd, sb.st_size);
-		if (elf)
-			ptr = classify_elf_info(elf, path);
-		else
-			ptr = magic_descriptor(magic_cookie, fd);
-		if (ptr) {
-			char buf[80], *str;
-			strncpy(buf, ptr, 79);
-			buf[79] = 0;
-			str = strchr(buf, ';');
-			if (str)
-				*str = 0;
-			printf("%s\n", buf);
-		} else
-			printf("unknown\n");
-		close(fd);
-		magic_close(magic_cookie);
-	} else {
-		fprintf(stderr, "Unexpected argument -> %s\n\n", argv[1]);
+		rc = 0;
+		break;
+	case 't':
+		printf("Path to file is missing\n");
+		rc = do_ftype(optarg);
+		break;
+	case 'l':
+		rc = do_list();
+		break;
+	case 'u':
+		rc = do_update();
+		break;
+	default:
+		fprintf(stderr, "Unknown argument -> %s\n\n", argv[1]);
 		printf("%s", usage);
-		return 1;
+		rc = 1;
 	}
-	return 0;
+	return rc;
 }
 
