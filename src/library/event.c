@@ -404,7 +404,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 				obj.o = strdup("?");
 			break;
 		case FTYPE: {
-			object_attr_t * path =  get_obj_attr(e, PATH);
+			object_attr_t *path =  get_obj_attr(e, PATH);
 			ptr = get_file_type_from_fd(e->fd, o->info,
 							path ? path->o : "?",
 							sizeof(buf), buf);
@@ -418,7 +418,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			obj.o = get_hash_from_fd(e->fd);
 			break;
 		case OBJ_TRUST: {
-			object_attr_t * path =  get_obj_attr(e, PATH);
+			object_attr_t *path =  get_obj_attr(e, PATH);
 
 			if (path && path->o && check_trust_database(path->o))
 				obj.len = 1;
@@ -460,9 +460,13 @@ void run_usage_report(const conf_t *config, FILE *f)
 
 	if (config->detailed_report) {
 		t = time(NULL);
-		fprintf(f, "File access attempts from oldest to newest as of %s\n", ctime(&t));
+		fprintf(f,
+			"File access attempts from oldest to newest as of %s\n",
+			ctime(&t));
 		fprintf(f, "\tFILE\t\t\t\t\t\t    ATTEMPTS\n");
-		fprintf(f, "---------------------------------------------------------------------------\n");
+		fprintf(f,
+"---------------------------------------------------------------------------\n"
+			);
 		if (obj_cache->count == 0) {
 			fprintf(f, "(none)\n");
 			return;
@@ -496,9 +500,13 @@ void run_usage_report(const conf_t *config, FILE *f)
 	fprintf(f, "\n\n");
 
 	if (config->detailed_report) {
-		fprintf(f, "Active processes oldest to most recently active as of %s\n", ctime(&t));
+		fprintf(f,
+		   "Active processes oldest to most recently active as of %s\n",
+		   ctime(&t));
 		fprintf(f, "\tEXE\tCOMM\t\t\t\t\t    ATTEMPTS\n");
-		fprintf(f, "---------------------------------------------------------------------------\n");
+		fprintf(f,
+"---------------------------------------------------------------------------\n"
+			);
 		if (subj_cache->count == 0) {
 			fprintf(f, "(none)\n");
 			return;
@@ -543,3 +551,4 @@ void run_usage_report(const conf_t *config, FILE *f)
 	print_queue_stats(f, subj_cache);
 	fprintf(f, "\n");
 }
+

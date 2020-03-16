@@ -28,7 +28,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-
 #include "conf.h"
 #include "message.h"
 #include "backend-manager.h"
@@ -49,8 +48,7 @@ static backend* compiled[] =
 };
 
 static backend_entry* backends = NULL;
-
-static int backend_push(const char* name)
+static int backend_push(const char *name)
 {
 	long index = -1;
 	for (long i = 0 ; compiled[i] != NULL; i++) {
@@ -64,7 +62,7 @@ static int backend_push(const char* name)
 		msg(LOG_ERR, "%s backend not supported, aborting!", name);
 		return 1;
 	} else {
-		backend_entry * tmp = (backend_entry*)
+		backend_entry *tmp = (backend_entry *)
 				malloc(sizeof(backend_entry));
 
 		if (!tmp) {
@@ -89,12 +87,13 @@ static int backend_push(const char* name)
 	return 0;
 }
 
+
 static int backend_destroy(void)
 {
-	backend_entry * be = backend_get_first();
-	backend_entry * tmp = NULL;
+	backend_entry *be = backend_get_first();
+	backend_entry *tmp = NULL;
 
-	while ( be != NULL ) {
+	while (be != NULL) {
 		tmp = be;
 		be = be->next;
 		free(tmp);
@@ -104,12 +103,12 @@ static int backend_destroy(void)
 }
 
 
-static int backend_create(const char * trust_list)
+static int backend_create(const char *trust_list)
 {
-
 	char *ptr, *saved, *tmp = strdup(trust_list);
 
-	if (!tmp) return 1;
+	if (!tmp)
+		return 1;
 
 	ptr = strtok_r(tmp, ",", &saved);
 	while (ptr) {
@@ -124,34 +123,35 @@ static int backend_create(const char * trust_list)
 }
 
 
-int backend_init(const conf_t * conf)
+int backend_init(const conf_t *conf)
 {
+	if (backend_create(conf->trust))
+		return 1;
 
-	if (backend_create(conf->trust)) return 1;
-
-	for (backend_entry * be = backend_get_first();
+	for (backend_entry *be = backend_get_first();
 			be != NULL;
 			be = be->next) {
-		if (be->backend->init()) return 1;
+		if (be->backend->init())
+			return 1;
 	}
 	return 0;
 }
 
+
 int backend_load(void)
 {
-	for (backend_entry * be = backend_get_first() ;
-			be != NULL;
-			be = be->next) {
-		if (be->backend->load()) return 1;
+	for (backend_entry *be = backend_get_first();
+			be != NULL; be = be->next) {
+		if (be->backend->load())
+			return 1;
 	}
 	return 0;
 }
 
 void backend_close(void)
 {
-	for (backend_entry * be = backend_get_first();
-			be != NULL;
-			be = be->next) {
+	for (backend_entry *be = backend_get_first();
+			be != NULL; be = be->next) {
 		be->backend->close();
 	}
 	backend_destroy();
@@ -161,3 +161,4 @@ backend_entry* backend_get_first(void)
 {
 	return backends;
 }
+

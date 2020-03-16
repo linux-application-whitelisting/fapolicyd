@@ -31,14 +31,15 @@
 #include "fapolicyd-backend.h"
 
 typedef struct _backend_entry {
-	backend * backend;
-	struct _backend_entry * next;
+	backend *backend;
+	struct _backend_entry *next;
 } backend_entry;
 
 
-int backend_init(const conf_t * conf);
+int backend_init(const conf_t *conf);
 int backend_load(void);
 void backend_close(void);
 backend_entry* backend_get_first(void);
 
 #endif
+

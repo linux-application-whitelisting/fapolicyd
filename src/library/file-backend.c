@@ -76,13 +76,11 @@ static int file_load_list(void)
 
 	long line = 1;
 	while(fgets(buffer, BUFFER_SIZE, file)) {
-
 		char *ptr, *saved;
 		int state = NAME;
-
-		char * name = NULL;
-		char * size = NULL;
-		char * sha = NULL;
+		char name = NULL;
+		char *size = NULL;
+		char *sha = NULL;
 
 		if(iscntrl(buffer[0]) || buffer[0] == '#') {
 			memset(buffer, 0, BUFFER_SIZE);
@@ -93,26 +91,22 @@ static int file_load_list(void)
 		while (ptr) {
 			if(strlen(ptr) == 0)
 				continue;
-
-			switch(state) {
+			switch (state)
+			{
 				case NAME:
 					name = ptr;
 					break;
-
 				case SIZE:
 					size = ptr;
 					break;
-
 				case SHA:
 					sha = ptr;
 					break;
-
 				default:
 					fclose(file);
-					msg(	LOG_ERR,
-						"%s:%ld : Too many columns",
-						FILE_PATH,
-						line);
+					msg(LOG_ERR,
+					    "%s:%ld : Too many columns",
+						FILE_PATH, line);
 					return 1;
 			}
 			state++;
@@ -122,10 +116,8 @@ static int file_load_list(void)
 		errno = 0;
 		unsigned long sz = strtoul(size, NULL, 10);
 		if (errno) {
-			msg(	LOG_ERR,
-				"%s:%ld Cannot convert size to number.",
-				FILE_PATH,
-				line);
+			msg(LOG_ERR, "%s:%ld Cannot convert size to number.",
+				FILE_PATH, line);
 			fclose(file);
 			return 1;
 		}
@@ -137,13 +129,8 @@ static int file_load_list(void)
 		// TODO: create proper trim function
 		sha[64] = '\0';
 
-		if (asprintf(	&data,
-				DATA_FORMAT,
-				verified,
-				sz,
-				sha) == -1) {
+		if (asprintf(&data, DATA_FORMAT, verified, sz, sha) == -1)
 			data = NULL;
-		}
 
 		index = strdup(name);
 
@@ -167,8 +154,10 @@ static int file_init_backend(void)
 	return 0;
 }
 
+
 static int file_destroy_backend(void)
 {
 	list_empty(&file_backend.list);
 	return 0;
 }
+
