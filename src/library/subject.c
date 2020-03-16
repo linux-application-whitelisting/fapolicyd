@@ -53,7 +53,8 @@ static void sanity_check_array(const s_array *a, const char *id)
 		abort();
 	}
 	for (i = 0; i < SUBJ_END - SUBJ_START; i++)
-		if (a->subj[i]) num++;
+		if (a->subj[i])
+			num++;
 	if (num != a->cnt) {
 		msg(LOG_DEBUG, "%s - array corruption %u!=%u", id, num, a->cnt);
 		abort();
@@ -67,7 +68,8 @@ subject_attr_t *subject_access(const s_array *a, subject_type_t t)
 {
 	sanity_check_array(a, "subject_access");
 	// These store the same info, see get_subj_attr in event.c
-	if (t == EXE_DIR) t = EXE;
+	if (t == EXE_DIR)
+		t = EXE;
 	if (t >= SUBJ_START && t <= SUBJ_END)
 		return a->subj[t - SUBJ_START];
 	else
@@ -84,7 +86,8 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 	if (subj) {
 		t = subj->type;
 		// These store the same info, see get_subj_attr in event.c
-		if (t == EXE_DIR) t = EXE;
+		if (t == EXE_DIR)
+			t = EXE;
 		if (t >= SUBJ_START && t <= SUBJ_END) {
 			newnode = malloc(sizeof(subject_attr_t));
 			newnode->type = t;
@@ -163,3 +166,4 @@ void subject_reset(s_array *a, subject_type_t t)
 		sanity_check_array(a, "subject_reset2");
 	}
 }
+

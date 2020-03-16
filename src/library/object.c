@@ -49,7 +49,8 @@ static void sanity_check_array(o_array *a, const char *id)
 	int i;
 	unsigned int num = 0;
 	for (i = 0; i < OBJ_END - OBJ_START; i++)
-		if (a->obj[i]) num++;
+		if (a->obj[i])
+			num++;
 	if (num != a->cnt) {
 		msg(LOG_DEBUG, "%s - array corruption %u!=%u", id, num, a->cnt);
 		abort();

@@ -355,7 +355,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 
 	// free .str only when it was really used
 	// otherwise invalid free is possible
-	if (t >= COMM) free(subj.str);
+	if (t >= COMM)
+		free(subj.str);
 	return NULL;
 }
 

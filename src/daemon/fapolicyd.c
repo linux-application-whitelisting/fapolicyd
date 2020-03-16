@@ -110,16 +110,19 @@ err_out:
 	seccomp_release(ctx);
 }
 
+
 static int cmp_fs(void *a, void *b)
 {
 	return strcmp(((fs_data_t *)a)->fs_name, ((fs_data_t *)b)->fs_name);
 }
+
 
 static void free_filesystem(fs_data_t *s)
 {
 	free((void *)s->fs_name);
 	free((void *)s);
 }
+
 
 static void destroy_filesystem(void)
 {
@@ -131,11 +134,13 @@ static void destroy_filesystem(void)
 	free_filesystem(tmp);
 }
 
+
 static void destroy_fs_list(void)
 {
 	while (filesystems.index.root)
 		destroy_filesystem();
 }
+
 
 static int add_filesystem(fs_data_t *f)
 {
@@ -150,6 +155,7 @@ static int add_filesystem(fs_data_t *f)
 	return 0;
 }
 
+
 static fs_data_t *new_filesystem(const char *fs)
 {
 	fs_data_t *tmp = malloc(sizeof(fs_data_t));
@@ -161,6 +167,7 @@ static fs_data_t *new_filesystem(const char *fs)
 	return tmp;
 }
 
+
 static fs_data_t *find_filesystem(const char *f)
 {
 	fs_data_t tmp;
@@ -168,6 +175,7 @@ static fs_data_t *find_filesystem(const char *f)
 	tmp.fs_name = f;
 	return (fs_data_t *)avl_search(&filesystems.index, (avl *) &tmp);
 }
+
 
 static void init_fs_list(const char *watch_fs)
 {
@@ -187,10 +195,12 @@ static void init_fs_list(const char *watch_fs)
 	free(tmp);
 }
 
+
 static void term_handler(int sig)
 {
 	stop = 1 + sig; // Just so its used...
 }
+
 
 static void segv_handler(int signum)
 {
@@ -198,6 +208,7 @@ static void segv_handler(int signum)
 	signal(signum, SIG_DFL);
 	kill(getpid(), signum);
 }
+
 
 // This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031
 #define UNUSED(x) (void)(x)
@@ -210,6 +221,7 @@ int rpmsqEnable (int signum, void *handler)
 	return 0;
 }
 #endif
+
 
 static int write_pid_file(void)
 {
@@ -240,6 +252,7 @@ static int write_pid_file(void)
 	return 0;
 }
 
+
 static int become_daemon(void)
 {
 	int fd;
@@ -250,7 +263,8 @@ static int become_daemon(void)
 	{
 		case 0: // Child
 			fd = open("/dev/null", O_RDWR);
-			if (fd < 0) return -1;
+			if (fd < 0)
+				return -1;
 			if (dup2(fd, 0) < 0) {
 				close(fd);
 				return -1;
@@ -278,6 +292,7 @@ static int become_daemon(void)
 	return 0;
 }
 
+
 // Returns 1 if we care about the entry and 0 if we do not
 static int check_mount_entry(const char *device, const char *point,
 	const char *type)
@@ -293,6 +308,7 @@ static int check_mount_entry(const char *device, const char *point,
 	else
 		return 0;
 }
+
 
 static mlist *m = NULL;
 static void handle_mounts(int fd)
@@ -332,6 +348,7 @@ static void handle_mounts(int fd)
 	fanotify_update(m);
 }
 
+
 static void usage(void)
 {
 	fprintf(stderr,
@@ -339,6 +356,7 @@ static void usage(void)
 		"[--no-details]\n");
 	exit(1);
 }
+
 
 int main(int argc, const char *argv[])
 {
@@ -539,3 +557,4 @@ int main(int argc, const char *argv[])
 
 	return 0;
 }
+

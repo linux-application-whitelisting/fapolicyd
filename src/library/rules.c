@@ -15,8 +15,8 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
- * Boston, MA 02110-1335, USA.
+* Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
+* Boston, MA 02110-1335, USA.
 *
 * Authors:
 *   Steve Grubb <sgrubb@redhat.com>
@@ -56,10 +56,12 @@ void rules_create(llist *l)
 	l->cnt = 0;
 }
 
+
 void rules_first(llist *l)
 {
 	l->cur = l->head;
 }
+
 
 static void rules_last(llist *l)
 {
@@ -75,6 +77,7 @@ static void rules_last(llist *l)
 	l->cur = window;
 }
 
+
 lnode *rules_next(llist *l)
 {
 	if (l->cur == NULL)
@@ -83,6 +86,7 @@ lnode *rules_next(llist *l)
 	l->cur = l->cur->next;
 	return l->cur;
 }
+
 
 #ifdef DEBUG
 static void sanity_check_node(lnode *n, const char *id)
@@ -150,6 +154,7 @@ static void sanity_check_node(lnode *n, const char *id)
 #define sanity_check_node(a, b) do {} while(0)
 #endif
 
+
 #ifdef DEBUG
 static void sanity_check_list(llist *l, const char *id)
 {
@@ -183,6 +188,7 @@ static void sanity_check_list(llist *l, const char *id)
 #define sanity_check_list(a, b) do {} while(0)
 #endif
 
+
 /*
  * If subject is trusted function returns true, false otherwise.
  */
@@ -190,9 +196,11 @@ static bool is_subj_trusted(event_t *e)
 {
 	subject_attr_t *trusted = get_subj_attr(e, SUBJ_TRUST);
 
-	if (!trusted) return 0;
+	if (!trusted)
+		return 0;
 	return trusted->val;
 }
+
 
 /*
  * If object is trusted function returns true, false otherwise.
@@ -201,9 +209,11 @@ static bool is_obj_trusted(event_t *e)
 {
 	object_attr_t *trusted = get_obj_attr(e, OBJ_TRUST);
 
-	if (!trusted) return 0;
+	if (!trusted)
+		return 0;
 	return trusted->len;
 }
+
 
 static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 {
@@ -263,6 +273,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	return 0;
 }
 
+
 static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 {
 	// assign the object
@@ -286,6 +297,7 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 
 	return 0;
 }
+
 
 static int parse_new_format(lnode *n, int lineno)
 {
@@ -396,7 +408,8 @@ static int nv_split(char *buf, lnode *n, int lineno)
 							ptr, lineno);
 						return 1;
 					}
-					if (assign_subject(n, type, ptr2, lineno) == 3)
+					if (assign_subject(n, type, ptr2,
+								lineno) == 3)
 						return -1;
 				}
 				parse_new_format(n, lineno);
@@ -447,6 +460,7 @@ finish_up:
 	return 0;
 }
 
+
 // This function take a whole rule as input and passes it to nv_split.
 // Returns 0 if success and 1 on rule failure.
 int rules_append(llist *l, char *buf, unsigned int lineno)
@@ -492,6 +506,7 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 	return 0;
 }
 
+
 // In this table, the number is string length
 static const nv_t dirs[] = {
 	{ 5, "/etc/"},
@@ -503,6 +518,7 @@ static const nv_t dirs[] = {
 	{13, "/usr/libexec/"}
 };
 #define NUM_DIRS (sizeof(dirs)/sizeof(dirs[0]))
+
 
 // Returns 0 if no match, 1 if a match
 static int check_dirs(unsigned int i, const char *path)
@@ -516,6 +532,7 @@ static int check_dirs(unsigned int i, const char *path)
 	}
 	return 0;
 }
+
 
 // Returns 0 if no match, 1 if a match
 static int obj_dir_test(const object_attr_t *o, const object_attr_t *obj,
@@ -537,6 +554,7 @@ static int obj_dir_test(const object_attr_t *o, const object_attr_t *obj,
 	return 1;
 }
 
+
 // Returns 0 if no match, 1 if a match
 static int subj_dir_test(const subject_attr_t *s, const subject_attr_t *subj,
 	int trusted)
@@ -557,6 +575,7 @@ static int subj_dir_test(const subject_attr_t *s, const subject_attr_t *subj,
 		return 0;
 	return 1;
 }
+
 
 /*
  * Notes about elf program startup
@@ -695,6 +714,7 @@ make_decision:
 	return rc;
 }
 
+
 // Returns 0 if no match, 1 if a match
 static int check_access(const lnode *r, const event_t *e)
 {
@@ -710,6 +730,7 @@ static int check_access(const lnode *r, const event_t *e)
 
 	return r->a == perm;
 }
+
 
 // Returns 0 if no match, 1 if a match, -1 on error
 static int check_subject(lnode *r, event_t *e)
@@ -763,6 +784,7 @@ static int check_subject(lnode *r, event_t *e)
 	return 1;
 }
 
+
 // Returns 0 if no match, 1 if a match
 static decision_t check_object(lnode *r, event_t *e)
 {
@@ -813,6 +835,7 @@ static decision_t check_object(lnode *r, event_t *e)
 	return 1;
 }
 
+
 decision_t rule_evaluate(lnode *r, event_t *e)
 {
 	int d;
@@ -835,6 +858,7 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 	return r->d;
 }
 
+
 void rules_unsupport_audit(const llist *l)
 {
 #ifdef USE_AUDIT
@@ -854,6 +878,7 @@ void rules_unsupport_audit(const llist *l)
 	}
 #endif
 }
+
 
 void rules_clear(llist *l)
 {
@@ -882,3 +907,4 @@ void rules_clear(llist *l)
 	l->cur = NULL;
 	l->cnt = 0;
 }
+
