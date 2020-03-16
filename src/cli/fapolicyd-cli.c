@@ -39,7 +39,7 @@
 #include "policy.h"
 #include "database.h"
 
-const char * usage =
+const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "-d, --delete-db\tDelete the trust database\n"
 "-h, --help\t\tPrints this help message\n"
@@ -57,7 +57,7 @@ struct option long_opts[] =
 	{"update",	0, NULL, 'u'},
 };
 
-const char * _pipe = "/run/fapolicyd/fapolicyd.fifo";
+const char *_pipe = "/run/fapolicyd/fapolicyd.fifo";
 volatile atomic_bool stop = 0;  // Library needs this
 
 
