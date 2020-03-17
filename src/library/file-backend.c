@@ -78,7 +78,7 @@ static int file_load_list(void)
 	while (fgets(buffer, BUFFER_SIZE, file)) {
 		char *ptr, *saved;
 		int state = NAME;
-		char name = NULL;
+		char *name = NULL;
 		char *size = NULL;
 		char *sha = NULL;
 
