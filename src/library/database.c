@@ -958,9 +958,8 @@ static void *update_thread_main(void *arg)
 			continue;
 		} else {
 			if (ffd[0].revents & POLLIN) {
-				memset(buff, 0, BUFFER_SIZE);
 				ssize_t count = read(ffd[0].fd, buff,
-						     BUFFER_SIZE);
+						     BUFFER_SIZE-1);
 
 				if (count == -1) {
 					msg(LOG_ERR,
@@ -977,7 +976,8 @@ static void *update_thread_main(void *arg)
 					    "Buffer contains zero bytes!");
 #endif
 					continue;
-				}
+				} else // Manually terminate buff
+					buff[count] = 0;
 #ifdef DEBUG
 				msg(LOG_DEBUG, "Buffer contains: \"%s\"", buff);
 #endif
