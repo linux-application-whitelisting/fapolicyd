@@ -66,7 +66,6 @@ static int file_load_list(void)
 	msg(LOG_INFO, "Loading file backend");
 
 	list_empty(&file_backend.list);
-	memset(buffer, 0, BUFFER_SIZE);
 
 	FILE *file = fopen(FILE_PATH, "r");
 	if (!file) {
@@ -82,10 +81,8 @@ static int file_load_list(void)
 		char *size = NULL;
 		char *sha = NULL;
 
-		if(iscntrl(buffer[0]) || buffer[0] == '#') {
-			memset(buffer, 0, BUFFER_SIZE);
+		if(iscntrl(buffer[0]) || buffer[0] == '#')
 			continue;
-		}
 
 		ptr = strtok_r(buffer, DELIMITER, &saved);
 		while (ptr) {
@@ -139,7 +136,6 @@ static int file_load_list(void)
 			list_append(&file_backend.list, index, data);
 
 		//free(data);
-		memset(buffer, 0, BUFFER_SIZE);
 		line++;
 	}
 
