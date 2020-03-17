@@ -62,32 +62,34 @@ enum _states {
 
 static int file_load_list(void)
 {
+	FILE *file;
 	char buffer[BUFFER_SIZE];
-	msg(LOG_INFO, "Loading file backend");
+	long line = 1;
 
+	msg(LOG_INFO, "Loading file backend");
 	list_empty(&file_backend.list);
 
-	FILE *file = fopen(FILE_PATH, "r");
+	file = fopen(FILE_PATH, "r");
 	if (!file) {
 		msg(LOG_ERR, "Cannot open %s", FILE_PATH);
 		return 1;
 	}
 
-	long line = 1;
-	while(fgets(buffer, BUFFER_SIZE, file)) {
+	while (fgets(buffer, BUFFER_SIZE, file)) {
 		char *ptr, *saved;
 		int state = NAME;
 		char name = NULL;
 		char *size = NULL;
 		char *sha = NULL;
 
-		if(iscntrl(buffer[0]) || buffer[0] == '#')
+		if (iscntrl(buffer[0]) || buffer[0] == '#')
 			continue;
 
 		ptr = strtok_r(buffer, DELIMITER, &saved);
 		while (ptr) {
-			if(strlen(ptr) == 0)
+			if (*ptr == 0)
 				continue;
+
 			switch (state)
 			{
 				case NAME:
