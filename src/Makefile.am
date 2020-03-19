@@ -29,6 +29,7 @@ libfapolicyd_la_SOURCES = \
 	library/file.c \
 	library/file.h \
 	library/file-backend.c \
+	library/file-backend.h \
 	library/llist.c \
 	library/llist.h \
 	library/lru.c \

@@ -6,6 +6,7 @@
 - Add error checking of the trust database
 - Fixed threading issue during rpm update
 - Add option to delete the trust database to cli, --delete-db
+- Add option to cli to add files to the file trust database
 
 0.9.3
 - In fapolicyd-cli, add a --list option to list rules

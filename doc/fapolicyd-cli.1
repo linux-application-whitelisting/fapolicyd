@@ -13,6 +13,14 @@ Prints a list of command line options.
 .B \-d, \-\-delete-db
 Deletes the trust database. Normally this never needs to be done. But if for some reason the trust database becomes corrupted, then the only method of recovery is to run this command.
 .TP
+.B \-f, \-\-file  [add] [path]
+Manage the file trust database.
+.RS
+.TP 12
+.B add
+This command adds the file given by path to the trust database. It gets the size and calculates the required SHA256 hash.
+.RE
+.TP
 .B \-t, \-\-ftype /path/to/file
 Prints the mime type of the file given. A full path must be specified. This command is intended to help get the ftype parameter of rules correct by seeing how fapolicyd will classify it. Fapolicyd may differ from the \fBfile\fP command.
 .TP

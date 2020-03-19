@@ -38,10 +38,12 @@
 #include <stdatomic.h>
 #include "policy.h"
 #include "database.h"
+#include "file-backend.h"
 
 const char *usage =
 "Fapolicyd CLI Tool\n\n"
-"-d, --delete-db\tDelete the trust database\n"
+"-d, --delete-db\t\tDelete the trust database\n"
+"-f, --file option path\tManage the file trust database\n"
 "-h, --help\t\tPrints this help message\n"
 "-t, --ftype file-path\tPrints out the mime type of a file\n"
 "-l, --list\t\tPrints a list of the daemon's rules with numbers\n"
@@ -51,6 +53,7 @@ const char *usage =
 struct option long_opts[] =
 {
 	{"delete-db",	0, NULL, 'd'},
+	{"file",	1, NULL, 'f'},
 	{"help",	0, NULL, 'h'},
 	{"ftype",	1, NULL, 't'},
 	{"list",	0, NULL, 'l'},
@@ -93,6 +96,36 @@ int do_delete_db(void)
 {
 	unlink_db();
 	return 0;
+}
+
+/*
+ * This function always requires at least one option, the command. We can
+ * guarantee that argv[2] is the command because getopt_long would have
+ * printed an error otherwise. argv[3] would be an optional parameter based
+ * on which command is being run.
+ *
+ * The function returns 0 on success and -1 on failure
+ */
+int do_manage_files(int argc, char * const argv[])
+{
+	int rc = 0;
+
+	if (strcmp("add", argv[2]) == 0) {
+		if (argc != 4)
+			goto args_err;
+
+		rc = file_append(argv[3]);
+		if (rc)
+			rc = 1; // simplify return code
+	}
+
+	return rc;
+
+args_err:
+	fprintf(stderr, "Wrong number of arguments\n\n");
+	fprintf(stderr, "%s", usage);
+
+	return 1;
 }
 
 
@@ -262,35 +295,50 @@ int main(int argc, char * const argv[])
 		return rc;
 	}
 
-	if (argc > 3) {
-		fprintf(stderr, "Too many arguments\n\n");
-		fprintf(stderr, "%s", usage);
-		return rc;
-	}
+	if (argc > 5)
+		goto args_err;
 
-	opt = getopt_long(argc, argv, "dht:lu",
+	opt = getopt_long(argc, argv, "df:ht:lu",
 				 long_opts, &option_index);
 	switch (opt) {
 	case 'd':
+		if (argc > 2)
+			goto args_err;
 		rc = do_delete_db();
+		break;
+	case 'f':
+		if (argc > 4)
+			goto args_err;
+		rc = do_manage_files(argc, argv);
 		break;
 	case 'h':
 		printf("%s", usage);
 		rc = 0;
 		break;
 	case 't':
+		if (argc > 3)
+			goto args_err;
 		rc = do_ftype(optarg);
 		break;
 	case 'l':
+		if (argc > 2)
+			goto args_err;
 		rc = do_list();
 		break;
 	case 'u':
+		if (argc > 2)
+			goto args_err;
 		rc = do_update();
 		break;
 	default:
 		printf("%s", usage);
 		rc = 1;
 	}
+	return rc;
+
+args_err:
+	fprintf(stderr, "Too many arguments\n\n");
+	fprintf(stderr, "%s", usage);
 	return rc;
 }
 
