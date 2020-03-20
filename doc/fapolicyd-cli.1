@@ -19,6 +19,9 @@ Manage the file trust database.
 .TP 12
 .B add
 This command adds the file given by path to the trust database. It gets the size and calculates the required SHA256 hash.
+.TP 12
+.B delete
+This command deletes all entries that match from the trust database. It will try to match mutiple entries so that entire directories can be deleted in one command.
 .RE
 .TP
 .B \-t, \-\-ftype /path/to/file

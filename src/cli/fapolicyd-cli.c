@@ -117,6 +117,11 @@ int do_manage_files(int argc, char * const argv[])
 		rc = file_append(argv[3]);
 		if (rc)
 			rc = 1; // simplify return code
+	} else if (strcmp("delete", argv[2]) == 0) {
+		if (argc != 4)
+			goto args_err;
+
+		rc = file_delete(argv[3]);
 	}
 
 	return rc;

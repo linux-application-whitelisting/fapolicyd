@@ -68,7 +68,7 @@ int list_append(list_t *list, const char *index, const char *data)
 	return 0;
 }
 
-static void list_destroy_item(list_item_t **item)
+void list_destroy_item(list_item_t **item)
 {
 	free((void *)(*item)->index);
 	free((void *)(*item)->data);

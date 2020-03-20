@@ -74,7 +74,7 @@ static int file_load_list(void)
 	char buffer[BUFFER_SIZE];
 	long line = 1;
 
-	msg(LOG_INFO, "Loading file backend");
+	msg(LOG_DEBUG, "Loading file backend");
 	list_empty(&file_backend.list);
 
 	file = fopen(FILE_PATH, "r");
@@ -175,7 +175,7 @@ static int file_destroy_backend(void)
 int file_append(const char *path)
 {
 	FILE *f;
-	int fd, count, count2;
+	int fd, count;
 	char *hash, *line, buffer[BUFFER_SIZE];
 	struct stat sb;
 
@@ -246,5 +246,79 @@ err_out2:
 	fclose(f);
 
 	return -1;
+}
+
+const char *header1 = "# This file contains a list of trusted files\n";
+const char *header2 = "#\n";
+const char *header3 = "#  FULL PATH        SIZE                             SHA256\n";
+const char *header4 = "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87\n";
+
+/*
+ * This function will delete a path string from the file trust database.
+ * It does this by matching all occurrances so that a directory may be
+ * passed an all parts of it get deleted. It returns 0 on success, 1 on error.
+ */
+int file_delete(const char *path)
+{
+	FILE *f;
+	list_t *list = &file_backend.list;
+	list_item_t *lptr, *prev = NULL;
+	size_t len = strlen(path), hlen;
+	int found = 0;
+
+	set_message_mode(MSG_STDERR, DBG_NO);
+	if (file_load_list())
+		return 1;
+
+	for (lptr = list_get_first(list); lptr != NULL; lptr = lptr->next) {
+		if (strncmp(lptr->index, path, len) == 0) {
+			found = 1;
+			if (prev)
+				prev->next = lptr->next;
+			else
+				list->first = NULL;
+
+			list->count--;
+			list_destroy_item(&lptr);
+			if (prev)
+				lptr = prev;
+			else
+				break;
+		}
+		prev = lptr;
+	}
+
+	if (!found) {
+		msg(LOG_ERR, "%s is not in the trust database", path);
+		list_empty(&list);
+		return 1;
+	}
+
+	// Now write everything back out
+	f = fopen(FILE_PATH, "w");
+	if (f == NULL) {
+		msg(LOG_ERR, "Cannot delete %s", path);
+		list_empty(&list);
+		return 1;
+	}
+
+	hlen = strlen(header1);
+	fwrite(header1, hlen, 1, f);
+	hlen = strlen(header2);
+	fwrite(header2, hlen, 1, f);
+	hlen = strlen(header3);
+	fwrite(header3, hlen, 1, f);
+	hlen = strlen(header4);
+	fwrite(header4, hlen, 1, f);
+	for (lptr = list_get_first(list); lptr != NULL; lptr = lptr->next) {
+		char buf[BUFFER_SIZE+1];
+		hlen = snprintf(buf, sizeof(buf), "%s %s\n",
+				(char *)lptr->index, (char *)&(lptr->data[2]));
+		fwrite(buf, hlen, 1, f);
+	}
+	fclose(f);
+	list_empty(&list);
+
+	return 0;
 }
 

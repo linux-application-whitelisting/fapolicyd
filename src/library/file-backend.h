@@ -27,6 +27,7 @@
 #define FILE_BACKEND_HEADER
 
 int file_append(const char *path);
+int file_delete(const char *path);
 
 #endif
 

@@ -40,6 +40,7 @@ typedef struct list_header {
 void list_init(list_t *list);
 list_item_t *list_get_first(const list_t *list);
 int list_append(list_t *list, const char *index, const char *data);
+void list_destroy_item(list_item_t **item);
 void list_empty(list_t *list);
 
 #endif
