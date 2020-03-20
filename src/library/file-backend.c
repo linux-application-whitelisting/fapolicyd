@@ -249,7 +249,7 @@ int file_delete(const char *path)
 
 	if (!found) {
 		msg(LOG_ERR, "%s is not in the trust database", path);
-		list_empty(&list);
+		list_empty(list);
 		return 1;
 	}
 
@@ -257,7 +257,7 @@ int file_delete(const char *path)
 	f = fopen(FILE_PATH, "w");
 	if (f == NULL) {
 		msg(LOG_ERR, "Cannot delete %s", path);
-		list_empty(&list);
+		list_empty(list);
 		return 1;
 	}
 
@@ -276,7 +276,7 @@ int file_delete(const char *path)
 		fwrite(buf, hlen, 1, f);
 	}
 	fclose(f);
-	list_empty(&list);
+	list_empty(list);
 
 	return 0;
 }
