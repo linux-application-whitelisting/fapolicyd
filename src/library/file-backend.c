@@ -271,8 +271,9 @@ int file_delete(const char *path)
 	fwrite(header4, hlen, 1, f);
 	for (lptr = list_get_first(list); lptr != NULL; lptr = lptr->next) {
 		char buf[BUFFER_SIZE+1];
+		char *str = (char *)(lptr->data);
 		hlen = snprintf(buf, sizeof(buf), "%s %s\n",
-				(char *)lptr->index, (char *)&(lptr->data[2]));
+				(char *)lptr->index, &str[2]);
 		fwrite(buf, hlen, 1, f);
 	}
 	fclose(f);
