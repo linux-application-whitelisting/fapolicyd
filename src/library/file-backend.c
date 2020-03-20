@@ -42,8 +42,8 @@
 #include "file-backend.h"
 
 #define FILE_PATH "/etc/fapolicyd/fapolicyd.trust"
-#define BUFFER_SIZE 4096+1+10+86
-#define FILE_READ_FORMAT  "%4096s %lu %86s"	// path size SHA256
+#define BUFFER_SIZE 4096+1+1+1+10+1+64+1
+#define FILE_READ_FORMAT  "%4096s %lu %64s"	// path size SHA256
 #define FILE_WRITE_FORMAT "%s %lu %s\n"		// path size SHA256
 
 static int file_init_backend(void);
@@ -72,7 +72,6 @@ static int file_load_list(void)
 {
 	FILE *file;
 	char buffer[BUFFER_SIZE];
-	long line = 1;
 
 	msg(LOG_DEBUG, "Loading file backend");
 	list_empty(&file_backend.list);
@@ -84,57 +83,18 @@ static int file_load_list(void)
 	}
 
 	while (fgets(buffer, BUFFER_SIZE, file)) {
-		char *ptr, *saved;
-		int state = NAME;
-		char *name = NULL;
-		char *size = NULL;
-		char *sha = NULL;
+		char name[4097], sha[65], *index, *data;
+		unsigned long sz;
+		int verified = 0;
 
 		if (iscntrl(buffer[0]) || buffer[0] == '#')
 			continue;
 
-		ptr = strtok_r(buffer, DELIMITER, &saved);
-		while (ptr) {
-			if (*ptr == 0)
-				continue;
-
-			switch (state)
-			{
-				case NAME:
-					name = ptr;
-					break;
-				case SIZE:
-					size = ptr;
-					break;
-				case SHA:
-					sha = ptr;
-					break;
-				default:
-					fclose(file);
-					msg(LOG_ERR,
-					    "%s:%ld : Too many columns",
-						FILE_PATH, line);
-					return 1;
-			}
-			state++;
-			ptr = strtok_r(NULL, DELIMITER, &saved);
-		}
-
-		errno = 0;
-		unsigned long sz = strtoul(size, NULL, 10);
-		if (errno) {
-			msg(LOG_ERR, "%s:%ld Cannot convert size to number.",
-				FILE_PATH, line);
+		if (sscanf(buffer, FILE_READ_FORMAT, name, &sz, sha) != 3) {
+			msg(LOG_WARNING, "Can't parse %s", buffer);
 			fclose(file);
 			return 1;
 		}
-
-		char *index = NULL;
-		char *data = NULL;
-		int verified = 0;
-
-		// TODO: create proper trim function
-		sha[64] = '\0';
 
 		if (asprintf(&data, DATA_FORMAT, verified, sz, sha) == -1)
 			data = NULL;
@@ -146,7 +106,6 @@ static int file_load_list(void)
 			list_append(&file_backend.list, index, data);
 
 		//free(data);
-		line++;
 	}
 
 	fclose(file);
@@ -194,7 +153,7 @@ int file_append(const char *path)
 
 	// Scan the file and look for a duplicate
 	while (fgets(buffer, BUFFER_SIZE, f)) {
-		char thash[87], tpath[4097];
+		char thash[65], tpath[4097];
 		long unsigned size;
 
 		sscanf(buffer, FILE_READ_FORMAT, tpath, &size, thash);
