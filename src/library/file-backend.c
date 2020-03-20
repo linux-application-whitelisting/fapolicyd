@@ -60,14 +60,6 @@ backend file_backend =
 };
 
 
-enum _states {
-	NAME = 0,
-	SIZE,
-	SHA,
-};
-
-#define DELIMITER " "
-
 static int file_load_list(void)
 {
 	FILE *file;
@@ -156,7 +148,12 @@ int file_append(const char *path)
 		char thash[65], tpath[4097];
 		long unsigned size;
 
-		sscanf(buffer, FILE_READ_FORMAT, tpath, &size, thash);
+		if (sscanf(buffer, FILE_READ_FORMAT, tpath, &size, thash) != 3){
+			msg(LOG_WARNING, "Can't parse %s", buffer);
+			close(fd);
+			fclose(f);
+			return 1;
+		}
 		if (strcmp(tpath, path) == 0) {
 			msg(LOG_ERR, "%s is already in the database", path);
 			close(fd);
