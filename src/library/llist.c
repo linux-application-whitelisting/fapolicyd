@@ -94,3 +94,33 @@ void list_empty(list_t *list)
 	}
 }
 
+// Return 1 if the list contains the string, 0 otherwise
+int list_contains(list_t *list, const char *str)
+{
+	list_item_t *lptr = list->first;
+	while (lptr) {
+		if (strcmp(str, lptr->index) == 0)
+			return 1;
+		lptr = lptr->next;
+	}
+	return 0;
+}
+
+void list_remove(list_t *list, const char *str)
+{
+	list_item_t *prev = NULL, *lptr = list->first;
+	while (lptr) {
+		if (strcmp(str, lptr->index) == 0) {
+			if (prev)
+				prev->next = lptr->next;
+			else
+				list->first = NULL;
+			list->count--;
+			list_destroy_item(&lptr);
+			return;
+		}
+		prev = lptr;
+		lptr = lptr->next;
+	}
+}
+

@@ -34,6 +34,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <ftw.h>
 #include "message.h"
 #include "file.h"
 
@@ -118,6 +119,22 @@ static int file_destroy_backend(void)
 	return 0;
 }
 
+static list_t add_list;
+// Returns 1 on error and 0 otherwise
+static int check_file(const char *fpath,
+                const struct stat *sb,
+                int typeflag_unused __attribute__ ((unused)),
+                struct FTW *s_unused __attribute__ ((unused)))
+{
+        int ret = FTW_CONTINUE;
+
+        if (S_ISREG(sb->st_mode) == 0)
+                return ret;
+
+	list_append(&add_list, strdup(fpath), NULL);
+	return ret;
+}
+
 
 /*
  * This function will append a path string to the file trust database.
@@ -129,6 +146,7 @@ int file_append(const char *path)
 	int fd, count;
 	char *hash, *line, buffer[BUFFER_SIZE];
 	struct stat sb;
+	list_item_t *lptr;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
 	f = fopen(FILE_PATH, "r+");
@@ -143,66 +161,108 @@ int file_append(const char *path)
 		goto err_out2;
 	}
 
+	if (fstat(fd, &sb)) {
+		msg(LOG_ERR, "Cannot stat %s", path);
+		goto err_out;
+	}
+
+	// get the list of files ready to use
+	list_init(&add_list);
+	close(fd);
+
+	if (S_ISDIR(sb.st_mode)) {
+		// Build big list
+		nftw(path, check_file, 1024, FTW_PHYS);
+	} else
+		list_append(&add_list, strdup(path), NULL);
+
 	// Scan the file and look for a duplicate
 	while (fgets(buffer, BUFFER_SIZE, f)) {
 		char thash[65], tpath[4097];
 		long unsigned size;
 
+		if (iscntrl(buffer[0]) || buffer[0] == '#')
+			continue;
+
 		if (sscanf(buffer, FILE_READ_FORMAT, tpath, &size, thash) != 3){
 			msg(LOG_WARNING, "Can't parse %s", buffer);
 			close(fd);
 			fclose(f);
+			list_empty(&add_list);
 			return 1;
 		}
-		if (strcmp(tpath, path) == 0) {
-			msg(LOG_ERR, "%s is already in the database", path);
-			close(fd);
-			fclose(f);
-			return 1;
-		}
+		if (list_contains(&add_list, tpath))
+			list_remove(&add_list, tpath);
+	}
+
+	if (add_list.count == 0) {
+		msg(LOG_ERR,
+			"After removing duplicates, there is nothing to add");
+		close(fd);
+		fclose(f);
+		list_empty(&add_list);
+		return 1;
 	}
 
 	// No duplicate, make sure we are at the end
 	if (!feof(f))
 		fseek(f, 0, SEEK_END);
 
-	// Get the size
-	if (fstat(fd, &sb)) {
-		msg(LOG_ERR, "Cannot stat %s", path);
-		goto err_out;
-	}
+	// Iterate the list an put each one to disk.
+	for (lptr = list_get_first(&add_list); lptr != NULL; lptr = lptr->next){
+		path = (char *)lptr->index;
+		fd = open(path, O_RDONLY);
+		if (fd < 0) {
+			msg(LOG_ERR, "Cannot open %s", path);
+			goto err_out2;
+		}
 
-	// Get the hash
-	hash = get_hash_from_fd(fd);
+		if (fstat(fd, &sb)) {
+			msg(LOG_ERR, "Cannot stat %s", path);
+			goto err_out;
+		}
+		// Get the size
+		if (fstat(fd, &sb)) {
+			msg(LOG_ERR, "Cannot stat %s", path);
+			goto err_out;
+		}
 
-	// Format the output
-	count = asprintf(&line, FILE_WRITE_FORMAT, path, sb.st_size, hash);
-	if (count < 0) {
-		msg(LOG_ERR, "Cannot format entry for %s", path);
-		free(hash);
-		goto err_out;
-	}
+		// Get the hash
+		hash = get_hash_from_fd(fd);
 
-	// Write it to disk
-	if (fwrite(line, count, 1, f) != 1) {
-		msg(LOG_ERR, "failed writing to %s\n", FILE_PATH);
+		// Format the output
+		count = asprintf(&line, FILE_WRITE_FORMAT, path,
+						sb.st_size, hash);
+		if (count < 0) {
+			msg(LOG_ERR, "Cannot format entry for %s", path);
+			free(hash);
+			goto err_out;
+		}
+
+		// Write it to disk
+		if (fwrite(line, count, 1, f) != 1) {
+			msg(LOG_ERR, "failed writing to %s\n", FILE_PATH);
+			free(line);
+			free(hash);
+			goto err_out;
+		}
 		free(line);
 		free(hash);
-		goto err_out;
+		close(fd);
 	}
-	free(line);
-	free(hash);
-	close(fd);
 	fclose(f);
+	list_empty(&add_list);
 
 	return 0;
 err_out:
 	close(fd);
 err_out2:
 	fclose(f);
+	list_empty(&add_list);
 
 	return -1;
 }
+
 
 const char *header1 = "# This file contains a list of trusted files\n";
 const char *header2 = "#\n";
