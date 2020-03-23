@@ -51,7 +51,6 @@ passing --without-rpm and it will not link against librpm. In this mode, it
 purely uses the file database in fapolicyd.trust. If rpm is used, then the
 file trust database can be used in addition to rpmdb.
 
-
 RUNNING
 -------
 You might want to look at the fapolicyd.rules file to see what the sample
@@ -67,6 +66,7 @@ the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. When
 testing new policy, its highly recommended to use the permissive mode to
 make sure nothing bad happens. It really is not too hard to deadlock your
 system. Continuing on with the tutorial, as root start the daemon as follows:
+
 ```
 /usr/sbin/fapolicyd --permissive --debug
 ```
@@ -84,7 +84,6 @@ You can run the daemon from the command line with --debug-deny command
 line option. This culls the event notification to only print the denials.
 If this is running cleanly, then you can remove the --permissive option
 and get true denials. Now retest above steps and see the difference.
-
 
 DEBUG MODE
 ----------
@@ -108,12 +107,10 @@ easily do that by running:
 fapolicyd-cli --list
 ```
 
-
 WRITING RULES
 -------------
 The rules follow a simple "decision permission subject : object" recipe. For
 more information, see the fapolicyd.rules man page.
-
 
 REPORT
 ------
@@ -121,7 +118,6 @@ On shutdown the daemon will write an object access report to
 /var/log/fapolicyd-access.log. The report is from oldest access to newest.
 Timestamps are not included because that would be a severe performance hit.
 The report gives some basic forensic information about what was being accessed.
-
 
 PERFORMANCE
 -----------
@@ -183,7 +179,6 @@ performance impact, this is very workload dependent. For a typical desktop
 scenario, you won't notice it's running. A system that opens lots of random
 files for short periods of time will have more impact.
 
-
 MEMORY USAGE
 ------------
 Fapolicyd uses lmdb as its trust database. The database has very fast
@@ -220,8 +215,9 @@ case you decide to install new software some day. The formula is
  (db_max_size x percentage in use) / desired percentage = new db_max_size
 ```
 
-So, working from with example numbers, suppose max_size is 160 and it says
-it was 68% occupied. That is wasting a little space. Putting the numbers in the formula, we get  (160 x 68) / 75 = 145.
+So, working with example numbers, suppose max_size is 160 and it says it was
+68% occupied. That is wasting a little space. Putting the numbers in the
+formula, we get  (160 x 68) / 75 = 145.
 
 If you have an embedded system and are not using rpm. But instead use the file
 trust source and you have a list of files, then your calculation is very
@@ -238,7 +234,6 @@ Starting with the 0.9.4 release, the rpm backend filters most files in the
  /usr/share directory. It keeps anything with a with a python extension or
 a libexec directory. It also keeps /usr/src/kernel so that Akmod can still
 build drivers on a kernel update.
-
 
 TROUBLESHOOTING
 ---------------
@@ -388,7 +383,7 @@ daemon's policy.
 
 * About shell script restrictions...there's not much difference between
 running a script or someone typing things in by hand. The aim at this
-point is to check that any programs it calls meets the policy.
+point is to check that any program it calls meets the policy.
 
 * If for some reason rpm database errors are detected, you may need to do
 the following:
