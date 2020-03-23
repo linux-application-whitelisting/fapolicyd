@@ -369,6 +369,7 @@ int file_update(const char *path)
 	// Load file list
 	list_t *list = &file_backend.list;
 	list_item_t *lptr;
+	int found = 0;
 	size_t len = strlen(path);
 
 	set_message_mode(MSG_STDERR, DBG_NO);
@@ -383,7 +384,14 @@ int file_update(const char *path)
 			free((char *)lptr->data);
 			// make new data field
 			lptr->data = make_data_string((char *)lptr->index, &i);
+			found = 1;
 		}
+	}
+
+	if (!found) {
+		msg(LOG_ERR, "%s is not in the trust database", path);
+		list_empty(list);
+		return 1;
 	}
 
 	// write it all out
