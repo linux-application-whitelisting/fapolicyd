@@ -135,6 +135,48 @@ static int check_file(const char *fpath,
 	return ret;
 }
 
+// This funtion will take a path as input and create the string to
+// be written to disk. The passed pointed must be freed by the called.
+// It returns NULL on failure. The count variable is used to select which
+// format to use. 1 = format for trust db, 0 - format for lmdb
+static char *make_data_string(const char *path, int *count)
+{
+	char *hash, *line;
+	struct stat sb;
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		msg(LOG_ERR, "Cannot open %s", path);
+		return NULL;
+	}
+
+	// Get the size
+	if (fstat(fd, &sb)) {
+		msg(LOG_ERR, "Cannot stat %s", path);
+		close(fd);
+		goto err_out;
+	}
+
+	// Get the hash
+	hash = get_hash_from_fd(fd);
+	close(fd);
+
+	// Format the output
+	if (*count == 1)
+		*count = asprintf(&line, FILE_WRITE_FORMAT, path,
+						sb.st_size, hash);
+	else
+		*count = asprintf(&line, DATA_FORMAT, 0,
+						sb.st_size, hash);
+	free(hash);
+	if (*count < 0) {
+		msg(LOG_ERR, "Cannot format entry for %s", path);
+		goto err_out;
+	}
+	return line;
+
+err_out:
+	return NULL;
+}
 
 /*
  * This function will append a path string to the file trust database.
@@ -144,7 +186,7 @@ int file_append(const char *path)
 {
 	FILE *f;
 	int fd, count;
-	char *hash, *line, buffer[BUFFER_SIZE];
+	char buffer[BUFFER_SIZE];
 	struct stat sb;
 	list_item_t *lptr;
 
@@ -210,45 +252,18 @@ int file_append(const char *path)
 
 	// Iterate the list an put each one to disk.
 	for (lptr = list_get_first(&add_list); lptr != NULL; lptr = lptr->next){
-		path = (char *)lptr->index;
-		fd = open(path, O_RDONLY);
-		if (fd < 0) {
-			msg(LOG_ERR, "Cannot open %s", path);
-			goto err_out2;
-		}
-
-		if (fstat(fd, &sb)) {
-			msg(LOG_ERR, "Cannot stat %s", path);
-			goto err_out;
-		}
-		// Get the size
-		if (fstat(fd, &sb)) {
-			msg(LOG_ERR, "Cannot stat %s", path);
-			goto err_out;
-		}
-
-		// Get the hash
-		hash = get_hash_from_fd(fd);
-
-		// Format the output
-		count = asprintf(&line, FILE_WRITE_FORMAT, path,
-						sb.st_size, hash);
-		if (count < 0) {
-			msg(LOG_ERR, "Cannot format entry for %s", path);
-			free(hash);
-			goto err_out;
-		}
+		count = 1;
+		char *line = make_data_string((char *)lptr->index, &count);
+		if (line == NULL)
+			continue;	// error already output
 
 		// Write it to disk
 		if (fwrite(line, count, 1, f) != 1) {
 			msg(LOG_ERR, "failed writing to %s\n", FILE_PATH);
 			free(line);
-			free(hash);
 			goto err_out;
 		}
 		free(line);
-		free(hash);
-		close(fd);
 	}
 	fclose(f);
 	list_empty(&add_list);
@@ -269,6 +284,38 @@ const char *header2 = "#\n";
 const char *header3 = "#  FULL PATH        SIZE                             SHA256\n";
 const char *header4 = "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87\n";
 
+
+// This function take the passed list and writes it all to the passed
+// FILE pointer.
+static int write_out_list(list_t *list)
+{
+	list_item_t *lptr;
+	FILE *f = fopen(FILE_PATH, "w");
+	if (f == NULL) {
+		msg(LOG_ERR, "Cannot delete %s", FILE_PATH);
+		list_empty(list);
+		return 1;
+	}
+	size_t hlen = strlen(header1);
+	fwrite(header1, hlen, 1, f);
+	hlen = strlen(header2);
+	fwrite(header2, hlen, 1, f);
+	hlen = strlen(header3);
+	fwrite(header3, hlen, 1, f);
+	hlen = strlen(header4);
+	fwrite(header4, hlen, 1, f);
+	for (lptr = list_get_first(list); lptr != NULL; lptr = lptr->next) {
+		char buf[BUFFER_SIZE+1];
+		char *str = (char *)(lptr->data);
+		hlen = snprintf(buf, sizeof(buf), "%s %s\n",
+				(char *)lptr->index, &str[2]);
+		fwrite(buf, hlen, 1, f);
+	}
+	fclose(f);
+	return 0;
+}
+
+
 /*
  * This function will delete a path string from the file trust database.
  * It does this by matching all occurrances so that a directory may be
@@ -276,10 +323,9 @@ const char *header4 = "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac5106
  */
 int file_delete(const char *path)
 {
-	FILE *f;
 	list_t *list = &file_backend.list;
 	list_item_t *lptr, *prev = NULL;
-	size_t len = strlen(path), hlen;
+	size_t len = strlen(path);
 	int found = 0;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
@@ -311,31 +357,39 @@ int file_delete(const char *path)
 	}
 
 	// Now write everything back out
-	f = fopen(FILE_PATH, "w");
-	if (f == NULL) {
-		msg(LOG_ERR, "Cannot delete %s", path);
-		list_empty(list);
-		return 1;
-	}
-
-	hlen = strlen(header1);
-	fwrite(header1, hlen, 1, f);
-	hlen = strlen(header2);
-	fwrite(header2, hlen, 1, f);
-	hlen = strlen(header3);
-	fwrite(header3, hlen, 1, f);
-	hlen = strlen(header4);
-	fwrite(header4, hlen, 1, f);
-	for (lptr = list_get_first(list); lptr != NULL; lptr = lptr->next) {
-		char buf[BUFFER_SIZE+1];
-		char *str = (char *)(lptr->data);
-		hlen = snprintf(buf, sizeof(buf), "%s %s\n",
-				(char *)lptr->index, &str[2]);
-		fwrite(buf, hlen, 1, f);
-	}
-	fclose(f);
+	int rc = write_out_list(list);
 	list_empty(list);
 
-	return 0;
+	return rc;
+}
+
+
+int file_update(const char *path)
+{
+	// Load file list
+	list_t *list = &file_backend.list;
+	list_item_t *lptr;
+	size_t len = strlen(path);
+
+	set_message_mode(MSG_STDERR, DBG_NO);
+	if (file_load_list())
+		return 1;
+
+	// match against passed string
+	for (lptr = list_get_first(list); lptr != NULL; lptr = lptr->next) {
+		// delete data field for matches
+		if (strncmp(lptr->index, path, len) == 0) {
+			int i = 0;	// unused
+			free((char *)lptr->data);
+			// make new data field
+			lptr->data = make_data_string((char *)lptr->index, &i);
+		}
+	}
+
+	// write it all out
+	int rc = write_out_list(list);
+	list_empty(list);
+
+	return rc;
 }
 

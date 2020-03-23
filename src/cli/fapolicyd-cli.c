@@ -122,6 +122,12 @@ int do_manage_files(int argc, char * const argv[])
 			goto args_err;
 
 		rc = file_delete(argv[3]);
+	} else if (strcmp("update", argv[2]) == 0) {
+		if (argc == 4)
+			rc = file_update(argv[3]);
+		 else
+			rc = file_update("/");
+
 	}
 
 	return rc;

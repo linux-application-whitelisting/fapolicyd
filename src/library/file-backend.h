@@ -28,6 +28,7 @@
 
 int file_append(const char *path);
 int file_delete(const char *path);
+int file_update(const char *path);
 
 #endif
 
