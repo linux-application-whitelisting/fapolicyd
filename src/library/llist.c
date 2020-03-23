@@ -30,6 +30,7 @@
 #include "message.h"
 #include "llist.h"
 
+
 void list_init(list_t *list)
 {
 	list->count = 0;
@@ -37,10 +38,12 @@ void list_init(list_t *list)
 	list->last = NULL;
 }
 
+
 list_item_t *list_get_first(const list_t *list)
 {
 	return list->first;
 }
+
 
 int list_append(list_t *list, const char *index, const char *data)
 {
@@ -59,7 +62,7 @@ int list_append(list_t *list, const char *index, const char *data)
 		list->first = item;
 		list->last = item;
 	} else {
-		list_item_t* tmp = list->last;
+		list_item_t *tmp = list->last;
 		list->last = item;
 		tmp->next = item;
 	}
@@ -67,6 +70,7 @@ int list_append(list_t *list, const char *index, const char *data)
 	list->count++;
 	return 0;
 }
+
 
 void list_destroy_item(list_item_t **item)
 {
@@ -76,13 +80,14 @@ void list_destroy_item(list_item_t **item)
 	*item = NULL;
 }
 
+
 void list_empty(list_t *list)
 {
 	if (list->first == NULL)
 		return;
 	else {
-		list_item_t* actual = list->first;
-		list_item_t* next = NULL;
+		list_item_t *actual = list->first;
+		list_item_t *next = NULL;
 		for (; actual != NULL ; actual = next) {
 			next = actual->next;
 			list_destroy_item(&actual);
@@ -93,6 +98,7 @@ void list_empty(list_t *list)
 		list->count = 0;
 	}
 }
+
 
 // Return 1 if the list contains the string, 0 otherwise
 int list_contains(list_t *list, const char *str)

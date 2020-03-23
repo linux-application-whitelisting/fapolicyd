@@ -37,6 +37,7 @@
 #include <magic.h>
 #include "process.h"
 
+
 struct proc_info *stat_proc_entry(pid_t pid)
 {
 	char path[32];
@@ -64,6 +65,7 @@ struct proc_info *stat_proc_entry(pid_t pid)
 	return NULL;
 }
 
+
 void clear_proc_info(struct proc_info *info)
 {
 	free(info->path1);
@@ -71,6 +73,7 @@ void clear_proc_info(struct proc_info *info)
 	info->path1 = NULL;
 	info->path2 = NULL;
 }
+
 
 // Returns 0 if equal and 1 if not equal
 int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
@@ -92,6 +95,7 @@ int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
 
 	return 0;
 }
+
 
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 {
@@ -124,6 +128,7 @@ char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 	return buf;
 }
 
+
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	char path[32];
@@ -148,6 +153,7 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 
 	return buf;
 }
+
 
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 {
@@ -177,6 +183,8 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 
 	return NULL;
 }
+
+
 uid_t get_program_auid_from_pid(pid_t pid)
 {
 	char path[32];
@@ -200,6 +208,7 @@ uid_t get_program_auid_from_pid(pid_t pid)
 	}
 	return -1;
 }
+
 
 int get_program_sessionid_from_pid(pid_t pid)
 {
@@ -225,6 +234,7 @@ int get_program_sessionid_from_pid(pid_t pid)
 	return -1;
 }
 
+
 uid_t get_program_uid_from_pid(pid_t pid)
 {
 	char path[128];
@@ -245,3 +255,4 @@ uid_t get_program_uid_from_pid(pid_t pid)
 	}
 	return uid;
 }
+
