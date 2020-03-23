@@ -32,7 +32,7 @@ To build from the repo after cloning:
 ```
 $ cd fapolicyd
 $ ./autogen.sh
-$ ./configure
+$ ./configure --with-audit --disable-shared
 $ make
 $ make dist
 ```
@@ -40,8 +40,8 @@ $ make dist
 This will create a tarball. You can use the new tarball with the spec file
 and create your own rpm. If you want to experiment without installing, just
 run make with no arguments. It should run fine from where it was built as
-long as you put the configuration files in /etc/fapolicyd. The fapolicyd.rules
-and fapolicyd.trust files go there.
+long as you put the configuration files in /etc/fapolicyd (fapolicyd.rules,
+fapolicyd.trust, fapolicyd.conf).
 
 Note that the shipped policy expects that auditing is enabled. This is done
 by passing --with-audit to ./configure.
@@ -128,7 +128,7 @@ PERFORMANCE
 When a program opens a file or calls execve, that thread has to wait for 
 fapolicyd to make a decision. To make a decision, fapolicyd has to lookup
 information about the process and the file being accessed. Each system call
-slows down the system.  
+fapolicyd has to make slows down the system.  
 
 To speed things up, fapolicyd caches everything it looks up so that
 subsequent access uses the cache rather than looking things up from
@@ -197,20 +197,21 @@ Starting with the 0.9.3 version of fapolicyd, statistics about the database
 is output when the program shuts down. On my system, it looks like this:
 
 ```
-Database max pages: 40960
-Database pages in use: 27954 (68%)
+Database max pages: 9728
+Database pages in use: 7314 (75%)
 ```
 
 This also correlates to the following setting in the fapolicyd.conf file:
 
 ```
-db_max_size = 160
+db_max_size = 38
 ```
 
-This size is in megabytes. So, if you take that and multiply by 1024, we get
-163840. A page of memory is defined as 4096. So, if we divide max_size by
-the page size, we get 40960. Each entry in the lmdb database is 512 bytes. So,
-for each 4k page, we can have data on 8 trusted files.
+This size is in megabytes. So, if you take that and multiply by 1024 * 1024,
+we get 39845888. A page of memory is defined as 4096. So, if we divide
+max_size by the page size, we get 9728 which matches the setting. Each entry
+in the lmdb database is 512 bytes. So, for each 4k page, we can have data on
+8 trusted files.
 
 An ideal size for the database is for the statistics to come up aound 75% in
 case you decide to install new software some day. The formula is 
@@ -219,7 +220,8 @@ case you decide to install new software some day. The formula is
  (db_max_size x percentage in use) / desired percentage = new db_max_size
 ```
 
-So, working from my numbers, (160 x 68) / 75 = 145.
+So, working from with example numbers, suppose max_size is 160 and it says
+it was 68% occupied. That is wasting a little space. Putting the numbers in the formula, we get  (160 x 68) / 75 = 145.
 
 If you have an embedded system and are not using rpm. But instead use the file
 trust source and you have a list of files, then your calculation is very
@@ -232,8 +234,10 @@ memory, it's 216K. One megabyte is the smallest allocation, so you would set
 db_max_size = 1
 ```
 
-We are still studying how to reduce the amount of data in the trust database.
-In future releases, the number required should go down.
+Starting with the 0.9.4 release, the rpm backend filters most files in the
+ /usr/share directory. It keeps anything with a with a python extension or
+a libexec directory. It also keeps /usr/src/kernel so that Akmod can still
+build drivers on a kernel update.
 
 
 TROUBLESHOOTING
@@ -269,13 +273,45 @@ MANAGING TRUST
 --------------
 Fapolicyd use lmdb as a backend database for its trusted software list. You
 can find this database in /var/lib/fapolicyd/. This list gets updated
-whenever packages are installed by dnf. This is done by a dnf plugin. If
-packages are installed by rpm, fapolicyd does not get a notification. In
+whenever packages are installed by dnf by a dnf plugin. If packages are
+installed by rpm instead of dnf, fapolicyd does not get a notification. In
 that case, you would also need to tell the daemon that it needs to update
 the trust database. This is done by running fapolicyd-cli and passing
 along the --update option. Also, if you add or delete files from the file
 trust list, fapolicyd.trust, then you will also have to run the fapolicyd-cli
 utility.
+
+Lmdg is a very fast database. Normally it works fine. But it does not tolerate
+malformed databases. When this happens, it can segfault fapolicyd. The fix
+is to delete the database and restart the daemon. It will then rebuild the
+database and work as it should. To do this, run the following command:
+
+```
+fapolicyd-cli --delete-db
+```
+
+MANAGING THE FILE TRUST SOURCE
+------------------------------
+Starting with 0.9.4, the fapolicyd command line utility can help you manage
+the file trust database. For example, suppose you have an application and
+its files over in /opt, you can add them all with the following command:
+
+```
+fapolicyd-cli --file add /opt/my-app/
+```
+
+The commandline utility will walk the directory tree and add all files to
+fapolicyd.trust. To do this, it opens each one and calculates the sha256 hash
+of the file and write that information to the new entry. Later if you decide
+to uninstall that app and you want to cleanup the list, then simply run:
+
+```
+fapolicyd-cli --file delete /opt/my-app/
+```
+
+The commandline utility will remove all files that match that directory from
+fapolicyd.trust. There is also a --file update extension that can update the
+size and hash information with what is currently on disk.
 
 FAQ
 ---
@@ -339,7 +375,6 @@ Wrt to the second question being asked, we have it in the roadmap to improve
 startup performance so that the daemon takes control earlier. But there is
 a limit to how early because trust sources need to be available before the
 daemon starts.
-
 
 NOTES
 -----
