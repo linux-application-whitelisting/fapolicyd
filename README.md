@@ -23,7 +23,7 @@ DEPENDENCIES (fedora)
 * libseccomp-devel
 * lmdb-devel
 * python3-devel
-* kernel >= 4.20 (must support FANOTIFY_OPEN_EXEC_PERM)
+* kernel >= 4.20 (Must support FANOTIFY_OPEN_EXEC_PERM. See [1] below.)
 
 BUILDING
 --------
@@ -394,3 +394,6 @@ if OK, then
 2. rm -f /var/lib/rpm/__db*
 3. rpm --rebuilddb
 ```
+
+[1] - https://git.kernel.org/pub/scm/linux/kernel/git/jack/linux-fs.git/commit/?id=66917a3130f218dcef9eeab4fd11a71cd00cd7c9
+
