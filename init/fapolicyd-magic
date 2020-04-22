@@ -56,3 +56,5 @@
 0	string/wt	#!\ /usr/bin/guile	Guile script text executable
 !:mime  text/x-script.guile
 
+0	string	\223NUMPY			NumPy data file
+!:mime	application/x-numpy-data
