@@ -471,6 +471,8 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 	if (buf) { // parse up the rule
 		unsigned int i;
 		newnode = malloc(sizeof(lnode));
+		if (newnode == NULL)
+			return 1;
 		newnode->s_count = 0;
 		newnode->o_count = 0;
 		for (i=0; i<MAX_FIELDS; i++) {

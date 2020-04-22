@@ -131,7 +131,14 @@ static unsigned int queue_is_empty(const Queue *queue)
 static void sanity_check_queue(Queue *q, const char *id)
 {
 	unsigned int i;
-	QNode *n = q->front;
+	QNode *n;
+
+	if (q == NULL) {
+		msg(LOG_DEBUG, "%s - q is NULL", id);
+		abort();
+	}
+
+	n = q->front;
 	if (n == NULL)
 		return;
 
@@ -172,6 +179,8 @@ static void sanity_check_queue(Queue *q, const char *id)
 static void insert_before(Queue *queue, QNode *node, QNode *new_node)
 {
 	sanity_check_queue(queue, "1 insert_before");
+	if (queue == NULL || node == NULL || new_node == NULL)
+		return;
 	new_node->prev = node->prev;
 	new_node->next  = node;
 	if (node->prev == NULL)
@@ -185,6 +194,8 @@ static void insert_before(Queue *queue, QNode *node, QNode *new_node)
 static void insert_beginning(Queue *queue, QNode *new_node)
 {
 	sanity_check_queue(queue, "1 insert_beginning");
+	if (queue == NULL || new_node == NULL)
+		return;
 	if (queue->front == NULL) {
 		queue->front = new_node;
 		queue->end = new_node;

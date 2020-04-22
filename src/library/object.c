@@ -78,6 +78,8 @@ int object_add(o_array *a, const object_attr_t *obj)
 	if (obj) {
 		if (obj->type >= OBJ_START && obj->type <= OBJ_END) {
 			newnode = malloc(sizeof(object_attr_t));
+			if (newnode == NULL)
+				return 1;
 			newnode->type = obj->type;
 			newnode->len = obj->len;
 			newnode->o = obj->o;
