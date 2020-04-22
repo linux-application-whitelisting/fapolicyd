@@ -54,12 +54,15 @@ static void mlist_last(mlist *m)
 	m->cur = window;
 }
 
+// Returns 0 on success and 1 on error
 int mlist_append(mlist *m, const char *p)
 {
         mnode* newnode;
 
 	if (p) {
 		newnode = malloc(sizeof(mnode));
+		if (newnode == NULL)
+			return 1;
 		newnode->path = strdup(p);
 		newnode->status = ADD;
 	} else

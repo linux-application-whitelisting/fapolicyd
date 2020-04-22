@@ -90,6 +90,8 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 			t = EXE;
 		if (t >= SUBJ_START && t <= SUBJ_END) {
 			newnode = malloc(sizeof(subject_attr_t));
+			if (newnode == NULL)
+				return 1;
 			newnode->type = t;
 			if (subj->type >= COMM)
 				newnode->str = subj->str;
