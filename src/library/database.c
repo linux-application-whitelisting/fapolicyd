@@ -40,6 +40,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 
 #include "database.h"
 #include "message.h"
@@ -773,15 +774,30 @@ int init_database(conf_t *config)
 }
 
 
+// This function returns 0 on error and 1 if successful
+static int get_xattr(int fd, char *sha)
+{
+	char tmp[34];
+
+	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 0)
+		return 0;
+
+	bytes2hex(sha, &tmp[2], 32);
+	return 1;
+}
+
+
 /*
  * This function handles the integrity check and any retries. It takes a
  * path as input and search for the data. It returns NULL on error or if
  * no data found.
  */
-static char *read_trust_db(const char *path, int *error, struct file_info *info)
+static char *read_trust_db(const char *path, int *error, struct file_info *info,
+	int fd)
 {
 	int do_integrity = 0, mode = READ_TEST_KEY, retry = 0;
 	char *res;
+	char sha_xattr[65];
 
 	if (integrity != IN_NONE && info) {
 		do_integrity = 1;
@@ -820,7 +836,24 @@ retry_res:
 				msg(LOG_DEBUG, "size miscompare");
 			}
 		} else if (integrity == IN_IMA) {
-			// Now read xattr
+			int rc = 1;
+
+			// read xattr only the first time
+			if (retry == 0)
+				rc = get_xattr(fd, sha_xattr);
+			if (rc) {
+				if (strcmp(sha, sha_xattr)) {
+					if (retry == 0) {
+						retry = 1;
+						res = lt_read_db(path,
+							 READ_DATA_DUP, error);
+						goto retry_res;
+					}
+					res = NULL;
+					msg(LOG_DEBUG, "IMA hash miscompare");
+				}
+			} else
+				res = NULL;
 		}
 	}
 
@@ -828,7 +861,7 @@ retry_res:
 }
 
 // Returns a 1 if trusted and 0 if not and -1 on error
-int check_trust_database(const char *path, struct file_info *info)
+int check_trust_database(const char *path, struct file_info *info, int fd)
 {
 	int retval = 0, error;
 	char *res;
@@ -841,7 +874,7 @@ int check_trust_database(const char *path, struct file_info *info)
 	if (start_long_term_read_ops())
 		return -1;
 
-	res = read_trust_db(path, &error, info);
+	res = read_trust_db(path, &error, info, fd);
 	if (error)
 		retval = -1;
 	else if (res)
@@ -861,7 +894,7 @@ int check_trust_database(const char *path, struct file_info *info)
 			    (sbin_symlink &&
 			     strncmp(&path[5], "sbin/", 5) == 0)) {
 				// We have a symlink, retry
-				res = read_trust_db(&path[4], &error, info);
+				res = read_trust_db(&path[4], &error, info, fd);
 				if (res) {
 					if (error)
 						retval = -1;

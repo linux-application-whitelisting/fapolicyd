@@ -34,7 +34,7 @@ void unlock_update_thread(void);
 
 int preconstruct_fifo(const conf_t *config);
 int init_database(conf_t *config);
-int check_trust_database(const char *path, struct file_info *info);
+int check_trust_database(const char *path, struct file_info *info, int fd);
 void close_database(void);
 void database_report(FILE *f);
 void unlink_db(void);
