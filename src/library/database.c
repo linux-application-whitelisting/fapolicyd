@@ -789,8 +789,8 @@ static int get_xattr(int fd, char *sha)
 
 /*
  * This function handles the integrity check and any retries. It takes a
- * path as input and search for the data. It returns NULL on error or if
- * no data found.
+ * path as input and search for the data. It returns NULL if no data is found.
+ * Callers have to check the error variable before trusting it's results.
  */
 static char *read_trust_db(const char *path, int *error, struct file_info *info,
 	int fd)
@@ -895,12 +895,10 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 			     strncmp(&path[5], "sbin/", 5) == 0)) {
 				// We have a symlink, retry
 				res = read_trust_db(&path[4], &error, info, fd);
-				if (res) {
-					if (error)
-						retval = -1;
-					else
-						retval = 1;
-				}
+				if (error)
+					retval = -1;
+				else if (res)
+					retval = 1;
 			}
 		}
 	}
