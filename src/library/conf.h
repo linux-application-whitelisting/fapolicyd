@@ -1,5 +1,5 @@
 /* conf.h configuration structure
- * Copyright 2018-19 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2018-20 Red Hat Inc.
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,6 +26,8 @@
 
 #include <pwd.h>
 
+typedef enum { IN_NONE, IN_SIZE, IN_IMA } integrity_t;
+
 typedef struct conf
 {
 	unsigned int permissive;
@@ -40,6 +42,7 @@ typedef struct conf
 	unsigned int obj_cache_size;
 	const char *watch_fs;
 	const char *trust;
+	integrity_t integrity;
 } conf_t;
 
 #endif

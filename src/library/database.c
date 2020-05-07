@@ -65,6 +65,7 @@ static const char *db = "trust.db";
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static const char *fifo_path = "/run/fapolicyd/fapolicyd.fifo";
+static integrity_t integrity;
 
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
@@ -153,6 +154,8 @@ static int init_db(const conf_t *config)
 		return 5;
 
 	MDB_maxkeysize = mdb_env_get_maxkeysize(env);
+	integrity = config->integrity;
+	msg(LOG_INFO, "fapolicyd integrity is %u", integrity);
 
 	lib_symlink = is_link("/lib");
 	lib64_symlink = is_link("/lib64");
@@ -770,8 +773,62 @@ int init_database(conf_t *config)
 }
 
 
+/*
+ * This function handles the integrity check and any retries. It takes a
+ * path as input and search for the data. It returns NULL on error or if
+ * no data found.
+ */
+static char *read_trust_db(const char *path, int *error, struct file_info *info)
+{
+	int do_integrity = 0, mode = READ_TEST_KEY, retry = 0;
+	char *res;
+
+	if (integrity != IN_NONE && info) {
+		do_integrity = 1;
+		mode = READ_DATA;
+	}
+
+	res = lt_read_db(path, mode, error);
+retry_res:
+	if (do_integrity) {
+		int verified;
+		off_t size;
+		char sha[65];
+
+		if (res == NULL)
+			return res;
+
+		if (sscanf(res, DATA_FORMAT, &verified, &size, sha) != 3) {
+			free(res);
+			*error = 1;
+			return res;
+		}
+
+		// Need to do the compare and free res
+		free(res);
+		if (integrity == IN_SIZE) {
+			// If the size doesn't match, return NULL
+			if (size != info->size) {
+				// Gotta retry in case its the other one
+				if (retry == 0) {
+					retry = 1;
+					res = lt_read_db(path,
+							READ_DATA_DUP, error);
+					goto retry_res;
+				}
+				res = NULL;
+				msg(LOG_DEBUG, "size miscompare");
+			}
+		} else if (integrity == IN_IMA) {
+			// Now read xattr
+		}
+	}
+
+	return res;
+}
+
 // Returns a 1 if trusted and 0 if not and -1 on error
-int check_trust_database(const char *path)
+int check_trust_database(const char *path, struct file_info *info)
 {
 	int retval = 0, error;
 	char *res;
@@ -784,7 +841,7 @@ int check_trust_database(const char *path)
 	if (start_long_term_read_ops())
 		return -1;
 
-	res = lt_read_db(path, READ_TEST_KEY, &error);
+	res = read_trust_db(path, &error, info);
 	if (error)
 		retval = -1;
 	else if (res)
@@ -804,8 +861,8 @@ int check_trust_database(const char *path)
 			    (sbin_symlink &&
 			     strncmp(&path[5], "sbin/", 5) == 0)) {
 				// We have a symlink, retry
-				if (lt_read_db(&path[4], READ_TEST_KEY,
-								&error)) {
+				res = read_trust_db(&path[4], &error, info);
+				if (res) {
 					if (error)
 						retval = -1;
 					else

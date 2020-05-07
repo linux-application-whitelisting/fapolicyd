@@ -7,53 +7,69 @@ The file
 contains configuration information for the application whitelisting daemon configuration. This file allows the admin to tune the performance and actions of the fapolicyd during runtime. This file contains one configuration keyword per line, an equal sign, and then followed by appropriate configuration information. All option names and values are case insensitive. The keywords recognized are listed and described below. Each line should be limited to 160 characters or the line will be skipped. You may add comments to the file by starting the line with a '#' character.
 
 .TP
-.I permissive
+.B permissive
 This option is either a 0 to mean send policy decisions to the kernel for enforcement. Or it can be a 1 to mean always allow the access even if policy would block it. This should only be used for policy testing and debug. The default value is 0.
 
 .TP
-.I nice_val
+.B nice_val
 This option gives fapolicyd a scheduler boost. The number can be from 0 to 20. The default value is 10.
 
 .TP
-.I q_size
+.B q_size
 This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 1024.
 
 .TP
-.I uid
+.B uid
 This can be a number or an account name which fapolicyd should switch to during startup. The default value is 0 because it is guaranteed to exist. But it is recommended to use the fapolicyd account if that exists.
 
 .TP
-.I gid
+.B gid
 This can be a number or an group name which fapolicyd should switch to during startup. The default value is 0 because it is guaranteed to exist. But it is recommended to use the fapolicyd group if that exists.
 
 .TP
-.I do_stat_report
+.B do_stat_report
 This option controls whether (1) or not (0) fapolicyd should create a usage statistics report on shutdown. The report is written to /var/log/fapolicyd-access.log. This report gives information about number of allowed accesses and denials. Then for both the subject and object cache, it dumps information about size, hits, misses, and evictions. The default value is 1 which means create the report.
 
 .TP
-.I detailed_report
+.B detailed_report
 This option controls whether (1) or not (0) fapolicyd should add subject and object information to the usage statistics report. This would be information about the exact process or file path in the cache from most recently used to last recently used. This can be useful for forensics if an incident had occurred. But if the file names are sensitive then you may want to turn this off. The default value is 1 meaning add the details.
 
 .TP
-.I db_max_size
+.B db_max_size
 This option controls how many megabytes to allow the trust database to grow to. If you have lots of packages installed, then you want to make it bigger. The default value is 100 megabytes.
 
 .TP
-.I subj_cache_size
+.B subj_cache_size
 This option controls how many entries the subject cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. There are only 64k processes allowed at any time, so this would be the upper limit. The default value is 1024.
 
 .TP
-.I obj_cache_size
+.B obj_cache_size
 This option controls how many entries the object cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. The default value is 4096.
 
 .TP
-.I watch_fs
+.B watch_fs
 This is a comma separated list of file systems that should be watched for access permission. No attempt is made to validate the file systems names. They should exactly match the name presented in the first column of /proc/mounts. If this is not configured, it will default to watching ext4, xfs, and tmpfs.
 
 .TP
-.I trust
+.B trust
 This is a comma separated list of trust back-ends. If this is not configured, rpmdb is default. Fapolicyd supports \fBfile\fP back-end that reads content of /etc/fapolicyd/fapolicyd.trust and use it as a list of trusted files. The second option is \fBrpmdb\fP backend that generates list of trusted files from rpmdb.
 
+.TP
+.B integrity
+This option tells fapolicyd which integrity strategy it should use. It can be one of 3 values:
+.RS
+.TP 12
+.B none
+This is the
+.IR default
+and does no integrity checking.
+.TP
+.B size
+Selecting this option will compare the size of the file with what it was knows to be. This is better than nothing and very fast since fapolicyd already collects size information during normal processing. However, an attacker could replace the file and as long as the size matches, it will not be detected.
+.TP
+.B ima
+Selecting this option will use a SHA256 hash that the IMA subsystem places in a file's extended attributes. This means that all file systems holding executable code must support extended attributes.
+.RE
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),

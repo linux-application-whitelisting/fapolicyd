@@ -27,13 +27,14 @@
 #define DATABASE_HEADER
 
 #include "conf.h"
+#include "file.h"
 
 void lock_update_thread(void);
 void unlock_update_thread(void);
 
 int preconstruct_fifo(const conf_t *config);
 int init_database(conf_t *config);
-int check_trust_database(const char *path);
+int check_trust_database(const char *path, struct file_info *info);
 void close_database(void);
 void database_report(FILE *f);
 void unlink_db(void);

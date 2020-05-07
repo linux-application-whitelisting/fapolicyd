@@ -29,7 +29,7 @@
 #include "llist.h"
 
 // verified, size, sha
-#define DATA_FORMAT "%i %lu %s"
+#define DATA_FORMAT "%i %lu %64s"
 
 typedef struct _backend
 {

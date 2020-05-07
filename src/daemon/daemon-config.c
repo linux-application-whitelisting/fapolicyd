@@ -1,7 +1,7 @@
 /*
  * daemon-config.c - This is a config file parser
  *
- * Copyright 2018-19 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2018-20 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -52,6 +52,12 @@ struct kw_pair
 	int (*parser)(const struct nv_pair *, int, conf_t *);
 };
 
+struct nv_list
+{
+	const char *name;
+	int option;
+};
+
 static char *get_line(FILE *f, char *buf, unsigned size, int *lineno,
 		const char *file);
 static int nv_split(char *buf, struct nv_pair *nv);
@@ -80,6 +86,8 @@ static int watch_fs_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int trust_parser(const struct nv_pair *nv, int line,
 			   conf_t *config);
+static int integrity_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -95,6 +103,7 @@ static const struct kw_pair keywords[] =
   {"do_stat_report",	do_stat_report_parser },
   {"watch_fs",		watch_fs_parser },
   {"trust",		trust_parser },
+  {"integrity",		integrity_parser },
   { NULL,		NULL }
 };
 
@@ -119,6 +128,7 @@ static void clear_daemon_config(conf_t *config)
 #else
 	config->trust = strdup("file");
 #endif
+	config->integrity = IN_NONE;
 }
 
 int load_daemon_config(conf_t *config)
@@ -505,6 +515,7 @@ static int watch_fs_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+
 static int trust_parser(const struct nv_pair *nv, int line,
 			   conf_t *config)
 {
@@ -514,3 +525,26 @@ static int trust_parser(const struct nv_pair *nv, int line,
 		return 0;
 	return 1;
 }
+
+static const struct nv_list integrity_schemes[] =
+{
+  {"none",  IN_NONE },
+  {"size",  IN_SIZE },
+  {"ima",   IN_IMA  },
+  { NULL,  0 }
+};
+
+static int integrity_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	for (int i=0; integrity_schemes[i].name != NULL; i++) {
+		if (strcasecmp(nv->value, integrity_schemes[i].name) == 0) {
+			config->integrity = integrity_schemes[i].option;
+			return 0;
+		}
+	}
+	msg(LOG_ERR, "Option %s not found - line %d", nv->value, line);
+	return 1;
+}
+
+

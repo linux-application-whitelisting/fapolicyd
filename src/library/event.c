@@ -339,7 +339,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 
 			subj.val = 0;
 			if (exe) {
-				if (exe->str && check_trust_database(exe->str))
+				if (exe->str && check_trust_database(exe->str,
+								     NULL))
 					subj.val = 1;
 			}
 			}
@@ -421,7 +422,8 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		case OBJ_TRUST: {
 			object_attr_t *path =  get_obj_attr(e, PATH);
 
-			if (path && path->o && check_trust_database(path->o))
+			if (path && path->o && check_trust_database(path->o,
+								    o->info))
 				obj.len = 1;
 			}
 			break;

@@ -1,4 +1,5 @@
 0.9.5
+- Add file size based integrity checking
 
 0.9.4
 - Fix pattern detection in light of EXEC_PERM events
