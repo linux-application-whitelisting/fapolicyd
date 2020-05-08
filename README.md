@@ -344,7 +344,7 @@ as opposed to malicious activity where the attacker can make the file size
 match.
 
 The second mode is based on using IMA to calculate sha256 hashes and make them
-available through extended attributes. The incurs only the overhead of calling
+available through extended attributes. This incurs only the overhead of calling
 fgetxattr which is fast since there is no path name resolution. The file system
 must support i_version. For XFS, this is enabled by default. For other file
 systems, this means you need to add the i_version mount option. In either
@@ -375,7 +375,7 @@ guesses your password and they login to your account. Perhaps they wish to
 ransomware your home dir. The app they try to run is not known to the system
 and will be stopped. Or suppose there is an exploitable service on your system.
 The attacker is lucky enough to pop a shell. Now they want to download
-privilege escalation tools or perhaps a LD_PRELOAD key logger. Since neither
+privilege escalation tools or perhaps an LD_PRELOAD key logger. Since neither
 of these are in the trust database, they won't be allowed to run.
 
 This is really about stopping escalation or exploitation before the attacker
