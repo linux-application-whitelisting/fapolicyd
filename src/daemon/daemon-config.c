@@ -27,6 +27,7 @@
 #include "config.h"
 #include "daemon-config.h"
 #include "message.h"
+#include "file.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -540,6 +541,24 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 	for (int i=0; integrity_schemes[i].name != NULL; i++) {
 		if (strcasecmp(nv->value, integrity_schemes[i].name) == 0) {
 			config->integrity = integrity_schemes[i].option;
+			if (config->integrity == IN_IMA) {
+				int fd = open("/bin/sh", O_RDONLY);
+				if (fd) {
+					char sha[65];
+
+					int rc = get_ima_hash(fd, sha);
+					close(fd);
+					if (rc == 0) {
+						msg(LOG_ERR,
+  "IMA integrity checking selected, but the extended attributes can't be read");
+						return 1;
+					}
+				} else {
+					msg(LOG_ERR,
+	    "IMA integrity checking selected, but can't test the shell");
+					return 1;
+				}
+			}
 			return 0;
 		}
 	}
