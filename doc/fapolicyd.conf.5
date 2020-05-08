@@ -68,7 +68,7 @@ and does no integrity checking.
 Selecting this option will compare the size of the file with what it was knows to be. This is better than nothing and very fast since fapolicyd already collects size information during normal processing. However, an attacker could replace the file and as long as the size matches, it will not be detected.
 .TP
 .B ima
-Selecting this option will use a SHA256 hash that the IMA subsystem places in a file's extended attributes. This means that all file systems holding executable code must support extended attributes.
+Selecting this option will use a SHA256 hash that the IMA subsystem places in a file's extended attributes in addition to the size check. This means that all file systems holding executable code must support extended attributes.
 .RE
 
 .SH "SEE ALSO"
