@@ -36,10 +36,14 @@
 #include <libudev.h>
 #include <elf.h>
 #include <sys/xattr.h>
+#include <linux/hash_info.h>
 
 #include "file.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
+
+// Local defines
+#define IMA_XATTR_DIGEST_NG 0x04	// security/integrity/integrity.h
 
 // Local variables
 static struct udev *udev;
@@ -405,9 +409,22 @@ int get_ima_hash(int fd, char *sha)
 {
 	char tmp[34];
 
-	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 0)
+	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 0) {
+		msg(LOG_DEBUG, "Can't read ima xattr");
 		return 0;
+	}
 
+	// Let's check what we got
+	if (tmp[0] != IMA_XATTR_DIGEST_NG) {
+		msg(LOG_DEBUG, "Wrong ima xattr type");
+		return 0;
+	}
+	if (tmp[1] != HASH_ALGO_SHA256) {
+		msg(LOG_DEBUG, "Wrong ima hash algorithm");
+		return 0;
+	}
+
+	// Looks like it what we want...
 	bytes2hex(sha, &tmp[2], 32);
 	return 1;
 }
