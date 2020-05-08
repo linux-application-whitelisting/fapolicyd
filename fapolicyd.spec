@@ -5,6 +5,7 @@ Release: 1
 License: GPLv3+
 URL: http://people.redhat.com/sgrubb/fapolicyd
 Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
+BuildRequires: gcc
 BuildRequires: kernel-headers
 BuildRequires: systemd-devel libgcrypt-devel rpm-devel file-devel file
 BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
