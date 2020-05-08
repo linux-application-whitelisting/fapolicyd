@@ -35,6 +35,8 @@
 #include <magic.h>
 #include <libudev.h>
 #include <elf.h>
+#include <sys/xattr.h>
+
 #include "file.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
@@ -395,6 +397,19 @@ char *get_hash_from_fd(int fd)
 	rewind_fd(fd);
 
 	return digest;
+}
+
+
+// This function returns 0 on error and 1 if successful
+int get_ima_hash(int fd, char *sha)
+{
+	char tmp[34];
+
+	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 0)
+		return 0;
+
+	bytes2hex(sha, &tmp[2], 32);
+	return 1;
 }
 
 

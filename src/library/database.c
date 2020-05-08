@@ -40,7 +40,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/xattr.h>
 
 #include "database.h"
 #include "message.h"
@@ -774,19 +773,6 @@ int init_database(conf_t *config)
 }
 
 
-// This function returns 0 on error and 1 if successful
-static int get_xattr(int fd, char *sha)
-{
-	char tmp[34];
-
-	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 0)
-		return 0;
-
-	bytes2hex(sha, &tmp[2], 32);
-	return 1;
-}
-
-
 /*
  * This function handles the integrity check and any retries. Retries are
  * necessary if the system has both i686 and x86_64 packages installed. It
@@ -843,7 +829,7 @@ retry_res:
 
 			// read xattr only the first time
 			if (retry == 0)
-				rc = get_xattr(fd, sha_xattr);
+				rc = get_ima_hash(fd, sha_xattr);
 			if (rc) {
 				if (strcmp(sha, sha_xattr)) {
 					if (retry == 0) {

@@ -49,6 +49,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf);
 char *bytes2hex(char *final, const char *buf, unsigned int size);
 char *get_hash_from_fd(int fd);
+int get_ima_hash(int fd, char *sha);
 uint32_t gather_elf(int fd, off_t size);
 
 #endif
