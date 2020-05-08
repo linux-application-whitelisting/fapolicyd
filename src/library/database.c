@@ -788,8 +788,11 @@ static int get_xattr(int fd, char *sha)
 
 
 /*
- * This function handles the integrity check and any retries. It takes a
- * path as input and search for the data. It returns NULL if no data is found.
+ * This function handles the integrity check and any retries. Retries are
+ * necessary if the system has both i686 and x86_64 packages installed. It
+ * takes a path as input and searches for the data. It returns NULL if no
+ * data is found or if the integrity check has failed. There is no
+ * distinguishing which is the case since both mean you cannot trust the file.
  * Callers have to check the error variable before trusting it's results.
  */
 static char *read_trust_db(const char *path, int *error, struct file_info *info,
