@@ -335,7 +335,20 @@ https://www.nist.gov/publications/guide-application-whitelisting
 
 3) Does the daemon check file integrity?
 
-Not today, but it's on the roadmap. The roadmap is in the TODO file.
+Version 0.9.5 and later supports 2 modes of integrity checking. The first is
+based on file size. In this mode, fapolicyd will take the size information
+from the trust db and compare it with the measured file size. This test
+incurs no overhead since the file size is collected when establishing
+uniqueness for caching purposes. It is intended to detect accidental overwrites
+as opposed to malicious activity where the attacker can make the file size
+match.
+
+The second mode is based on using IMA to calculate sha256 hashes and make them
+available through extended attributes. The incurs only the overhead of calling
+fgetxattr which is fast since there is no path name resolution. The file system
+must support i_version. For XFS, this is enabled by default. For other file
+systems, this means you need to add the i_version mount option. In either
+case, IMA must be setup appropriately.
 
 4) This is only looking at location. Can't this be defeated by simply moving
 the files to another location?
