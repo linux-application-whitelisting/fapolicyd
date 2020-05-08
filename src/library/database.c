@@ -831,7 +831,7 @@ retry_res:
 			if (retry == 0)
 				rc = get_ima_hash(fd, sha_xattr);
 			if (rc) {
-				if (size != info->size &&
+				if (size != info->size ||
 						strcmp(sha, sha_xattr)) {
 					if (retry == 0) {
 						retry = 1;
