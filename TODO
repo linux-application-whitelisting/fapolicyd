@@ -6,8 +6,9 @@ Userspace
 =========
 Add config option to allow admin defined syslog format
 Consider exe & ftype as lists (Use AVL code for matching)
+Add support to rules for using groups/gid
 Does reversing path string improve lookup performance?
-Conside adding rule testing to cli (uid, pgm, file)
+Consider adding rule testing to cli (uid, pgm, file)
 Allow rules to express paths using globbing (fnmatch)
 Support SWID as trust source
 
