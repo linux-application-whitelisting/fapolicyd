@@ -1,6 +1,6 @@
 /*
  * database.c - Trust database
- * Copyright (c) 2016,2018-20 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-20 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -844,8 +844,10 @@ retry_res:
 					res = NULL;
 					msg(LOG_DEBUG, "IMA hash miscompare");
 				}
-			} else
+			} else {
 				res = NULL;
+				*error = 1;
+			}
 		} else if (integrity == IN_SHA256) {
 			int rc = 1;
 			char *hash;
@@ -857,8 +859,10 @@ retry_res:
 					strncpy(sha_xattr, hash, 64);
 					sha_xattr[64] = 0;
 					free(hash);
-				} else
+				} else {
 					rc = 0;
+					*error = 1;
+				}
 			}
 
 			if (rc) {
