@@ -791,6 +791,7 @@ static char *read_trust_db(const char *path, int *error, struct file_info *info,
 	if (integrity != IN_NONE && info) {
 		do_integrity = 1;
 		mode = READ_DATA;
+		sha_xattr[0] = 0; // Make sure we can't re-use stack value
 	}
 
 	res = lt_read_db(path, mode, error);
@@ -830,6 +831,7 @@ retry_res:
 			// read xattr only the first time
 			if (retry == 0)
 				rc = get_ima_hash(fd, sha_xattr);
+
 			if (rc) {
 				if (size != info->size ||
 						strcmp(sha, sha_xattr)) {
@@ -842,6 +844,36 @@ retry_res:
 					res = NULL;
 					msg(LOG_DEBUG, "IMA hash miscompare");
 				}
+			} else
+				res = NULL;
+		} else if (integrity == IN_SHA256) {
+			int rc = 1;
+			char *hash;
+
+			// Calculate a hash only one time
+			if (retry == 0) {
+				hash = get_hash_from_fd(fd);
+				if (hash) {
+					strncpy(sha_xattr, hash, 64);
+					sha_xattr[64] = 0;
+					free(hash);
+				} else
+					rc = 0;
+			}
+
+			if (rc) {
+				if (size != info->size ||
+				    strcmp(sha, sha_xattr)) {
+					if (retry == 0) {
+						retry = 1;
+						res = lt_read_db(path,
+							 READ_DATA_DUP, error);
+						goto retry_res;
+					}
+					res = NULL;
+					msg(LOG_DEBUG, "sha256 miscompare");
+				}
+
 			} else
 				res = NULL;
 		}

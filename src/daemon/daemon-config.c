@@ -529,9 +529,10 @@ static int trust_parser(const struct nv_pair *nv, int line,
 
 static const struct nv_list integrity_schemes[] =
 {
-  {"none",  IN_NONE },
-  {"size",  IN_SIZE },
-  {"ima",   IN_IMA  },
+  {"none",   IN_NONE   },
+  {"size",   IN_SIZE   },
+  {"ima",    IN_IMA    },
+  {"sha256", IN_SHA256 },
   { NULL,  0 }
 };
 

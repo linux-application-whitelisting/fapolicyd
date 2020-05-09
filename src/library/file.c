@@ -366,6 +366,10 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 }
 
 
+/*
+ * On success this function returns a buffer that the caller must free.
+ * on error, it returns NULL
+ */
 char *get_hash_from_fd(int fd)
 {
 	gcry_md_hd_t ctx;

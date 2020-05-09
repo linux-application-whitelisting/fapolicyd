@@ -70,6 +70,9 @@ Selecting this option will compare the size of the file with what it was knows t
 .B ima
 Selecting this option will use a SHA256 hash that the IMA subsystem places in a file's extended attributes in addition to the size check. This means that all file systems holding executable code must support extended attributes.
 .RE
+.TP
+.B sha256
+Selecting this option will calculate a SHA256 hash by cryptographic means. A size check will also be performed.
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),
