@@ -1,6 +1,6 @@
 /*
  * policy.c - functions that encapsulate the notion of a policy
- * Copyright (c) 2016,2019 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2019-20 Red Hat
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -45,11 +45,16 @@ static const nv_t table[] = {
 {       DENY, "deny" },
 #ifdef USE_AUDIT
 {       ALLOW_AUDIT, "allow_audit" },
-{       DENY_AUDIT, "deny_audit" }
+{       DENY_AUDIT, "deny_audit" },
 #endif
+{       ALLOW_SYSLOG, "allow_syslog" },
+{       DENY_SYSLOG, "deny_syslog" },
+{       ALLOW_LOG, "allow_log" },
+{       DENY_LOG, "deny_log" }
 };
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
+
 
 int dec_name_to_val(const char *name)
 {
@@ -62,6 +67,7 @@ int dec_name_to_val(const char *name)
         return -1;
 }
 
+
 static const char *dec_val_to_name(unsigned int v)
 {
 	unsigned int i = 0;
@@ -72,6 +78,7 @@ static const char *dec_val_to_name(unsigned int v)
 	}
         return NULL;
 }
+
 
 static char *get_line(FILE *f, char *buf)
 {
@@ -84,6 +91,7 @@ static char *get_line(FILE *f, char *buf)
 	}
 	return NULL;
 }
+
 
 // Returns 0 on success and 1 on error
 int load_config(void)
@@ -128,17 +136,20 @@ int load_config(void)
 	return 0;
 }
 
+
 int reload_config(void)
 {
 	destroy_config();
 	return load_config();
 }
 
+
 static void log_it(unsigned int num, rformat_t format, decision_t results,
 	       event_t *e)
 {
 	subject_attr_t *subj, *subj2, *subj3;
 	object_attr_t *obj, *obj2;
+	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
 
 	subj = get_subj_attr(e, EXE);
 	subj2 = get_subj_attr(e, AUID);
@@ -146,14 +157,14 @@ static void log_it(unsigned int num, rformat_t format, decision_t results,
 	obj = get_obj_attr(e, PATH);
 	obj2 = get_obj_attr(e, FTYPE);
 	if (format == RULE_FMT_ORIG) {
-		msg(LOG_DEBUG,
+		msg(mode,
 		    "rule:%u dec=%s auid=%d pid=%d exe=%s file=%s ftype=%s",
 			num+1,
 			dec_val_to_name(results),
 			subj2->val, subj3->val, subj->str,
 			obj ? obj->o : "?", obj2 ? obj2->o : "?");
 	} else {
-		msg(LOG_DEBUG,
+		msg(mode,
 			"rule:%u dec=%s perm=%s auid=%d pid=%d exe=%s : "
 			"file=%s ftype=%s",
 			num+1,
@@ -163,6 +174,7 @@ static void log_it(unsigned int num, rformat_t format, decision_t results,
 			obj ? obj->o : "?", obj2 ? obj2->o : "?");
 	}
 }
+
 
 decision_t process_event(event_t *e)
 {
@@ -179,9 +191,10 @@ decision_t process_event(event_t *e)
 		r = rules_next(&rules);
 	}
 
-	// Output some information if debugging on
-	if ((debug > 1 && (results & ~AUDIT) == DENY) || (debug == 1))
-		log_it(r ? r->num : 0xFFFFFFFF, 
+	// Output some information if debugging on or syslogging requested
+	if ( (results & SYSLOG) || (debug == 1) ||
+	     (debug > 1 && (results & DENY)) )
+		log_it(r ? r->num : 0xFFFFFFFF,
 			r ? r->format : RULE_FMT_COLON, results, e);
 
 	// If we are not in permissive mode, return any decision
@@ -191,7 +204,9 @@ decision_t process_event(event_t *e)
 	return ALLOW;
 }
 
-void make_policy_decision(const struct fanotify_event_metadata *metadata, int fd, uint64_t mask)
+
+void make_policy_decision(const struct fanotify_event_metadata *metadata,
+						int fd, uint64_t mask)
 {
 	struct fanotify_response response;
 	event_t e;
@@ -212,27 +227,32 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata, int fd
 		if (permissive)
 			response.response = FAN_ALLOW;
 		else
-			response.response = decision;
+			response.response = decision & FAN_RESPONSE_MASK;
 		write(fd, &response, sizeof(struct fanotify_response));
 	}
 }
 
-unsigned long getAllowed()
+
+unsigned long getAllowed(void)
 {
 	return allowed;
 }
 
-unsigned long getDenied()
+
+unsigned long getDenied(void)
 {
 	return denied;
 }
+
 
 void policy_no_audit(void)
 {
 	rules_unsupport_audit(&rules);
 }
 
+
 void destroy_config(void)
 {
 	rules_clear(&rules);
 }
+

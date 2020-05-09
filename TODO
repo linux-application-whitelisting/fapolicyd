@@ -4,7 +4,7 @@ Fix ld.so to not be an execution unless it really is
 
 Userspace
 =========
-Think about config option to ask if events should go to syslog, too
+Add config option to allow admin defined syslog format
 Consider exe & ftype as lists (Use AVL code for matching)
 Does reversing path string improve lookup performance?
 Conside adding rule testing to cli (uid, pgm, file)

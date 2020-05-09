@@ -1,6 +1,6 @@
 /*
  * policy.h - Header file for policy.c
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2020 Red Hat
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -34,17 +34,28 @@
 #if HAVE_DECL_FAN_AUDIT
 #define AUDIT FAN_AUDIT
 #else
-#define AUDIT 0x10
+#define AUDIT 0x0010
 #define FAN_ENABLE_AUDIT 0x00000040
 #endif
 #else
 #define AUDIT 0x0
 #endif
 
-typedef enum { NO_OPINION = 0, ALLOW = FAN_ALLOW, DENY = FAN_DENY,
-#ifdef USE_AUDIT
-ALLOW_AUDIT = FAN_ALLOW | AUDIT, DENY_AUDIT = FAN_DENY | AUDIT
-#endif
+#define SYSLOG 0x0020
+#define FAN_RESPONSE_MASK 0x001F
+
+typedef enum {
+	NO_OPINION = 0,
+	ALLOW = FAN_ALLOW,
+	DENY = FAN_DENY,
+	#ifdef USE_AUDIT
+	ALLOW_AUDIT = FAN_ALLOW | AUDIT,
+	DENY_AUDIT = FAN_DENY | AUDIT,
+	#endif
+	ALLOW_SYSLOG = FAN_ALLOW | SYSLOG,
+	DENY_SYSLOG = FAN_DENY | SYSLOG,
+	ALLOW_LOG = FAN_ALLOW | AUDIT | SYSLOG,
+	DENY_LOG = FAN_DENY | AUDIT | SYSLOG
 } decision_t;
 
 extern int debug;
@@ -54,10 +65,12 @@ int dec_name_to_val(const char *name);
 int load_config(void);
 int reload_config(void);
 decision_t process_event(event_t *e);
-void make_policy_decision(const struct fanotify_event_metadata *metadata, int fd, uint64_t mask);
-unsigned long getAllowed();
-unsigned long getDenied();
+void make_policy_decision(const struct fanotify_event_metadata *metadata,
+						int fd, uint64_t mask);
+unsigned long getAllowed(void);
+unsigned long getDenied(void);
 void policy_no_audit(void);
 void destroy_config(void);
 
 #endif
+
