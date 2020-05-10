@@ -291,17 +291,22 @@ static char *format_value(int item, unsigned int num, decision_t results,
 	return out;
 }
 
-// This is like memccpy except it returns the pointer to the NULL byte.
-// Also, since we know we are always looking for NULL, just hard code it.
-static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
+// This is like memccpy except it returns the pointer to the NIL byte so
+// that we are positioned for the next concatenation. Also, since we know
+// we are always looking for NIL, just hard code it.
+static void *fmemccpy(void* restrict dst, const void* restrict src, ssize_t n)
 {
+	if (n <= 0)
+		return dst;
+
 	const char *s = src;
-	for (char *ret = dst; n; ++ret, ++s, --n) {
+	char *ret = dst;
+	for ( ; n; ++ret, ++s, --n) {
 		*ret = *s;
 		if ((unsigned char)*ret == (unsigned char)'\0')
 			return ret;
 	}
-	return 0;
+	return ret;
 }
 
 
@@ -310,7 +315,8 @@ static char *working_buffer = NULL;
 static void log_it2(unsigned int num, decision_t results, event_t *e)
 {
 	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
-	unsigned int i, dsize;
+	unsigned int i;
+	int dsize;
 	char *p1, *p2, *val;
 
 	if (working_buffer == NULL)
@@ -318,7 +324,7 @@ static void log_it2(unsigned int num, decision_t results, event_t *e)
 
 	dsize = WB_SIZE;
 	p2 = working_buffer;
-	for (i = 0; i < num_fields; i++)
+	for (i = 0; i < num_fields && dsize; i++)
 	{
 		if (dsize < WB_SIZE) {
 			// This is skipped first pass
@@ -336,7 +342,7 @@ static void log_it2(unsigned int num, decision_t results, event_t *e)
 			free(val);
 		}
 	}
-	working_buffer[WB_SIZE-1] = 0;
+	working_buffer[WB_SIZE-1] = 0;	// Just in case
 	msg(mode, "%s", working_buffer);
 }
 

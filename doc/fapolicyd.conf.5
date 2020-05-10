@@ -76,7 +76,7 @@ Selecting this option will calculate a SHA256 hash by cryptographic means. A siz
 
 .TP
 .B syslog_format
-This option controls how the output from the access decision is formatted. The format is a comma separated list of subject and object names from the rules. It does not allow the keyword "all". It also allows for rule, dec, and perm. The format must include a semi-colon to deliniate subject from object keywords. The typical use is to place information about the access decision, then subject information, a colon, and the object information. Also note that the more things being logged, the more it will impact system performance.
+This option controls how the output from the access decision is formatted. The format is a comma separated list of subject and object names from the rules. It does not allow the keyword "all". It also allows for rule, dec, and perm. The format must include a semi-colon to deliniate subject from object keywords. The typical use is to place information about the access decision, then subject information, a colon, and the object information. Also note that the more things being logged, the more it will impact system performance. Also, the event written is limited to 512 bytes.
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),
