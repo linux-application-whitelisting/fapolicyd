@@ -89,6 +89,8 @@ static int trust_parser(const struct nv_pair *nv, int line,
 			   conf_t *config);
 static int integrity_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
+static int syslog_format_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -105,6 +107,7 @@ static const struct kw_pair keywords[] =
   {"watch_fs",		watch_fs_parser },
   {"trust",		trust_parser },
   {"integrity",		integrity_parser },
+  {"syslog_format",	syslog_format_parser },
   { NULL,		NULL }
 };
 
@@ -130,6 +133,8 @@ static void clear_daemon_config(conf_t *config)
 	config->trust = strdup("file");
 #endif
 	config->integrity = IN_NONE;
+	config->syslog_format =
+		strdup("rule,dec,perm,auid,pid,exe,:,path,ftype");
 }
 
 int load_daemon_config(conf_t *config)
@@ -513,6 +518,7 @@ static int watch_fs_parser(const struct nv_pair *nv, int line,
 	config->watch_fs = strdup(nv->value);
 	if (config->watch_fs)
 		return 0;
+	msg(LOG_ERR, "Could not store value line %d", line);
 	return 1;
 }
 
@@ -524,8 +530,10 @@ static int trust_parser(const struct nv_pair *nv, int line,
 	config->trust = strdup(nv->value);
 	if (config->trust)
 		return 0;
+	msg(LOG_ERR, "Could not store value line %d", line);
 	return 1;
 }
+
 
 static const struct nv_list integrity_schemes[] =
 {
@@ -567,4 +575,15 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+
+static int syslog_format_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	free((void *)config->syslog_format);
+	config->syslog_format = strdup(nv->value);
+	if (config->syslog_format)
+		return 0;
+	msg(LOG_ERR, "Could not store value line %d", line);
+	return 1;
+}
 

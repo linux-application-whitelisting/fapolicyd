@@ -1,4 +1,4 @@
-.TH FAPOLICYD.CONF: "5" "July 2019" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.CONF: "5" "May 2020" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd.conf \- fapolicyd configuration file
 .SH DESCRIPTION
@@ -56,7 +56,7 @@ This is a comma separated list of trust back-ends. If this is not configured, rp
 
 .TP
 .B integrity
-This option tells fapolicyd which integrity strategy it should use. It can be one of 3 values:
+This option tells fapolicyd which integrity strategy it should use. It can be one of 4 values:
 .RS
 .TP 12
 .B none
@@ -73,6 +73,10 @@ Selecting this option will use a SHA256 hash that the IMA subsystem places in a 
 .TP
 .B sha256
 Selecting this option will calculate a SHA256 hash by cryptographic means. A size check will also be performed.
+
+.TP
+.B syslog_format
+This option controls how the output from the access decision is formatted. The format is a comma separated list of subject and object names from the rules. It does not allow the keyword "all". It also allows for rule, dec, and perm. The format must include a semi-colon to deliniate subject from object keywords. The typical use is to place information about the access decision, then subject information, a colon, and the object information. Also note that the more things being logged, the more it will impact system performance.
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),

@@ -33,4 +33,10 @@ typedef struct nv {
         const char *name;
 }nv_t;
 
+typedef struct nv_list
+{
+        const char *name;
+        int item;
+}nvlist_t;
+
 #endif

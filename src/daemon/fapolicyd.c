@@ -431,7 +431,7 @@ int main(int argc, const char *argv[])
 				strerror(errno));
 
 	// Load the rule configuration
-	if (load_config())
+	if (load_config(&config))
 		exit(1);
 	if (!debug) {
 		if (become_daemon() < 0) {

@@ -36,8 +36,12 @@
 #include "nv.h"
 #include "message.h"
 
+#define MAX_SYSLOG_FIELDS	21
+
 static llist rules;
 static unsigned long allowed = 0, denied = 0;
+static nvlist_t fields[MAX_SYSLOG_FIELDS];
+static unsigned int num_fields;
 
 static const nv_t table[] = {
 {       NO_OPINION, "no-opinion" },
@@ -54,6 +58,98 @@ static const nv_t table[] = {
 };
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
+
+// These are the constants for things not subj or obj
+#define F_RULE 30
+#define F_DECISION 31
+#define F_PERM 32
+#define F_COLON 33
+
+
+// This function returns 1 on success and 0 on failure
+static int parsing_obj;
+static int lookup_field(const char *ptr)
+{
+	if (strcmp("rule", ptr) == 0) {
+		fields[num_fields].name = strdup(ptr);
+		fields[num_fields].item = F_RULE;
+		goto success;
+	} else if (strcmp("dec", ptr) == 0) {
+		fields[num_fields].name = strdup(ptr);
+		fields[num_fields].item = F_DECISION;
+		goto success;
+	} else if (strcmp("perm", ptr) == 0) {
+		fields[num_fields].name = strdup(ptr);
+		fields[num_fields].item = F_PERM;
+		goto success;
+	} else if (strcmp(":", ptr) == 0) {
+		fields[num_fields].name = strdup(ptr);
+		fields[num_fields].item = F_COLON;
+		parsing_obj = 1;
+		goto success;
+	}
+
+	if (parsing_obj == 0) {
+		int ret_val = subj_name_to_val(ptr, RULE_FMT_COLON);
+		if (ret_val >= 0) {
+			if (ret_val == ALL_SUBJ || ret_val == PATTERN ||
+			    ret_val > EXE) {
+				msg(LOG_ERR,
+				   "%s cannot be used in syslog_format", ptr);
+			} else {
+				fields[num_fields].name = strdup(ptr);
+				fields[num_fields].item = ret_val;
+				goto success;
+			}
+		}
+	} else {
+		int ret_val = obj_name_to_val(ptr);
+		if (ret_val >= 0) {
+			if (ret_val == ALL_OBJ) {
+				msg(LOG_ERR,
+				    "%s cannot be used in syslog_format", ptr);
+			} else {
+				fields[num_fields].name = strdup(ptr);
+				fields[num_fields].item = ret_val;
+				goto success;
+			}
+		}
+	}
+
+	return 0;
+success:
+	num_fields++;
+	return 1;
+}
+
+
+// This function returns 1 on success, 0 on failure
+static int parse_syslog_format(const char *syslog_format)
+{
+	char *ptr, *saved, *tformat;
+	int rc = 1;
+
+	if (strchr(syslog_format, ':') == NULL) {
+		msg(LOG_ERR, "syslog_format does not have a ':'");
+		return 0;
+	}
+
+	num_fields = 0;
+	parsing_obj = 0;
+	tformat = strdup(syslog_format);
+
+	// Must be delimited by comma
+	ptr = strtok_r(tformat, ",", &saved);
+	while (ptr && rc && num_fields < MAX_SYSLOG_FIELDS) {
+		rc = lookup_field(ptr);
+		if (rc == 0)
+			msg(LOG_ERR, "Field %s invalid for syslog_format", ptr);
+		ptr = strtok_r(NULL, ",", &saved);
+	}
+	free(tformat);
+
+	return rc;
+}
 
 
 int dec_name_to_val(const char *name)
@@ -94,9 +190,9 @@ static char *get_line(FILE *f, char *buf)
 
 
 // Returns 0 on success and 1 on error
-int load_config(void)
+int load_config(const conf_t *config)
 {
-	int fd, lineno = 1;
+	int fd, rc, lineno = 1;
 	FILE *f;
 	char buf[PATH_MAX+1];
 
@@ -118,7 +214,7 @@ int load_config(void)
 	}
 
 	while (get_line(f, buf)) {
-		int rc = rules_append(&rules, buf, lineno);
+		rc = rules_append(&rules, buf, lineno);
 		if (rc) {
 			fclose(f);
 			return 1;
@@ -133,46 +229,115 @@ int load_config(void)
 	} else
 		msg(LOG_DEBUG, "Loaded %u rules", rules.cnt);
 
+	rc = parse_syslog_format(config->syslog_format);
+	if (!rc || num_fields == 0)
+		return 1;
+
 	return 0;
 }
 
 
-int reload_config(void)
+int reload_config(const conf_t *config)
 {
 	destroy_config();
-	return load_config();
+	return load_config(config);
+}
+
+static char *format_value(int item, unsigned int num, decision_t results,
+	event_t *e)
+{
+	char *out = NULL;
+
+	if (item >= F_RULE) {
+		switch (item) {
+		case F_RULE:
+			if (asprintf(&out, "%d", num+1) < 0)
+				out = NULL;
+			break;
+		case F_DECISION:
+			if (asprintf(&out, "%s", dec_val_to_name(results)) < 0)
+				out = NULL;
+			break;
+		case F_PERM:
+			if (asprintf(&out, "%s",
+					e->type & FAN_OPEN_EXEC_PERM ?
+					"execute" : "open") < 0)
+				out = NULL;
+			break;
+		case F_COLON:
+			if (asprintf(&out, ":") < 0)
+				out = NULL;
+			break;
+		}
+	} else if (item >= OBJ_START) {
+		object_attr_t *obj = get_obj_attr(e, item);
+		if (item != OBJ_TRUST) {
+			if (asprintf(&out, "%s", obj ? obj->o : "?") < 0)
+				out = NULL;
+		} else {
+			if (asprintf(&out,"%u",obj ? (obj->o ? 1 : 0) : 9) < 0)
+				out = NULL;
+		}
+	} else {
+		subject_attr_t *subj = get_subj_attr(e, item);
+		if (item < COMM) {
+			if (asprintf(&out, "%d", subj ? subj->val : -2) < 0)
+				out = NULL;
+		} else {
+			if (asprintf(&out, "%s", subj ? subj->str : "?") < 0)
+				out = NULL;
+		}
+	}
+	return out;
+}
+
+// This is like memccpy except it returns the pointer to the NULL byte.
+// Also, since we know we are always looking for NULL, just hard code it.
+static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
+{
+	const char *s = src;
+	for (char *ret = dst; n; ++ret, ++s, --n) {
+		*ret = *s;
+		if ((unsigned char)*ret == (unsigned char)'\0')
+			return ret;
+	}
+	return 0;
 }
 
 
-static void log_it(unsigned int num, rformat_t format, decision_t results,
-	       event_t *e)
+#define WB_SIZE 512
+static char *working_buffer = NULL;
+static void log_it2(unsigned int num, decision_t results, event_t *e)
 {
-	subject_attr_t *subj, *subj2, *subj3;
-	object_attr_t *obj, *obj2;
 	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
+	unsigned int i, dsize;
+	char *p1, *p2, *val;
 
-	subj = get_subj_attr(e, EXE);
-	subj2 = get_subj_attr(e, AUID);
-	subj3 = get_subj_attr(e, PID);
-	obj = get_obj_attr(e, PATH);
-	obj2 = get_obj_attr(e, FTYPE);
-	if (format == RULE_FMT_ORIG) {
-		msg(mode,
-		    "rule:%u dec=%s auid=%d pid=%d exe=%s file=%s ftype=%s",
-			num+1,
-			dec_val_to_name(results),
-			subj2->val, subj3->val, subj->str,
-			obj ? obj->o : "?", obj2 ? obj2->o : "?");
-	} else {
-		msg(mode,
-			"rule:%u dec=%s perm=%s auid=%d pid=%d exe=%s : "
-			"file=%s ftype=%s",
-			num+1,
-			dec_val_to_name(results),
-			e->type & FAN_OPEN_EXEC_PERM ? "execute" : "open",
-			subj2->val, subj3->val, subj->str,
-			obj ? obj->o : "?", obj2 ? obj2->o : "?");
+	if (working_buffer == NULL)
+		working_buffer = malloc(WB_SIZE);
+
+	dsize = WB_SIZE;
+	p2 = working_buffer;
+	for (i = 0; i < num_fields; i++)
+	{
+		if (dsize < WB_SIZE) {
+			// This is skipped first pass
+			p2 = fmemccpy(p1, " ", dsize);
+			dsize -= p2 - p1;
+		}
+		p1 = fmemccpy(p2, fields[i].name, dsize);
+		dsize -= p1 - p2;
+		if (fields[i].item != F_COLON) {
+			p2 = fmemccpy(p1, "=", dsize);
+			dsize -= p2 - p1;
+			val = format_value(fields[i].item, num, results, e);
+			p1 = fmemccpy(p2, val, dsize);
+			dsize -= p1 - p2;
+			free(val);
+		}
 	}
+	working_buffer[WB_SIZE-1] = 0;
+	msg(mode, "%s", working_buffer);
 }
 
 
@@ -194,8 +359,7 @@ decision_t process_event(event_t *e)
 	// Output some information if debugging on or syslogging requested
 	if ( (results & SYSLOG) || (debug == 1) ||
 	     (debug > 1 && (results & DENY)) )
-		log_it(r ? r->num : 0xFFFFFFFF,
-			r ? r->format : RULE_FMT_COLON, results, e);
+		log_it2(r ? r->num : 0xFFFFFFFF, results, e);
 
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)
@@ -253,6 +417,7 @@ void policy_no_audit(void)
 
 void destroy_config(void)
 {
+	free(working_buffer);
 	rules_clear(&rules);
 }
 

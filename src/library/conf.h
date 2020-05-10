@@ -43,6 +43,7 @@ typedef struct conf
 	const char *watch_fs;
 	const char *trust;
 	integrity_t integrity;
+	const char *syslog_format;
 } conf_t;
 
 #endif
