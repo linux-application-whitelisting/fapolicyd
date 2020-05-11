@@ -319,8 +319,13 @@ static void log_it2(unsigned int num, decision_t results, event_t *e)
 	int dsize;
 	char *p1, *p2, *val;
 
-	if (working_buffer == NULL)
+	if (working_buffer == NULL) {
 		working_buffer = malloc(WB_SIZE);
+		if (working_buffer == NULL) {
+			msg(LOG_ERR, "No working buffer for logging");
+			return;
+		}
+	}
 
 	dsize = WB_SIZE;
 	p2 = working_buffer;
