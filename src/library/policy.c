@@ -342,7 +342,7 @@ static void log_it2(unsigned int num, decision_t results, event_t *e)
 			p2 = fmemccpy(p1, "=", dsize);
 			dsize -= p2 - p1;
 			val = format_value(fields[i].item, num, results, e);
-			p1 = fmemccpy(p2, val, dsize);
+			p1 = fmemccpy(p2, val ? val : "?", dsize);
 			dsize -= p1 - p2;
 			free(val);
 		}
