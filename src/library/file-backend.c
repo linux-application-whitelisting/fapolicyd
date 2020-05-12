@@ -100,7 +100,8 @@ static int file_load_list(void)
 				free(index);
 				free(data);
 			}
-		}
+		} else if (!data)
+			free(index);
 	}
 
 	fclose(file);

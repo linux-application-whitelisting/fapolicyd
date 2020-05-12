@@ -541,7 +541,7 @@ static int obj_dir_test(const object_attr_t *o, const object_attr_t *obj,
 	bool trusted)
 {
 	// Can't happen but doing this for static analysis
-	if (obj == NULL)
+	if (obj == NULL || obj->o)
 		return 0;
 
 	// Execdirs doesn't have /etc in its list
