@@ -807,11 +807,13 @@ retry_res:
 		if (sscanf(res, DATA_FORMAT, &verified, &size, sha) != 3) {
 			free(res);
 			*error = 1;
+			res = (char *)1;
 			return res;
 		}
 
 		// Need to do the compare and free res
 		free(res);
+		res = (char *)1;
 		if (integrity == IN_SIZE) {
 			// If the size doesn't match, return NULL
 			if (size != info->size) {

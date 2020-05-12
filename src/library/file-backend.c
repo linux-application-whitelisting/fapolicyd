@@ -95,10 +95,12 @@ static int file_load_list(void)
 		index = strdup(name);
 
 		//msg(LOG_INFO, "GGG: %s, %s", index, data);
-		if (index && data)
-			list_append(&file_backend.list, index, data);
-
-		//free(data);
+		if (index && data) {
+			if (list_append(&file_backend.list, index, data)) {
+				free(index);
+				free(data);
+			}
+		}
 	}
 
 	fclose(file);
@@ -200,11 +202,12 @@ int file_append(const char *path)
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
 		msg(LOG_ERR, "Cannot open %s", path);
-		goto err_out2;
+		goto err_out;
 	}
 
 	if (fstat(fd, &sb)) {
 		msg(LOG_ERR, "Cannot stat %s", path);
+		close(fd);
 		goto err_out;
 	}
 
@@ -228,7 +231,6 @@ int file_append(const char *path)
 
 		if (sscanf(buffer, FILE_READ_FORMAT, tpath, &size, thash) != 3){
 			msg(LOG_WARNING, "Can't parse %s", buffer);
-			close(fd);
 			fclose(f);
 			list_empty(&add_list);
 			return 1;
@@ -240,7 +242,6 @@ int file_append(const char *path)
 	if (add_list.count == 0) {
 		msg(LOG_ERR,
 			"After removing duplicates, there is nothing to add");
-		close(fd);
 		fclose(f);
 		list_empty(&add_list);
 		return 1;
@@ -270,8 +271,6 @@ int file_append(const char *path)
 
 	return 0;
 err_out:
-	close(fd);
-err_out2:
 	fclose(f);
 	list_empty(&add_list);
 

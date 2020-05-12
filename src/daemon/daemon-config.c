@@ -552,7 +552,7 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 			config->integrity = integrity_schemes[i].option;
 			if (config->integrity == IN_IMA) {
 				int fd = open("/bin/sh", O_RDONLY);
-				if (fd) {
+				if (fd >= 0) {
 					char sha[65];
 
 					int rc = get_ima_hash(fd, sha);
