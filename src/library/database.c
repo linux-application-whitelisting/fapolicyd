@@ -776,15 +776,16 @@ int init_database(conf_t *config)
 /*
  * This function handles the integrity check and any retries. Retries are
  * necessary if the system has both i686 and x86_64 packages installed. It
- * takes a path as input and searches for the data. It returns NULL if no
+ * takes a path as input and searches for the data. It returns 0 if no
  * data is found or if the integrity check has failed. There is no
  * distinguishing which is the case since both mean you cannot trust the file.
- * Callers have to check the error variable before trusting it's results.
+ * It returns a 1 if the file is found and trustworthy. Callers have to
+ * check the error variable before trusting it's results.
  */
-static char *read_trust_db(const char *path, int *error, struct file_info *info,
+static int read_trust_db(const char *path, int *error, struct file_info *info,
 	int fd)
 {
-	int do_integrity = 0, mode = READ_TEST_KEY, retry = 0;
+	int do_integrity = 0, mode = READ_TEST_KEY, retry = 0, ret_val = 0;
 	char *res;
 	char sha_xattr[65];
 
@@ -802,18 +803,17 @@ retry_res:
 		char sha[65];
 
 		if (res == NULL)
-			return res;
+			return 0;
 
 		if (sscanf(res, DATA_FORMAT, &verified, &size, sha) != 3) {
 			free(res);
 			*error = 1;
-			res = (char *)1;
-			return res;
+			return 1;
 		}
 
 		// Need to do the compare and free res
 		free(res);
-		res = (char *)1;
+		ret_val = 1;
 		if (integrity == IN_SIZE) {
 			// If the size doesn't match, return NULL
 			if (size != info->size) {
@@ -824,7 +824,7 @@ retry_res:
 							READ_DATA_DUP, error);
 					goto retry_res;
 				}
-				res = NULL;
+				ret_val = 0;
 				msg(LOG_DEBUG, "size miscompare");
 			}
 		} else if (integrity == IN_IMA) {
@@ -843,11 +843,11 @@ retry_res:
 							 READ_DATA_DUP, error);
 						goto retry_res;
 					}
-					res = NULL;
+					ret_val = 0;
 					msg(LOG_DEBUG, "IMA hash miscompare");
 				}
 			} else {
-				res = NULL;
+				ret_val = 0;
 				*error = 1;
 			}
 		} else if (integrity == IN_SHA256) {
@@ -876,23 +876,23 @@ retry_res:
 							 READ_DATA_DUP, error);
 						goto retry_res;
 					}
-					res = NULL;
+					ret_val = 0;
 					msg(LOG_DEBUG, "sha256 miscompare");
 				}
 
 			} else
-				res = NULL;
+				ret_val = 0;
 		}
 	}
 
-	return res;
+	return ret_val;
 }
 
 // Returns a 1 if trusted and 0 if not and -1 on error
 int check_trust_database(const char *path, struct file_info *info, int fd)
 {
 	int retval = 0, error;
-	char *res;
+	int res;
 
 	// this function is going to be used from decision_thread
 	// that means we need to be sure database won't change under
