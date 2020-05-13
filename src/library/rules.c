@@ -30,12 +30,19 @@
 #include <errno.h>
 #include <pwd.h>
 #include <ctype.h>
+
+#include "attr-sets.h"
 #include "policy.h"
 #include "rules.h"
 #include "nv.h"
 #include "message.h"
 #include "file.h" // This seems wrong
 #include "database.h"
+
+#include "subject-attr.h"
+#include "object-attr.h"
+
+#include "string-util.h"
 
 //#define DEBUG
 #define UNUSED 0xFF
@@ -49,11 +56,16 @@
 #define PATTERN_STATIC_STR "static"
 #define PATTERN_STATIC_VAL 2
 
-void rules_create(llist *l)
+int rules_create(llist *l)
 {
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+
+	if (init_attr_sets())
+		return 1;
+
+	return  0;
 }
 
 
@@ -65,12 +77,12 @@ void rules_first(llist *l)
 
 static void rules_last(llist *l)
 {
-        register lnode* window;
+	register lnode* window;
 
 	if (l->head == NULL)
 		return;
 
-        window = l->head;
+	window = l->head;
 	while (window->next)
 		window = window->next;
 
@@ -211,66 +223,260 @@ static bool is_obj_trusted(event_t *e)
 
 	if (!trusted)
 		return 0;
-	return trusted->len;
+	return trusted->val;
 }
 
+/*
+ * It takes something like "% set    "  and it returns "set"
+
+ */
+
+static char * parse_set_name(char * buf)
+{
+	// replace % with space
+	buf[0] = ' ';
+	char * name = fapolicyd_strtrim(buf);
+	if (!name)
+		return NULL;
+
+	// little validation
+	for (int i = 0 ; name[i] ; i++) {
+		if (!isalnum(name[i])) {
+			return NULL;
+		}
+	}
+	return buf;
+}
+
+#define GROUP_NAME_SIZE 64
 
 static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 {
+	size_t index = 0;
+
 	// assign the subject
 	unsigned int i = n->s_count;
 
 	sanity_check_node(n, "assign_subject - 1");
 	n->s[i].type = type;
-	if (n->s[i].type >= COMM) {
-		n->s[i].str = strdup(ptr2);
-		if (n->s[i].str == NULL) {
-			msg(LOG_ERR, "memory allocation error in line %d",
-				lineno);
-			return 1;
+
+	char *ptr, *saved, *tmp = strdup(ptr2);
+	if (tmp == NULL) {
+		msg(LOG_ERR, "memory allocation error in line %d",
+			lineno);
+		return 1;
+	}
+
+
+	// use already defined set
+	if (tmp[0] == '%') {
+		char * defined_set = parse_set_name(tmp);
+		if (!defined_set) {
+			msg(LOG_ERR, "rules: line:%d: assign_subject: "
+				"cannot obtain set name from \'%s\'",
+				lineno, tmp);
+			goto free_and_error;
 		}
-	} else {
-		if (n->s[i].type == PATTERN) {
-			if (strcmp(ptr2,
-					PATTERN_LD_SO_STR) == 0) {
-				n->s[i].val = PATTERN_LD_SO_VAL;
-			} else if (strcmp(ptr2, PATTERN_STATIC_STR) == 0) {
-				n->s[i].val = PATTERN_STATIC_VAL;
-			} else {
-				msg(LOG_ERR,
-					"Unknown pattern value %s in line %d",
-					ptr2, lineno);
-				return 2;
-			}
-		} else {
-			if (isdigit(*ptr2)) {
+
+		index = search_attr_set_by_name(defined_set);
+		if (!index) {
+			msg(LOG_ERR, "rules: line:%d: assign_subject: "
+				"set \'%s\' was not defined before",
+				lineno, defined_set);
+			goto free_and_error;
+		}
+
+		attr_sets_entry_t * set = get_attr_set(index);
+		if (!set)
+			goto free_and_error;
+
+		// we cannot assign any set to these attributes
+		if (type == SUBJ_TRUST || type == PATTERN) {
+			msg(LOG_ERR, "rules: line:%d: assign_subject: "
+				"cannot assign any set to %s",
+			    lineno, subj_val_to_name(type, RULE_FMT_COLON));
+			goto free_and_error;
+		}
+
+		// numbers
+		if (type <= PID && set->type != INT ) {
+			msg(LOG_ERR, "rules: line:%d: assign_subject: "
+				"cannot assign %%%s which has STRING type to INT",
+				lineno, defined_set);
+			goto free_and_error;
+		}
+
+		// strings
+		if (type >= COMM && set->type != STRING) {
+			msg(LOG_ERR, "rules: line:%d: assign_subject: "
+				"cannot assign %%%s which has STRING type to INT",
+				lineno, defined_set);
+			goto free_and_error;
+		}
+
+
+		n->s[i].gr_index = index;
+		goto finalize;
+	}
+
+
+	// for debug output
+	char name[GROUP_NAME_SIZE];
+	memset(name, 0, GROUP_NAME_SIZE);
+	snprintf(name, GROUP_NAME_SIZE-1, "_rule-line-%d-subj-%s", lineno,
+		 subj_val_to_name(type, RULE_FMT_COLON));
+
+	switch(n->s[i].type) {
+
+	case ALL_SUBJ:
+		break;
+
+	// numbers -> multiple value
+	case AUID:
+	case UID:
+	case SESSIONID:
+	case PID: {
+		if (add_attr_set(name, INT, &index)) {
+			goto free_and_error;
+		}
+
+		attr_sets_entry_t * set = get_attr_set(index);
+		if (!set)
+			goto free_and_error;
+
+		ptr = strtok_r(tmp, ",", &saved);
+		while (ptr) {
+			if (isdigit(*ptr)) {
 				errno = 0;
-				n->s[i].val = strtol(ptr2, NULL, 10);
+				long val = strtol(ptr, NULL, 10);
 				if (errno) {
 					msg(LOG_ERR,
 					"Error converting val (%s) in line %d",
-						ptr2, lineno);
-					return 2;
+							ptr, lineno);
+					goto free_and_error;
+				} else if (append_int_attr_set(set, (int)val)) {
+					goto free_and_error;
 				}
+
 			// Support names for auid and uid entries
 			} else if (n->s[i].type == AUID ||
 					n->s[i].type == UID) {
-				struct passwd *pw = getpwnam(ptr2);
+				struct passwd *pw = getpwnam(ptr);
 				if (pw == NULL) {
 					msg(LOG_ERR, "user %s is unknown",
-							ptr2);
-					exit(1);
+							ptr);
+					goto free_and_error;
 				}
-                                n->s[i].val = pw->pw_uid;
+				int val = pw->pw_uid;
 				endpwent();
+
+				if (append_int_attr_set(set, val)) {
+					goto free_and_error;
+				}
 			}
+
+			ptr = strtok_r(NULL, ",", &saved);
 		}
-	}
+		n->s[i].gr_index = index;
+		break;
 
+	} // case
+
+	// single value exception
+	case PATTERN: {
+		if (strchr(tmp, ',')) {
+			msg(LOG_ERR, "rules: line:%d: assign_subject: "
+				"pattern can handle only single value",
+				lineno);
+			goto free_and_error;
+		}
+
+		if (strcmp(tmp,
+			PATTERN_LD_SO_STR) == 0) {
+			n->s[i].val = PATTERN_LD_SO_VAL;
+		} else if (strcmp(tmp, PATTERN_STATIC_STR) == 0) {
+			n->s[i].val = PATTERN_STATIC_VAL;
+		} else {
+			msg(LOG_ERR,
+				"Unknown pattern value %s in line %d",
+				tmp, lineno);
+			goto free_and_error;
+		}
+		break;
+
+	} // case
+
+	// single value exception
+	case SUBJ_TRUST: {
+		if (strchr(tmp, ',')) {
+			msg(LOG_ERR, "rules: line:%d: assign_subject: "
+				"trust can handle only single value",
+				lineno);
+			goto free_and_error;
+		}
+
+		errno = 0;
+		long val = strtol(tmp, NULL, 10);
+		if (errno) {
+			msg(LOG_ERR,
+				"Error converting val (%s) in line %d",
+				tmp, lineno);
+			goto free_and_error;
+		} else {
+			if (val != 1 && val != 0) {
+				msg(LOG_ERR, "rules: line:%d: assign_subject: "
+					"trust can be set to 1 or 0", lineno);
+				goto free_and_error;
+			}
+			n->s[i].val = val;
+		}
+
+		break;
+
+	} // case
+
+	// regular strings -> multiple value
+	case COMM:
+	case EXE:
+	case EXE_DIR:
+	case EXE_TYPE:
+	case EXE_DEVICE: {
+		if (add_attr_set(name, STRING, &index)) {
+			goto free_and_error;
+		}
+
+		attr_sets_entry_t * set = get_attr_set(index);
+		if (!set)
+			goto free_and_error;
+
+		ptr = strtok_r(tmp, ",", &saved);
+		while (ptr) {
+			append_str_attr_set(set, ptr);
+			ptr = strtok_r(NULL, ",", &saved);
+		}
+
+		n->s[i].gr_index = index;
+		break;
+	} // case
+
+	// should not happen
+	default: {
+		msg(LOG_ERR, "assign_subject: fatal error "
+			"-> this should not happen!");
+		goto free_and_error;
+	} // case
+
+	} // switch
+
+finalize:
 	n->s_count++;
+	free(tmp);
 	sanity_check_node(n, "assign_subject - 2");
-
 	return 0;
+
+free_and_error:
+	free(tmp);
+	return 1;
 }
 
 
@@ -279,23 +485,147 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 	// assign the object
 	unsigned int i = n->o_count;
 
+	size_t index = 0;
+
 	sanity_check_node(n, "assign_object - 1");
 	n->o[i].type = type;
-	n->o[i].o = strdup(ptr2);
-	if (n->o[i].o == NULL) {
+
+	char *ptr, *saved, *tmp = strdup(ptr2);
+	if (tmp == NULL) {
 		msg(LOG_ERR, "memory allocation error in line %d",
 			lineno);
 		return 1;
 	}
-	if (n->o[i].type == ODIR)
-		n->o[i].len = strlen(n->o[i].o);
-	else
-		n->o[i].len = 0;
 
+
+	// use already defined set
+	if (tmp[0] == '%') {
+		char * defined_set = parse_set_name(tmp);
+		if (!defined_set) {
+			msg(LOG_ERR, "rules: line:%d: assign_object: "
+				"cannot obtain set name from \'%s\'",
+				lineno, tmp);
+			goto free_and_error;
+		}
+
+		index = search_attr_set_by_name(defined_set);
+		if (!index) {
+			msg(LOG_ERR, "rules: line:%d: assign_object: "
+				"set \'%s\' was not defined before",
+				lineno, defined_set);
+			goto free_and_error;
+		}
+
+		attr_sets_entry_t * set = get_attr_set(index);
+		if (!set)
+			goto free_and_error;
+
+		// we cannot assign any set to these attributes
+		if (type == OBJ_TRUST) {
+			msg(LOG_ERR, "rules: line:%d: assign_object: "
+				"cannot assign any set to %s",
+				lineno, obj_val_to_name(type));
+			goto free_and_error;
+		}
+
+		// strings
+		if (set->type != STRING) {
+			msg(LOG_ERR, "rules: line:%d: assign_object: "
+				"cannot assign INT set %s to the STRING attribute",
+				lineno, defined_set);
+			goto free_and_error;
+		}
+
+
+		n->o[i].gr_index = index;
+		goto finalize;
+	}
+
+	// for debug output
+	char name[GROUP_NAME_SIZE];
+	memset(name, 0, GROUP_NAME_SIZE);
+	snprintf(name, GROUP_NAME_SIZE-1, "_rule-line-%d-obj-%s", lineno,
+		 obj_val_to_name(type));
+
+
+
+	switch(n->o[i].type) {
+
+	case ALL_OBJ:
+		break;
+
+	case OBJ_TRUST: {
+		if (strchr(tmp, ',')) {
+			msg(LOG_ERR, "rules: line:%d: assign_object: "
+				"trust can handle only single value",
+				lineno);
+			goto free_and_error;
+		}
+
+		errno = 0;
+		long val = strtol(tmp, NULL, 10);
+		if (errno) {
+			msg(LOG_ERR,
+				"Error converting val (%s) in line %d",
+				tmp, lineno);
+			goto free_and_error;
+		} else {
+			if (val != 1 && val != 0) {
+				msg(LOG_ERR, "rules: line:%d: assign_object: "
+					"trust can be set to 1 or 0", lineno);
+				goto free_and_error;
+			}
+			n->o[i].val = val;
+		}
+		break;
+
+	} // case
+
+
+	case ODIR:
+	case PATH:
+	case DEVICE:
+	case FTYPE:
+	case SHA256HASH:
+	case FMODE: {
+		if (add_attr_set(name, STRING, &index)) {
+			goto free_and_error;
+		}
+
+		attr_sets_entry_t * set = get_attr_set(index);
+		if (!set)
+			goto free_and_error;
+
+		ptr = strtok_r(tmp, ",", &saved);
+		while (ptr) {
+			append_str_attr_set(set, ptr);
+			ptr = strtok_r(NULL, ",", &saved);
+		}
+
+		n->o[i].gr_index = index;
+
+		break;
+	} // case
+
+	// should not happen
+	default: {
+		msg(LOG_ERR, "assign_object: fatal error "
+			"-> this should not happen!");
+			goto free_and_error;
+	} // case
+
+	} // switch
+
+
+ finalize:
 	n->o_count++;
+	free(tmp);
 	sanity_check_node(n, "assign_object - 2");
-
 	return 0;
+
+ free_and_error:
+	free(tmp);
+	return 1;
 }
 
 
@@ -350,6 +680,83 @@ static int parse_new_format(lnode *n, int lineno)
 	return 0;
 }
 
+static int parse_set_line(const char * line, int lineno)
+{
+	if (!line) return -1; // for sure
+
+	char * l = strdup(line);
+	if (!l) {
+		return 1;
+	}
+
+	char * sep = strchr(l, '=');
+	if (!sep) {
+		msg(LOG_ERR, "rules.conf:%d: parse_set_line: "
+			"Cannot parse line, no separator \"=\"", lineno);
+		goto free_and_error;
+	} else {
+		*sep = '\0';
+	}
+
+	char * name = parse_set_name(l);
+	if (!name) {
+		msg(LOG_ERR, "rules.conf:%d: parse_set_line: "
+			"Cannot parse name of the set", lineno);
+	        goto free_and_error;
+	}
+
+	size_t index = 0;
+
+	index = search_attr_set_by_name(name);
+	// looking for non zero result
+	if (index) {
+		msg(LOG_ERR, "rules.conf:%d: parse_set_line: "
+			"set %s was already defined!", lineno, name);
+		goto free_and_error;
+	}
+
+
+	char *ptr, *saved, *tmp = sep + 1;
+
+	int type = STRING;
+
+	if (isdigit(tmp[0])) type = INT;
+
+	if (add_attr_set(name, type, &index)) {
+		goto free_and_error;
+	}
+
+	attr_sets_entry_t * set = get_attr_set(index);
+	if (!set)
+		goto free_and_error;
+
+	ptr = strtok_r(tmp, ",", &saved);
+	while (ptr) {
+		if (type == STRING) {
+			if (append_str_attr_set(set, ptr))
+				goto free_and_error;
+		} else if (type == INT) {
+			errno = 0;
+			long val = strtol(ptr, NULL, 10);
+			if (errno) {
+				msg(LOG_ERR,
+					"Error converting val (%s) in line %d",
+					ptr, lineno);
+				goto free_and_error;
+			} else if (append_int_attr_set(set, (int)val))
+				goto free_and_error;
+
+		}
+		ptr = strtok_r(NULL, ",", &saved);
+	}
+
+	free(l);
+	return -1;
+
+ free_and_error:
+	free(l);
+	return 1;
+}
 
 /*
  * This function take a whole rule as input and parses it up.
@@ -369,6 +776,8 @@ static int nv_split(char *buf, lnode *n, int lineno)
 		return -1; /* If there's nothing, go to next line */
 	if (ptr[0] == '#')
 		return -1; /* If there's a comment, go to next line */
+	if (ptr[0] == '%')
+		return parse_set_line(ptr, lineno);
 
 	// Load decision
 	n->d = dec_name_to_val(ptr);
@@ -473,6 +882,8 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 		newnode = malloc(sizeof(lnode));
 		if (newnode == NULL)
 			return 1;
+
+		memset(newnode, 0, sizeof(lnode));
 		newnode->s_count = 0;
 		newnode->o_count = 0;
 		for (i=0; i<MAX_FIELDS; i++) {
@@ -534,54 +945,6 @@ static int check_dirs(unsigned int i, const char *path)
 	}
 	return 0;
 }
-
-
-// Returns 0 if no match, 1 if a match
-static int obj_dir_test(const object_attr_t *o, const object_attr_t *obj,
-	bool trusted)
-{
-	// Can't happen but doing this for static analysis
-	if (obj == NULL || obj->o)
-		return 0;
-
-	// Execdirs doesn't have /etc in its list
-	if ((o->len == 8) && strcmp(o->o, "execdirs") == 0)
-		return check_dirs(1, obj->o);
-	// We allow a special 'systemdirs' macro
-	else if ((o->len == 10) && strcmp(o->o, "systemdirs") == 0)
-		return check_dirs(0, obj->o);
-	else if ((o->len == 10) && strcmp(o->o, "untrusted") == 0) {
-		if (trusted)
-			return 0;
-	// Just a normal dir test
-	} else if (obj->o && strncmp(obj->o, o->o, o->len))
-		return 0;
-
-	return 1;
-}
-
-
-// Returns 0 if no match, 1 if a match
-static int subj_dir_test(const subject_attr_t *s, const subject_attr_t *subj,
-	int trusted)
-{
-	unsigned int len = strlen(s->str);
-
-	// Execdirs doesn't have /etc in its list
-	if ((len == 8) && strcmp(s->str, "execdirs") == 0)
-		return check_dirs(1, subj->str);
-	// We allow a special 'systemdirs' macro
-	else if ((len == 10) && strcmp(s->str, "systemdirs") == 0)
-		return check_dirs(0, subj->str);
-	else if ((len == 10) && strcmp(s->str, "untrusted") == 0) {
-		if (trusted)
-			return 0;
-	// Just a normal dir test.
-	} else if (strncmp(subj->str, s->str, len))
-		return 0;
-	return 1;
-}
-
 
 /*
  * Notes about elf program startup
@@ -744,46 +1107,118 @@ static int check_subject(lnode *r, event_t *e)
 	unsigned int cnt = 0;
 
 	sanity_check_node(r, "check_subject");
+
 	while (cnt < r->s_count) {
 		unsigned int type = r->s[cnt].type;
-		if (type != ALL_SUBJ) {
-			subject_attr_t *subj = get_subj_attr(e, type);
-			if (subj == NULL && type != PATTERN) {
-				cnt++;
-				continue;
+		subject_attr_t *subj = NULL;
+
+		// optimize get_subj_attr call if possible
+		if (type == ALL_SUBJ) {
+			cnt++;
+			continue;
+		} else {
+			subj = get_subj_attr(e, type);
+		}
+
+		if (subj == NULL && type != PATTERN) {
+			cnt++;
+			continue;
+		}
+
+		switch(type) {
+
+		// numbers -> multiple value
+		case AUID:
+		case UID:
+		case SESSIONID:
+		case PID: {
+			if (!check_int_attr_set(r->s[cnt].set, subj->val))
+				return 0;
+			break;
+		} // case
+
+
+		// single value exception
+		case PATTERN: {
+			int rc = subj_pattern_test(&(r->s[cnt]), e);
+
+			if (rc == 0)
+				return 0;
+			// If there was an error, consider it
+			// a match since deny is likely
+			if (rc == -1)
+				return 1;
+
+			break;
+		} // case
+
+
+		// single value exception
+		case SUBJ_TRUST: {
+			if (subj->val != r->s[cnt].val)
+				return 0;
+			break;
+		} // case
+
+
+		// regular strings -> multiple value
+		// simple presence check
+		case EXE: {
+			if (check_str_attr_set(r->s[cnt].set, "untrusted"))
+				if (is_subj_trusted(e))
+					return 0;
+		} // case
+
+		// fall through
+
+		case COMM:
+		case EXE_TYPE:
+		case EXE_DEVICE: {
+			if (!subj->str) {
+				break;
 			}
 
-			// If mismatch, we don't care
-			if (type == PATTERN) {
-					int rc = subj_pattern_test
-							(&(r->s[cnt]), e);
-					if (rc == 0)
-						return 0;
-					// If there was an error, consider it
-					// a match since deny is likely
-					if (rc == -1)
-						return 1;
-			} else if (type >= COMM) {
-				// can't happen unless out of memory
-				if (subj->str == NULL) {
-					cnt++;
-					continue;
-				}
-				//  For directories we only do a partial
-				//  match.  Any child dir would also match.
-				if (type == EXE_DIR) {
-					if (subj_dir_test(&(r->s[cnt]), subj,
-						    is_subj_trusted(e)) == 0)
-						return 0;
-				} else if (type == EXE &&
-				   strcmp(r->s[cnt].str, "untrusted") == 0) {
-					if (is_subj_trusted(e))
-						return 0;
-				} else if (strcmp(subj->str, r->s[cnt].str))
+			if (!check_str_attr_set(r->s[cnt].set, subj->str))
+				return 0;
+
+			break;
+		} // case
+
+
+		case EXE_DIR: {
+
+			if (!subj->str) {
+				break;
+			}
+
+			if (check_str_attr_set(r->s[cnt].set, "execdirs"))
+				if (check_dirs(1, subj->str))
 					return 0;
-			} else if (subj && subj->val != r->s[cnt].val)
+
+			if (check_str_attr_set(r->s[cnt].set, "systemdirs"))
+				if (check_dirs(0, subj->str))
 					return 0;
-		}
+
+			// DEPRECATED
+			if (check_str_attr_set(r->s[cnt].set, "untrusted"))
+				if (is_subj_trusted(e))
+					return 0;
+
+			// check partial match (via strncmp)
+			// subdir test
+			if (!check_pstr_attr_set(r->s[cnt].set, subj->str))
+				return 0;
+
+			break;
+		} // case
+
+
+		default:
+			return -1;
+
+		} // switch
+
+
 		cnt++;
 	}
 
@@ -798,43 +1233,101 @@ static decision_t check_object(lnode *r, event_t *e)
 
 	sanity_check_node(r, "check_object");
 	while (cnt < r->o_count) {
-		if (r->o[cnt].type != ALL_OBJ) {
-			object_attr_t *obj = get_obj_attr(e, r->o[cnt].type);
-			// can't happen unless out of memory
-			if (obj == NULL || (obj->o == NULL &&
-						r->o[cnt].type != OBJ_TRUST)) {
-				cnt++;
-				continue;
+		unsigned int type = r->o[cnt].type;
+		object_attr_t *obj = NULL;
+
+		// optimize get_obj_attr call if possible
+		if (type == ALL_OBJ) {
+			cnt++;
+			continue;
+		} else {
+			obj = get_obj_attr(e, type);
+		}
+
+		if (obj == NULL) {
+			cnt++;
+			continue;
+		}
+
+		switch(type) {
+
+		case OBJ_TRUST: {
+			// obj->val holds (0|1) as int
+			if (obj->val != r->o[cnt].val)
+				return 0;
+			break;
+		} // case
+
+
+		case FTYPE: {
+
+			if (check_str_attr_set(r->o[cnt].set, "any"))
+				break;
+		}
+
+		// fall through
+
+		case PATH:
+		  // skip if fall through
+		  if (type == PATH) {
+			if (r->s[cnt].type == EXE || r->s[cnt].type == EXE_DIR)
+				if (check_str_attr_set(r->s[cnt].set, "untrusted"))
+					if (is_obj_trusted(e))
+						return 0;
+		}
+
+		// fall through
+
+		case DEVICE:
+		case SHA256HASH:
+		case FMODE: {
+
+			if (!obj->o){
+				break;
 			}
 
-			//  For directories (and untrusted), we only do a
-			//  partial match.  Any child dir would also match.
-			if (r->o[cnt].type == ODIR) {
-				if (obj_dir_test(&(r->o[cnt]), obj,
-							is_obj_trusted(e)) == 0)
+			if (!check_str_attr_set(r->o[cnt].set, obj->o))
+				return 0;
+
+			break;
+		} // case
+
+
+		case ODIR: {
+
+			if (!obj->o) {
+				break;
+			}
+
+			if (check_str_attr_set(r->o[cnt].set, "execdirs"))
+				if (check_dirs(1, obj->o))
 					return 0;
-			} else if (r->o[cnt].type == PATH &&
-					(r->s[cnt].type == EXE ||
-					r->s[cnt].type == EXE_DIR) &&
-				    strcmp(r->s[cnt].str, "untrusted") == 0) {
+
+			if (check_str_attr_set(r->o[cnt].set, "systemdirs"))
+				if (check_dirs(0, obj->o))
+					return 0;
+
+			// DEPRECATED
+			if (check_str_attr_set(r->o[cnt].set, "untrusted"))
 				if (is_obj_trusted(e))
 					return 0;
-			} else if (r->o[cnt].type == OBJ_TRUST) {
-				const char *val;
-				if (obj->len == 0)
-					val = "0";
-				else
-					val = "1";
-				if (val[0] != r->o[cnt].o[0])
-					return 0;
-			} else if ((r->o[cnt].type == FTYPE) &&
-					strcmp(r->o[cnt].o, "any") == 0) {
-				// If the rule has any for the file type, we
-				// match no matter what. Intentionally blank.
-				;
-			} else if (strcmp(obj->o, r->o[cnt].o))
+
+			// check partial match (via strncmp)
+			// subdir test
+			if (!check_pstr_attr_set(r->o[cnt].set, obj->o))
 				return 0;
-		}
+
+			break;
+		} // case
+
+
+		// should not happen
+		default: {
+			return -1;
+		} // case
+
+		} // switch
+
 		cnt++;
 	}
 
@@ -885,11 +1378,17 @@ void rules_unsupport_audit(const llist *l)
 #endif
 }
 
-
-void rules_clear(llist *l)
+// Function iterates over rules and theirs subjects and objects
+// and it is setting direct pointer to set instead of
+// set index.
+// Rules are created with set index because internal set
+// array structure can be reallocated when it grows.
+// We can safely call this function once right  after
+// rules.conf was processed.
+void rules_regen_sets(llist *l)
 {
 	lnode *nextnode;
-	register lnode *current = l->head;
+	lnode *current = l->head;
 
 	while (current) {
 		unsigned int i;
@@ -897,20 +1396,71 @@ void rules_clear(llist *l)
 		nextnode=current->next;
 		i = 0;
 		while (i < current->s_count) {
-			if (current->s[i].type >= COMM)
-				free(current->s[i].str);
+			int type = current->s[i].type;
+
+			if (type == ALL_SUBJ
+			    || type == SUBJ_TRUST
+			    || type == PATTERN) {
+				i++;
+				continue;
+			}
+
+			size_t index = current->s[i].gr_index;
+			attr_sets_entry_t * set = get_attr_set(index);
+
+			if (!set) {
+				i++;
+				continue;
+			}
+
+			current->s[i].set = set;
+
 			i++;
 		}
+
 		i = 0;
 		while (i < current->o_count) {
-			free(current->o[i].o);
+			int type = current->o[i].type;
+
+			if (type == ALL_OBJ
+			    || type == OBJ_TRUST) {
+				i++;
+				continue;
+			}
+
+			size_t index = current->o[i].gr_index;
+			attr_sets_entry_t * set = get_attr_set(index);
+
+			if (!set) {
+				i++;
+				continue;
+			}
+
+			current->o[i].set = set;
+
+
 			i++;
 		}
+
+		current=nextnode;
+	}
+}
+
+
+void rules_clear(llist *l)
+{
+	lnode *nextnode;
+	register lnode *current = l->head;
+
+	while (current) {
+		nextnode=current->next;
 		free(current);
 		current=nextnode;
 	}
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+
+	destroy_attr_sets();
 }
 

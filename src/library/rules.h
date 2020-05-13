@@ -54,13 +54,14 @@ typedef struct {
   unsigned int cnt;	// How many items in this list
 } llist;
 
-void rules_create(llist *l);
+int rules_create(llist *l);
 void rules_first(llist *l);
 lnode *rules_next(llist *l);
 static inline lnode *rules_get_cur(const llist *l) { return l->cur; }
 int rules_append(llist *l, char *buf, unsigned int lineno);
 decision_t rule_evaluate(lnode *r, event_t *e);
 void rules_unsupport_audit(const llist *l);
+void rules_regen_sets(llist* l);
 void rules_clear(llist* l);
 
 #endif

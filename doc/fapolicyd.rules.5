@@ -131,6 +131,23 @@ This is a boolean describing whether it is required for the object to be in the 
 This option matches against the sha256 hash of the file being accessed. The hash in the rules should be all lowercase letters and do NOT start with 0x. Lowercase is the default output of sha256sum.
 .RE
 
+.SH SETS
+Set is a named group of values of the same type. Fapolicyd internally distinguishes between INT and STRING set types. You can define your own set and use it as a value for specific rule attribute. Definition is in key=value syntax and it starts with a set name. Set name has to start with % and the rest is alphanumeric. Value is a comma separated list. The set type is inherited from the first item in the list. If that can be turned into number then whole list is expected to carry numbers. One can use these sets as a value for subject and object attributes. It is also possible to use a plain list as an attribute value without previous definition. Assigned set has to match attribute type. It is not possible set groups for TRUST and PATTERN attributes.
+
+
+.SS SETS EXAMPLES
+.nf
+.B # definition
+.b # string set
+.B %python=/usr/bin/python2.7,/usr/bin/python3.6
+.B allow exe=%python : all trust=1
+.B #
+.B # definition
+.B # number set
+.B %uuids=0,1000
+.B allow uid=%uuids : all
+.fi
+
 .SH NOTES
 When you are writing a rule for the execute permission, remember that the file to be executed is an object. Unless you are blocking execution from a specific program, then you would normally use
 .I all
