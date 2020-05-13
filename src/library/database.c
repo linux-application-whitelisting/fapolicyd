@@ -797,7 +797,9 @@ static int read_trust_db(const char *path, int *error, struct file_info *info,
 
 	res = lt_read_db(path, mode, error);
 retry_res:
-	if (do_integrity) {
+	if (!do_integrity) {
+		ret_val = res ? 1 : 0;
+	} else {
 		int verified;
 		off_t size;
 		char sha[65];
