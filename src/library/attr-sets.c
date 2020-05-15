@@ -309,7 +309,7 @@ void print_attr_set(attr_sets_entry_t * set)
 {
 	if (!set) return;
 
-	msg(LOG_DEBUG, "Group: %s", set->name);
+	msg(LOG_DEBUG, "Set: %s", set->name);
 
 	if (set->type == STRING)
 		avl_traverse(&set->tree, print_str, NULL);
