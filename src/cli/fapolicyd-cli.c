@@ -144,12 +144,12 @@ int do_ftype(const char *path)
 {
 	int fd;
 	magic_t magic_cookie;
-	const char *ptr;
+	const char *ptr = NULL;
 	struct stat sb;
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
-		printf("Cannot open %s - %s\n", path, strerror(errno));
+		fprintf(stderr, "Cannot open %s - %s\n", path, strerror(errno));
 		exit(1);
 	}
 
@@ -157,24 +157,27 @@ int do_ftype(const char *path)
 	magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
 						  MAGIC_NO_CHECK_ELF);
 	if (magic_cookie == NULL) {
-		printf("Unable to init libmagic");
+		fprintf(stderr, "Unable to init libmagic");
 		close(fd);
 		return 1;
 	}
 	if (magic_load(magic_cookie,
 			"/usr/share/fapolicyd/fapolicyd-magic.mgc:"
 			"/usr/share/misc/magic.mgc") != 0) {
-		printf("Unable to load magic database");
+		fprintf(stderr, "Unable to load magic database");
 		close(fd);
 		magic_close(magic_cookie);
 		return 1;
 	}
-	fstat(fd, &sb);
-	uint32_t elf = gather_elf(fd, sb.st_size);
-	if (elf)
-		ptr = classify_elf_info(elf, path);
-	else
-		ptr = magic_descriptor(magic_cookie, fd);
+	if (fstat(fd, &sb) == 0) {
+		uint32_t elf = gather_elf(fd, sb.st_size);
+		if (elf)
+			ptr = classify_elf_info(elf, path);
+		else
+			ptr = magic_descriptor(magic_cookie, fd);
+	} else
+		fprintf(stderr, "Failed fstat (%s)", strerror(errno));
+
 	if (ptr) {
 		char buf[80], *str;
 		strncpy(buf, ptr, 79);
@@ -185,6 +188,7 @@ int do_ftype(const char *path)
 		printf("%s\n", buf);
 	} else
 		printf("unknown\n");
+
 	close(fd);
 	magic_close(magic_cookie);
 

@@ -698,10 +698,11 @@ static int migrate_database(void)
 		return 0;
 	} else {
 		// We have a version file, read it and check the version
-		read(fd, vpath, 2);
-		close(fd);
-		if (vpath[0] == '2')
-			return 0;
+		if (read(fd, vpath, 2) > 0) {
+			close(fd);
+			if (vpath[0] == '2')
+				return 0;
+		}
 	}
 
 	return 1;
