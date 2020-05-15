@@ -1,6 +1,6 @@
 /*
- * object-attr.h - Header file for object-attr.c
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * string-util.h - Header file for string-util
+ * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -19,35 +19,15 @@
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
- *  Steve Grubb <sgrubb@redhat.com>
- *  Radovan Sroka <rsroka@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
-#ifndef OBJECT_ATTR_HEADER
-#define OBJECT_ATTR_HEADER
+#ifndef STRING_UTIL_H
+#define STRING_UTIL_H
 
-#include <sys/types.h>
-#include "nv.h"
+#include <stdio.h>
 
-#include "attr-sets.h"
-
-typedef enum { ALL_OBJ = OBJ_START, PATH, ODIR, DEVICE, FTYPE,
-		OBJ_TRUST, SHA256HASH, FMODE } object_type_t;
-
-#define OBJ_END FMODE
-
-typedef struct o {
-	object_type_t type;
-	int val;	// holds trust value
-	char *o;	// Everything is a string
-
-	union {
-		size_t gr_index;
-		attr_sets_entry_t * set;
-	};
-} object_attr_t;
-
-int obj_name_to_val(const char *name);
-const char *obj_val_to_name(unsigned int v);
+char * fapolicyd_strtrim(char * s);
+char * fapolicyd_get_line(FILE *f, char *buf);
 
 #endif

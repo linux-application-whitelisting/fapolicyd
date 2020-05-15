@@ -59,6 +59,7 @@ static const nv_t table2[] = {
 };
 #define MAX_SUBJECTS2 (sizeof(table2)/sizeof(table2[0]))
 
+
 int subj_name_to_val(const char *name, rformat_t format)
 {
 	unsigned int i = 0;
@@ -78,15 +79,19 @@ int subj_name_to_val(const char *name, rformat_t format)
 	return -1;
 }
 
-/* const char *subj_val_to_name(unsigned int v, int format)
+const char *subj_val_to_name(unsigned int v, rformat_t format)
 {
+	if (v > SUBJ_END)
+		return NULL;
+
+	unsigned int index = v - SUBJ_START;
 	if (format == RULE_FMT_ORIG) {
-		if (v < MAX_SUBJECTS1)
-			return table1[v].name;
+		if (index < MAX_SUBJECTS1)
+			return table1[index].name;
 	} else {
-		if (v < MAX_SUBJECTS2)
-			return table2[v].name;
+		if (index < MAX_SUBJECTS2)
+			return table2[index].name;
 	}
 
 	return NULL;
-} */
+}

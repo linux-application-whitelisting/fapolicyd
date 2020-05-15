@@ -20,6 +20,7 @@
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Radovan Sroka <rsroka@redhat.com>
  */
 
 #include "config.h"
@@ -30,13 +31,17 @@
 #include <string.h>
 #include <limits.h>
 #include <stdlib.h>
+
 #include "file.h"
 #include "rules.h"
 #include "policy.h"
 #include "nv.h"
 #include "message.h"
 
+#include "string-util.h"
+
 #define MAX_SYSLOG_FIELDS	21
+
 
 static llist rules;
 static unsigned long allowed = 0, denied = 0;
@@ -175,20 +180,6 @@ static const char *dec_val_to_name(unsigned int v)
         return NULL;
 }
 
-
-static char *get_line(FILE *f, char *buf)
-{
-	if (fgets_unlocked(buf, 128, f)) {
-		/* remove newline */
-		char *ptr = strchr(buf, 0x0a);
-		if (ptr)
-			*ptr = 0;
-		return buf;
-	}
-	return NULL;
-}
-
-
 // Returns 0 on success and 1 on error
 int load_config(const conf_t *config)
 {
@@ -196,7 +187,8 @@ int load_config(const conf_t *config)
 	FILE *f;
 	char buf[PATH_MAX+1];
 
-	rules_create(&rules);
+	if (rules_create(&rules))
+		return 1;
 
 	// Now open the file and load them one by one.
 	fd = open(RULES_FILE, O_NOFOLLOW|O_RDONLY);
@@ -213,21 +205,26 @@ int load_config(const conf_t *config)
 		return 1;
 	}
 
-	while (get_line(f, buf)) {
+
+	while (fapolicyd_get_line(f, buf)) {
 		rc = rules_append(&rules, buf, lineno);
 		if (rc) {
 			fclose(f);
 			return 1;
 		}
+
 		lineno++;
 	}
 	fclose(f);
 
+	rules_regen_sets(&rules);
+
 	if (rules.cnt == 0) {
 		msg(LOG_INFO, "No rules in config - exiting");
 		return 1;
-	} else
+	} else {
 		msg(LOG_DEBUG, "Loaded %u rules", rules.cnt);
+	}
 
 	rc = parse_syslog_format(config->syslog_format);
 	if (!rc || num_fields == 0)
@@ -359,12 +356,15 @@ decision_t process_event(event_t *e)
 	/* populate the event struct and iterate over the rules */
 	rules_first(&rules);
 	lnode *r = rules_get_cur(&rules);
+	int cnt = 0;
 	while (r) {
+	  //msg(LOG_INFO, "process_event: rule %d", cnt);
 		results = rule_evaluate(r, e);
 		// If a rule has an opinion, stop and use it
 		if (results != NO_OPINION)
 			break;
 		r = rules_next(&rules);
+		cnt++;
 	}
 
 	// Output some information if debugging on or syslogging requested

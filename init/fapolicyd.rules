@@ -9,6 +9,11 @@
 # anything to prevent unintended blockage to things like media files,
 # documents, or anything else applications access that is not a computer
 # language.
+#
+# You can define and use sets with % prefix
+# %python=/usr/bin/python2.7,/usr/bin/python3.6
+# allow perm=open exe=%python : all
+#
 
 # Carve out an exception for dracut
 allow perm=any uid=0 : dir=/var/tmp/

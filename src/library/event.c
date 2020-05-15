@@ -378,9 +378,9 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		return on;
 
 	// One not on the list, look it up and make one
-	obj.len = 0;
 	obj.type = t;
 	obj.o = NULL;
+	obj.val = 0;
 	switch (t) {
 		case PATH:
 		case ODIR:
@@ -424,7 +424,8 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 
 			if (path && path->o && check_trust_database(path->o,
 							    o->info, e->fd))
-				obj.len = 1;
+			obj.val = 1;
+
 			}
 			break;
 		case FMODE:

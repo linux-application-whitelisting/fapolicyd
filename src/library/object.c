@@ -81,8 +81,8 @@ int object_add(o_array *a, const object_attr_t *obj)
 			if (newnode == NULL)
 				return 1;
 			newnode->type = obj->type;
-			newnode->len = obj->len;
 			newnode->o = obj->o;
+			newnode->val = obj->val;
 		} else
 			return 1;
 	} else

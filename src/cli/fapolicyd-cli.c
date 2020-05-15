@@ -214,6 +214,11 @@ int do_list(void)
 			continue;
 		if (*str == '#') //comment line
 			continue;
+		if (*str == '%') {
+			printf("-> %s\n", buf);
+			continue;
+		}
+
 		printf("%u. %s\n", count, buf);
 		count++;
 	}

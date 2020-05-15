@@ -53,10 +53,14 @@ int obj_name_to_val(const char *name)
 	return -1;
 }
 
-/* const char *obj_val_to_name(unsigned int v)
+const char *obj_val_to_name(unsigned int v)
 {
-	if (v < MAX_OBJECTS)
-		return table[v].name;
+	if (v < OBJ_START || v > OBJ_END)
+		return NULL;
+
+	unsigned int index = v - OBJ_START;
+	if (index < MAX_OBJECTS)
+		return table[index].name;
 
 	return NULL;
-} */
+}

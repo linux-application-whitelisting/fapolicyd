@@ -17,6 +17,8 @@ fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 libfapolicyd_la_SOURCES = \
 	library/avl.c \
 	library/avl.h \
+	library/attr-sets.c \
+	library/attr-sets.h \
 	library/backend-manager.c \
 	library/backend-manager.h \
 	library/conf.h \
@@ -53,7 +55,9 @@ libfapolicyd_la_SOURCES = \
 	library/subject-attr.c \
 	library/subject-attr.h \
 	library/subject.c \
-	library/subject.h
+	library/subject.h \
+	library/string-util.c \
+	library/string-util.h
 
 if WITH_RPM
 libfapolicyd_la_SOURCES += library/rpm-backend.c
