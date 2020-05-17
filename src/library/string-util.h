@@ -26,7 +26,7 @@
 #define STRING_UTIL_H
 
 #include <stdio.h>
-#define BUFFER_MAX 512
+#define BUFFER_MAX 2048
 
 char * fapolicyd_strtrim(char * s);
 char * fapolicyd_get_line(FILE *f, char *buf);
