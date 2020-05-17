@@ -55,7 +55,7 @@ char * fapolicyd_strtrim(char * s)
 
 char * fapolicyd_get_line(FILE *f, char *buf)
 {
-	if (fgets_unlocked(buf, 128, f)) {
+	if (fgets_unlocked(buf, BUFFER_MAX-1, f)) {
 
 		/* remove newline */
 		char *ptr = strchr(buf, 0x0a);

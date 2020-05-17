@@ -185,7 +185,7 @@ int load_config(const conf_t *config)
 {
 	int fd, rc, lineno = 1;
 	FILE *f;
-	char buf[PATH_MAX+1];
+	char buf[BUFFER_MAX+1];
 
 	if (rules_create(&rules))
 		return 1;
