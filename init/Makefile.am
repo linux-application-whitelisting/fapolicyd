@@ -1,5 +1,6 @@
 EXTRA_DIST = \
-	fapolicyd.rules \
+	fapolicyd.rules.known-libs \
+	fapolicyd.rules.restrictive \
 	fapolicyd.service \
 	fapolicyd.conf \
 	fapolicyd.trust \
@@ -9,14 +10,15 @@ EXTRA_DIST = \
 fapolicyddir = $(sysconfdir)/fapolicyd
 
 dist_fapolicyd_DATA = \
-	fapolicyd.rules \
 	fapolicyd.conf \
 	fapolicyd.trust
 
 systemdservicedir = $(systemdsystemunitdir)
 dist_systemdservice_DATA = fapolicyd.service
 
-MAGIC = fapolicyd-magic.mgc
+
+
+MAGIC = fapolicyd-magic.mgc fapolicyd.rules.*
 pkgdata_DATA = ${MAGIC}
 CLEANFILES = ${MAGIC}
 

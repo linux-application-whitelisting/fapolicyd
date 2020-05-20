@@ -15,6 +15,8 @@
 # allow perm=open exe=%python : all
 #
 
+%languages=application/x-bytecode.ocaml,application/x-dosexec,text/javascript,text/x-awk,text/x-lua,text/x-perl,text/x-php,text/x-plan9-shellscript,text/x-R,text/x-ruby,text/x-tcl
+
 # Carve out an exception for dracut
 allow perm=any uid=0 : dir=/var/tmp/
 allow perm=any uid=0 trust=1 : all
@@ -56,43 +58,32 @@ deny_audit perm=any all : ftype=application/x-bytecode.python
 allow perm=any all : ftype=text/x-shellscript
 
 #
-# In this next optional languages section, choose either to
-# block (default) or allow by commenting or uncommenting the
-# appropriate line.
+# In this next optional languages section, if you would like
+# allow the langauge's use uncommenting the appropriate line.
 #
 
 # Perl
-# Block all perl. This is needed if you use autotools.
-deny_audit perm=open exe=/usr/bin/perl : all
-# or optionally allow it by uncommenting the following
+# Optionally allow it by uncommenting the following
 #allow perm=any all : ftype=text/x-perl trust=1
 #deny_audit perm=any all : ftype=text/x-perl
 
 # Ocaml
-# Block all ocaml
-deny_audit perm=open exe=/usr/bin/ocamlrun : all
-# or optionally allow it by uncommenting the following
+# Optionally allow it by uncommenting the following
 #allow perm=any all : ftype=application/x-bytecode.ocaml trust=1
 #deny_audit perm=any all : ftype=application/x-bytecode.ocaml
 
 # PHP
-# Block all PHP
-deny_audit perm=any exe=/usr/bin/php : all
-# or optionally allow it by uncommenting the following
+# Optionally allow it by uncommenting the following
 #allow perm=any all : ftype=text/x-php trust=1
 #deny_audit perm=any all : ftype=text/x-php
 
 # Ruby
-# Block all Ruby
-deny_audit perm=any exe=/usr/bin/ruby : all
-# or optionally allow it by uncommenting the following
+# Optionally allow it by uncommenting the following
 #allow perm=any all : ftype=text/x-ruby trust=1
 #deny_audit perm=any all : ftype=text/x-ruby
 
 # Lua
-# Block all Lua
-deny_audit perm=any exe=/usr/bin/lua : all
-# or optionally allow it by uncommenting the following
+# Optionally allow it by uncommenting the following
 #allow perm=any all : ftype=text/x-lua trust=1
 #deny_audit perm=any all : ftype=text/x-lua
 
@@ -103,6 +94,9 @@ deny_audit perm=execute all : ftype=any
 #deny_audit perm=open exe=/usr/bin/ssh : dir=/opt
 #deny_audit perm=open exe=/usr/bin/wget : dir=/tmp
 #deny_audit perm=any all : device=/dev/cdrom
+
+# Deny all languages not enabled above
+deny_audit perm=open all : ftype=%languages
 
 # Allow everything else - access to media files, documents, etc
 allow perm=open all : all

@@ -26,9 +26,9 @@ makes use of the kernel's fanotify interface to determine file access rights.
 %setup -q
 
 # generate rules for python
-sed -i "s/%python2_path%/`readlink -f %{__python2} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
-sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
-sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//\\\\\//g'`/g" init/%{name}.rules
+sed -i "s/%python2_path%/`readlink -f %{__python2} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules.*
+sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules.*
+sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//\\\\\//g'`/g" init/%{name}.rules.*
 
 %build
 %configure \
@@ -53,6 +53,9 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 
 %post
 %systemd_post %{name}.service
+if [ ! -f /etc/fapolicyd/fapolicyd.rules ] ; then
+	cp %{_datadir}/%{name}/%{name}.rules.known-libs %{_sysconfdir}/%{name}/
+fi
 
 %preun
 %systemd_preun %{name}.service
@@ -64,10 +67,12 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %doc README.md
 %{!?_licensedir:%global license %%doc}
 %license COPYING
+%attr(755,root,%{name}) %dir %{_datadir}/%{name}
+%attr(644,root,%{name}) %{_datadir}/%{name}/%{name}.rules.*
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
-%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
+%ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}
