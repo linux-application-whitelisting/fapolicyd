@@ -256,6 +256,10 @@ static int rpm_load_list(void)
 				continue;
 			}
 
+			if (strlen(sha) != 64)
+				msg(LOG_WARNING, "No SHA256 for %s",
+						    file_name);
+
 			if (asprintf(	&data,
 					DATA_FORMAT,
 					verified,

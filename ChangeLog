@@ -3,6 +3,8 @@
 - Add ability to send decision results to syslog
 - Add ability to define the format of the syslog event
 - Add support for sets in rules
+- Add support for dumping the trustdb by fapolicyd-cli
+- Print a warning if rpm backend doesn't have a sha256 hash
 
 0.9.4
 - Fix pattern detection in light of EXEC_PERM events
