@@ -643,16 +643,6 @@ static int check_database_copy(void)
 
 
 /*
- * This function compares the database against the files on disk. This
- * way we can tell if something has changed.
- */
-static int verify_database_entries(void)
-{
-	return 0;
-}
-
-
-/*
  * This function removes the trust database files.
  */
 void unlink_db(void)
