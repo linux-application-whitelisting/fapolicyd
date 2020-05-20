@@ -36,13 +36,17 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <stdatomic.h>
+#include <lmdb.h>
 #include "policy.h"
 #include "database.h"
 #include "file-backend.h"
+#include "fapolicyd-backend.h"
+
 
 const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "-d, --delete-db\t\tDelete the trust database\n"
+"-D, --dump-db\t\tDump the trust database contents\n"
 "-f, --file option path\tManage the file trust database\n"
 "-h, --help\t\tPrints this help message\n"
 "-t, --ftype file-path\tPrints out the mime type of a file\n"
@@ -53,6 +57,7 @@ const char *usage =
 struct option long_opts[] =
 {
 	{"delete-db",	0, NULL, 'd'},
+	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
 	{"help",	0, NULL, 'h'},
 	{"ftype",	1, NULL, 't'},
@@ -97,6 +102,104 @@ int do_delete_db(void)
 	unlink_db();
 	return 0;
 }
+
+
+// This function opens the trust db and iterates over the entries.
+// It returns a 0 on success and non-zero on failure
+int do_dump_db(void)
+{
+	int rc;
+	MDB_env *env;
+	MDB_txn *txn;
+	MDB_dbi dbi;
+	MDB_cursor *cursor;
+	MDB_val key, val;
+
+	rc = mdb_env_create(&env);
+	if (rc) {
+		fprintf(stderr, "mdb_env_create failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		return 1;
+	}
+	mdb_env_set_maxdbs(env, 2);
+	rc = mdb_env_open(env, DB_DIR, MDB_RDONLY, 0660);
+	if (rc) {
+		fprintf(stderr, "mdb_env_open failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		rc = 1;
+		goto env_close;
+	}
+	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
+	if (rc) {
+		fprintf(stderr, "mdb_txn_begin failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		rc = 1;
+		goto env_close;
+	}
+	rc = mdb_dbi_open(txn, DB_NAME, MDB_DUPSORT, &dbi);
+	if (rc) {
+		fprintf(stderr, "mdb_open failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		rc = 1;
+		goto txn_abort;
+	}
+	rc = mdb_cursor_open(txn, dbi, &cursor);
+	if (rc) {
+		fprintf(stderr, "mdb_cursor_open failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		rc = 1;
+		goto txn_abort;
+	}
+	rc = mdb_cursor_get(cursor, &key, &val, MDB_FIRST);
+	if (rc) {
+		fprintf(stderr, "mdb_cursor_get failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		rc = 1;
+		goto txn_abort;
+	}
+	do {
+		char *path, *data;
+		int verified;
+		off_t size;
+		char sha[65];
+
+		path = malloc(key.mv_size+1);
+		if (!path)
+			continue;
+		memcpy(path, key.mv_data, key.mv_size);
+		path[key.mv_size] = 0;
+		data = malloc(val.mv_size+1);
+		if (!data) {
+			free(path);
+			continue;
+		}
+		memcpy(data, val.mv_data, val.mv_size);
+		data[val.mv_size] = 0;
+		if (sscanf(data, DATA_FORMAT, &verified, &size, sha) != 3) {
+			free(data);
+			free(path);
+			continue;
+		}
+		printf("%s %lu %s\n", path, size, sha);
+		free(data);
+		free(path);
+		// Try to get the duplicate. If doesn't exist, get the next one
+		rc = mdb_cursor_get(cursor, &key, &val, MDB_NEXT_DUP);
+		if (rc == MDB_NOTFOUND)
+			rc = mdb_cursor_get(cursor, &key, &val, MDB_NEXT_NODUP);
+	} while (rc == 0);
+
+	rc = 0;
+	mdb_cursor_close(cursor);
+	mdb_close(env, dbi);
+txn_abort:
+	mdb_txn_abort(txn);
+env_close:
+	mdb_env_close(env);
+
+	return rc;
+}
+
 
 /*
  * This function always requires at least one option, the command. We can
@@ -318,13 +421,18 @@ int main(int argc, char * const argv[])
 	if (argc > 5)
 		goto args_err;
 
-	opt = getopt_long(argc, argv, "df:ht:lu",
+	opt = getopt_long(argc, argv, "Ddf:ht:lu",
 				 long_opts, &option_index);
 	switch (opt) {
 	case 'd':
 		if (argc > 2)
 			goto args_err;
 		rc = do_delete_db();
+		break;
+	case 'D':
+		if (argc > 2)
+			goto args_err;
+		rc = do_dump_db();
 		break;
 	case 'f':
 		if (argc > 4)

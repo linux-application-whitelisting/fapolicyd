@@ -29,6 +29,9 @@
 #include "conf.h"
 #include "file.h"
 
+#define DB_DIR "/var/lib/fapolicyd"
+#define DB_NAME "trust.db"
+
 void lock_update_thread(void);
 void unlock_update_thread(void);
 
