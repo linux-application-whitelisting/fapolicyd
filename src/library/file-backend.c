@@ -78,7 +78,7 @@ static int file_load_list(void)
 	while (fgets(buffer, BUFFER_SIZE, file)) {
 		char name[4097], sha[65], *index, *data;
 		unsigned long sz;
-		unsigned int tsource = SRC_FILEZ_DB;
+		unsigned int tsource = SRC_FILE_DB;
 
 		if (iscntrl(buffer[0]) || buffer[0] == '#')
 			continue;

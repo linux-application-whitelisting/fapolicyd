@@ -98,7 +98,7 @@ const char *lookup_tsource(unsigned int tsource)
 	{
 	case SRC_RPM:
 		return "rpmdb";
-	case SRC_FILEZ_DB:
+	case SRC_FILE_DB:
 		return "filedb";
 	}
 	return "src_unknown";
