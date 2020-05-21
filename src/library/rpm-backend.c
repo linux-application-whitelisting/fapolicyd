@@ -209,9 +209,11 @@ static int drop_path(const char *file_name)
 	return 0;
 }
 
+extern int debug;
 static int rpm_load_list(void)
 {
 	int rc;
+	unsigned int msg_count = 0;
 
 	// empty list before loading
 	list_empty(&rpm_backend.list);
@@ -256,9 +258,13 @@ static int rpm_load_list(void)
 				continue;
 			}
 
-			if (strlen(sha) != 64)
-				msg(LOG_WARNING, "No SHA256 for %s",
-						    file_name);
+			if (strlen(sha) != 64) {
+				// Limit this to 5 if production
+				if (debug || msg_count++ < 5) {
+					msg(LOG_WARNING, "No SHA256 for %s",
+							    file_name);
+				}
+			}
 
 			if (asprintf(	&data,
 					DATA_FORMAT,
