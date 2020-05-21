@@ -28,8 +28,10 @@
 
 #include "llist.h"
 
-// verified, size, sha
-#define DATA_FORMAT "%i %lu %64s"
+typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILEZ_DB } trust_src_t;
+
+// source, size, sha
+#define DATA_FORMAT "%u %lu %64s"
 
 typedef struct _backend
 {

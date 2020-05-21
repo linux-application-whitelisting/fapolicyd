@@ -92,6 +92,17 @@ static int is_link(const char *path)
 	return 0;
 }
 
+const char *lookup_tsource(unsigned int tsource)
+{
+	switch (tsource)
+	{
+	case SRC_RPM:
+		return "rpmdb";
+	case SRC_FILEZ_DB:
+		return "filedb";
+	}
+	return "src_unknown";
+}
 
 int preconstruct_fifo(const conf_t *config)
 {
@@ -791,14 +802,14 @@ retry_res:
 	if (!do_integrity) {
 		ret_val = res ? 1 : 0;
 	} else {
-		int verified;
+		unsigned int tsource;
 		off_t size;
 		char sha[65];
 
 		if (res == NULL)
 			return 0;
 
-		if (sscanf(res, DATA_FORMAT, &verified, &size, sha) != 3) {
+		if (sscanf(res, DATA_FORMAT, &tsource, &size, sha) != 3) {
 			free(res);
 			*error = 1;
 			return 1;

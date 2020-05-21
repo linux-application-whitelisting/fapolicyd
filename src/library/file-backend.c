@@ -1,6 +1,6 @@
 /*
  * file-backend.c - file backend
- * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -78,7 +78,7 @@ static int file_load_list(void)
 	while (fgets(buffer, BUFFER_SIZE, file)) {
 		char name[4097], sha[65], *index, *data;
 		unsigned long sz;
-		int verified = 0;
+		unsigned int tsource = SRC_FILEZ_DB;
 
 		if (iscntrl(buffer[0]) || buffer[0] == '#')
 			continue;
@@ -89,7 +89,7 @@ static int file_load_list(void)
 			return 1;
 		}
 
-		if (asprintf(&data, DATA_FORMAT, verified, sz, sha) == -1)
+		if (asprintf(&data, DATA_FORMAT, tsource, sz, sha) == -1)
 			data = NULL;
 
 		index = strdup(name);

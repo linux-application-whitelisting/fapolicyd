@@ -35,6 +35,7 @@
 void lock_update_thread(void);
 void unlock_update_thread(void);
 
+const char *lookup_tsource(unsigned int tsource);
 int preconstruct_fifo(const conf_t *config);
 int init_database(conf_t *config);
 int check_trust_database(const char *path, struct file_info *info, int fd);

@@ -158,10 +158,10 @@ int do_dump_db(void)
 		goto txn_abort;
 	}
 	do {
-		char *path, *data;
-		int verified;
+		char *path, *data, sha[65];
+		unsigned int tsource;
 		off_t size;
-		char sha[65];
+		const char *source;
 
 		path = malloc(key.mv_size+1);
 		if (!path)
@@ -175,12 +175,13 @@ int do_dump_db(void)
 		}
 		memcpy(data, val.mv_data, val.mv_size);
 		data[val.mv_size] = 0;
-		if (sscanf(data, DATA_FORMAT, &verified, &size, sha) != 3) {
+		if (sscanf(data, DATA_FORMAT, &tsource, &size, sha) != 3) {
 			free(data);
 			free(path);
 			continue;
 		}
-		printf("%s %lu %s\n", path, size, sha);
+		source = lookup_tsource(tsource);
+		printf("%s %s %lu %s\n", source, path, size, sha);
 		free(data);
 		free(path);
 		// Try to get the duplicate. If doesn't exist, get the next one

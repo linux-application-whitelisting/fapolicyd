@@ -247,7 +247,7 @@ static int rpm_load_list(void)
 			rpm_loff_t sz = get_file_size_rpm();
 			const char *sha = get_sha256_rpm();
 			char *data;
-			int verified = 0;
+			unsigned int tsource = SRC_RPM;
 
 			if (file_name == NULL)
 				continue;
@@ -268,7 +268,7 @@ static int rpm_load_list(void)
 
 			if (asprintf(	&data,
 					DATA_FORMAT,
-					verified,
+					tsource,
 					sz,
 					sha) == -1) {
 				data = NULL;
