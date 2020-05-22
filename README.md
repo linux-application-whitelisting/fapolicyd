@@ -276,7 +276,7 @@ along the --update option. Also, if you add or delete files from the file
 trust list, fapolicyd.trust, then you will also have to run the fapolicyd-cli
 utility.
 
-Lmdg is a very fast database. Normally it works fine. But it does not tolerate
+Lmdb is a very fast database. Normally it works fine. But it does not tolerate
 malformed databases. When this happens, it can segfault fapolicyd. The fix
 is to delete the database and restart the daemon. It will then rebuild the
 database and work as it should. To do this, run the following command:
@@ -307,6 +307,15 @@ fapolicyd-cli --file delete /opt/my-app/
 The commandline utility will remove all files that match that directory from
 fapolicyd.trust. There is also a --file update extension that can update the
 size and hash information with what is currently on disk.
+
+Sometimes you want to see what is stored in the combined file and rpm
+trust database. In this case you can use the dump command
+
+```
+fapolicyd-cli --dump-db
+```
+
+which will dump which database the entry came from, path, size, and hash value.
 
 FAQ
 ---
