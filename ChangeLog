@@ -5,6 +5,7 @@
 - Add support for sets in rules
 - Add support for dumping the trustdb by fapolicyd-cli
 - Print a warning if rpm backend doesn't have a sha256 hash
+- In rpm backend, add back javascript from /usr/share
 
 0.9.4
 - Fix pattern detection in light of EXEC_PERM events

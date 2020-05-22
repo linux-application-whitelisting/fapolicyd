@@ -179,7 +179,7 @@ static int drop_path(const char *file_name)
 	if (file_name[1] == 'u') {
 		if (file_name[5] == 's') {
 			// Drop anything in /usr/share that's
-			// not python or has a libexec dir
+			// not python, javascript, or has a libexec dir
 			if (file_name[6] == 'h' ) {
 				if (fnmatch("*.py?",
 						 file_name, 0) == 0)
@@ -189,6 +189,9 @@ static int drop_path(const char *file_name)
 					return 0;
 				else if (fnmatch("*/libexec/*",
 						file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.js",
+						 file_name, 0) == 0)
 					return 0;
 				return 1;
 			// Akmod need scripts in /usr/src/kernel
