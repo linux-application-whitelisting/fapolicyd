@@ -184,7 +184,8 @@ int append_int_attr_set(attr_sets_entry_t * set, const int num)
 
 	avl * ret = avl_insert(&set->tree, (avl *)data);
 	if (ret != (avl *)data) {
-		// TODO already present in avl tree?
+		// Already present in avl tree
+		free(data);
 		return 1;
 	}
 
@@ -214,7 +215,9 @@ int append_str_attr_set(attr_sets_entry_t * set, const char * str)
 
 	avl * ret = avl_insert(&set->tree, (avl *)data);
 	if (ret != (avl *)data) {
-		// TODO already present in avl tree?
+		// Already present in avl tree
+		free(data->str);
+		free(data);
 		return 1;
 	}
 
