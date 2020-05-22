@@ -344,7 +344,7 @@ https://www.nist.gov/publications/guide-application-whitelisting
 
 3) Does the daemon check file integrity?
 
-Version 0.9.5 and later supports 2 modes of integrity checking. The first is
+Version 0.9.5 and later supports 3 modes of integrity checking. The first is
 based on file size. In this mode, fapolicyd will take the size information
 from the trust db and compare it with the measured file size. This test
 incurs no overhead since the file size is collected when establishing
@@ -359,6 +359,9 @@ must support i_version. For XFS, this is enabled by default. For other file
 systems, this means you need to add the i_version mount option. In either
 case, IMA must be setup appropriately.
 
+The third mode is where fapolicyd calculates a SHA256 hash of the file itself
+and compares that with what is stored in the trust db.
+
 4) This is only looking at location. Can't this be defeated by simply moving
 the files to another location?
 
@@ -368,7 +371,8 @@ So, where could an unprivileged user move the file to? And if you are thinking,
 I have root permissions, I'll move the file somewhere else. OK, if you are
 root, you can change the rules or simply turn off the deamon, too. So, this
 is not designed to prevent root from doing things. Also, moving a file means
-it's no longer "known" and will be blocked from executing.
+it's no longer "known" and will be blocked from executing. And if something
+were moved to overwrite it, then the hash is no longer the same.
 
 5) How do you prevent race conditions on startup? Can something execute before
 the daemon takes control?
@@ -391,10 +395,9 @@ This is really about stopping escalation or exploitation before the attacker
 can gain any advantage to install root kits. If we can do that, UEFI secure
 boot can make sure no other problems exist during boot.
 
-Wrt to the second question being asked, we have it in the roadmap to improve
-startup performance so that the daemon takes control earlier. But there is
-a limit to how early because trust sources need to be available before the
-daemon starts.
+Wrt to the second question being asked, fapolicyd starts very early in the
+boot process and startup is very fast. It's running well before other login
+daemons.
 
 NOTES
 -----
