@@ -5,6 +5,10 @@
 // Note: this file is based on this:
 //	 https://github.com/firehol/netdata/blob/master/src/avl.c
 //	 c63bdb5 on Oct 23, 2017
+//
+//       which has been moved to here (05/23/20):
+//       https://github.com/netdata/netdata/blob/master/libnetdata/avl/avl.c
+//
 // However, its been modified to remove pthreads as this application will
 // only use it from a single thread.
 
@@ -52,7 +56,7 @@ avl *avl_insert(avl_tree *tree, avl *item) {
     avl *p, *q; /* Iterator, and parent. */
     avl *n;     /* Newly inserted node. */
     avl *w;     /* New root of rebalanced subtree. */
-    int dir;                /* Direction to descend. */
+    unsigned char dir; /* Direction to descend. */
 
     unsigned char da[AVL_MAX_HEIGHT]; /* Cached comparison results. */
     int k = 0;              /* Number of cached results. */
@@ -157,7 +161,7 @@ avl *avl_remove(avl_tree *tree, avl *item) {
     k = 0;
     p = (avl *) &tree->root;
     for(cmp = -1; cmp != 0; cmp = tree->compar(item, p)) {
-        int dir = (cmp > 0);
+        unsigned char dir = (unsigned char)(cmp > 0);
 
         pa[k] = p;
         da[k++] = dir;

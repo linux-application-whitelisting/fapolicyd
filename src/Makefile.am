@@ -32,6 +32,7 @@ libfapolicyd_la_SOURCES = \
 	library/file.h \
 	library/file-backend.c \
 	library/file-backend.h \
+	library/gcc-attributes.h \
 	library/llist.c \
 	library/llist.h \
 	library/lru.c \

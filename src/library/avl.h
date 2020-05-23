@@ -1,6 +1,8 @@
 #ifndef AVL_HEADER
 #define AVL_HEADER
 
+#include "gcc-attributes.h"
+
 /* Maximum AVL tree height. */
 #ifndef AVL_MAX_HEIGHT
 #define AVL_MAX_HEIGHT 92
@@ -29,14 +31,14 @@ typedef struct avl_tree {
  * a is linked directly to the tree, so it has to
  * be properly allocated by the caller.
  */
-avl *avl_insert(avl_tree *t, avl *a);
+avl *avl_insert(avl_tree *t, avl *a) NEVERNULL WARNUNUSED;
 
 /* Remove an element a from the AVL tree t
  * returns a pointer to the removed element
  * or NULL if an element equal to a is not found
  * (equal as returned by t->compar())
  */
-avl *avl_remove(avl_tree *t, avl *a);
+avl *avl_remove(avl_tree *t, avl *a) WARNUNUSED;
 
 /* Find the element into the tree that equal to a
  * (equal as returned by t->compar())
