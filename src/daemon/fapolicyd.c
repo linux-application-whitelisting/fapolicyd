@@ -76,6 +76,8 @@ typedef struct fs_data {
 } fs_data_t;
 static struct fs_avl filesystems;
 
+static void usage(void) NORETURN;
+
 
 static void install_syscall_filter(void)
 {
@@ -349,7 +351,7 @@ static void handle_mounts(int fd)
 }
 
 
-static void usage(void) NORETURN
+static void usage(void)
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
