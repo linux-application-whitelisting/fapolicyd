@@ -375,7 +375,7 @@ char *get_hash_from_fd(int fd)
 	gcry_md_hd_t ctx;
 	gcry_error_t error;
 	char fbuf[4096], *hptr, *digest;
-	size_t len;
+	ssize_t len;
 
 	// Initialize a context
 	error=gcry_md_open(&ctx, GCRY_MD_SHA256, 0);
