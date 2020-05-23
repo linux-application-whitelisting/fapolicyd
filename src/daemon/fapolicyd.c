@@ -349,7 +349,7 @@ static void handle_mounts(int fd)
 }
 
 
-static void usage(void)
+static void usage(void) NORETURN
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "

@@ -49,7 +49,7 @@
 static struct udev *udev;
 magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
-struct cache c = { 0, NULL };
+static struct cache c = { 0, NULL };
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
@@ -375,7 +375,7 @@ char *get_hash_from_fd(int fd)
 	gcry_md_hd_t ctx;
 	gcry_error_t error;
 	char fbuf[4096], *hptr, *digest;
-	int len;
+	size_t len;
 
 	// Initialize a context
 	error=gcry_md_open(&ctx, GCRY_MD_SHA256, 0);

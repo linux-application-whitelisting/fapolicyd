@@ -43,7 +43,7 @@
 #include "fapolicyd-backend.h"
 
 
-const char *usage =
+static const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "-d, --delete-db\t\tDelete the trust database\n"
 "-D, --dump-db\t\tDump the trust database contents\n"
@@ -54,7 +54,7 @@ const char *usage =
 "-u, --update\t\tNotifies fapolicyd to perform update of database\n"
 ;
 
-struct option long_opts[] =
+static struct option long_opts[] =
 {
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
@@ -65,7 +65,7 @@ struct option long_opts[] =
 	{"update",	0, NULL, 'u'},
 };
 
-const char *_pipe = "/run/fapolicyd/fapolicyd.fifo";
+static const char *_pipe = "/run/fapolicyd/fapolicyd.fifo";
 volatile atomic_bool stop = 0;  // Library needs this
 int debug = 0;			// Library needs this
 
@@ -97,7 +97,7 @@ static char *get_line(FILE *f, char *buf, unsigned size, unsigned *lineno)
 }
 
 
-int do_delete_db(void)
+static int do_delete_db(void)
 {
 	unlink_db();
 	return 0;
@@ -106,7 +106,7 @@ int do_delete_db(void)
 
 // This function opens the trust db and iterates over the entries.
 // It returns a 0 on success and non-zero on failure
-int do_dump_db(void)
+static int do_dump_db(void)
 {
 	int rc;
 	MDB_env *env;
@@ -210,7 +210,7 @@ env_close:
  *
  * The function returns 0 on success and -1 on failure
  */
-int do_manage_files(int argc, char * const argv[])
+static int do_manage_files(int argc, char * const argv[])
 {
 	int rc = 0;
 
@@ -244,7 +244,7 @@ args_err:
 }
 
 
-int do_ftype(const char *path)
+static int do_ftype(const char *path)
 {
 	int fd;
 	magic_t magic_cookie;
@@ -300,7 +300,7 @@ int do_ftype(const char *path)
 }
 
 
-int do_list(void)
+static int do_list(void)
 {
 	unsigned count = 1, lineno = 0;
 	char buf[160];
@@ -335,7 +335,7 @@ int do_list(void)
 }
 
 
-int do_update(void)
+static int do_update(void)
 {
 	int fd = -1;
 	struct stat s;

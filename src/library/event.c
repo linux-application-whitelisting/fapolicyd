@@ -347,7 +347,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			break;
 		default:
 			return NULL;
-	};
+	}
 
 	if (subject_add(e->s, &subj) == 0) {
 		sn = subject_access(e->s, t);

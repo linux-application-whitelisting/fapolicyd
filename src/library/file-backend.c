@@ -279,10 +279,10 @@ err_out:
 }
 
 
-const char *header1 = "# This file contains a list of trusted files\n";
-const char *header2 = "#\n";
-const char *header3 = "#  FULL PATH        SIZE                             SHA256\n";
-const char *header4 = "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87\n";
+static const char *header1 = "# This file contains a list of trusted files\n";
+static const char *header2 = "#\n";
+static const char *header3 = "#  FULL PATH        SIZE                             SHA256\n";
+static const char *header4 = "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87\n";
 
 
 // This function take the passed list and writes it all to the passed
