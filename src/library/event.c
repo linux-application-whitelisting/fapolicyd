@@ -447,7 +447,7 @@ static void print_queue_stats(FILE *f, const Queue *q)
 {
 	fprintf(f, "%s cache size: %u\n", q->name, q->total);
 	fprintf(f, "%s slots in use: %u (%u%%)\n", q->name, q->count,
-					(100*q->count)/q->total);
+				q->total ? (100*q->count)/q->total : 0);
 	fprintf(f, "%s hits: %lu\n", q->name, q->hits);
 	fprintf(f, "%s misses: %lu\n", q->name, q->misses);
 	fprintf(f, "%s evictions: %lu (%lu%%)\n", q->name, q->evictions,

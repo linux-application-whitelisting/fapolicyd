@@ -200,7 +200,7 @@ void database_report(FILE *f)
 {
 	fprintf(f, "Database max pages: %lu\n", max_pages);
 	fprintf(f, "Database pages in use: %lu (%lu%%)\n\n", pages,
-		(100*pages)/max_pages);
+		max_pages ? ((100*pages)/max_pages) : 0);
 }
 
 

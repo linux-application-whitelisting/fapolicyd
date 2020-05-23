@@ -1,6 +1,6 @@
 /*
  * lru.c - LRU cache implementation
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -79,7 +79,7 @@ static void dump_queue_stats(const Queue *q)
 {
 	msg(LOG_DEBUG, "%s cache size: %u", q->name, q->total);
 	msg(LOG_DEBUG, "%s slots in use: %u (%u%%)", q->name, q->count,
-					(100*q->count)/q->total);
+				q->total ? (100*q->count)/q->total : 0);
 	msg(LOG_DEBUG, "%s hits: %lu", q->name, q->hits);
 	msg(LOG_DEBUG, "%s misses: %lu", q->name, q->misses);
 	msg(LOG_DEBUG, "%s evictions: %lu (%lu%%)", q->name, q->evictions,
