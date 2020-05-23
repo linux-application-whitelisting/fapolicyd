@@ -216,7 +216,7 @@ int append_str_attr_set(attr_sets_entry_t * set, const char * str)
 	avl * ret = avl_insert(&set->tree, (avl *)data);
 	if (ret != (avl *)data) {
 		// Already present in avl tree
-		free(data->str);
+		free((void *)data->str);
 		free(data);
 		return 1;
 	}
