@@ -51,16 +51,28 @@ passing --without-rpm and it will not link against librpm. In this mode, it
 purely uses the file database in fapolicyd.trust. If rpm is used, then the
 file trust database can be used in addition to rpmdb.
 
-RUNNING
--------
-You might want to look at the fapolicyd.rules file to see what the sample
-policy looks like. The policy is designed with 3 goals in mind.
+POLICIES
+--------
+You might want to look at the fapolicyd.rules file to see what the default
+policy looks like. There are 2 policies shipped, known-libs and restrictive.
+
+The restrictive policy is designed with 3 goals in mind:
 
 1. No bypass of security by executing programs via ld.so.
 2. All approved executables are trusted. Untrusted programs can't run.
 3. Elf binaries, python, and shell scripts are enabled for trusted
    applications/libraries. Other languages are not allowed or must be enabled.
+4. There is a languages macros of blocked languages.
 
+The known-libs policy (default) is designed with these goals in mind:
+
+1. No bypass of security by executing programs via ld.so.
+2. Anything requesting execution must be trusted.
+3. Any library or interpretted language application or module must be trusted.
+4. There is a languages macro of allowed languages.
+
+EXPERIMENTING
+-------------
 You can test by starting the daemon from the command line. Before starting
 the daemon, cp /usr/bin/ls /usr/bin/my-ls just to setup for testing. When
 testing new policy, its highly recommended to use the permissive mode to
@@ -106,6 +118,13 @@ easily do that by running:
 ```
 fapolicyd-cli --list
 ```
+
+Also, in fapolicyd.conf, there is a configuration option, syslog_format, which
+can be modified to output information the way you want to see it. So, if you
+think auid in uninteresting you can delete it. If you want to see the device
+information for the file being accessed, you can add it. You can also enable
+this information to go to syslog by changing the rules to not say audit, but
+instead have syslog or log appended to the allow or deny decision.
 
 WRITING RULES
 -------------
@@ -401,7 +420,7 @@ daemons.
 
 NOTES
 -----
-* Its highly recommended to run in permissive mode while you are testing the
+* It's highly recommended to run in permissive mode while you are testing the
 daemon's policy.
 
 * Stracing the daemon can deadlock the system.
