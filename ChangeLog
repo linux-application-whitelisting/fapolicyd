@@ -1,4 +1,6 @@
-0.9.5
+1.0.1
+
+1.0
 - Add file size, IMA, and sha256 based integrity checking
 - Add ability to send decision results to syslog
 - Add ability to define the format of the syslog event
