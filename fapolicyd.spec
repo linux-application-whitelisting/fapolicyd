@@ -42,6 +42,7 @@ make DESTDIR="%{buildroot}" INSTALL='install -p' install
 mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
+install -p -m 644 init/%{name}.rules.known-libs %{buildroot}/%{_sysconfdir}/%{name}/%{name}.rules
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
 
@@ -53,9 +54,6 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 
 %post
 %systemd_post %{name}.service
-if [ ! -f /etc/fapolicyd/fapolicyd.rules ] ; then
-	cp %{_datadir}/%{name}/%{name}.rules.known-libs %{_sysconfdir}/%{name}/
-fi
 
 %preun
 %systemd_preun %{name}.service
@@ -72,7 +70,7 @@ fi
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
-%ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
+%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}
