@@ -62,3 +62,7 @@
 
 0	string	\223NUMPY			NumPy data file
 !:mime	application/x-numpy-data
+
+0       search/1/w      #!\ /usr/bin/tclsh       Tcl/Tk script text executable
+!:mime  text/x-tcl
+
