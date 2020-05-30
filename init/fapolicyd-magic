@@ -13,6 +13,12 @@
 0	string/wt	#!\ /usr/bin/lua	Lua script text executable
 !:mime	text/x-lua
 
+0	string/wt	#!\ /usr/bin/texlua	LuaTex script text executable
+!:mime	text/x-luatex
+
+0	string/wt	#!\ /usr/bin/luatex	LuaTex script text executable
+!:mime	text/x-luatex
+
 0	string/wt	#!\ /usr/bin/Rscript	R script text executable
 !:mime	text/x-R
 
@@ -66,3 +72,6 @@
 0       search/1/w      #!\ /usr/bin/tclsh       Tcl/Tk script text executable
 !:mime  text/x-tcl
 
+
+0       search/1/w      #!\ /usr/bin/stap       Systemtap script text executable
+!:mime  text/x-systemtap
