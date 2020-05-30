@@ -53,6 +53,10 @@
 !:strength + 15
 !:mime text/x-python
 
+0       search/1/w       #!\ /usr/bin/env\ python        Python script text executable
+!:strength + 15
+!:mime text/x-python
+
 0	string/wt	#!\ /usr/bin/guile	Guile script text executable
 !:mime  text/x-script.guile
 
