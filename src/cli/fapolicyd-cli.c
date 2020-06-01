@@ -232,6 +232,9 @@ static int do_manage_files(int argc, char * const argv[])
 		 else
 			rc = file_update("/");
 
+	} else {
+		fprintf(stderr, "Missing operation option add|delete|update\n\n");
+		goto args_err;
 	}
 
 	return rc;
