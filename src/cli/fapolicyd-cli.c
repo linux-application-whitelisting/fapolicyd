@@ -112,6 +112,7 @@ static int do_dump_db(void)
 	MDB_env *env;
 	MDB_txn *txn;
 	MDB_dbi dbi;
+	MDB_stat status;
 	MDB_cursor *cursor;
 	MDB_val key, val;
 
@@ -128,6 +129,17 @@ static int do_dump_db(void)
 							mdb_strerror(rc));
 		rc = 1;
 		goto env_close;
+	}
+	rc = mdb_env_stat(env, &status);
+	if (rc) {
+		fprintf(stderr, "mdb_env_stat failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		rc = 1;
+		goto env_close;
+	}
+	if (status.ms_entries == 0) {
+		printf("Trust database is empty\n");
+		goto env_close; // Note: rc is 0 to get here
 	}
 	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
 	if (rc) {
