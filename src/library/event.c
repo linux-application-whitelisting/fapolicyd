@@ -339,9 +339,15 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 
 			subj.val = 0;
 			if (exe) {
-				if (exe->str && check_trust_database(exe->str,
-								     NULL, 0))
-					subj.val = 1;
+				if (exe->str) {
+					int res = check_trust_database(exe->str, NULL, 0);
+
+					// ignore -1
+					if (res == 1)
+						subj.val = 1;
+					else
+						subj.val = 0;
+				}
 			}
 			}
 			break;
@@ -422,10 +428,15 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		case OBJ_TRUST: {
 			object_attr_t *path =  get_obj_attr(e, PATH);
 
-			if (path && path->o && check_trust_database(path->o,
-							    o->info, e->fd))
-			obj.val = 1;
+			if (path && path->o) {
+				int res = check_trust_database(path->o, o->info, e->fd);
 
+				// ignore -1
+				if (res == 1)
+					obj.val = 1;
+				else
+					obj.val = 0;
+			}
 			}
 			break;
 		case FMODE:
