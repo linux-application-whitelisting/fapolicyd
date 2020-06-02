@@ -41,6 +41,7 @@
 #include "database.h"
 #include "file-backend.h"
 #include "fapolicyd-backend.h"
+#include "string-util.h"
 
 
 static const char *usage =
@@ -318,14 +319,14 @@ static int do_ftype(const char *path)
 static int do_list(void)
 {
 	unsigned count = 1, lineno = 0;
-	char buf[160];
+	char buf[BUFFER_MAX+1];
 	FILE *f = fopen(RULES_FILE, "rm");
 	if (f == NULL) {
 		fprintf(stderr, "Cannot open rules file (%s)\n",
 						strerror(errno));
 		return 1;
 	}
-	while (get_line(f, buf, sizeof(buf), &lineno)) {
+	while (get_line(f, buf, BUFFER_MAX, &lineno)) {
 		char *str = buf;
 		lineno++;
 		while (*str) {

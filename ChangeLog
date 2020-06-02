@@ -1,5 +1,7 @@
 1.0.1
 - If trust db is empty when fapolicyd-cli dumps it, say its empty
+- Make fapolicyd-cli buffer bigger for rule listing
+- Fix ignored db errors from check_trust_database
 
 1.0
 - Add file size, IMA, and sha256 based integrity checking
