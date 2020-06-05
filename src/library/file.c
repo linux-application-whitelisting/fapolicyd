@@ -666,6 +666,11 @@ done32:
 		// We want to do a basic size check to make sure
 		unsigned long sz =
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
+
+		// Program headers are meaning for executable & shared obj only
+		if (sz == 0 && hdr->e_type == ET_REL)
+			goto done64_obj;
+
 		/* Verify the entry size is right */
 		if ((unsigned)hdr->e_phentsize != sizeof(Elf64_Phdr)) {
 			info |= HAS_ERROR;
@@ -780,6 +785,7 @@ err_out64:
 		info |= HAS_ERROR;
 done64:
 		free(ph_tbl);
+done64_obj:
 		free(hdr);
 	}
 rewind_out:
