@@ -527,6 +527,11 @@ uint32_t gather_elf(int fd, off_t size)
 		// We want to do a basic size check to make sure
 		unsigned long sz =
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
+
+		// Program headers are meaning for executable & shared obj only
+		if (sz == 0 && hdr->e_type == ET_REL)
+			goto done32_obj;
+
 		/* Verify the entry size is right */
 		if ((unsigned)hdr->e_phentsize != sizeof(Elf32_Phdr)) {
 			info |= HAS_ERROR;
@@ -644,6 +649,7 @@ err_out32:
 		info |= HAS_ERROR;
 done32:
 		free(ph_tbl);
+done32_obj:
 		free(hdr);
 	} else if (e_ident[EI_CLASS] == ELFCLASS64) {
 		unsigned i;
