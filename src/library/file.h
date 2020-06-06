@@ -27,6 +27,7 @@
 
 #include <sys/types.h>
 #include <stdint.h>
+#include <sys/stat.h>
 
 // Information we will cache to identify the same executable
 struct file_info
@@ -44,6 +45,7 @@ struct file_info *stat_file_entry(int fd);
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf);
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf);
+const char *classify_device(mode_t mode);
 const char *classify_elf_info(uint32_t elf, const char *path);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf);

@@ -305,8 +305,38 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 }
 
 
-// NOTE: This is probably risky to do from a root running program.
-// Consider pushing this to a child process that has no permissions.
+/*
+ * This function classifies the descriptor if it's not a regular file.
+ * This is needed because libmagic tries to read it and comes up with
+ * application/x-empty instead. This function will return NULL if the
+ * file is not a device. Otherwise a pointer to its mime type.
+ */
+const char *classify_device(mode_t mode)
+{
+	const char *ptr = NULL;
+
+	switch (mode & S_IFMT) {
+	case S_IFCHR:
+		ptr = "inode/chardevice";
+		break;
+	case S_IFBLK:
+		ptr = "inode/blockdevice";
+		break;
+	case S_IFIFO:
+		ptr = "inode/fifo";
+		break;
+	case S_IFSOCK:
+		ptr = "inode/socket";
+		break;
+	}
+
+	return ptr;
+}
+
+
+// This function will determine the mime type of the passed file descriptor.
+// If it returns NULL, then an error of some kind happed. Otherwise it
+// fills in "buf" and returns a pointer to it.
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf)
 {
@@ -314,13 +344,22 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 
 	// libmagic is unpredictable in determining elf files.
 	// We need to do it ourselves for consistency.
-	uint32_t elf = gather_elf(fd, i->size);
-	if (elf) {
-		ptr = classify_elf_info(elf, path);
-		if (ptr == NULL)
-			return (char *)ptr;
-		return strncpy(buf, ptr, blen-1);
+	if (i->mode & S_IFREG) {
+		uint32_t elf = gather_elf(fd, i->size);
+		if (elf) {
+			ptr = classify_elf_info(elf, path);
+			if (ptr == NULL)
+				return (char *)ptr;
+			return strncpy(buf, ptr, blen-1);
+		}
 	}
+
+	// Take a look to see if its a device
+	ptr = classify_device(i->mode);
+	if (ptr)
+		return strncpy(buf, ptr, blen-1);
+
+	// Do the normal classification
 	ptr = magic_descriptor(magic_cookie, fd);
 	rewind_fd(fd);
 	if (ptr) {

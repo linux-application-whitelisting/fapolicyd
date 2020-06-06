@@ -267,7 +267,9 @@ static int do_ftype(const char *path)
 	const char *ptr = NULL;
 	struct stat sb;
 
-	fd = open(path, O_RDONLY);
+	// We need to open in non-blocking mode because if its a
+	// fifo, it will hang the program.
+	fd = open(path, O_RDONLY|O_NONBLOCK);
 	if (fd < 0) {
 		fprintf(stderr, "Cannot open %s - %s\n", path, strerror(errno));
 		exit(1);
@@ -289,12 +291,23 @@ static int do_ftype(const char *path)
 		magic_close(magic_cookie);
 		return 1;
 	}
+
+	// Change it back to blocking
+	fcntl(fd, F_SETFL, 0);
+
 	if (fstat(fd, &sb) == 0) {
-		uint32_t elf = gather_elf(fd, sb.st_size);
+		uint32_t elf = 0;
+
+		// Only classify if a regular file
+		if (sb.st_mode & S_IFREG)
+			elf = gather_elf(fd, sb.st_size);
 		if (elf)
 			ptr = classify_elf_info(elf, path);
-		else
-			ptr = magic_descriptor(magic_cookie, fd);
+		else {
+			ptr = classify_device(sb.st_mode);
+			if (ptr == NULL)
+				ptr = magic_descriptor(magic_cookie, fd);
+		}
 	} else
 		fprintf(stderr, "Failed fstat (%s)", strerror(errno));
 
