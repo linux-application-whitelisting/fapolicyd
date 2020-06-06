@@ -1,7 +1,7 @@
 0	string/wt	#!\ /usr/bin/bash	Bourne-Again shell script text executable
 !:mime	text/x-shellscript
 
-0	string/w	#!\ /usr/bin/sh		Shell script text executable
+0	string/wt	#!\ /usr/bin/sh		Shell script text executable
 !:mime	text/x-shellscript
 
 0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
@@ -43,23 +43,23 @@
 0	belong		0x420d0d0a	python 3.7 byte-compiled
 !:mime	application/x-bytecode.python
 
-0	search/1/w	#!\ /usr/bin/python3	Python script text executable
+0	search/1/wt	#!\ /usr/bin/python3	Python script text executable
 !:strength + 15
 !:mime text/x-python
 
-0	search/1/w	#!\ /usr/bin/python2	Python script text executable
+0	search/1/wt	#!\ /usr/bin/python2	Python script text executable
 !:strength + 15
 !:mime text/x-python
 
-0	search/1/w	#!\ /usr/bin/python	Python script text executable
+0	search/1/wt	#!\ /usr/bin/python	Python script text executable
 !:strength + 15
 !:mime text/x-python
 
-0	search/1/w	#!\ /usr/libexec/platform-python	Python script text executable
+0	search/1/wt	#!\ /usr/libexec/platform-python	Python script text executable
 !:strength + 15
 !:mime text/x-python
 
-0       search/1/w       #!\ /usr/bin/env\ python        Python script text executable
+0       search/1/wt     #!\ /usr/bin/env\ python        Python script text executable
 !:strength + 15
 !:mime text/x-python
 
@@ -69,9 +69,9 @@
 0	string	\223NUMPY			NumPy data file
 !:mime	application/x-numpy-data
 
-0       search/1/w      #!\ /usr/bin/tclsh       Tcl/Tk script text executable
+0       search/1/wt      #!\ /usr/bin/tclsh     Tcl/Tk script text executable
 !:mime  text/x-tcl
 
 
-0       search/1/w      #!\ /usr/bin/stap       Systemtap script text executable
+0       search/1/wt      #!\ /usr/bin/stap      Systemtap script text executable
 !:mime  text/x-systemtap
