@@ -132,7 +132,7 @@ This option matches against the sha256 hash of the file being accessed. The hash
 .RE
 
 .SH SETS
-Set is a named group of values of the same type. Fapolicyd internally distinguishes between INT and STRING set types. You can define your own set and use it as a value for a specific rule attribute. The definition is in key=value syntax and starts with a set name. The set name has to start with % and the rest is alphanumeric. The value is a comma separated list. The set type is inherited from the first item in the list. If that can be turned into number then whole list is expected to carry numbers. One can use these sets as a value for subject and object attributes. It is also possible to use a plain list as an attribute value without previous definition. The assigned set has to match the attribute type. It is not possible set groups for TRUST and PATTERN attributes.
+Set is a named group of values of the same type. Fapolicyd internally distinguishes between INT and STRING set types. You can define your own set and use it as a value for a specific rule attribute. The definition is in key=value syntax and starts with a set name. The set name has to start with '%' and the rest is alphanumeric or '_'. The value is a comma separated list. The set type is inherited from the first item in the list. If that can be turned into number then whole list is expected to carry numbers. One can use these sets as a value for subject and object attributes. It is also possible to use a plain list as an attribute value without previous definition. The assigned set has to match the attribute type. It is not possible set groups for TRUST and PATTERN attributes.
 
 
 .SS SETS EXAMPLES
