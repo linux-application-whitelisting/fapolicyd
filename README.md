@@ -56,20 +56,20 @@ POLICIES
 You might want to look at the fapolicyd.rules file to see what the default
 policy looks like. There are 2 policies shipped, known-libs and restrictive.
 
-The restrictive policy is designed with 3 goals in mind:
+The restrictive policy is designed with these goals in mind:
 
 1. No bypass of security by executing programs via ld.so.
-2. All approved executables are trusted. Untrusted programs can't run.
+2. Anything requesting execution must be trusted.
 3. Elf binaries, python, and shell scripts are enabled for trusted
-   applications/libraries. Other languages are not allowed or must be enabled.
-4. There is a languages macros of blocked languages.
+   applications/libraries.
+4. Other languages are not allowed or must be enabled.
 
 The known-libs policy (default) is designed with these goals in mind:
 
 1. No bypass of security by executing programs via ld.so.
 2. Anything requesting execution must be trusted.
-3. Any library or interpretted language application or module must be trusted.
-4. There is a languages macro of allowed languages.
+3. Any library or interpretted application or module must be trusted.
+4. Everything else is not allowed.
 
 EXPERIMENTING
 -------------
