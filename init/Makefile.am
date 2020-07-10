@@ -18,8 +18,8 @@ dist_systemdservice_DATA = fapolicyd.service
 
 
 
-MAGIC = fapolicyd-magic.mgc fapolicyd.rules.*
-pkgdata_DATA = ${MAGIC}
+MAGIC = fapolicyd-magic.mgc
+pkgdata_DATA = ${MAGIC} fapolicyd.rules.*
 CLEANFILES = ${MAGIC}
 
 ${MAGIC}: $(EXTRA_DIST)
