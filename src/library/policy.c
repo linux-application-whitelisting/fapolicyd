@@ -185,7 +185,9 @@ int load_config(const conf_t *config)
 {
 	int fd, rc, lineno = 1;
 	FILE *f;
-	char buf[BUFFER_MAX+1];
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t nread;
 
 	if (rules_create(&rules))
 		return 1;
@@ -206,15 +208,20 @@ int load_config(const conf_t *config)
 	}
 
 
-	while (fapolicyd_get_line(f, buf)) {
-		rc = rules_append(&rules, buf, lineno);
+	while ((nread = getline(&line, &len, f)) != -1) {
+		char *ptr = strchr(line, 0x0a);
+		if (ptr)
+			*ptr = 0;
+		rc = rules_append(&rules, line, lineno);
 		if (rc) {
+			free(line);
 			fclose(f);
 			return 1;
 		}
 
 		lineno++;
 	}
+	free(line);
 	fclose(f);
 
 	rules_regen_sets(&rules);

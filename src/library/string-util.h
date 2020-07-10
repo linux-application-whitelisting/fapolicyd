@@ -1,6 +1,6 @@
 /*
  * string-util.h - Header file for string-util
- * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -25,10 +25,6 @@
 #ifndef STRING_UTIL_H
 #define STRING_UTIL_H
 
-#include <stdio.h>
-#define BUFFER_MAX 2048
-
-char * fapolicyd_strtrim(char * s);
-char * fapolicyd_get_line(FILE *f, char *buf);
+char *fapolicyd_strtrim(char *s);
 
 #endif

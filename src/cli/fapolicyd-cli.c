@@ -70,30 +70,20 @@ static const char *_pipe = "/run/fapolicyd/fapolicyd.fifo";
 volatile atomic_bool stop = 0;  // Library needs this
 int debug = 0;			// Library needs this
 
-static char *get_line(FILE *f, char *buf, unsigned size, unsigned *lineno)
+static char *get_line(FILE *f, unsigned *lineno)
 {
-	int too_long = 0;
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t nread;
 
-	while (fgets_unlocked(buf, size, f)) {
+	while ((nread = getline(&line, &len, f)) != -1) {
 		/* remove newline */
-		char *ptr = strchr(buf, 0x0a);
-		if (ptr) {
-			if (!too_long) {
-				*ptr = 0;
-				return buf;
-			}
-			// Reset and start with the next line
-			too_long = 0;
-			*lineno = *lineno + 1;
-		} else {
-			// If a line is too long skip it.
-			// Only output 1 warning
-			if (!too_long)
-				fprintf(stderr, "Skipping line %u: too long\n",
-								*lineno);
-			too_long = 1;
-		}
+		char *ptr = strchr(line, 0x0a);
+		if (ptr)
+			*ptr = 0;
+		return line;
 	}
+	free(line);
 	return NULL;
 }
 
@@ -328,18 +318,18 @@ static int do_ftype(const char *path)
 	return 0;
 }
 
-
 static int do_list(void)
 {
 	unsigned count = 1, lineno = 0;
-	char buf[BUFFER_MAX+1];
 	FILE *f = fopen(RULES_FILE, "rm");
+	char *buf;
+
 	if (f == NULL) {
 		fprintf(stderr, "Cannot open rules file (%s)\n",
 						strerror(errno));
 		return 1;
 	}
-	while (get_line(f, buf, BUFFER_MAX, &lineno)) {
+	while ((buf = get_line(f, &lineno))) {
 		char *str = buf;
 		lineno++;
 		while (*str) {
@@ -348,16 +338,18 @@ static int do_list(void)
 			str++;
 		}
 		if (*str == 0) // blank line
-			continue;
+			goto next_iteration;
 		if (*str == '#') //comment line
-			continue;
+			goto next_iteration;
 		if (*str == '%') {
 			printf("-> %s\n", buf);
-			continue;
+			goto next_iteration;
 		}
 
 		printf("%u. %s\n", count, buf);
 		count++;
+next_iteration:
+		free(buf);
 	}
 	fclose(f);
 	return 0;

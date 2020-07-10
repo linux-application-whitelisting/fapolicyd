@@ -4,6 +4,7 @@
 - Fix ignored db errors from check_trust_database
 - Adjust ELF x-object detection
 - Do device mime-type detection in-house instead of libmagic
+- Allow arbitrarily large group statements
 
 1.0
 - Add file size, IMA, and sha256 based integrity checking

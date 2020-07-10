@@ -1,6 +1,6 @@
 /*
  * string-util.c - useful string functions
- * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -23,13 +23,11 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
 
 #include "string-util.h"
 
-char * fapolicyd_strtrim(char * s)
+char *fapolicyd_strtrim(char *s)
 {
 	char *cp1;
 	char *cp2;
@@ -53,17 +51,3 @@ char * fapolicyd_strtrim(char * s)
 	return s;
 }
 
-char *fapolicyd_get_line(FILE *f, char *buf)
-{
-	if (fgets_unlocked(buf, BUFFER_MAX-1, f)) {
-
-		/* remove newline */
-		char *ptr = strchr(buf, 0x0a);
-		if (ptr) {
-			*ptr = 0;
-			return buf;
-		}
-	}
-
-	return NULL;
-}
