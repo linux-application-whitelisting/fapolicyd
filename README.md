@@ -283,6 +283,28 @@ total  file
 16  /usr/bin/python3.7
 ```
 
+However, you probably want to know the rule that is blocking it. Unfortunately
+the audit system cannot tell you this. What you can do is change the decisions
+to deny_log. This will write the event to syslog as well as the audit log. In
+syslog, you will have the same output as the debug mode.
+
+The shipped rules expect that everything installed is in the trust database.
+If you have installed anything by unzipping it or untarring it, then you need
+to add the executables, libraries, and modules to the trust database. See the
+MANAGING THE FILE TRUST SOURCE section for instructions on how to do this.
+
+You can ask fapolicyd to include the trust information by adding trust to the
+end of the syslog_format configuration option. The things that you need to know
+to debug the policy is:
+
+* The rule triggering
+* The executable accessing the file
+* The object file type
+* The trust value
+
+Look at the rule that triggered and see if it makes sense that it triggered. If
+the rule is a catch all denial, then check if the file is in the trust db.
+
 MANAGING TRUST
 --------------
 Fapolicyd use lmdb as a backend database for its trusted software list. You
