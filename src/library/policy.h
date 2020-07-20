@@ -42,7 +42,7 @@
 #endif
 
 #define SYSLOG 0x0020
-#define FAN_RESPONSE_MASK 0x001F
+#define FAN_RESPONSE_MASK FAN_ALLOW|FAN_DENY|FAN_AUDIT
 
 typedef enum {
 	NO_OPINION = 0,
