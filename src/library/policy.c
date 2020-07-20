@@ -399,7 +399,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 	else
 		decision = process_event(&e);
 
-	if ((decision & ~AUDIT) == DENY)
+	if ((decision & DENY) == DENY)
 		denied++;
 	else
 		allowed++;
