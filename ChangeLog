@@ -6,6 +6,7 @@
 - Do device mime-type detection in-house instead of libmagic
 - Allow arbitrarily large group statements
 - Fix logging of object trust
+- Correct denial accounting
 
 1.0
 - Add file size, IMA, and sha256 based integrity checking
