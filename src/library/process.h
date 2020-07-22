@@ -38,7 +38,8 @@ typedef enum {	STATE_COLLECTING=0,	// initial state - execute
 		STATE_NOT_ELF,		// not elf, ignore
 		STATE_LD_SO,		// app started by ld.so
 		STATE_STATIC,		// app is static
-		STATE_BAD_ELF		// app is elf but malformed
+		STATE_BAD_ELF,		// app is elf but malformed
+		STATE_LD_PRELOAD	// app has LD_PRELOAD or LD_AUDIT set
 } state_t;
 
 // This is used to determine what kind of elf file we are looking at.
@@ -77,5 +78,6 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf);
 uid_t get_program_auid_from_pid(pid_t pid);
 int get_program_sessionid_from_pid(pid_t pid);
 uid_t get_program_uid_from_pid(pid_t pid);
+int check_environ_from_pid(pid_t pid);
 
 #endif

@@ -98,6 +98,9 @@ This matches against any ELF program that is dynamically linked.
 .B ld_so
 This matches against access patterns that indicate that the program is being started directly by the runtime linker.
 .TP
+.B ld_preload
+This matches against access patterns that indicate that the program is being started with either LD_PRELOAD or LD_AUDIT present in the environment. Note that even without this rule, you have protection against LD_PRELOAD of unknown binaries when the rules are written such that trust is used to determine if a library should be opened. In that case, the preloaded library would be denied but the application will still execute. This rule makes it so that even trusted libraries can be denied and the application will not execute.
+.TP
 .B static
 This matches against ELF files that are statically linked.
 .RE
