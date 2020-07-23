@@ -55,6 +55,8 @@
 #define PATTERN_LD_SO_VAL 1
 #define PATTERN_STATIC_STR "static"
 #define PATTERN_STATIC_VAL 2
+#define PATTERN_LD_PRELOAD_STR "ld_preload"
+#define PATTERN_LD_PRELOAD_VAL 3
 
 int rules_create(llist *l)
 {
@@ -396,6 +398,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			n->s[i].val = PATTERN_LD_SO_VAL;
 		} else if (strcmp(tmp, PATTERN_STATIC_STR) == 0) {
 			n->s[i].val = PATTERN_STATIC_VAL;
+		} else if (strcmp(tmp, PATTERN_LD_PRELOAD_STR) == 0) {
+			n->s[i].val = PATTERN_LD_PRELOAD_VAL;
 		} else {
 			msg(LOG_ERR,
 				"Unknown pattern value %s in line %d",
@@ -1074,6 +1078,13 @@ make_decision:
 				(pinfo->state == STATE_STATIC_PARTIAL) ||
 				(pinfo->state == STATE_STATIC))
 				rc = 1;
+			break;
+		case PATTERN_LD_PRELOAD_VAL: {
+			int env = check_environ_from_pid(pinfo->pid);
+			if (env == 1) {
+				pinfo->state = STATE_LD_PRELOAD;
+				rc = 1;
+			} }
 			break;
 	}
 

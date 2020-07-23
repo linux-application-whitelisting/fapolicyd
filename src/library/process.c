@@ -256,3 +256,34 @@ uid_t get_program_uid_from_pid(pid_t pid)
 	return uid;
 }
 
+// Returns 0 if environ is clean, 1 if problems, -1 on error
+int check_environ_from_pid(pid_t pid)
+{
+	int rc = -1;
+	char path[128];
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t nread;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "/proc/%d/environ", pid);
+	f = fopen(path, "rt");
+	if (f) {
+		__fsetlocking(f, FSETLOCKING_BYCALLER);
+		while ((nread = getline(&line, &len, f)) != -1) {
+			char *match = strstr(line, "LD_PRELOAD");
+			if (!match)
+				match = strstr(line, "LD_AUDIT");
+			if (match) {
+				rc = 1;
+				break;
+			}
+		}
+		fclose(f);
+		if (rc == -1)
+			rc = 0;
+		free(line);
+	}
+	return rc;
+}
+
