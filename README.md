@@ -257,8 +257,10 @@ build drivers on a kernel update.
 TROUBLESHOOTING
 ---------------
 When fapolicyd blocks something, it will generate an audit event if the
-Decision is deny_audit and it has been compiled with the auditing option. To
-see if you have any denials, you can run:
+Decision is deny_audit and it has been compiled with the auditing option.
+The audit system must have at least 1 audit rule loaded to create the full
+FANOTIFY event. It doesn't matter what rule. To see if you have any denials,
+you can run:
 
 ```
 ausearch --start today -m fanotify --raw | aureport --file --summary

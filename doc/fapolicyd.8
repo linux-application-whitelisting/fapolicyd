@@ -14,7 +14,8 @@ Configuring \fBfapolicyd\fP is done with the files in the \fI/etc/fapolicyd/\fP 
 .B fapolicyd.trust
  . The first one sets the access rights, the second determines the daemon's configuration, and the last allows admin defined trusted files.
 
-The default rules will generate audit events whenever there is a denial. To see if you have any denials, you can run the following command:
+The default rules will generate audit events whenever there is a denial. NOTE:
+you must have at least 1 audit rule loaded for the audit system to create the full FANOTIFY event. It doesn't matter which rule is loaded. To see if you have any denials, you can run the following command:
 
 .RS
 .TP 2
