@@ -322,8 +322,8 @@ static void approve_event(const struct fanotify_event_metadata *metadata)
 
 	response.fd = metadata->fd;
 	response.response = FAN_ALLOW;
-	write(fd, &response, sizeof(struct fanotify_response));
 	close(metadata->fd);
+	write(fd, &response, sizeof(struct fanotify_response));
 }
 
 void handle_events(void)
