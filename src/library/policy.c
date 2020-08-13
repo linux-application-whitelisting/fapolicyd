@@ -410,6 +410,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 			response.response = FAN_ALLOW;
 		else
 			response.response = decision & FAN_RESPONSE_MASK;
+		close(metadata->fd);
 		write(fd, &response, sizeof(struct fanotify_response));
 	}
 }
