@@ -38,6 +38,11 @@ int fd_fgets_eof(void)
 	return eof;
 }
 
+void fd_fgets_rewind(void)
+{
+	eof = 0;
+}
+
 int fd_fgets(char *buf, size_t blen, int fd)
 {
 	int complete = 0;

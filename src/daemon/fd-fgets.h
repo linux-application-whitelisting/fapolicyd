@@ -26,6 +26,7 @@
 #include <sys/types.h>
 
 int fd_fgets_eof(void);
+void fd_fgets_rewind(void);
 int fd_fgets(char *buf, size_t blen, int fd);
 
 #endif
