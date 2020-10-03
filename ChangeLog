@@ -8,6 +8,7 @@
 - Fix logging of object trust
 - Correct denial accounting
 - Add new form of LD_PRELOAD pattern detection
+- Fix mount reading routine to get it all
 
 1.0
 - Add file size, IMA, and sha256 based integrity checking

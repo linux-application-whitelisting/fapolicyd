@@ -342,9 +342,8 @@ static void handle_mounts(int fd)
 				} else
 					mlist_append(m, point);
 			}
-		} else if (fd_fgets_eof())
-			break;
-	} while (fd_fgets_more(sizeof(buf)));
+		}
+	} while (!fd_fgets_eof());
 
 	// update marks
 	fanotify_update(m);

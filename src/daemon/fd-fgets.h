@@ -1,5 +1,5 @@
 /* fd-fgets.h -- a replacement for glibc's fgets
- * Copyright 2019 Red Hat Inc.
+ * Copyright 2019,2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -26,7 +26,6 @@
 #include <sys/types.h>
 
 int fd_fgets_eof(void);
-int fd_fgets_more(size_t blen);
 int fd_fgets(char *buf, size_t blen, int fd);
 
 #endif
