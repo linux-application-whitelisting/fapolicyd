@@ -32,6 +32,8 @@
 #include <rpm/rpmdb.h>
 #include <fnmatch.h>
 
+#include <uthash.h>
+
 #include "message.h"
 
 #include "fapolicyd-backend.h"
@@ -212,6 +214,11 @@ static int drop_path(const char *file_name)
 	return 0;
 }
 
+struct _hash_record {
+	const char * key;
+	UT_hash_handle hh;
+};
+
 extern int debug;
 static int rpm_load_list(void)
 {
@@ -220,6 +227,9 @@ static int rpm_load_list(void)
 
 	// empty list before loading
 	list_empty(&rpm_backend.list);
+
+	// hash table
+	struct _hash_record *hashtable = NULL;
 
 	msg(LOG_INFO, "Loading rpmdb backend");
 	if ((rc = init_rpm())) {
@@ -276,17 +286,41 @@ static int rpm_load_list(void)
 					sha) == -1) {
 				data = NULL;
 			}
-			if (data)
-				list_append(&rpm_backend.list, file_name, data);
-			else {
+
+			if (data) {
+				// getting rid of the duplicates
+				struct _hash_record *rcd = NULL;
+				char key[4096];
+				snprintf(key, 4095, "%s %s", file_name, data);
+
+				HASH_FIND_STR( hashtable, key, rcd );
+
+				if (!rcd) {
+					rcd = (struct _hash_record*) malloc(sizeof(struct _hash_record));
+					rcd->key = strdup(key);
+					HASH_ADD_KEYPTR( hh, hashtable, rcd->key, strlen(rcd->key), rcd );
+					list_append(&rpm_backend.list, file_name, data);
+				} else {
+					free((void*)file_name);
+					free((void*)data);
+				}
+			} else {
 				free((void*)file_name);
 			}
-
 			free((void *)sha);
 		}
 	}
 
 	close_rpm();
+
+	// cleaning up
+	struct _hash_record *item, *tmp;
+	HASH_ITER( hh, hashtable, item, tmp) {
+		HASH_DEL( hashtable, item );
+		free((void*)item->key);
+		free((void*)item);
+	}
+
 	return 0;
 }
 

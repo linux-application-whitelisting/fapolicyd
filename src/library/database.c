@@ -372,6 +372,19 @@ static unsigned get_pages_in_use(void)
 	return stat.ms_psize;
 }
 
+// if success, the function returns positive number of entries in database
+// if error, it returns -1
+static long get_number_of_entries(void)
+{
+	MDB_stat status;
+
+	start_long_term_read_ops();
+	mdb_stat(lt_txn, dbi, &status);
+	end_long_term_read_ops();
+
+	return status.ms_entries;
+}
+
 
 /*
  * This is the long term read operation. It takes a path as input and
@@ -574,14 +587,19 @@ static int check_database_copy(void)
 	if (start_long_term_read_ops())
 		return -1;
 
+	long backend_total_entries = 0;
+	long backend_added_entries = 0;
+
 	for (backend_entry *be = backend_get_first() ; be != NULL ;
 							 be = be->next ) {
 		msg(LOG_INFO, "Importing data from %s backend",
 							 be->backend->name);
 
+		backend_total_entries += be->backend->list.count;
 		list_item_t *item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
 			int error;
+
 			char *data = lt_read_db(item->index, READ_DATA, &error);
 			if (data && !error) {
 				if (strcmp(item->data, data)) {
@@ -609,6 +627,8 @@ static int check_database_copy(void)
 				msg(LOG_WARNING, "%s is not in database",
 				    (const char *)item->index);
 				problems++;
+				// record is new, we need to exclude it from comparison
+				backend_added_entries++;
 			}
 
 			free(data);
@@ -619,7 +639,28 @@ static int check_database_copy(void)
 		}
 	}
 
+
 	end_long_term_read_ops();
+
+	long db_total_entries = get_number_of_entries();
+	// something wrong
+	if (db_total_entries == -1)
+		return -1;
+
+	msg(LOG_INFO, "Entries in DB: %ld", db_total_entries);
+	msg(LOG_INFO, "Loaded from all backends(without duplicates): %ld", backend_total_entries);
+
+	// do not print 0
+	if (backend_added_entries > 0)
+		msg(LOG_INFO, "New entries: %ld", backend_added_entries);
+
+	// db contains records that are not present in backends anymore
+	long removed = abs(db_total_entries - (backend_total_entries - backend_added_entries));
+	// do not print 0
+	if (removed > 0)
+		msg(LOG_INFO, "Removed entries: %ld", removed);
+
+	problems += removed;
 
 	if (problems) {
 		msg(LOG_WARNING, "Found %ld problems", problems);
