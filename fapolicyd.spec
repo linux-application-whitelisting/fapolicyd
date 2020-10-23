@@ -10,6 +10,7 @@ BuildRequires: kernel-headers
 BuildRequires: systemd-devel libgcrypt-devel rpm-devel file-devel file
 BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
 BuildRequires: python3-devel
+BuildRequires: uthash-devel
 Requires(pre): shadow-utils
 Requires(post): systemd-units
 Requires(preun): systemd-units
