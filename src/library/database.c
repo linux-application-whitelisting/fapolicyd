@@ -321,13 +321,11 @@ static int write_db(const char *idx, const char *data)
  */
 static MDB_txn *lt_txn = NULL;
 static MDB_cursor *lt_cursor = NULL;
-static int lt_txn_uses = 0;
 static int start_long_term_read_ops(void)
 {
 	int rc;
 
 	if (lt_txn == NULL) {
-		lt_txn_uses = 0;
 		if (mdb_txn_begin(env, NULL, MDB_RDONLY, &lt_txn))
 			return 1;
 	}
@@ -347,23 +345,6 @@ static int start_long_term_read_ops(void)
 	}
 
 	return 0;
-}
-
-
-/*
- * Periodically close the transaction. Next time we start a read operation
- * everything will get re-initialized.
- */
-static void long_term_read_abort(void)
-{
-	if (++lt_txn_uses > 1000) {
-		// Closes dbi
-		abort_transaction(lt_txn);
-		lt_txn = NULL;
-		lt_txn_uses = 0;
-		mdb_cursor_close(lt_cursor);
-		lt_cursor = NULL;
-	}
 }
 
 
@@ -473,8 +454,6 @@ static char *lt_read_db(const char *index, int only_check_key, int *error)
 		memcpy(data, value.mv_data, value.mv_size);
 		data[value.mv_size] = 0;
 	}
-
-	long_term_read_abort();
 
 	return data;
 }
