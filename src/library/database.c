@@ -405,9 +405,6 @@ static char *lt_read_db(const char *index, int only_check_key, int *error)
 	size_t len;
 	*error = 1; // Assume an error
 
-	if (start_long_term_read_ops())
-		return NULL;
-
 	// If the path is too long, convert to a hash
 	len = strlen(index);
 	if (len > MDB_maxkeysize) {
@@ -597,6 +594,7 @@ static int check_database_copy(void)
 
 	if (start_long_term_read_ops())
 		return -1;
+
 	for (backend_entry *be = backend_get_first() ; be != NULL ;
 							 be = be->next ) {
 		msg(LOG_INFO, "Importing data from %s backend",
