@@ -655,7 +655,7 @@ static int check_database_copy(void)
 		msg(LOG_INFO, "New entries: %ld", backend_added_entries);
 
 	// db contains records that are not present in backends anymore
-	long removed = abs(db_total_entries - (backend_total_entries - backend_added_entries));
+	long removed = labs(db_total_entries - (backend_total_entries - backend_added_entries));
 	// do not print 0
 	if (removed > 0)
 		msg(LOG_INFO, "Removed entries: %ld", removed);
