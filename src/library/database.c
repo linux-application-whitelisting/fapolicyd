@@ -391,7 +391,7 @@ static long get_number_of_entries(void)
  * search for the data. It returns NULL on error or if no data found.
  * The returned string must be freed by the caller.
  */
-static char *lt_read_db(const char *index, int only_check_key, int *error)
+static char *lt_read_db(const char *index, int operation, int *error)
 {
 	int rc;
 	char *data, *hash = NULL;
@@ -414,20 +414,26 @@ static char *lt_read_db(const char *index, int only_check_key, int *error)
 	value.mv_data = NULL;
 	value.mv_size = 0;
 
-	// Read the value pointed to by key
-	if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET))) {
-		free(hash);
-		if (rc == MDB_NOTFOUND) {
-			*error = 0;
+	// set cursor and read first data
+	if (operation == READ_DATA || operation == READ_TEST_KEY) {
+
+		// Read the value pointed to by key
+		if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET))) {
+			free(hash);
+			if (rc == MDB_NOTFOUND) {
+				*error = 0;
+				return NULL;
+			}
+			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 			return NULL;
 		}
-		msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
-		return NULL;
+
 	}
 
-	// Some packages have the same file and thus duplicate entries
-	// If one hash miscompares, we can try again to see if there's a dup
-	if (only_check_key == READ_DATA_DUP) {
+	// read next available data
+	// READ_DATA_DUP is supposed to be used
+	// as subsequent call just after READ_DATA
+	if (operation == READ_DATA_DUP) {
 		size_t nleaves;
 		mdb_cursor_count(lt_cursor, &nleaves);
 		if (nleaves <= 1) {
