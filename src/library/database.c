@@ -466,7 +466,7 @@ static char *lt_read_db(const char *index, int operation, int *error)
 	// A next step might be to check the status field to see that its
 	// trusted.
 	*error = 0;
-	if (only_check_key == READ_TEST_KEY)
+	if (operation == READ_TEST_KEY)
 		return (char *)db;
 
 	if ((data = malloc(value.mv_size+1))) {
