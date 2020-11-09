@@ -146,10 +146,24 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 
 		return buf;
 	}
+
+	size_t len = 0;
 	if ((size_t)path_len < blen)
-		buf[path_len] = 0;
+		len = path_len;
 	else
-		buf[blen-1] = '\0';
+		len = blen-1;
+
+	buf[len] = '\0';
+	// some binaries can be deleted after execution
+	// then we need to delete the suffix so they are
+	// trusted even after deletion
+
+	if (buf[len-1] == ')') {
+		char * first = strstr(buf, " (deleted)");
+		if (first)
+			*first = '\0';
+	}
+
 
 	return buf;
 }
