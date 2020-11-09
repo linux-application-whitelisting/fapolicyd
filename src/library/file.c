@@ -221,16 +221,6 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	if (path_len < 0)
 		return NULL;
 
-
-	// some binaries can be deleted after execution
-	// then we need to delete the suffix so they are
-	// trusted even after deletion
-	char * first = strstr(buf, " (deleted)");
-	// if found remove it
-	if (first) {
-		*first = '\0';
-	}
-
 	if ((size_t)path_len < blen)
 		buf[path_len] = 0;
 	else
