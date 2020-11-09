@@ -9,4 +9,4 @@ before_install:
     - docker pull fedora:32
 
 script:
-    - docker run  -v /home/travis/build/linux-application-whitelisting/:/root/build/ fedora:rawhide /bin/sh -c "cd /root/build; ls -la; pwd; cd fapolicyd; dnf install --nogpgcheck -y kernel-headers systemd-devel libgcrypt-devel rpm-devel file-devel file libcap-ng-devel libseccomp-devel lmdb-devel python3-devel gcc autoconf automake libtool make && ./autogen.sh && ./configure && make && make dist"
+    - docker run  -v /home/travis/build/linux-application-whitelisting/:/root/build/ fedora:32 /bin/sh -c "cd /root/build; ls -la; pwd; cd fapolicyd; dnf install --nogpgcheck -y kernel-headers systemd-devel libgcrypt-devel rpm-devel file-devel file libcap-ng-devel libseccomp-devel lmdb-devel python3-devel gcc autoconf automake libtool uthash-devel make && ./autogen.sh && ./configure && make && make dist"
