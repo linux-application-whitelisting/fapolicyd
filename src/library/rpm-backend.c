@@ -184,45 +184,59 @@ static int drop_path(const char *file_name)
 			// not python, javascript, or has a libexec dir
 			if (file_name[6] == 'h' ) {
 				// These are roughly ordered by quantity
+				// Python byte code
 				if (fnmatch("*.py?",
 						 file_name, 0) == 0)
 					return 0;
+				// Python text files
 				else if (fnmatch("*.py",
 						 file_name, 0) == 0)
 					return 0;
+				// Some apps have a private libexec
 				else if (fnmatch("*/libexec/*",
 						file_name, 0) == 0)
 					return 0;
+				// Ruby
 				else if (fnmatch("*.rb",
 						 file_name, 0) == 0)
 					return 0;
+				// Perl
 				else if (fnmatch("*.pl",
 						 file_name, 0) == 0)
 					return 0;
+				// System Tap
 				else if (fnmatch("*.stp",
 						 file_name, 0) == 0)
 					return 0;
+				// Javascript
 				else if (fnmatch("*.js",
 						 file_name, 0) == 0)
 					return 0;
+				// Java
 				else if (fnmatch("*.jar",
 						 file_name, 0) == 0)
 					return 0;
+				// M4
 				else if (fnmatch("*.m4",
 						 file_name, 0) == 0)
 					return 0;
+				// PHP
 				else if (fnmatch("*.php",
 						 file_name, 0) == 0)
 					return 0;
+				// Lisp
 				else if (fnmatch("*.el",
 						 file_name, 0) == 0)
 					return 0;
+				// Perl Modules
 				else if (fnmatch("*.pm",
 						 file_name, 0) == 0)
 					return 0;
+				// Lua
 				else if (fnmatch("*.lua",
 						 file_name, 0) == 0)
 					return 0;
+				// Java
 				else if (fnmatch("*.java",
 						 file_name, 0) == 0)
 					return 0;
