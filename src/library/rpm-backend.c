@@ -183,6 +183,7 @@ static int drop_path(const char *file_name)
 			// Drop anything in /usr/share that's
 			// not python, javascript, or has a libexec dir
 			if (file_name[6] == 'h' ) {
+				// These are roughly ordered by quantity
 				if (fnmatch("*.py?",
 						 file_name, 0) == 0)
 					return 0;
@@ -192,7 +193,37 @@ static int drop_path(const char *file_name)
 				else if (fnmatch("*/libexec/*",
 						file_name, 0) == 0)
 					return 0;
+				else if (fnmatch("*.rb",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.pl",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.stp",
+						 file_name, 0) == 0)
+					return 0;
 				else if (fnmatch("*.js",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.jar",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.m4",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.php",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.el",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.pm",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.lua",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.java",
 						 file_name, 0) == 0)
 					return 0;
 				return 1;
