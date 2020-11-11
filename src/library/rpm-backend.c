@@ -237,7 +237,7 @@ static int drop_path(const char *file_name)
 						 file_name, 0) == 0)
 					return 0;
 				// Java
-				else if (fnmatch("*.java",
+				else if (fnmatch("*.class",
 						 file_name, 0) == 0)
 					return 0;
 				return 1;
