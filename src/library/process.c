@@ -158,12 +158,12 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 	// then we need to delete the suffix so they are
 	// trusted even after deletion
 
-	if (buf[len-1] == ')') {
-		char * first = strstr(buf, " (deleted)");
-		if (first)
-			*first = '\0';
-	}
+	// strlen(" deleted") == 10
+	if (buf[len-1] == ')' && len > 10) {
 
+		if (strcmp(&buf[len - 10], " (deleted)") == 0)
+			buf[len - 10] = '\0';
+	}
 
 	return buf;
 }
