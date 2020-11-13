@@ -240,6 +240,10 @@ static int drop_path(const char *file_name)
 				else if (fnmatch("*.class",
 						 file_name, 0) == 0)
 					return 0;
+				// Compiled Lisp
+				else if (fnmatch("*.elc",
+						 file_name, 0) == 0)
+					return 0;
 				return 1;
 			// Akmod need scripts in /usr/src/kernel
 			} else if (file_name[6] == 'r' ) {
