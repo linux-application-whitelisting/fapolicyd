@@ -14,7 +14,9 @@ for the access control decision. The colon is mandatory to separate subject and 
 .SS Decision
 The decision is either
 .IR allow ", " deny ", " allow_audit ", " deny_audit ", " allow_syslog ", "deny_syslog ", " allow_log ", or " deny_log ".
-If the rule triggers, this is the access decision that fapolicyd will tell the kernel. If the decision is one of the audit variety, then the decision will trigger a FANOTIFY audit event with all relevant information. If the decision is one of the syslog variety, then the decision will trigger writing an event into syslog. If the decision is of one the log variety, then it will create an audit event and a syslog event. Regardless of the notification, any rule with a deny in the keyword will deny access and any with an allow in the keyword will allow access.
+If the rule triggers, this is the access decision that fapolicyd will tell the kernel. If the decision is one of the audit variety, then the decision will trigger a FANOTIFY audit event with all relevant information.
+.B You must have at least one audit rule loaded to generate an audit event.
+If the decision is one of the syslog variety, then the decision will trigger writing an event into syslog. If the decision is of one the log variety, then it will create an audit event and a syslog event. Regardless of the notification, any rule with a deny in the keyword will deny access and any with an allow in the keyword will allow access.
 
 .SS Perm
 Perm describes what kind permission is being asked for. The permission is either
