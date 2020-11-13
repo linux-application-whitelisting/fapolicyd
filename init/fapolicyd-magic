@@ -1,7 +1,7 @@
-0	string/wt	#!\ /usr/bin/bash	Bourne-Again shell script text executable
+0	string/w	#!\ /usr/bin/bash	Bourne-Again shell script text executable
 !:mime	text/x-shellscript
 
-0	string/wt	#!\ /usr/bin/sh		Shell script text executable
+0	string/w	#!\ /usr/bin/sh		Shell script text executable
 !:mime	text/x-shellscript
 
 0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
