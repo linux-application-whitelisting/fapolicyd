@@ -9,6 +9,7 @@
 - Correct denial accounting
 - Add new form of LD_PRELOAD pattern detection
 - Fix mount reading routine to get it all
+- Update languages kept from /usr/share
 
 1.0
 - Add file size, IMA, and sha256 based integrity checking
