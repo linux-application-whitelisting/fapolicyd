@@ -22,6 +22,7 @@ DEPENDENCIES (fedora)
 * libcap-ng-devel
 * libseccomp-devel
 * lmdb-devel
+* uthash-devel
 * python3-devel
 * kernel >= 4.20 (Must support FANOTIFY_OPEN_EXEC_PERM. See [1] below.)
 
