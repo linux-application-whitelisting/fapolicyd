@@ -5,7 +5,6 @@ Fix ld.so to not be an execution unless it really is
 Userspace
 =========
 Add support to rules for using groups/gid
-Does reversing path string improve lookup performance?
 Consider adding rule testing to cli (uid, pgm, file)
 Allow rules to express paths using globbing (fnmatch)
 Support SWID as trust source

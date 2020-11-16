@@ -90,5 +90,5 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
-* Sun May 24 2020 Steve Grubb <sgrubb@redhat.com> 1.0.1-1
+* Mon Nov 16 2020 Steve Grubb <sgrubb@redhat.com> 1.0.1-1
 - New release
