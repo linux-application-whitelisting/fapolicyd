@@ -1,3 +1,5 @@
+1.0.2
+
 1.0.1
 - If trust db is empty when fapolicyd-cli dumps it, say its empty
 - Make fapolicyd-cli buffer bigger for rule listing
