@@ -14,8 +14,7 @@
 # %python=/usr/bin/python2.7,/usr/bin/python3.6
 # allow perm=open exe=%python : all
 #
-
-%languages=application/x-bytecode.ocaml,application/java-archive,text/javascript,text/x-java,text/x-lisp,text/x-lua,text/x-m4,text/x-perl,text/x-php,text/x-R,text/x-ruby,text/x-script.guile,text/x-tcl,text/x-luatex,text/x-systemtap
+%languages=application/x-bytecode.ocaml,application/x-bytecode.python,application/java-archive,text/x-java,application/x-java-applet,text/javascript,text/x-awk,text/x-gawk,text/x-lisp,application/x-elc,text/x-lua,text/x-m4,text/x-perl,text/x-php,text/x-python,text/x-R,text/x-ruby,text/x-script.guile,text/x-tcl,text/x-luatex,text/x-systemtap
 
 # Carve out an exception for dracut
 allow perm=any uid=0 : dir=/var/tmp/
