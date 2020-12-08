@@ -257,6 +257,22 @@ build drivers on a kernel update.
 
 TROUBLESHOOTING
 ---------------
+Whatever you do, DO NOT TRY TO ATTACH WITH PTRACE. Ptrace attachment sends
+a SIGSTOP which cannot be blocked. Since your whole system depends on
+fapolicyd approving access to glibc and various critical libraries, that
+will not happen until SIGCONT is sent. The system can deadlock if the
+continue signal is not sent. Using gdb will have the same results. With
+that in mind, let's talk about troubleshooting steps...
+
+If you are using deny_audit and you are not getting any audit events, the
+fix is to add 1 audit rule. It can be a rule about anything. Watches tend
+to be the highest performance, so maybe just add a watch for writes to
+etc shadow and restart the audit daemon so the rule gets loaded.
+
+```
+-w /etc/shadow -p w
+```
+
 When fapolicyd blocks something, it will generate an audit event if the
 Decision is deny_audit and it has been compiled with the auditing option.
 The audit system must have at least 1 audit rule loaded to create the full

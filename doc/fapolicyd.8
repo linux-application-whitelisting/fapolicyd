@@ -43,6 +43,8 @@ SIGTERM
 caused fapolicyd to discontinue processing events and exit.
 
 .SH NOTES
+Whatever you do, DO NOT TRY TO ATTACH WITH PTRACE. Ptrace attachment sends a SIGSTOP which cannot be blocked. Since your whole system depends on fapolicyd approving access to glibc and various critical libraries, that will not happen until SIGCONT is sent. The system can deadlock if the continue signal is not sent.
+
 To get audit events, you must have auditing enabled and at least one systemcall rule loaded. Otherwise you will not get any events.
 
 If the rpmdb is set as a trust source, you should minimize the number of 32 bit packages on the system. In such cases, there may be a 32 bit and 64 file with the same pathname. Obviously only one can exist on the disk. So, this will always cause database miscompares and cause a delay in the daemon being operational.
