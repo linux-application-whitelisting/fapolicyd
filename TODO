@@ -1,12 +1,12 @@
 Kernel
 ======
-Fix ld.so to not be an execution unless it really is
+Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
+Support supplemental groups
 Add rpm plugin to notity when to rebuild the trustdb
 Support other packaging manifests
-Consider adding rule testing to cli (uid, pgm, file)
 Allow rules to express paths using globbing (fnmatch)
-Support SWID as trust source
+Consider adding rule testing to cli (uid, pgm, file)
 
