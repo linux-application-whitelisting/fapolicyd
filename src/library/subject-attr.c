@@ -1,6 +1,6 @@
 /*
- * rules.c - functions to abstract subject attributes
- * Copyright (c) 2016,2019 Red Hat Inc., Durham, North Carolina.
+ * subject-attr.c - functions to abstract subject attributes
+ * Copyright (c) 2016,2019 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
