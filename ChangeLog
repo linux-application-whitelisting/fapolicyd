@@ -1,4 +1,5 @@
 1.0.2
+- Add Group ID support for rules
 
 1.0.1
 - If trust db is empty when fapolicyd-cli dumps it, say its empty

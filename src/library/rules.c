@@ -29,6 +29,7 @@
 #include <string.h>
 #include <errno.h>
 #include <pwd.h>
+#include <grp.h>
 #include <ctype.h>
 
 #include "attr-sets.h"
@@ -337,6 +338,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	case AUID:
 	case UID:
 	case SESSIONID:
+	case GID:
 	case PID: {
 		if (add_attr_set(name, INT, &index)) {
 			goto free_and_error;
@@ -372,9 +374,21 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 				int val = pw->pw_uid;
 				endpwent();
 
-				if (append_int_attr_set(set, val)) {
+				if (append_int_attr_set(set, val))
+					goto free_and_error;
+
+			} else if (n->s[i].type == GID) {
+				struct group *gr = getgrnam(ptr);
+				if (gr == NULL) {
+					msg(LOG_ERR, "group %s is unknown",
+							ptr);
 					goto free_and_error;
 				}
+				int val = gr->gr_gid;
+				endgrent();
+
+				if (append_int_attr_set(set, val))
+					goto free_and_error;
 			}
 
 			ptr = strtok_r(NULL, ",", &saved);
@@ -1141,6 +1155,7 @@ static int check_subject(lnode *r, event_t *e)
 		// numbers -> multiple value
 		case AUID:
 		case UID:
+		case GID:
 		case SESSIONID:
 		case PID: {
 			if (!check_int_attr_set(r->s[cnt].set, subj->val))

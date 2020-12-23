@@ -270,6 +270,29 @@ uid_t get_program_uid_from_pid(pid_t pid)
 	return uid;
 }
 
+
+int get_program_gid_from_pid(pid_t pid)
+{
+	char path[128];
+	int gid = -1;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "/proc/%d/status", pid);
+	f = fopen(path, "rt");
+	if (f) {
+		__fsetlocking(f, FSETLOCKING_BYCALLER);
+		while (fgets(path, 128, f)) {
+			if (memcmp(path, "Gid:", 4) == 0) {
+				sscanf(path, "Gid: %d ", &gid);
+                                break;
+                        }
+		}
+		fclose(f);
+	}
+	return gid;
+}
+
+
 // Returns 0 if environ is clean, 1 if problems, -1 on error
 int check_environ_from_pid(pid_t pid)
 {

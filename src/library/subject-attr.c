@@ -28,6 +28,10 @@
 #include <string.h>
 #include "subject-attr.h"
 
+/*
+ * Table1 is used for looking up rule fields written in the old format.
+ * Do not add anything new here.
+ */
 static const nv_t table1[] = {
 {	ALL_SUBJ,   "all"	},
 {	AUID,       "auid"	},
@@ -43,6 +47,9 @@ static const nv_t table1[] = {
 };
 #define MAX_SUBJECTS1 (sizeof(table1)/sizeof(table1[0]))
 
+/*
+ * Table2 is used for looking up rule fields written in the new format
+ */
 static const nv_t table2[] = {
 {	ALL_SUBJ,   "all"	},
 {	AUID,       "auid"	},
@@ -51,6 +58,7 @@ static const nv_t table2[] = {
 {	PID,        "pid"	},
 {	PATTERN,    "pattern"	},
 {	SUBJ_TRUST, "trust"	},
+{	GID,        "gid"       },
 {	COMM,       "comm"	},
 {	EXE,        "exe"	},
 {	EXE_DIR,    "dir"	},

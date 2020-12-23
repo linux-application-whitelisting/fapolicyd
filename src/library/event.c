@@ -299,6 +299,9 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		case PID:
 			subj.val = e->pid;
 			break;
+		case GID:
+			subj.val = get_program_gid_from_pid(e->pid);
+			break;
 		case COMM: {
 			char buf[21], *ptr;
 			ptr = get_comm_from_pid(e->pid,	sizeof(buf), buf);
