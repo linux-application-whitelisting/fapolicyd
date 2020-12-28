@@ -82,7 +82,7 @@ AC_CHECK_LIB(lmdb, mdb_env_create, , [AC_MSG_ERROR([liblmdb not found])], -llmdb
 
 LD_SO_PATH
 
-AC_OUTPUT(Makefile src/Makefile init/Makefile doc/Makefile)
+AC_OUTPUT(Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile)
 
 echo .
 echo "

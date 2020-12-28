@@ -1,6 +1,7 @@
 AUTOMAKE_OPTIONS = subdir-objects
-
+SUBDIRS = tests
 CONFIG_CLEAN_FILES = *.loT *.rej *.orig
+
 AM_CPPFLAGS = \
 	-I${top_srcdir} \
 	-I${top_srcdir}/src/library
