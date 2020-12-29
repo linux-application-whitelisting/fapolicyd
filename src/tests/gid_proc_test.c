@@ -19,6 +19,8 @@ int main(void)
 
 	num = getgroups(0, gids);
 	getgroups(16, gids);
+	if (num > 16)
+		num = 16;
 	for (i = 0; i<num; i++) {
 		if (gids[i] == gid)
 			check_intersect = 1;
