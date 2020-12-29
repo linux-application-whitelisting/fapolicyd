@@ -44,6 +44,8 @@ int node_remove(int num)
 
 	} else
 		error(1, 0, "Remove didn't find %d", num);
+
+	return 0;
 }
 
 // https://stackoverflow.com/questions/3955680/how-to-check-if-my-avl-tree-implementation-is-correct
