@@ -17,10 +17,10 @@ int main(void)
 	if (!res)
 		error(1, 0, "Group %d not found", gid);
 
-	num = getgroups(0, gids);
-	getgroups(16, gids);
-	if (num > 16)
-		num = 16;
+	num = getgroups(16, gids);
+	if (num < 0)
+		error(1, 0, "Too many groups");
+
 	for (i = 0; i<num; i++) {
 		if (gids[i] == gid)
 			check_intersect = 1;
