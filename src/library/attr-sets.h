@@ -67,8 +67,10 @@ typedef enum _types {
 int init_attr_sets(void);
 attr_sets_entry_t * get_attr_set(const size_t index);
 int add_attr_set(const char * name, const int type, size_t * index);
+void destroy_attr_set(attr_sets_entry_t *set);
 void destroy_attr_sets(void);
 size_t search_attr_set_by_name(const char * name);
+attr_sets_entry_t *init_standalone_set(const int type);
 
 int append_int_attr_set(attr_sets_entry_t * set, const int num);
 int append_str_attr_set(attr_sets_entry_t * set, const char * str);

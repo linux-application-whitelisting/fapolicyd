@@ -95,6 +95,8 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 			newnode->type = t;
 			if (subj->type >= COMM)
 				newnode->str = subj->str;
+			else if (subj->type == GID)
+				newnode->set = subj->set;
 			else
 				newnode->val = subj->val;
 		} else
@@ -140,7 +142,10 @@ void subject_clear(s_array* a)
 		current = a->subj[i];
 		if (current == NULL)
 			continue;
-		if (current->type >= COMM)
+		if (current->type == GID) {
+			destroy_attr_set(current->set);
+			free(current->set);
+		} else if (current->type >= COMM)
 			free(current->str);
 		free(current);
 	}
@@ -160,7 +165,10 @@ void subject_reset(s_array *a, subject_type_t t)
 		subject_attr_t *current = a->subj[t - SUBJ_START];
 		if (current == NULL)
 			return;
-		if (current->type >= COMM)
+		if (current->type == GID) {
+			destroy_attr_set(current->set);
+			free(current->set);
+		} else if (current->type >= COMM)
 			free(current->str);
 		free(current);
 		a->subj[t - SUBJ_START] = NULL;

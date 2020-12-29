@@ -284,12 +284,14 @@ static char *format_value(int item, unsigned int num, decision_t results,
 		}
 	} else {
 		subject_attr_t *subj = get_subj_attr(e, item);
-		if (item < COMM) {
+		if (item < GID) {
 			if (asprintf(&out, "%d", subj ? subj->val : -2) < 0)
 				out = NULL;
-		} else {
+		} else if (item >= COMM) {
 			if (asprintf(&out, "%s", subj ? subj->str : "?") < 0)
 				out = NULL;
+		} else { // GID  -  FIXME
+			asprintf(&out, "%s", "?");
 		}
 	}
 	return out;

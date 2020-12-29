@@ -300,7 +300,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			subj.val = e->pid;
 			break;
 		case GID:
-			subj.val = get_program_gid_from_pid(e->pid);
+			subj.set = get_gid_set_from_pid(e->pid);
 			break;
 		case COMM: {
 			char buf[21], *ptr;
@@ -363,9 +363,11 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		return sn;
 	}
 
-	// free .str only when it was really used
+	// free .str/set only when it was really used
 	// otherwise invalid free is possible
-	if (t >= COMM)
+	if (t == GID)
+		destroy_attr_set(subj.set);
+	else if (t >= COMM)
 		free(subj.str);
 	return NULL;
 }

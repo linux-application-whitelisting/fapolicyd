@@ -20,10 +20,12 @@
 #
 
 CONFIG_CLEAN_FILES = *.orig *.cur
-check_PROGRAMS = avl_test
+check_PROGRAMS = avl_test gid_proc_test
 TESTS = $(check_PROGRAMS)
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 
 avl_test_SOURCES = avl_test.c ${top_srcdir}/src/library/avl.c
+gid_proc_test_SOURCES = gid_proc_test.c 
+gid_proc_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 

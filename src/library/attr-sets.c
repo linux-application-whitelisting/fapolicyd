@@ -167,6 +167,20 @@ int add_attr_set(const char * name, const int type, size_t * index)
 	return 0;
 }
 
+attr_sets_entry_t *init_standalone_set(const int type)
+{
+	attr_sets_entry_t *s = malloc(sizeof(attr_sets_entry_t));
+	if (s) {
+		s->name = NULL;
+		s->type = type;
+		if (type == STRING)
+			avl_init(&s->tree, strcmp_cb);
+		else
+			avl_init(&s->tree, intcmp_cb);
+	}
+	return s;
+}
+
 int append_int_attr_set(attr_sets_entry_t * set, const int num)
 {
 	if (!set) return 1;
@@ -329,7 +343,7 @@ void print_attr_sets(void)
 	}
 }
 
-static void destroy_attr_set(attr_sets_entry_t * set)
+void destroy_attr_set(attr_sets_entry_t * set)
 {
 	if (!set) return;
 	free(set->name);

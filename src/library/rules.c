@@ -1155,7 +1155,6 @@ static int check_subject(lnode *r, event_t *e)
 		// numbers -> multiple value
 		case AUID:
 		case UID:
-		case GID:
 		case SESSIONID:
 		case PID: {
 			if (!check_int_attr_set(r->s[cnt].set, subj->val))
@@ -1163,6 +1162,13 @@ static int check_subject(lnode *r, event_t *e)
 			break;
 		} // case
 
+		// GID is unique in that process can have multiple and
+		// rules can have multiple
+		case GID:
+			if (!avl_intersection(&(r->s[cnt].set->tree),
+					     &(subj->set->tree)))
+				return 0;
+			break;
 
 		// single value exception
 		case PATTERN: {

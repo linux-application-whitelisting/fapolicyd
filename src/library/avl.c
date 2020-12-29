@@ -325,6 +325,42 @@ int avl_traverse(avl_tree *t, int (*callback)(void *entry, void *data),
         return 0;
 }
 
+static int avl_walker2(avl *node, avl_tree *haystack) {
+    int ret;
+
+    // If the lefthand has a link, take it so that we walk to the
+    // leftmost bottom
+    if(node->avl_link[0]) {
+        ret = avl_walker2(node->avl_link[0], haystack);
+        if (ret) return ret;
+    }
+
+    // Next, check the current node
+    avl *res = avl_search(haystack, node);
+    if (res) return 1;
+
+    // If the righthand has a link, take it so that we check all the
+    // rightmost nodes, too.
+    if(node->avl_link[1]) {
+        ret = avl_walker2(node->avl_link[1], haystack);
+        if (ret) return ret;
+    }
+
+    // nothing found
+    return 0;
+}
+
+int avl_intersection(avl_tree *needle, avl_tree *haystack)
+{
+	// traverse the needle and search the haystack
+	// this implies that needle should be smaller than haystack
+	if (needle && haystack && needle->root && haystack->root)
+		return avl_walker2(needle->root, haystack);
+
+	// something is not initialized, so we cannot search
+	return 0;
+}
+
 void avl_init(avl_tree *t, int (*compar)(void *a, void *b)) {
     t->root = NULL;
     t->compar = compar;

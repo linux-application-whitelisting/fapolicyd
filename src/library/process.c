@@ -271,25 +271,43 @@ uid_t get_program_uid_from_pid(pid_t pid)
 }
 
 
-int get_program_gid_from_pid(pid_t pid)
+attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 {
 	char path[128];
 	int gid = -1;
 	FILE *f;
+	attr_sets_entry_t *set = init_standalone_set(INT);
 
-	snprintf(path, sizeof(path), "/proc/%d/status", pid);
-	f = fopen(path, "rt");
-	if (f) {
-		__fsetlocking(f, FSETLOCKING_BYCALLER);
-		while (fgets(path, 128, f)) {
-			if (memcmp(path, "Gid:", 4) == 0) {
-				sscanf(path, "Gid: %d ", &gid);
-                                break;
-                        }
+	if (set) {
+		snprintf(path, sizeof(path), "/proc/%d/status", pid);
+		f = fopen(path, "rt");
+		if (f) {
+			__fsetlocking(f, FSETLOCKING_BYCALLER);
+			while (fgets(path, 128, f)) {
+				if (memcmp(path, "Gid:", 4) == 0) {
+					sscanf(path, "Gid: %d ", &gid);
+					append_int_attr_set(set, gid);
+		                        break;
+			        }
+			}
+
+			char *data;
+			int offset;
+			while (fgets(path, 128, f)) {
+				if (memcmp(path, "Groups:", 7) == 0) {
+					data = path + 7;
+					while (sscanf(data," %d%n", &gid,
+						      &offset) == 1){
+						data += offset;
+						append_int_attr_set(set, gid);
+					}
+					break;
+				}
+			}
+			fclose(f);
 		}
-		fclose(f);
 	}
-	return gid;
+	return set;
 }
 
 
