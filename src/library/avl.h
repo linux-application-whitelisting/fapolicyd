@@ -46,7 +46,7 @@ avl *avl_remove(avl_tree *t, avl *a) WARNUNUSED;
  */
 avl *avl_search(avl_tree *t, avl *a);
 
-/* Initialize the avl_tree_lock
+/* Initialize the avl_tree
  */
 void avl_init(avl_tree *t, int (*compar)(void *a, void *b));
 
