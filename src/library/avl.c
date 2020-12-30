@@ -325,6 +325,16 @@ int avl_traverse(avl_tree *t, int (*callback)(void *entry, void *data),
         return 0;
 }
 
+void avl_init(avl_tree *t, int (*compar)(void *a, void *b)) {
+    t->root = NULL;
+    t->compar = compar;
+}
+
+/* ------------------------------------------------------------------------- */
+// below are functions by (C) Steve Grubb
+
+// ---------------------------
+
 static int avl_walker2(avl *node, avl_tree *haystack) {
     int ret;
 
@@ -359,9 +369,4 @@ int avl_intersection(avl_tree *needle, avl_tree *haystack)
 
 	// something is not initialized, so we cannot search
 	return 0;
-}
-
-void avl_init(avl_tree *t, int (*compar)(void *a, void *b)) {
-    t->root = NULL;
-    t->compar = compar;
 }

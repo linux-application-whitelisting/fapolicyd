@@ -13,7 +13,7 @@
 /* One element of the AVL tree */
 typedef struct avl {
     struct avl *avl_link[2];  /* Subtrees. */
-    signed char avl_balance;       /* Balance factor. */
+    signed char avl_balance;  /* Balance factor. */
 } avl;
 
 /* An AVL tree */
@@ -50,8 +50,10 @@ avl *avl_search(avl_tree *t, avl *a);
  */
 void avl_init(avl_tree *t, int (*compar)(void *a, void *b));
 
-
-int avl_traverse(avl_tree *t, int (*callback)(void *entry, void *data), void *data);
+/* Walk the tree and call callback at each node
+ */
+int avl_traverse(avl_tree *t, int (*callback)(void *entry, void *data),
+		 void *data);
 
 /* Given two trees, see if any in needle are contained in haystack
  */
