@@ -335,6 +335,19 @@ void avl_init(avl_tree *t, int (*compar)(void *a, void *b)) {
 
 // ---------------------------
 
+avl *avl_first(avl_tree *t)
+{
+	if (!t->root)
+		return NULL;
+
+	// follow the leftmost node to its bottom
+	avl *node = t->root;
+	while (node->avl_link[0])
+		node = node->avl_link[0];
+
+	return node;
+}
+
 static int avl_walker2(avl *node, avl_tree *haystack) {
     int ret;
 

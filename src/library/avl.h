@@ -55,6 +55,10 @@ void avl_init(avl_tree *t, int (*compar)(void *a, void *b));
 int avl_traverse(avl_tree *t, int (*callback)(void *entry, void *data),
 		 void *data);
 
+/* Walk the tree down to the first node and return it
+ */
+avl *avl_first(avl_tree *t);
+
 /* Given two trees, see if any in needle are contained in haystack
  */
 int avl_intersection(avl_tree *needle, avl_tree *haystack);
