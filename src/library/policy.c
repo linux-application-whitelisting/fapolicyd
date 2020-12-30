@@ -290,8 +290,27 @@ static char *format_value(int item, unsigned int num, decision_t results,
 		} else if (item >= COMM) {
 			if (asprintf(&out, "%s", subj ? subj->str : "?") < 0)
 				out = NULL;
-		} else { // GID  -  FIXME
-			asprintf(&out, "%s", "?");
+		} else { // GID
+			out = malloc(16*12); // gid's are limited to 16
+			if (out && subj->set) {
+				char buf[12];
+				char *ptr = out;
+				avl_iterator i;
+				avl_int_data_t *grp;
+				for (grp =
+					     (avl_int_data_t *)avl_first(&i,
+							 &(subj->set->tree));
+				     grp; grp=(avl_int_data_t *)avl_next(&i)) {
+					if (ptr == out)
+						snprintf(buf, sizeof(buf),
+							 "%u", grp->num);
+					else
+						snprintf(buf, sizeof(buf),
+							 ",%u", grp->num);
+					ptr = stpcpy(ptr, buf);
+				}
+			} else
+				strcpy(out, "?");
 		}
 	}
 	return out;
