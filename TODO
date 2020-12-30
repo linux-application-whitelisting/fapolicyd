@@ -4,7 +4,6 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-Support supplemental groups
 Add rpm plugin to notity when to rebuild the trustdb
 Support other packaging manifests
 Allow rules to express paths using globbing (fnmatch)
