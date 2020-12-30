@@ -100,7 +100,35 @@ int main(void)
 	node_remove(2);
 	node_remove(3);
 	if (tree.root != NULL)
-		error(1, 0, "root not NULL when tree should be empty");
+		error(1, 0, "root not NULL when tree should be empty 1");
+
+	// Now let's test the iterator functions
+	append(2);
+	append(5);
+	append(1);
+	append(4);
+	append(3);
+
+	int i = 1;
+	avl_iterator k;
+	for (node = (avl_int_data_t *)avl_first(&k, &tree); node;
+	     node = (avl_int_data_t *)avl_next(&k)) {
+		if (node->num != i)
+			error(1, 0, "Iteration expected %d, got %d",
+			      i, node->num);
+		else
+			printf("Iterator %d\n", node->num);
+		i++;
+	}
+
+	node_remove(1);
+	node_remove(2);
+	node_remove(3);
+	node_remove(4);
+	node_remove(5);
+
+	if (tree.root != NULL)
+		error(1, 0, "root not NULL when tree should be empty 2");
 
 	return 0;
 }

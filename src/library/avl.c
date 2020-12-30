@@ -355,6 +355,43 @@ avl *avl_first(avl_iterator *i, avl_tree *t)
 	return node;
 }
 
+avl *avl_next(avl_iterator *i)
+{
+	if (i == NULL || i->tree == NULL || i->current == NULL)
+		return NULL;
+
+	avl *node = i->current;
+	if (i == NULL)
+		return avl_first(i, i->tree);
+	else if (node->avl_link[1]) {
+		i->stack[i->height] = node;
+		i->height++;
+		node = node->avl_link[1];
+
+		while (node->avl_link[0]) {
+			i->stack[i->height] = node;
+			i->height++;
+			node = node->avl_link[0];
+		}
+	} else {
+		avl *tmp;
+
+		do {
+			if (i->height == 0) {
+				i->current = NULL;
+				return NULL;
+			}
+
+			tmp = node;
+			i->height--;
+			node = i->stack[i->height];
+		} while (tmp == node->avl_link[1]);
+	}
+
+	i->current = node;
+	return node;
+}
+
 static int avl_walker2(avl *node, avl_tree *haystack) {
     int ret;
 
