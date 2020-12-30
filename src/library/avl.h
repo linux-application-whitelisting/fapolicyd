@@ -12,7 +12,7 @@
 
 /* One element of the AVL tree */
 typedef struct avl {
-    struct avl *avl_link[2];  /* Subtrees. */
+    struct avl *avl_link[2];  /* Subtrees - 0 left, 1 right */
     signed char avl_balance;  /* Balance factor. */
 } avl;
 
@@ -21,6 +21,14 @@ typedef struct avl_tree {
     avl *root;
     int (*compar)(void *a, void *b);
 } avl_tree;
+
+/* Iterator state struct */
+typedef struct avl_iterator {
+	avl_tree *tree;
+	avl *current;
+	avl *stack[AVL_MAX_HEIGHT];
+	unsigned height;
+} avl_iterator;
 
 
 /* Public methods */
@@ -57,7 +65,7 @@ int avl_traverse(avl_tree *t, int (*callback)(void *entry, void *data),
 
 /* Walk the tree down to the first node and return it
  */
-avl *avl_first(avl_tree *t);
+avl *avl_first(avl_iterator *i, avl_tree *t);
 
 /* Given two trees, see if any in needle are contained in haystack
  */

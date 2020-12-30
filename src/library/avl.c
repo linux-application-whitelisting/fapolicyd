@@ -335,16 +335,23 @@ void avl_init(avl_tree *t, int (*compar)(void *a, void *b)) {
 
 // ---------------------------
 
-avl *avl_first(avl_tree *t)
+avl *avl_first(avl_iterator *i, avl_tree *t)
 {
-	if (!t->root)
+	if (t->root == NULL || i == NULL)
 		return NULL;
+
+	i->tree = t;
+	i->height = 0;
 
 	// follow the leftmost node to its bottom
 	avl *node = t->root;
-	while (node->avl_link[0])
+	while (node->avl_link[0]) {
+		i->stack[i->height] = node;
+		i->height++;
 		node = node->avl_link[0];
+	}
 
+	i->current = node;
 	return node;
 }
 
