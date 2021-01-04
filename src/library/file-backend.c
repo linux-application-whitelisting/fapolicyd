@@ -168,7 +168,7 @@ static char *make_data_string(const char *path, int *count)
 		*count = asprintf(&line, FILE_WRITE_FORMAT, path,
 						sb.st_size, hash);
 	else
-		*count = asprintf(&line, DATA_FORMAT, 0,
+		*count = asprintf(&line, DATA_FORMAT, (unsigned int)0,
 						sb.st_size, hash);
 	free(hash);
 	if (*count < 0) {

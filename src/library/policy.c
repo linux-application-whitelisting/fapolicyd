@@ -255,7 +255,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 	if (item >= F_RULE) {
 		switch (item) {
 		case F_RULE:
-			if (asprintf(&out, "%d", num+1) < 0)
+			if (asprintf(&out, "%u", num+1) < 0)
 				out = NULL;
 			break;
 		case F_DECISION:
@@ -279,7 +279,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 			if (asprintf(&out, "%s", obj ? obj->o : "?") < 0)
 				out = NULL;
 		} else {
-		    if (asprintf(&out, "%u", obj ? (obj->val ? 1 : 0) : 9) < 0)
+		    if (asprintf(&out, "%d", obj ? (obj->val ? 1 : 0) : 9) < 0)
 				out = NULL;
 		}
 	} else {
@@ -303,10 +303,10 @@ static char *format_value(int item, unsigned int num, decision_t results,
 				     grp; grp=(avl_int_data_t *)avl_next(&i)) {
 					if (ptr == out)
 						snprintf(buf, sizeof(buf),
-							 "%u", grp->num);
+							 "%d", grp->num);
 					else
 						snprintf(buf, sizeof(buf),
-							 ",%u", grp->num);
+							 ",%d", grp->num);
 					ptr = stpcpy(ptr, buf);
 				}
 			} else

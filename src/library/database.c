@@ -1080,7 +1080,7 @@ static int handle_record(const char * buffer)
 {
 	char path[2048+1];
 	char hash[64+1];
-	long size;
+	off_t size;
 
 	// validating input
 	int res = sscanf(buffer, "%2048s %lu %64s", path, &size, hash);
@@ -1095,7 +1095,8 @@ static int handle_record(const char * buffer)
 	}
 
 	char data[BUFFER_SIZE];
-	snprintf(data, BUFFER_SIZE, DATA_FORMAT, SRC_UNKNOWN, size, hash);
+	snprintf(data, BUFFER_SIZE, DATA_FORMAT, (unsigned int)SRC_UNKNOWN,
+		 size, hash);
 
 	msg(LOG_DEBUG, "update_thread: Saving %s %s", path, data);
 	lock_update_thread();
