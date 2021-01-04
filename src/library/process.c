@@ -134,6 +134,9 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 	char path[32];
 	ssize_t path_len;
 
+	if (blen == 0)
+		return NULL;
+
 	snprintf(path, sizeof(path), "/proc/%d/exe", pid);
 	path_len = readlink(path, buf, blen - 1);
 	if (path_len < 0) {
@@ -147,11 +150,11 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 		return buf;
 	}
 
-	size_t len = 0;
+	size_t len;
 	if ((size_t)path_len < blen)
 		len = path_len;
 	else
-		len = blen-1;
+		len = blen - 1;
 
 	buf[len] = '\0';
 	// some binaries can be deleted after execution

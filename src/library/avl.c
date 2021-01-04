@@ -357,11 +357,11 @@ avl *avl_first(avl_iterator *i, avl_tree *t)
 
 avl *avl_next(avl_iterator *i)
 {
-	if (i == NULL || i->tree == NULL || i->current == NULL)
+	if (i == NULL || i->tree == NULL)
 		return NULL;
 
 	avl *node = i->current;
-	if (i == NULL)
+	if (node == NULL)
 		return avl_first(i, i->tree);
 	else if (node->avl_link[1]) {
 		i->stack[i->height] = node;

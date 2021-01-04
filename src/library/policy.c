@@ -353,11 +353,11 @@ static void log_it2(unsigned int num, decision_t results, event_t *e)
 	}
 
 	dsize = WB_SIZE;
-	p2 = working_buffer;
+	p1 = p2 = working_buffer; // Dummy assignment for p1 to quiet warnings
 	for (i = 0; i < num_fields && dsize; i++)
 	{
 		if (dsize < WB_SIZE) {
-			// This is skipped first pass
+			// This is skipped first pass, p1 is initialized below
 			p2 = fmemccpy(p1, " ", dsize);
 			dsize -= p2 - p1;
 		}
