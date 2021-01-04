@@ -52,7 +52,7 @@
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096
 #define MEGABYTE	(1024*1024)
 
 // Local variables
@@ -1076,6 +1076,35 @@ static int update_database(conf_t *config)
 	return 0;
 }
 
+static int handle_record(const char * buffer)
+{
+	char path[2048+1];
+	char hash[64+1];
+	long size;
+
+	// validating input
+	int res = sscanf(buffer, "%2048s %lu %64s", path, &size, hash);
+	msg(LOG_DEBUG, "update_thread: Parsing input buffer: %s", buffer);
+	msg(LOG_DEBUG,
+	    "update_thread: Parsing input words(expected 3): %d",
+	    res);
+
+	if (res != 3) {
+		msg(LOG_INFO, "Corrupted data read, ignoring...");
+		return 1;
+	}
+
+	char data[BUFFER_SIZE];
+	snprintf(data, BUFFER_SIZE, DATA_FORMAT, SRC_UNKNOWN, size, hash);
+
+	msg(LOG_DEBUG, "update_thread: Saving %s %s", path, data);
+	lock_update_thread();
+	write_db(path, data);
+	unlock_update_thread();
+
+	return 0;
+}
+
 
 static void *update_thread_main(void *arg)
 {
@@ -1153,19 +1182,26 @@ static void *update_thread_main(void *arg)
 #ifdef DEBUG
 				msg(LOG_DEBUG, "Buffer contains: \"%s\"", buff);
 #endif
-				int check = 1;
+				int operation = 0;
 				for (int i = 0 ; i < count ; i++) {
-					if (buff[i] != '1' && buff[i] != '\n' &&
-							buff[i] != '\0') {
-						check = 0;
-						msg(LOG_ERR,
-						"Read bad content from pipe %s",
-							fifo_path);
+					// assume file name
+					// operation = 0
+					if (buff[i] == '/')
+						break;
+
+					if (buff[i] == '1') {
+						operation = 1;
+						break;
+					}
+
+					if (buff[i] == '2') {
+						operation = 2;
 						break;
 					}
 				}
 
-				if (check) {
+				// got "1" -> reload db
+				if (operation == 1) {
 					msg(LOG_INFO,
 	    "It looks like there was an update of the system... Syncing DB.");
 
@@ -1185,6 +1221,12 @@ static void *update_thread_main(void *arg)
 
 					// Conserve memory
 					backend_close();
+				// got "2" -> flush cache
+				} else if (operation == 2) {
+					needs_flush = true;
+				} else {
+					if (handle_record(buff))
+						continue;
 				}
 			}
 		}
