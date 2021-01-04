@@ -422,9 +422,9 @@ static char *lt_read_db(const char *index, int operation, int *error)
 			free(hash);
 			if (rc == MDB_NOTFOUND) {
 				*error = 0;
-				return NULL;
+			} else {
+				msg(LOG_ERR, "MDB_SET: cursor_get:%s", mdb_strerror(rc));
 			}
-			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
 			return NULL;
 		}
 
@@ -442,18 +442,15 @@ static char *lt_read_db(const char *index, int operation, int *error)
 			return NULL;
 		}
 
-		// There's duplicate, grab the second one.
+		// is there a next duplicate?
 		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
 					 MDB_NEXT_DUP))) {
 			free(hash);
-			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
-			return NULL;
-		}
-
-		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
-					 MDB_GET_CURRENT))) {
-			free(hash);
-			msg(LOG_ERR, "cursor_get:%s", mdb_strerror(rc));
+			if (rc == MDB_NOTFOUND) {
+				*error = 0;
+			} else {
+				msg(LOG_ERR, "MDB_NEXT_DUP: cursor_get:%s", mdb_strerror(rc));
+			}
 			return NULL;
 		}
 	}
@@ -580,6 +577,48 @@ static int create_database(int with_sync)
 }
 
 
+// 1 -> data match
+// 0 -> not found
+// matched -> returns index of the matched duplicate
+static int check_data_presence(const char * index, const char * data, int * matched)
+{
+	int found = 0;
+	int error;
+	char *read;
+	int operation = READ_DATA;
+	int cnt = 0;
+
+	while (1) {
+		error = 0;
+		read = NULL;
+		read = lt_read_db(index, operation, &error);
+
+		if (error)
+			msg(LOG_DEBUG, "Error when reading from DB!");
+
+		if (!read)
+			break;
+
+		// check strings
+		if (strcmp(data, read) == 0) {
+			found = 1;
+		}
+
+		free(read);
+		cnt++;
+
+		if (found)
+			break;
+
+		if (operation == READ_DATA)
+			operation = READ_DATA_DUP;
+	}
+
+	*matched = cnt;
+	return found;
+}
+
+
 /*
  * This function will compare the backend database against our copy
  * of the database. It returns a 1 if they do not match, 0 if they do
@@ -604,43 +643,26 @@ static int check_database_copy(void)
 		backend_total_entries += be->backend->list.count;
 		list_item_t *item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
-			int error;
 
-			char *data = lt_read_db(item->index, READ_DATA, &error);
-			if (data && !error) {
-				if (strcmp(item->data, data)) {
-					// Let's retry its duplicate
-					free(data);
-					data = lt_read_db(item->index,
-							READ_DATA_DUP, &error);
-					if (error) {
-						free(data);
-						end_long_term_read_ops();
-						return -1;
-					}
+			int matched = 0;
+			int found = check_data_presence(item->index,
+							item->data,
+							&matched);
 
-					// If no dup or miscompare, problems
-					if (!data || strcmp(item->data, data)) {
-						msg(LOG_DEBUG,
-					    "Data miscompare for %s:%s vs %s",
-						    (const char *)item->index,
-						    (const char *)item->data,
-						    data);
-						problems++;
-					}
-				}
-			} else if (!error) {
-				msg(LOG_WARNING, "%s is not in database",
-				    (const char *)item->index);
+			if (!found) {
 				problems++;
-				// record is new, we need to exclude it from comparison
-				backend_added_entries++;
-			}
+				// missing in db
+				// recently added file
+				if (matched == 0) {
+					msg(LOG_DEBUG, "%s is not in database", (char*)item->index);
+					backend_added_entries++;
+				}
 
-			free(data);
-			if (error) {
-				end_long_term_read_ops();
-				return -1;
+				// updated file
+				// data miscompare
+				if (matched > 0) {
+					msg(LOG_DEBUG, "Data miscompare for %s", (char*)item->index);
+				}
 			}
 		}
 	}
@@ -653,15 +675,22 @@ static int check_database_copy(void)
 	if (db_total_entries == -1)
 		return -1;
 
-	msg(LOG_INFO, "Entries in DB: %ld", db_total_entries);
-	msg(LOG_INFO, "Loaded from all backends(without duplicates): %ld", backend_total_entries);
+	msg(	LOG_INFO,
+		"Entries in DB: %ld",
+		db_total_entries);
+
+	msg(	LOG_INFO,
+		"Loaded from all backends(without duplicates): %ld",
+		backend_total_entries);
 
 	// do not print 0
 	if (backend_added_entries > 0)
 		msg(LOG_INFO, "New entries: %ld", backend_added_entries);
 
 	// db contains records that are not present in backends anymore
-	long removed = labs(db_total_entries - (backend_total_entries - backend_added_entries));
+	long removed = labs(db_total_entries
+			    - (backend_total_entries - backend_added_entries)
+			    );
 	// do not print 0
 	if (removed > 0)
 		msg(LOG_INFO, "Removed entries: %ld", removed);
@@ -810,8 +839,9 @@ int init_database(conf_t *config)
 static int read_trust_db(const char *path, int *error, struct file_info *info,
 	int fd)
 {
-	int do_integrity = 0, mode = READ_TEST_KEY, retry = 0, ret_val = 0;
+	int do_integrity = 0, mode = READ_TEST_KEY;
 	char *res;
+	int retry = 0;
 	char sha_xattr[65];
 
 	if (integrity != IN_NONE && info) {
@@ -820,15 +850,26 @@ static int read_trust_db(const char *path, int *error, struct file_info *info,
 		sha_xattr[0] = 0; // Make sure we can't re-use stack value
 	}
 
-	res = lt_read_db(path, mode, error);
 retry_res:
+	retry++;
+
+	if (retry >= 128) {
+		msg(LOG_ERR, "Checked 128 duplicates for %s "
+			"and there is no match. Breaking the cycle.", path);
+		*error = 1;
+		return 0;
+	}
+
+	res = lt_read_db(path, mode, error);
+
 	if (!do_integrity) {
-		ret_val = res ? 1 : 0;
+		return res ? 1 : 0;
 	} else {
 		unsigned int tsource;
 		off_t size;
 		char sha[65];
 
+		// record not found
 		if (res == NULL)
 			return 0;
 
@@ -840,79 +881,67 @@ retry_res:
 
 		// Need to do the compare and free res
 		free(res);
-		ret_val = 1;
+
+		// prepare for next reading
+		if (mode != READ_DATA_DUP)
+			mode = READ_DATA_DUP;
+
 		if (integrity == IN_SIZE) {
-			// If the size doesn't match, return NULL
-			if (size != info->size) {
-				// Gotta retry in case its the other one
-				if (retry == 0) {
-					retry = 1;
-					res = lt_read_db(path,
-							READ_DATA_DUP, error);
-					goto retry_res;
-				}
-				ret_val = 0;
-				msg(LOG_DEBUG, "size miscompare");
+
+			// match!
+			if (size == info->size) {
+				return 1;
+			} else {
+				goto retry_res;
 			}
+
 		} else if (integrity == IN_IMA) {
 			int rc = 1;
 
 			// read xattr only the first time
-			if (retry == 0)
+			if (retry == 1)
 				rc = get_ima_hash(fd, sha_xattr);
 
 			if (rc) {
-				if (size != info->size ||
-						strcmp(sha, sha_xattr)) {
-					if (retry == 0) {
-						retry = 1;
-						res = lt_read_db(path,
-							 READ_DATA_DUP, error);
-						goto retry_res;
-					}
-					ret_val = 0;
-					msg(LOG_DEBUG, "IMA hash miscompare");
+				if ((size == info->size) &&
+					(strcmp(sha, sha_xattr) == 0)) {
+					return 1;
+				} else {
+					goto retry_res;
 				}
+
 			} else {
-				ret_val = 0;
 				*error = 1;
+				return 0;
 			}
+
 		} else if (integrity == IN_SHA256) {
-			int rc = 1;
-			char *hash;
+			char *hash = NULL;
 
 			// Calculate a hash only one time
-			if (retry == 0) {
+			if (retry == 1) {
 				hash = get_hash_from_fd(fd);
 				if (hash) {
 					strncpy(sha_xattr, hash, 64);
 					sha_xattr[64] = 0;
 					free(hash);
 				} else {
-					rc = 0;
 					*error = 1;
+					return 0;
 				}
 			}
 
-			if (rc) {
-				if (size != info->size ||
-				    strcmp(sha, sha_xattr)) {
-					if (retry == 0) {
-						retry = 1;
-						res = lt_read_db(path,
-							 READ_DATA_DUP, error);
-						goto retry_res;
-					}
-					ret_val = 0;
-					msg(LOG_DEBUG, "sha256 miscompare");
-				}
-
-			} else
-				ret_val = 0;
+			if ((size == info->size) &&
+				(strcmp(sha, sha_xattr) == 0))
+				return 1;
+			else {
+				goto retry_res;
+			}
 		}
 	}
 
-	return ret_val;
+	*error = 1;
+	return 0;
 }
 
 // Returns a 1 if trusted and 0 if not and -1 on error
