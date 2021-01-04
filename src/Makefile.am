@@ -1,4 +1,3 @@
-AUTOMAKE_OPTIONS = subdir-objects
 SUBDIRS = tests
 CONFIG_CLEAN_FILES = *.loT *.rej *.orig
 
