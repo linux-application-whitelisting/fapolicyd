@@ -91,6 +91,8 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int syslog_format_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
+static int allow_filename_trail_spaces_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -108,6 +110,7 @@ static const struct kw_pair keywords[] =
   {"trust",		trust_parser },
   {"integrity",		integrity_parser },
   {"syslog_format",	syslog_format_parser },
+  {"allow_filename_trail_spaces", allow_filename_trail_spaces_parser },
   { NULL,		NULL }
 };
 
@@ -135,6 +138,7 @@ static void clear_daemon_config(conf_t *config)
 	config->integrity = IN_NONE;
 	config->syslog_format =
 		strdup("rule,dec,perm,auid,pid,exe,:,path,ftype");
+	config->allow_filename_trail_spaces  = 0;
 }
 
 int load_daemon_config(conf_t *config)
@@ -587,3 +591,15 @@ static int syslog_format_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+
+static int allow_filename_trail_spaces_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	int rc=unsigned_int_parser(&(config->allow_filename_trail_spaces), nv->value, line);
+	if (rc == 0 && config->allow_filename_trail_spaces > 1) {
+		msg(LOG_WARNING,
+			"allow_filename_trail_spaces reset to 0 - line %d", line);
+		config->allow_filename_trail_spaces = 0;
+	}
+	return rc;
+}

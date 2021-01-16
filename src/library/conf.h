@@ -25,6 +25,7 @@
 #define CONF_H
 
 #include <pwd.h>
+#include <stdbool.h>
 
 typedef enum { IN_NONE, IN_SIZE, IN_IMA, IN_SHA256 } integrity_t;
 
@@ -44,6 +45,7 @@ typedef struct conf
 	const char *trust;
 	integrity_t integrity;
 	const char *syslog_format;
+	unsigned int allow_filename_trail_spaces;
 } conf_t;
 
 #endif

@@ -36,10 +36,11 @@
 
 #include "message.h"
 
+#include "conf.h"
 #include "fapolicyd-backend.h"
 #include "llist.h"
 
-static int rpm_init_backend(void);
+static int rpm_init_backend( const conf_t * );
 static int rpm_load_list(void);
 static int rpm_destroy_backend(void);
 
@@ -56,7 +57,7 @@ backend rpm_backend =
 static rpmts ts = NULL;
 static rpmdbMatchIterator mi = NULL;
 
-static int init_rpm(void)
+static int init_rpm()
 {
 	return rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);
 }
@@ -373,7 +374,7 @@ static int rpm_load_list(void)
 	return 0;
 }
 
-static int rpm_init_backend(void)
+static int rpm_init_backend( const conf_t * )
 {
 	list_init(&rpm_backend.list);
 	return 0;

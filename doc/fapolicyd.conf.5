@@ -78,6 +78,10 @@ Selecting this option will calculate a SHA256 hash by cryptographic means. A siz
 .B syslog_format
 This option controls how the output from the access decision is formatted. The format is a comma separated list of subject and object names from the rules. It does not allow the keyword "all". It also allows for rule, dec, and perm. The format must include a semi-colon to deliniate subject from object keywords. The typical use is to place information about the access decision, then subject information, a colon, and the object information. Also note that the more things being logged, the more it will impact system performance. Also, the event written is limited to 512 bytes.
 
+.TP
+.B allow_filename_trail_spaces
+This option controls how to handle paths when filenames end with one or more spaces. By default, 0, a line starting by "foo  123 ..." (note there are two spaces after "foo") is understood as filename "foo" and size 123. When this flag set to 1, this line will be interpreted as filename = "foo  ". In this way, filenames ending in one or more spaces can be used. However, note in this last case all entries must use a single space (blank or tab) as separator. 
+
 .SH "SEE ALSO"
 .BR fapolicyd (8),
 .BR fapolicyd-cli (1)
