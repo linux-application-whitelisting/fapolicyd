@@ -374,7 +374,7 @@ static int rpm_load_list(void)
 	return 0;
 }
 
-static int rpm_init_backend( const conf_t * )
+static int rpm_init_backend( const conf_t *conf )
 {
 	list_init(&rpm_backend.list);
 	return 0;
