@@ -63,7 +63,7 @@ static const conf_t *conf;
 
 static int file_sscan( char *s, unsigned long *sz, char **hash ) 
 {
-  // returns 0 iff success
+  // returns 0 iff error
   // results: sz and hash (if not NULL) from s content; s truncated only to the path
   // warning: s is modified 
   // sz and hash valid while s valid, not necessary to free
