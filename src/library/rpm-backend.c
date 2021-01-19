@@ -57,7 +57,7 @@ backend rpm_backend =
 static rpmts ts = NULL;
 static rpmdbMatchIterator mi = NULL;
 
-static int init_rpm()
+static int init_rpm(void)
 {
 	return rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);
 }
