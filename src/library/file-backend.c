@@ -68,7 +68,7 @@ static const conf_t *conf;
  * results:
  *	sz and hash (if not NULL) from s content
  *	s is truncated to contain only the path
- *	sz and hash are valid while s still valid, not necessary to free
+ *	*hash is valid while s still valid, not necessary to free
  * returns 0 iff error
  */
 
