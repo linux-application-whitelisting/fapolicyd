@@ -91,8 +91,8 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int syslog_format_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
-static int allow_filename_trail_spaces_parser(const struct nv_pair *nv, int line,
-		conf_t *config);
+static int allow_filename_trail_spaces_parser(const struct nv_pair *nv,
+		int line, conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -592,13 +592,15 @@ static int syslog_format_parser(const struct nv_pair *nv, int line,
 }
 
 
-static int allow_filename_trail_spaces_parser(const struct nv_pair *nv, int line,
-		conf_t *config)
+static int allow_filename_trail_spaces_parser(const struct nv_pair *nv,
+		int line, conf_t *config)
 {
-	int rc=unsigned_int_parser(&(config->allow_filename_trail_spaces), nv->value, line);
+	int rc = unsigned_int_parser(&(config->allow_filename_trail_spaces),
+			nv->value, line);
 	if (rc == 0 && config->allow_filename_trail_spaces > 1) {
 		msg(LOG_WARNING,
-			"allow_filename_trail_spaces reset to 0 - line %d", line);
+			"allow_filename_trail_spaces reset to 0 - line %d",
+			line);
 		config->allow_filename_trail_spaces = 0;
 	}
 	return rc;

@@ -25,7 +25,6 @@
 #define CONF_H
 
 #include <pwd.h>
-#include <stdbool.h>
 
 typedef enum { IN_NONE, IN_SIZE, IN_IMA, IN_SHA256 } integrity_t;
 

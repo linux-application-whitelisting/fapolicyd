@@ -40,7 +40,7 @@
 #include "fapolicyd-backend.h"
 #include "llist.h"
 
-static int rpm_init_backend( const conf_t * );
+static int rpm_init_backend(const conf_t *conf);
 static int rpm_load_list(void);
 static int rpm_destroy_backend(void);
 
@@ -374,7 +374,7 @@ static int rpm_load_list(void)
 	return 0;
 }
 
-static int rpm_init_backend( const conf_t *conf )
+static int rpm_init_backend(const conf_t *conf)
 {
 	list_init(&rpm_backend.list);
 	return 0;

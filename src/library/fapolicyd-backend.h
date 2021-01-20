@@ -36,7 +36,7 @@ typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB } trust_src_t;
 typedef struct _backend
 {
 	const char * name;
-	int (*init)( const conf_t * );
+	int (*init)(const conf_t *conf);
 	int (*load)(void);
 	int (*close)(void);
 	list_t list;

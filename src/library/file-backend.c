@@ -46,7 +46,7 @@
 #define BUFFER_SIZE 4096+1+1+1+10+1+64+1
 #define FILE_WRITE_FORMAT "%s %lu %s\n"		// path size SHA256
 
-static int file_init_backend( const conf_t * );
+static int file_init_backend(const conf_t *);
 static int file_load_list(void);
 static int file_destroy_backend(void);
 
@@ -61,58 +61,77 @@ backend file_backend =
 
 static const conf_t *conf;
 
-static int file_sscan( char *s, unsigned long *sz, char **hash ) 
+/*
+ * parameters:
+ *	warning: parameter s is modified
+ *	s must be in the form: path<spaces>size<spaces>hash<optional spaces>
+ * results:
+ *	sz and hash (if not NULL) from s content
+ *	s is truncated to contain only the path
+ *	sz and hash are valid while s still valid, not necessary to free
+ * returns 0 iff error
+ */
+
+static int file_sscan(char *s, unsigned long *sz, char **hash)
 {
-  // returns 0 iff error
-  // results: sz and hash (if not NULL) from s content; s truncated only to the path
-  // warning: s is modified 
-  // sz and hash valid while s valid, not necessary to free
-  // s must be in the form: path<spaces>size<spaces>hash<optional spaces> 
-  
-  char *e = s+strlen(s);
-  if( e == s ) return 0; // empty string 
-  e--; // last true char
+	char *e = s+strlen(s);
 
-  // optional trailing spaces  
-  while( isspace(*e) && e!=s ) e--; 
-  e[1]='\0'; // end of hash
+	if (e == s)
+		return 0; // empty string
+	e--; // last true char
 
-  // mandatory hash
-  if( !isxdigit(*e) ) return 0;
-  while( isxdigit(*e) && e!=s ) e--;
-  if( hash != NULL ) *hash = e+1;
+	// optional trailing spaces
+	while (isspace(*e) && e != s)
+		e--;
+	e[1] = '\0'; // end of hash
 
-  // mandatory spaces  
-  if( !isspace(*e) ) return 0; 
-  while( isspace(*e) && e!=s ) e--; 
-  e[1]='\0'; // end of size
+	// mandatory hash
+	if (!isxdigit(*e))
+		return 0;
+	while (isxdigit(*e) && e != s)
+		e--;
+	if (hash != NULL)
+		*hash = e+1;
 
-  // mandatory size
-  if( !isdigit(*e) ) return 0; 
-  while( isdigit(*e) && e!=s ) e--; 
-  if( sz != NULL ) {
-    errno = 0;
-    *sz = strtol( e+1, NULL, 10 );
-    if( errno != 0 ) return 0;  
-  }
+	// mandatory spaces
+	if (!isspace(*e))
+		return 0;
+	while (isspace(*e) && e != s)
+		e--;
+	e[1] = '\0'; // end of size
 
-  // mandatory space
-  if( !isspace(*e) ) return 0; 
+	// mandatory size
+	if (!isdigit(*e))
+		return 0;
+	while (isdigit(*e) && e != s)
+		e--;
+	if (sz != NULL) {
+		errno = 0;
+		*sz = strtol(e+1, NULL, 10);
+		if (errno != 0)
+			return 0;
+	}
 
-  if( conf == NULL || !conf->allow_filename_trail_spaces ) {
-    // a line starting by "foo  123 ..." is understood as path "foo"
-    while( isspace(*e) && e!=s ) e--; 
-    if( isspace(*e) ) return 0;
-    e[1]='\0';
-  
-  } else {
-    // a line starting by "foo  123 ..." is understood as path "foo "
-    e[0]='\0';
- 
-  }
+	// mandatory space
+	if (!isspace(*e))
+		return 0;
 
-  // remainder is mandatory path
-  return( *s != '\0' );
+	if (conf == NULL || !conf->allow_filename_trail_spaces) {
+		// foo  123 ..." is understood as path "foo"
+		while (isspace(*e) && e != s)
+			e--;
+		if (isspace(*e))
+			return 0;
+		e[1] = '\0';
+
+	} else {
+		// "foo  123 ..." is understood as path "foo "
+		e[0] = '\0';
+
+	}
+
+	// remainder is mandatory path
+	return (*s != '\0');
 }
 
 
@@ -138,7 +157,7 @@ static int file_load_list(void)
 		if (iscntrl(buffer[0]) || buffer[0] == '#')
 			continue;
 
-		if ( !file_sscan(buffer, &sz, &sha) ) {
+		if (!file_sscan(buffer, &sz, &sha)) {
 			msg(LOG_WARNING, "Can't parse %s", buffer);
 			fclose(file);
 			return 1;
@@ -166,7 +185,7 @@ static int file_load_list(void)
 }
 
 
-static int file_init_backend( const conf_t *pconf )
+static int file_init_backend(const conf_t *pconf)
 {
 	conf = pconf;
 	list_init(&file_backend.list);

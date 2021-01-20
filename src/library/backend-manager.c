@@ -131,7 +131,7 @@ int backend_init(const conf_t *conf)
 	for (backend_entry *be = backend_get_first();
 			be != NULL;
 			be = be->next) {
-		if (be->backend->init( conf ))
+		if (be->backend->init(conf))
 			return 1;
 	}
 	return 0;
