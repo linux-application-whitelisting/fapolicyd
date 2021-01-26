@@ -491,7 +491,7 @@ int main(int argc, const char *argv[])
 	pfd[1].fd = init_fanotify(&config, m);
 	pfd[1].events = POLLIN;
 
-	msg(LOG_DEBUG, "Starting to listen for events");
+	msg(LOG_INFO, "Starting to listen for events");
 	while (!stop) {
 		rc = poll(pfd, 2, -1);
 
@@ -526,7 +526,7 @@ int main(int argc, const char *argv[])
 #endif
 		}
 	}
-	msg(LOG_DEBUG, "shutting down...");
+	msg(LOG_INFO, "shutting down...");
 	shutdown_fanotify(m);
 	close(pfd[0].fd);
 	mlist_clear(m);
