@@ -114,7 +114,7 @@ static int do_dump_db(void)
 		return 1;
 	}
 	mdb_env_set_maxdbs(env, 2);
-	rc = mdb_env_open(env, DB_DIR, MDB_RDONLY, 0660);
+	rc = mdb_env_open(env, DB_DIR, MDB_RDONLY|MDB_NOLOCK, 0660);
 	if (rc) {
 		fprintf(stderr, "mdb_env_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));
