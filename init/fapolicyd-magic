@@ -1,7 +1,13 @@
 0	string/w	#!\ /usr/bin/bash	Bourne-Again shell script text executable
 !:mime	text/x-shellscript
 
+0	string/w	#!\ /usr/bin/env\ bash	Bourne-Again shell script text executable
+!:mime	text/x-shellscript
+
 0	string/w	#!\ /usr/bin/sh		Shell script text executable
+!:mime	text/x-shellscript
+
+0	string/w	#!\ /usr/bin/env\ sh		Shell script text executable
 !:mime	text/x-shellscript
 
 0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
@@ -47,7 +53,15 @@
 !:strength + 15
 !:mime text/x-python
 
+0	search/1/wt	#!\ /usr/bin/env\ python3	Python script text executable
+!:strength + 15
+!:mime text/x-python
+
 0	search/1/wt	#!\ /usr/bin/python2	Python script text executable
+!:strength + 15
+!:mime text/x-python
+
+0	search/1/wt	#!\ /usr/bin/env\ python2	Python script text executable
 !:strength + 15
 !:mime text/x-python
 
@@ -55,11 +69,11 @@
 !:strength + 15
 !:mime text/x-python
 
-0	search/1/wt	#!\ /usr/libexec/platform-python	Python script text executable
+0       search/1/wt     #!\ /usr/bin/env\ python        Python script text executable
 !:strength + 15
 !:mime text/x-python
 
-0       search/1/wt     #!\ /usr/bin/env\ python        Python script text executable
+0	search/1/wt	#!\ /usr/libexec/platform-python	Python script text executable
 !:strength + 15
 !:mime text/x-python
 
