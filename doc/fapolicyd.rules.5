@@ -157,9 +157,11 @@ Set is a named group of values of the same type. Fapolicyd internally distinguis
 .fi
 
 .SH NOTES
-When you are writing a rule for the execute permission, remember that the file to be executed is an object. Unless you are blocking execution from a specific program, then you would normally use
+When you are writing a rule for the execute permission, remember that the file to be executed is an 
+.B object.
+For example, you type ssh into the shell. The shell calls execve on /usr/bin/ssh. At that instant in time, ssh is the object that bash is working on. If you are blocking execution from a specific program, then you would normally state the program on the subject side and use
 .I all
-for the subject side.
+for the object side.
 
 If you are writing rules that use patterns, just select
 .I any
