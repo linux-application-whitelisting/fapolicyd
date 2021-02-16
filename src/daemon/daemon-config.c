@@ -1,7 +1,7 @@
 /*
  * daemon-config.c - This is a config file parser
  *
- * Copyright 2018-20 Red Hat Inc.
+ * Copyright 2018-21 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -337,9 +337,9 @@ static const struct kw_pair *kw_lookup(const char *val)
 
 void free_daemon_config(conf_t *config)
 {
-//	free((void*)config->file);
 	free((void*)config->watch_fs);
 	free((void*)config->trust);
+	free((void*)config->syslog_format);
 }
 
 static int unsigned_int_parser(unsigned *i, const char *str, int line)

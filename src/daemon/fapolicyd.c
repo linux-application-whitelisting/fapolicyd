@@ -371,6 +371,7 @@ int main(int argc, const char *argv[])
 		usage();
 	set_message_mode(MSG_STDERR, debug);
 	if (load_daemon_config(&config)) {
+		free_daemon_config(&config);
 		msg(LOG_ERR, "Exiting due to bad configuration");
 		return 1;
 	}
@@ -404,6 +405,7 @@ int main(int argc, const char *argv[])
 			config.detailed_report = 0;
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
+			free_daemon_config(&config);
 			usage();
 		}
 	}

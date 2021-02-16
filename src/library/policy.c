@@ -1,6 +1,6 @@
 /*
  * policy.c - functions that encapsulate the notion of a policy
- * Copyright (c) 2016,2019-20 Red Hat
+ * Copyright (c) 2016,2019-21 Red Hat
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -309,7 +309,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 							 ",%d", grp->num);
 					ptr = stpcpy(ptr, buf);
 				}
-			} else
+			} else if (out)
 				strcpy(out, "?");
 		}
 	}
