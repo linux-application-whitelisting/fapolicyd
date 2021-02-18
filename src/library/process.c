@@ -321,14 +321,13 @@ int check_environ_from_pid(pid_t pid)
 	char path[128];
 	char *line = NULL;
 	size_t len = 0;
-	ssize_t nread;
 	FILE *f;
 
 	snprintf(path, sizeof(path), "/proc/%d/environ", pid);
 	f = fopen(path, "rt");
 	if (f) {
 		__fsetlocking(f, FSETLOCKING_BYCALLER);
-		while ((nread = getline(&line, &len, f)) != -1) {
+		while (getline(&line, &len, f) != -1) {
 			char *match = strstr(line, "LD_PRELOAD");
 			if (!match)
 				match = strstr(line, "LD_AUDIT");

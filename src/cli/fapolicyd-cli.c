@@ -74,9 +74,8 @@ static char *get_line(FILE *f, unsigned *lineno)
 {
 	char *line = NULL;
 	size_t len = 0;
-	ssize_t nread;
 
-	while ((nread = getline(&line, &len, f)) != -1) {
+	while (getline(&line, &len, f) != -1) {
 		/* remove newline */
 		char *ptr = strchr(line, 0x0a);
 		if (ptr)

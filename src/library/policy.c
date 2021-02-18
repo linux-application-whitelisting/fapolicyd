@@ -187,7 +187,6 @@ int load_config(const conf_t *config)
 	FILE *f;
 	char *line = NULL;
 	size_t len = 0;
-	ssize_t nread;
 
 	if (rules_create(&rules))
 		return 1;
@@ -208,7 +207,7 @@ int load_config(const conf_t *config)
 	}
 
 
-	while ((nread = getline(&line, &len, f)) != -1) {
+	while (getline(&line, &len, f) != -1) {
 		char *ptr = strchr(line, 0x0a);
 		if (ptr)
 			*ptr = 0;
