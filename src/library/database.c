@@ -1,6 +1,6 @@
 /*
  * database.c - Trust database
- * Copyright (c) 2016,2018-20 Red Hat Inc.
+ * Copyright (c) 2016,2018-21 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -711,23 +711,32 @@ static int check_database_copy(void)
 /*
  * This function removes the trust database files.
  */
-void unlink_db(void)
+int unlink_db(void)
 {
-	int rc;
+	int rc, ret_val = 0;
 	char path[64];
 
 	snprintf(path, sizeof(path), "%s/data.mdb", data_dir);
 	rc = unlink(path);
-	if (rc)
+	if (rc) {
 		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
+		ret_val = 1;
+	}
 	snprintf(path, sizeof(path), "%s/lock.mdb", data_dir);
 	rc = unlink(path);
-	if (rc)
+	if (rc) {
 		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
+		ret_val = 1;
+	}
+
+	return ret_val;
 }
 
 
 /*
+ * DB version 1 = unique keys (0.8 - 0.9.2)
+ * DB version 2 = allow duplicate keys (0.9.3 - )
+ *
  * This function is used to detect if we are using version1 of the database.
  * If so, we have to delete the database and rebuild it. We cannot mix
  * database versions because lmdb doesn't do that.
@@ -744,7 +753,8 @@ static int migrate_database(void)
 		msg(LOG_INFO, "Database migration will be performed.");
 
 		// Then we have a version1 db since it does not track versions
-		unlink_db();
+		if (unlink_db())
+			return 1;
 
 		// Create the new, db version tracker and write current version
 		fd = open(vpath, O_CREAT|O_EXCL|O_WRONLY, 0640);

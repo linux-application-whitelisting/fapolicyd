@@ -1,6 +1,6 @@
 /*
  * fapolicy-cli.c - CLI tool for fapolicyd
- * Copyright (c) 2019,2020 Red Hat Inc.
+ * Copyright (c) 2019-2021 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -89,7 +89,8 @@ static char *get_line(FILE *f, unsigned *lineno)
 
 static int do_delete_db(void)
 {
-	unlink_db();
+	if (unlink_db())
+		return 1;
 	return 0;
 }
 

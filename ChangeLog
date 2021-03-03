@@ -1,6 +1,7 @@
 1.0.3
 - Add startup and shutdown syslog message
 - fapolicyd-cli open trustdb without locking to prevent daemon hang
+- If db migration fails due to unlinking problem, fail startup
 
 1.0.2
 - Add Group ID support for rules
