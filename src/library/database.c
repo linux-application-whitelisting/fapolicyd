@@ -161,8 +161,10 @@ static int init_db(const conf_t *config)
 		return 4;
 
 	int rc = mdb_env_open(env, data_dir, flags, 0660);
-	if (rc)
+	if (rc) {
+		msg(LOG_ERR, "env_open error: %s", mdb_strerror(rc));
 		return 5;
+	}
 
 	MDB_maxkeysize = mdb_env_get_maxkeysize(env);
 	integrity = config->integrity;
