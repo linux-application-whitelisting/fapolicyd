@@ -206,18 +206,19 @@ int load_config(const conf_t *config)
 		return 1;
 	}
 
+	msg(LOG_DEBUG, "Loading rule file:");
 
 	while (getline(&line, &len, f) != -1) {
 		char *ptr = strchr(line, 0x0a);
 		if (ptr)
 			*ptr = 0;
+		msg(LOG_DEBUG, "%s", line);
 		rc = rules_append(&rules, line, lineno);
 		if (rc) {
 			free(line);
 			fclose(f);
 			return 1;
 		}
-
 		lineno++;
 	}
 	free(line);
