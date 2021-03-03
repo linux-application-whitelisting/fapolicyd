@@ -713,12 +713,17 @@ static int check_database_copy(void)
  */
 void unlink_db(void)
 {
+	int rc;
 	char path[64];
 
 	snprintf(path, sizeof(path), "%s/data.mdb", data_dir);
-	unlink(path);
+	rc = unlink(path);
+	if (rc)
+		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
 	snprintf(path, sizeof(path), "%s/lock.mdb", data_dir);
-	unlink(path);
+	rc = unlink(path);
+	if (rc)
+		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
 }
 
 
