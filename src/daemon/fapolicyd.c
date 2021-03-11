@@ -446,6 +446,17 @@ int main(int argc, const char *argv[])
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
 	}
 
+	// Set the exit function so there is always a fifo cleanup
+	if (atexit(unlink_fifo)) {
+		msg(LOG_ERR, "Cannot set exit function");
+		exit(1);
+	}
+
+	if (preconstruct_fifo(&config)) {
+		msg(LOG_ERR, "Cannot contruct a pipe");
+		exit(1);
+	}
+
 	// Setup filesystem to watch list
 	init_fs_list(config.watch_fs);
 
@@ -454,8 +465,6 @@ int main(int argc, const char *argv[])
 
 	// If we are not going to be root, then setup necessary capabilities
 	if (config.uid != 0) {
-		if (preconstruct_fifo(&config))
-			exit(1);
 		capng_clear(CAPNG_SELECT_BOTH);
 		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
 			CAP_DAC_OVERRIDE, CAP_SYS_ADMIN, CAP_SYS_PTRACE,
