@@ -718,13 +718,13 @@ int unlink_db(void)
 
 	snprintf(path, sizeof(path), "%s/data.mdb", data_dir);
 	rc = unlink(path);
-	if (rc) {
+	if (rc == -1 && errno != ENOENT) {
 		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
 		ret_val = 1;
 	}
 	snprintf(path, sizeof(path), "%s/lock.mdb", data_dir);
 	rc = unlink(path);
-	if (rc) {
+	if (rc == -1 && errno != ENOENT) {
 		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
 		ret_val = 1;
 	}
