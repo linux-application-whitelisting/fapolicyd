@@ -1,6 +1,6 @@
 /*
  * notify.c - functions handle recieving and enqueuing events
- * Copyright (c) 2016-18 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016-18,21 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -337,8 +337,13 @@ void handle_events(void)
 			len = read(fd, (void *) buf, sizeof(buf));
 		} while (len == -1 && errno == EINTR && stop == 0);
 		if (len == -1 && errno != EAGAIN) {
-			msg(LOG_ERR,"Error reading (%s)", strerror(errno));
-			exit(1);
+			// If we get this, we have no access to the file. We
+			// cannot formulate a reply either to deny it because
+			// we have nothing to work with.
+			msg(LOG_ERR,
+			    "Error receiving fanotify_event (%s)",
+			    strerror(errno));
+			return;
 		}
 		if (stop)
 			return;

@@ -2,6 +2,7 @@
 - Add startup and shutdown syslog message
 - fapolicyd-cli open trustdb without locking to prevent daemon hang
 - If db migration fails due to unlinking problem, fail startup
+- Do not exit on fanotify_event read failure
 
 1.0.2
 - Add Group ID support for rules
