@@ -32,7 +32,7 @@
 #include <rpm/rpmdb.h>
 #include <fnmatch.h>
 
-#include <uthash.h>
+#include "uthash.h"
 
 #include "message.h"
 

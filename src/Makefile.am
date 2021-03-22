@@ -5,6 +5,10 @@ AM_CPPFLAGS = \
 	-I${top_srcdir} \
 	-I${top_srcdir}/src/library
 
+if WITH_BUNDLED_UTHASH
+AM_CPPFLAGS += -I${top_srcdir}/src/library/uthash
+endif
+
 sbin_PROGRAMS = fapolicyd fapolicyd-cli
 lib_LTLIBRARIES= libfapolicyd.la
 
@@ -59,6 +63,16 @@ libfapolicyd_la_SOURCES = \
 	library/subject.h \
 	library/string-util.c \
 	library/string-util.h
+
+if WITH_BUNDLED_UTHASH
+libfapolicyd_la_SOURCES += \
+	library/uthash/utarray.h \
+	library/uthash/uthash.h \
+	library/uthash/utlist.h \
+	library/uthash/utmm.h \
+	library/uthash/utringbuffer.h \
+	library/uthash/utstring.h
+endif
 
 if WITH_RPM
 libfapolicyd_la_SOURCES += library/rpm-backend.c

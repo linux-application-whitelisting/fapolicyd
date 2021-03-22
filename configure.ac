@@ -56,6 +56,16 @@ if test x$use_rpm = xyes ; then
 fi
 AM_CONDITIONAL(WITH_RPM, test x$use_rpm = xyes)
 
+AC_ARG_WITH(bundled-uthash,
+AS_HELP_STRING([--with-bundled-uthash],[Use bundled uthash (default=no)]),
+use_bundled_uthash=yes,use_bundled_uthash=no)
+
+AM_CONDITIONAL(WITH_BUNDLED_UTHASH, test x$use_bundled_uthash = xyes)
+
+if test x$use_bundled_uthash = xyes ; then
+   AC_DEFINE(BUNDLED_UTHASH,1,[Define if you want to include bundled uthash.])
+fi
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
@@ -67,8 +77,11 @@ AC_CHECK_HEADER(sys/fanotify.h, , [AC_MSG_ERROR(
 ["Couldn't find sys/fanotify.h...your kernel might not be new enough"] )])
 AC_CHECK_FUNCS(fexecve, [], [])
 
-AC_CHECK_HEADER(uthash.h, , [AC_MSG_ERROR(
-["Couldn't find uthash.h...uthash-devel is missing"] )])
+if test x$use_bundled_uthash = xno ; then
+   AC_CHECK_HEADER(uthash.h, , [AC_MSG_ERROR(
+   ["Couldn't find uthash.h...uthash-devel is missing or try --with-bundled-uthash"] )])
+fi
+
 
 
 echo .
