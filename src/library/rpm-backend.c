@@ -180,8 +180,7 @@ static int drop_path(const char *file_name)
 {
 	if (file_name[1] == 'u') {
 		if (file_name[5] == 's') {
-			// Drop anything in /usr/share that's
-			// not python, javascript, or has a libexec dir
+			// Only keep languages from /usr/share
 			if (file_name[6] == 'h' ) {
 				// These are roughly ordered by quantity
 				// Python byte code
@@ -224,10 +223,6 @@ static int drop_path(const char *file_name)
 				else if (fnmatch("*.php",
 						 file_name, 0) == 0)
 					return 0;
-				// Lisp
-				else if (fnmatch("*.el",
-						 file_name, 0) == 0)
-					return 0;
 				// Perl Modules
 				else if (fnmatch("*.pm",
 						 file_name, 0) == 0)
@@ -238,6 +233,17 @@ static int drop_path(const char *file_name)
 					return 0;
 				// Java
 				else if (fnmatch("*.class",
+						 file_name, 0) == 0)
+					return 0;
+				// Typescript
+				else if (fnmatch("*.ts",
+						 file_name, 0) == 0)
+					return 0;
+				else if (fnmatch("*.tsx",
+						 file_name, 0) == 0)
+					return 0;
+				// Lisp
+				else if (fnmatch("*.el",
 						 file_name, 0) == 0)
 					return 0;
 				// Compiled Lisp
