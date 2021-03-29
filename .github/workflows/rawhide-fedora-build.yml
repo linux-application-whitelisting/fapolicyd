@@ -1,0 +1,39 @@
+name: rawhide-build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:rawhide
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: getting envinronment info
+      run: uname -a
+
+    - name: print fedora version
+      run: cat /etc/fedora-release
+
+    - name: installing dependecies
+      run: dnf -y install dnf-plugins-core python3-dnf-plugins-core; dnf -y builddep ./fapolicyd.spec
+
+    - name: generate config files
+      run: ./autogen.sh
+
+    - name: configure
+      run: ./configure --with-rpm --with-audit --disable-shared
+
+    - name: build
+      run: make
+
+    - name: check
+      run: make check
+
+    - name: dist
+      run: make dist
