@@ -32,7 +32,7 @@
 !:mime	text/x-tcl
 
 0	string/wt	#!\ /usr/bin/gjs	Gnome Javascript text executable
-!:mime	text/javascript
+!:mime	application/javascript
 
 0	string/wt	#!\ /usr/bin/jimsh	Jim TCL text executable
 !:mime  text/x-tcl

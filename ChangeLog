@@ -3,6 +3,7 @@
 - fapolicyd-cli open trustdb without locking to prevent daemon hang
 - If db migration fails due to unlinking problem, fail startup
 - Do not exit on fanotify_event read failure
+- Add application/javascript to Language macro
 
 1.0.2
 - Add Group ID support for rules
