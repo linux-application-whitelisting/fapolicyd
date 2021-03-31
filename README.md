@@ -426,15 +426,29 @@ and compares that with what is stored in the trust db.
 the files to another location?
 
 Yes, this is checking to see if this is a known file. Known files have a known
-location. The shipped policy prevents execution from /tmp, /var/tmp, and $HOME.
-So, where could an unprivileged user move the file to? And if you are thinking,
-I have root permissions, I'll move the file somewhere else. OK, if you are
-root, you can change the rules or simply turn off the deamon, too. So, this
-is not designed to prevent root from doing things. Also, moving a file means
-it's no longer "known" and will be blocked from executing. And if something
-were moved to overwrite it, then the hash is no longer the same.
+location. The shipped policy prevents execution from /tmp, /var/tmp, and $HOME
+based on the fact that no rpm package puts anything there. Also, moving a file
+means it's no longer "known" and will be blocked from executing. And if
+something were moved to overwrite it, then the hash is no longer the same and
+that will make it no longer trusted.
 
-5) How do you prevent race conditions on startup? Can something execute before
+5) Does this protect against root modifications?
+If you are root, you can change the rules or simply turn off the deamon. So,
+this is not designed to prevent root from doing things. None of the integrity
+subsystems on Linux are designed to prevent root from doing things. There
+has to be a way of doing updates or disabling something for troubleshooting.
+For example, you can change IMA to ima_appraise=fix in /etc/default/grub. You
+can run setenforce=0 to turn off selinux. You can also set selinux=0 for the
+boot prompt. The IPE integrity subsystem can be turned off via 
+
+```
+echo -n 0 > "/sys/kernel/security/ipe/Ex Policy/active"
+```
+
+and so on. Since they can all be disabled, the fact that an admin can issue a
+service stop command is not a unique weakness.
+
+6) How do you prevent race conditions on startup? Can something execute before
 the daemon takes control?
 
 One of the design goals is to take control before users can login. Users are
@@ -464,7 +478,7 @@ NOTES
 * It's highly recommended to run in permissive mode while you are testing the
 daemon's policy.
 
-* Stracing the daemon can deadlock the system.
+* Stracing the fapolicyd daemon WILL DEADLOCK THE SYSTEM.
 
 * About shell script restrictions...there's not much difference between
 running a script or someone typing things in by hand. The aim at this
