@@ -1,3 +1,5 @@
+1.0.4
+
 1.0.3
 - Add startup and shutdown syslog message
 - fapolicyd-cli open trustdb without locking to prevent daemon hang
