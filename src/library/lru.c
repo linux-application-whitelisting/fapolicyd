@@ -27,6 +27,7 @@
 #include <string.h>
 #include "lru.h"
 #include "message.h"
+#include "gcc-attributes.h"
 
 //#define DEBUG
 
@@ -34,6 +35,7 @@
 static void dequeue(Queue *queue);
 
 // The Queue Node will store the 'item' being cached
+static QNode *new_QNode(void) MALLOCLIKE;
 static QNode *new_QNode(void)
 {
 	QNode *temp = malloc(sizeof(QNode));

@@ -52,6 +52,7 @@
 #include "daemon-config.h"
 #include "conf.h"
 #include "queue.h"
+#include "gcc-attributes.h"
 #include "avl.h"
 
 

@@ -35,7 +35,7 @@
 #include <uthash.h>
 
 #include "message.h"
-
+#include "gcc-attributes.h"
 #include "fapolicyd-backend.h"
 #include "llist.h"
 
@@ -103,7 +103,8 @@ static int get_next_file_rpm(void)
 	return 1;
 }
 
-// Like strdup, but sets a minimum size for safety 
+// Like strdup, but sets a minimum size for safety
+static inline char *strmdup(const char *s, size_t min) MALLOCLIKE;
 static inline char *strmdup(const char *s, size_t min)
 {
 	char *new;

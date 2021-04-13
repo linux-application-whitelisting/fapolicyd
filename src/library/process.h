@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include "attr-sets.h"
+#include "gcc-attributes.h"
 
 typedef enum {	STATE_COLLECTING=0,	// initial state - execute
 		STATE_REOPEN,		// anticipating open perm next
@@ -70,7 +71,7 @@ struct proc_info
 	uint32_t elf_info;
 };
 
-struct proc_info *stat_proc_entry(pid_t pid);
+struct proc_info *stat_proc_entry(pid_t pid) MALLOCLIKE;
 void clear_proc_info(struct proc_info *info);
 int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2);
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf);

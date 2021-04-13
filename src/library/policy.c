@@ -37,7 +37,7 @@
 #include "policy.h"
 #include "nv.h"
 #include "message.h"
-
+#include "gcc-attributes.h"
 #include "string-util.h"
 
 #define MAX_SYSLOG_FIELDS	21
@@ -247,6 +247,8 @@ int reload_config(const conf_t *config)
 	return load_config(config);
 }
 
+static char *format_value(int item, unsigned int num, decision_t results,
+	event_t *e) MALLOCLIKE;
 static char *format_value(int item, unsigned int num, decision_t results,
 	event_t *e)
 {

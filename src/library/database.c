@@ -48,6 +48,7 @@
 
 #include "fapolicyd-backend.h"
 #include "backend-manager.h"
+#include "gcc-attributes.h"
 
 
 // Local defines
@@ -236,6 +237,7 @@ static void abort_transaction(MDB_txn *txn)
  * Convert path to a hash value. Used when the path exceeds the LMDB key
  * limit(511).  Note: Returned value must be deallocated.
  */
+static char *path_to_hash(const char *path, const size_t path_len) MALLOCLIKE;
 static char *path_to_hash(const char *path, const size_t path_len)
 {
 	gcry_md_hd_t h;
@@ -393,6 +395,7 @@ static long get_number_of_entries(void)
  * search for the data. It returns NULL on error or if no data found.
  * The returned string must be freed by the caller.
  */
+static char *lt_read_db(const char *index, int operation, int *error) MALLOCLIKE;
 static char *lt_read_db(const char *index, int operation, int *error)
 {
 	int rc;

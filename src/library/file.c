@@ -485,6 +485,7 @@ static int read_preliminary_header(int fd)
 }
 
 
+static Elf32_Ehdr *read_header32(int fd) MALLOCLIKE;
 static Elf32_Ehdr *read_header32(int fd)
 {
 	Elf32_Ehdr *ptr = malloc(sizeof(Elf32_Ehdr));
@@ -498,6 +499,7 @@ static Elf32_Ehdr *read_header32(int fd)
 }
 
 
+static Elf64_Ehdr *read_header64(int fd) MALLOCLIKE;
 static Elf64_Ehdr *read_header64(int fd)
 {
 	Elf64_Ehdr *ptr = malloc(sizeof(Elf64_Ehdr));
