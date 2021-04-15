@@ -640,6 +640,12 @@ uint32_t gather_elf(int fd, off_t size)
 					info |= HAS_BAD_INTERP;
 			}
 
+			if (ph_tbl[i].p_type == PT_GNU_STACK) {
+				// If we have Execute flags, something is wrong
+				if (ph_tbl[i].p_flags & PF_X)
+					info |= HAS_EXE_STACK;
+			}
+
 			if (ph_tbl[i].p_type == PT_DYNAMIC) {
 				unsigned int j = 0;
 				unsigned int num;
@@ -790,6 +796,12 @@ done32_obj:
 				// Perform ELF interpreter validation
 				if (check_interpreter(interp))
 					info |= HAS_BAD_INTERP;
+			}
+
+			if (ph_tbl[i].p_type == PT_GNU_STACK) {
+				// If we have Execute flags, something is wrong
+				if (ph_tbl[i].p_flags & PF_X)
+					info |= HAS_EXE_STACK;
 			}
 
 			if (ph_tbl[i].p_type == PT_DYNAMIC) {
