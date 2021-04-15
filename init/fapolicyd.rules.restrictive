@@ -29,7 +29,7 @@ allow perm=open exe=/usr/bin/rpm : all
 allow perm=open exe=%python3_path% comm=dnf : all
 
 # Do not allow malformed ELF even if trusted
-deny_audit perm=all all : ftype=application/x-bad-elf
+deny_audit perm=any all : ftype=application/x-bad-elf
 
 # Only allow known ELF libs - this is ahead of executable because typical
 # executable is linked with a dozen or more libraries.
