@@ -1,4 +1,5 @@
 1.0.4
+- Tighten up ELF detection
 
 1.0.3
 - Add startup and shutdown syslog message

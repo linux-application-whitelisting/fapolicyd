@@ -548,7 +548,7 @@ uint32_t gather_elf(int fd, off_t size)
 	e->first_lib = NULL; */
 	info |= IS_ELF;
 	if (e_ident[EI_CLASS] == ELFCLASS32) {
-		unsigned i;
+		unsigned i, type;
 		Elf32_Phdr *ph_tbl = NULL;
 
 		Elf32_Ehdr *hdr = read_header32(fd);
@@ -557,11 +557,12 @@ uint32_t gather_elf(int fd, off_t size)
 			goto rewind_out;
 		}
 
-		if (hdr->e_type == ET_EXEC)
+		type = hdr->e_type & 0xFFFF;
+		if (type == ET_EXEC)
 			info |= HAS_EXEC;
-		else if (hdr->e_type == ET_REL)
+		else if (type == ET_REL)
 			info |= HAS_REL;
-		else if (hdr->e_type == ET_CORE)
+		else if (type == ET_CORE)
 			info |= HAS_CORE;
 
 		// Look for program header information
@@ -570,11 +571,12 @@ uint32_t gather_elf(int fd, off_t size)
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
 
 		// Program headers are meaning for executable & shared obj only
-		if (sz == 0 && hdr->e_type == ET_REL)
+		if (sz == 0 && type == ET_REL)
 			goto done32_obj;
 
 		/* Verify the entry size is right */
-		if ((unsigned)hdr->e_phentsize != sizeof(Elf32_Phdr)) {
+		if ((unsigned)hdr->e_phentsize != sizeof(Elf32_Phdr) ||
+		    (unsigned)hdr->e_phnum == 0) {
 			info |= HAS_ERROR;
 			free(hdr);
 			goto rewind_out;
@@ -585,11 +587,9 @@ uint32_t gather_elf(int fd, off_t size)
 			goto rewind_out;
 		}
 		ph_tbl = malloc(sz);
-		if (ph_tbl == NULL) {
-			info |= HAS_ERROR;
-			free(hdr);
-			goto rewind_out;
-		}
+		if (ph_tbl == NULL)
+			goto err_out32;
+
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
 			goto err_out32;
@@ -600,8 +600,16 @@ uint32_t gather_elf(int fd, off_t size)
 
 		// Check for rpath record
 		for (i = 0; i < hdr->e_phnum; i++) {
-			if (ph_tbl[i].p_type == PT_LOAD)
+			if (ph_tbl[i].p_type == PT_LOAD) {
 				info |= HAS_LOAD;
+
+				// If we have RWE flags, something is wrong
+				if (ph_tbl[i].p_flags == (PF_X|PF_W|PF_R))
+					info |= HAS_RWE_LOAD;
+			}
+
+			if (ph_tbl[i].p_type == PT_PHDR)
+				info |= HAS_PHDR;
 
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
@@ -612,16 +620,14 @@ uint32_t gather_elf(int fd, off_t size)
 
 				info |= HAS_INTERP;
 				if ((unsigned int) lseek(fd, offset, SEEK_SET)
-								!= offset) {
+								!= offset)
 					goto err_out32;
-				}
 
 				len = (filesz < 23 ? filesz : 23);
 
 				if ((unsigned int) safe_read(fd, (char *)
-						interp, len) != len) {
+						interp, len) != len)
 					goto err_out32;
-				}
 
 				// Explictly terminate the string
 				if (len == 0)
@@ -667,6 +673,7 @@ uint32_t gather_elf(int fd, off_t size)
 
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
+						// intentional
 					} else if (dyn_tbl[j].d_tag ==
 								DT_RUNPATH)
 						info |= HAS_RPATH;
@@ -693,7 +700,7 @@ done32:
 done32_obj:
 		free(hdr);
 	} else if (e_ident[EI_CLASS] == ELFCLASS64) {
-		unsigned i;
+		unsigned i, type;
 		Elf64_Phdr *ph_tbl;
 
 		Elf64_Ehdr *hdr = read_header64(fd);
@@ -702,11 +709,12 @@ done32_obj:
 			goto rewind_out;
 		}
 
-		if (hdr->e_type == ET_EXEC)
+		type = hdr->e_type & 0xFFFF;
+		if (type == ET_EXEC)
 			info |= HAS_EXEC;
-		else if (hdr->e_type == ET_REL)
+		else if (type == ET_REL)
 			info |= HAS_REL;
-		else if (hdr->e_type == ET_CORE)
+		else if (type == ET_CORE)
 			info |= HAS_CORE;
 
 		// Look for program header information
@@ -715,11 +723,12 @@ done32_obj:
 			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
 
 		// Program headers are meaning for executable & shared obj only
-		if (sz == 0 && hdr->e_type == ET_REL)
+		if (sz == 0 && type == ET_REL)
 			goto done64_obj;
 
 		/* Verify the entry size is right */
-		if ((unsigned)hdr->e_phentsize != sizeof(Elf64_Phdr)) {
+		if ((unsigned)hdr->e_phentsize != sizeof(Elf64_Phdr) ||
+		    (unsigned)hdr->e_phnum == 0) {
 			info |= HAS_ERROR;
 			free(hdr);
 			goto rewind_out;
@@ -730,11 +739,9 @@ done32_obj:
 			goto rewind_out;
 		}
 		ph_tbl = malloc(sz);
-		if (ph_tbl == NULL) {
-			info |= HAS_ERROR;
-			free(hdr);
-			goto rewind_out;
-		}
+		if (ph_tbl == NULL)
+			goto err_out64;
+
 		if ((unsigned int)lseek(fd, (off_t)hdr->e_phoff, SEEK_SET) !=
 					hdr->e_phoff)
 			goto err_out64;
@@ -745,8 +752,16 @@ done32_obj:
 
 		// Check for rpath record
 		for (i = 0; i < hdr->e_phnum; i++) {
-			if (ph_tbl[i].p_type == PT_LOAD)
+			if (ph_tbl[i].p_type == PT_LOAD) {
 				info |= HAS_LOAD;
+
+				// If we have RWE flags, something is wrong
+				if (ph_tbl[i].p_flags == (PF_X|PF_W|PF_R))
+					info |= HAS_RWE_LOAD;
+			}
+
+			if (ph_tbl[i].p_type == PT_PHDR)
+				info |= HAS_PHDR;
 
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
@@ -757,16 +772,14 @@ done32_obj:
 
 				info |= HAS_INTERP;
 				if ((unsigned int) lseek(fd, offset, SEEK_SET)
-								!= offset) {
+								!= offset)
 					goto err_out64;
-				}
 
 				len = (filesz < 33 ? filesz : 33);
 
 				if ((unsigned int) safe_read(fd, (char *)
-						interp, len) != len) {
+						interp, len) != len)
 					goto err_out64;
-				}
 
 				/* Explicitly terminate the string */
 				if (len == 0)
@@ -809,6 +822,7 @@ done32_obj:
 				}
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
+						// intentional
 					} else if (dyn_tbl[j].d_tag ==
 								DT_RUNPATH)
 						info |= HAS_RPATH;
@@ -834,7 +848,8 @@ done64:
 		free(ph_tbl);
 done64_obj:
 		free(hdr);
-	}
+	} else // Invalid ELF class
+		info |= HAS_ERROR;
 rewind_out:
 	rewind_fd(fd);
 	return info;
