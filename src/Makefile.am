@@ -50,7 +50,6 @@ libfapolicyd_la_SOURCES = \
 	library/process.h \
 	library/queue.c \
 	library/queue.h \
-	library/rpm-backend.c \
 	library/rules.c \
 	library/rules.h \
 	library/subject-attr.c \
