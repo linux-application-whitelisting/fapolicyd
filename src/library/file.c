@@ -1,6 +1,6 @@
 /*
  * file.c - functions for accessing attributes of files
- * Copyright (c) 2016,2018-20 Red Hat Inc.
+ * Copyright (c) 2016,2018-21 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -533,7 +533,6 @@ static int check_interpreter(const char *interp)
 // size is the file size from fstat done when event was received
 uint32_t gather_elf(int fd, off_t size)
 {
-	//struct elf_info *e;
 	uint32_t info = 0;
 
 	if (read_preliminary_header(fd))
@@ -542,10 +541,6 @@ uint32_t gather_elf(int fd, off_t size)
 	if (strncmp((char *)e_ident, ELFMAG, 4))
 		goto rewind_out;
 
-	/* e = malloc(sizeof(struct elf_info));
-	if (e == NULL)
-		return 0;
-	e->first_lib = NULL; */
 	info |= IS_ELF;
 	if (e_ident[EI_CLASS] == ELFCLASS32) {
 		unsigned i, type;
@@ -697,9 +692,6 @@ uint32_t gather_elf(int fd, off_t size)
 		}
 		goto done32;
 err_out32:
-//		free(e->first_lib);
-//		free(e);
-//		e = NULL;
 		info |= HAS_ERROR;
 done32:
 		free(ph_tbl);
@@ -852,9 +844,6 @@ done32_obj:
 		}
 		goto done64;
 err_out64:
-//		free(e->first_lib);
-//		free(e);
-//		e = NULL;
 		info |= HAS_ERROR;
 done64:
 		free(ph_tbl);

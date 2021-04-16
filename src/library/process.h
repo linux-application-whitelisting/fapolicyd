@@ -1,6 +1,6 @@
 /*
  * process.h - Header file for process.c
- * Copyright (c) 2016,2019-20 Red Hat Inc.
+ * Copyright (c) 2016,2019-21 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
