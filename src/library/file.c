@@ -434,8 +434,11 @@ char *get_hash_from_fd(int fd)
 	// Ask for buffer size and allocate it
 	len = gcry_md_get_algo_dlen(GCRY_MD_SHA256) * sizeof(char);
 	digest = malloc((2 * len) + 1);
-	if (digest == NULL)
+	if (digest == NULL) {
+		gcry_md_close(ctx);
+		rewind_fd(fd);
 		return NULL;
+	}
 
 	// Get pointer to array of hex bytes
 	hptr = (char *)gcry_md_read(ctx, GCRY_MD_SHA256);

@@ -459,7 +459,14 @@ void policy_no_audit(void)
 
 void destroy_config(void)
 {
+	unsigned int i = 0;
+
 	free(working_buffer);
 	rules_clear(&rules);
+
+	while (i < num_fields) {
+		free((void *)fields[i].name);
+		i++;
+	}
 }
 
