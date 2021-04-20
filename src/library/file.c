@@ -287,9 +287,12 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 		ptr = "application/x-executable";
 		// libc and pthread actually have an interpreter?!?
 		// Need to carve out an exception to reclassify them.
-		if (strncmp("/usr/lib64/lib", path, 14) == 0) {
-			if (strncmp(&path[14], "c-2", 3) == 0 ||
-				    strncmp(&path[14], "pthread-2", 9) == 0)
+		if (strncmp("/usr/lib", path, 8) == 0) {
+			// first 2 are 64 bit, last 2 are 32 bit checks
+			if (strncmp(&path[8], "64/libc-2", 9) == 0 ||
+			    strncmp(&path[8], "64/libpthread-2", 15) == 0 ||
+			    strncmp(&path[8], "/libc-2", 7) == 0 ||
+			    strncmp(&path[8], "/libpthread-2", 13) == 0)
 				ptr = "application/x-sharedlib";
 		}
 	} else {
@@ -301,6 +304,8 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 		} else
 			return NULL;
 	}
+	// TODO: add HAS_BAD_INTERP, HAS_EXE_STACK, HAS_RWE_LOAD to
+	// classify BAD_ELF based on system policy
 	return ptr;
 }
 
