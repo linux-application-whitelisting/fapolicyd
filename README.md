@@ -129,8 +129,50 @@ instead have syslog or log appended to the allow or deny decision.
 
 WRITING RULES
 -------------
-The rules follow a simple "decision permission subject : object" recipe. For
-more information, see the fapolicyd.rules man page.
+The authoritative source is the fapolicyd.rules man page.
+
+It is suggested that people use the known-libs set of rules. This set of
+rules is designed to allow anything that is trusted to execute. It's
+design is to stay out of your way as much as possible. All that you need
+to do is add unpackaged but trusted files to the trust database. See the
+"Managing Trust" section for more.
+
+But if you had to write rules, they follow a simple "decision permission subject : object" recipe. The idea is to write a couple things that you want to
+allow, and then deny everything else. For example, this is how shared libraries are handled:
+
+```
+allow perm=open all : ftype=application/x-sharedlib trust=1
+deny_audit perm=open all : ftype=application/x-sharedlib
+```
+
+What this says is let any program open shared libraries if the library being opened is trusted. Otherwise, deny with an audit event any open of untrusted libraries.
+
+First and foremost, fapolicyd rules are based on trust relationships. It is not meant to be an access control system of Mandatory Access Control Policy. But you can do that. It is not recommended to do this except when necessary. Every rule that is added has to potentially be evaluated - which delays the decision.
+
+If you needed to allow admins access to ping, but deny it to everyone else, you could do that with the following rules:
+
+```
+allow perm=any gid=wheel : trust=1 path=/usr/bin/ping
+deny_audit perm=execute all : trust=1 path=/usr/bin/ping
+```
+
+You can similarly do this for trusted users that have to execute things in the home dir. You can create a trusted_user group, add them the group, and then write a rule allowing them to execute from their home dir.
+
+```
+allow perm=any gid=trusted_user : ftype=%languages dir=/home
+deny_audit perm=any all : ftype=%languages dir=/home
+```
+
+One thing to point out, if you have lists of things that you would like to
+allow, use the macro set support as illustrated in this last example. This puts
+the list into a sorted AVL tree so that searching is cut to a minimum number
+of compares.
+
+One last note, the rule engine is a first match wins system. If you are adding
+rules to allow something but it gets denied by a rule higher up, then move
+your rule above the thing that denies it. But again, if you are writing rules
+to allow execution, you should reconsider if adding the programs to the trust
+database is better.
 
 REPORT
 ------
