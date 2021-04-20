@@ -678,20 +678,21 @@ uint32_t gather_elf(int fd, off_t size)
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
 						// intentional
-					} else if (dyn_tbl[j].d_tag ==
+					} /* else if (dyn_tbl[j].d_tag ==
 								DT_RUNPATH)
 						info |= HAS_RPATH;
+					else if (dyn_tbl[j].d_tag == DT_RPATH)
+						info |= HAS_RPATH; */
 					else if (dyn_tbl[j].d_tag == DT_DEBUG) {
 						info |= HAS_DEBUG;
 						break;
-					} else if (dyn_tbl[j].d_tag == DT_RPATH)
-						info |= HAS_RPATH;
+					}
 					j++;
 				}
 				free(dyn_tbl);
 			}
-			if (info & HAS_RPATH)
-				break;
+//			if (info & HAS_RPATH)
+//				break;
 		}
 		goto done32;
 err_out32:
@@ -830,20 +831,21 @@ done32_obj:
 				while (j < num) {
 					if (dyn_tbl[j].d_tag == DT_NEEDED) {
 						// intentional
-					} else if (dyn_tbl[j].d_tag ==
+					} /* else if (dyn_tbl[j].d_tag ==
 								DT_RUNPATH)
 						info |= HAS_RPATH;
+					else if (dyn_tbl[j].d_tag == DT_RPATH)
+						info |= HAS_RPATH; */
 					else if (dyn_tbl[j].d_tag == DT_DEBUG) {
 						info |= HAS_DEBUG;
 						break;
-					} else if (dyn_tbl[j].d_tag == DT_RPATH)
-						info |= HAS_RPATH;
+					}
 					j++;
 				}
 				free(dyn_tbl);
 			}
-			if (info & HAS_RPATH)
-				break;
+//			if (info & HAS_RPATH)
+//				break;
 		}
 		goto done64;
 err_out64:

@@ -48,7 +48,7 @@ typedef enum {	STATE_COLLECTING=0,	// initial state - execute
 // HAS_LOAD but no HAS_DYNAMIC is staticly linked app. Normally you see both.
 #define IS_ELF		0x00001
 #define HAS_ERROR	0x00002
-#define HAS_RPATH	0x00004
+// #define HAS_RPATH	0x00004
 #define HAS_DYNAMIC	0x00008
 #define HAS_LOAD	0x00010
 #define HAS_INTERP	0x00020
