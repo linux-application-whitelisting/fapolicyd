@@ -24,7 +24,7 @@ Manage the file trust database.
 This command adds the file given by path to the trust database. It gets the size and calculates the required SHA256 hash. If the path is a directory, it will walk the directory tree to the bottom and add every regular file that it finds.
 .TP 12
 .B delete
-This command deletes all entries that match from the trust database. It will try to match mutiple entries so that entire directories can be deleted in one command. To ensure that you only match a directory and not a partial name, be sure to end with '/'.
+This command deletes all entries that match from the trust database. It will try to match multiple entries so that entire directories can be deleted in one command. To ensure that you only match a directory and not a partial name, be sure to end with '/'.
 .TP 12
 .B update
 This command updates the size and hash of any matching paths in the file trust database. If no path is given, then all files are updated. If an argument is passed, then only matching paths get updated. If the intent is to match against a directory, ensure that it ends with '/'.
