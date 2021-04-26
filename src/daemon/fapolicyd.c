@@ -33,7 +33,6 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/resource.h>
-#include <stdio.h>
 #include <ctype.h>
 #include <cap-ng.h>
 #include <sys/prctl.h>
