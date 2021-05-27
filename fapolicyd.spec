@@ -102,12 +102,12 @@ fi
 %attr(644,root,root) %{_mandir}/man5/*
 %attr(644,root,root) %{_mandir}/man1/*
 %attr(644,root,root) %{_datadir}/%{name}/*
-%ghost %{_localstatedir}/log/%{name}-access.log
+%ghost %attr(440,%{name},%{name}) %verify(not md5 size maj min mtime) %{_localstatedir}/log/%{name}-access.log
 %attr(770,root,%{name}) %dir %{_localstatedir}/lib/%{name}
 %attr(770,root,%{name}) %dir /run/%{name}
-%ghost /run/%{name}/%{name}.fifo
-%ghost %{_localstatedir}/lib/%{name}/data.mdb
-%ghost %{_localstatedir}/lib/%{name}/lock.mdb
+%ghost %attr(660,root,%{name}) /run/%{name}/%{name}.fifo
+%ghost %attr(660,%{name},%{name}) %verify(not md5 size maj min mtime) %{_localstatedir}/lib/%{name}/data.mdb
+%ghost %attr(660,%{name},%{name}) %verify(not md5 size maj min mtime) %{_localstatedir}/lib/%{name}/lock.mdb
 %{python3_sitelib}/dnf-plugins/%{name}-dnf-plugin.py
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
