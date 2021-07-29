@@ -20,11 +20,21 @@
  *
  * Authors:
  *   Radovan Sroka <rsroka@redhat.com>
+ *   Zoltan Fridrich <zfridric@redhat.com>
  */
 
 #ifndef STRING_UTIL_H
 #define STRING_UTIL_H
 
 char *fapolicyd_strtrim(char *s);
+
+/**
+ * Concatenates two NULL terminated strings
+ *
+ * @param s1 First NULL terminated string
+ * @param s2 Second NULL terminated string
+ * @return Dynamically allocated NULL terminated string s1||s2
+ */
+char *fapolicyd_strcat(const char *s1, const char *s2);
 
 #endif

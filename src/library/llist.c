@@ -21,6 +21,7 @@
  *
  * Authors:
  *   Radovan Sroka <rsroka@redhat.com>
+ *   Zoltan Fridrich <zfridric@redhat.com>
  */
 
 #include <stdio.h>
@@ -47,9 +48,8 @@ list_item_t *list_get_first(const list_t *list)
 
 int list_append(list_t *list, const char *index, const char *data)
 {
-	list_item_t *item;
-
-	if ((item = (list_item_t *)malloc(sizeof(list_item_t))) == NULL) {
+	list_item_t *item = malloc(sizeof(list_item_t));
+	if (!item) {
 		msg(LOG_ERR, "Malloc failed");
 		return 1;
 	}
@@ -58,16 +58,15 @@ int list_append(list_t *list, const char *index, const char *data)
 	item->data = data;
 	item->next = NULL;
 
-	if (list->first == NULL) {
-		list->first = item;
+	if (list->first) {
+		list->last->next = item;
 		list->last = item;
 	} else {
-		list_item_t *tmp = list->last;
+		list->first = item;
 		list->last = item;
-		tmp->next = item;
 	}
 
-	list->count++;
+	++list->count;
 	return 0;
 }
 
@@ -83,50 +82,57 @@ void list_destroy_item(list_item_t **item)
 
 void list_empty(list_t *list)
 {
-	if (list->first == NULL)
+	if (!list->first)
 		return;
-	else {
-		list_item_t *actual = list->first;
-		list_item_t *next = NULL;
-		for (; actual != NULL ; actual = next) {
-			next = actual->next;
-			list_destroy_item(&actual);
-		}
-
-		list->first = NULL;
-		list->last = NULL;
-		list->count = 0;
+		
+	list_item_t *actual = list->first;
+	list_item_t *next = NULL;
+	for (; actual; actual = next) {
+		next = actual->next;
+		list_destroy_item(&actual);
 	}
+	list_init(list);
 }
 
 
 // Return 1 if the list contains the string, 0 otherwise
 int list_contains(list_t *list, const char *str)
 {
-	list_item_t *lptr = list->first;
-	while (lptr) {
-		if (strcmp(str, lptr->index) == 0)
+	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
+		if (!strcmp(str, lptr->index))
 			return 1;
-		lptr = lptr->next;
 	}
 	return 0;
 }
 
-void list_remove(list_t *list, const char *str)
+// Return 1 if an item was removed, 0 otherwise
+int list_remove(list_t *list, const char *str)
 {
-	list_item_t *prev = NULL, *lptr = list->first;
-	while (lptr) {
-		if (strcmp(str, lptr->index) == 0) {
+	list_item_t *lptr, *prev = NULL;
+	for (lptr = list->first; lptr; lptr = lptr->next) {
+		if (!strcmp(str, lptr->index)) {
 			if (prev)
 				prev->next = lptr->next;
 			else
-				list->first = NULL;
-			list->count--;
+				list->first = lptr->next;
+			if (!lptr->next)
+				list->last = prev;
+			--list->count;
 			list_destroy_item(&lptr);
-			return;
+			return 1;
 		}
 		prev = lptr;
-		lptr = lptr->next;
 	}
+	return 0;
 }
 
+void list_merge(list_t *dest, list_t *src)
+{
+	if (!dest->last) {
+		*dest = *src;
+	} else {
+		dest->last->next = src->first;
+		dest->count += src->count;
+	}
+	list_init(src);
+}

@@ -21,6 +21,7 @@
  * Authors:
  *   Radovan Sroka <rsroka@redhat.com>
  *   Steve Grubb <sgrubb@redhat.com>
+ *   Zoltan Fridrich <zfridric@redhat.com>
  */
 
 #include "config.h"
@@ -39,20 +40,21 @@
 #include <lmdb.h>
 #include "policy.h"
 #include "database.h"
-#include "file-backend.h"
+#include "file-cli.h"
 #include "fapolicyd-backend.h"
 #include "string-util.h"
 
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
-"-d, --delete-db\t\tDelete the trust database\n"
-"-D, --dump-db\t\tDump the trust database contents\n"
-"-f, --file option path\tManage the file trust database\n"
-"-h, --help\t\tPrints this help message\n"
-"-t, --ftype file-path\tPrints out the mime type of a file\n"
-"-l, --list\t\tPrints a list of the daemon's rules with numbers\n"
-"-u, --update\t\tNotifies fapolicyd to perform update of database\n"
+"-d, --delete-db       Delete the trust database\n"
+"-D, --dump-db         Dump the trust database contents\n"
+"-f, --file cmd path   Manage the file trust database\n"
+"--trust-file file     Use after --file to specify trust file\n"
+"-h, --help            Prints this help message\n"
+"-t, --ftype file-path Prints out the mime type of a file\n"
+"-l, --list            Prints a list of the daemon's rules with numbers\n"
+"-u, --update          Notifies fapolicyd to perform update of database\n"
 ;
 
 static struct option long_opts[] =
@@ -209,38 +211,63 @@ env_close:
  * This function always requires at least one option, the command. We can
  * guarantee that argv[2] is the command because getopt_long would have
  * printed an error otherwise. argv[3] would be an optional parameter based
- * on which command is being run.
+ * on which command is being run. If argv[4] == "--trust-file" then argv[5]
+ * specifies a trust file to operate on.
  *
- * The function returns 0 on success and -1 on failure
+ * The function returns 0 on success and 1 on failure
  */
 static int do_manage_files(int argc, char * const argv[])
 {
 	int rc = 0;
 
 	if (strcmp("add", argv[2]) == 0) {
-		if (argc != 4)
+		switch (argc) {
+		case 4:
+			rc = file_append(argv[3], NULL);
+			break;
+		case 6:
+			if (strcmp("--trust-file", argv[4]))
+				goto args_err;
+			rc = file_append(argv[3], argv[5]);
+			break;
+		default:
 			goto args_err;
-
-		rc = file_append(argv[3]);
-		if (rc)
-			rc = 1; // simplify return code
+		}
 	} else if (strcmp("delete", argv[2]) == 0) {
-		if (argc != 4)
+		switch (argc) {
+		case 4:
+			rc = file_delete(argv[3], NULL);
+			break;
+		case 6:
+			if (strcmp("--trust-file", argv[4]))
+				goto args_err;
+			rc = file_delete(argv[3], argv[5]);
+			break;
+		default:
 			goto args_err;
-
-		rc = file_delete(argv[3]);
+		}
 	} else if (strcmp("update", argv[2]) == 0) {
-		if (argc == 4)
-			rc = file_update(argv[3]);
-		 else
-			rc = file_update("/");
-
+		switch (argc) {
+		case 3:
+			rc = file_update("/", NULL);
+			break;
+		case 4:
+			rc = file_update(argv[3], NULL);
+			break;
+		case 6:
+			if (strcmp("--trust-file", argv[4]))
+				goto args_err;
+			rc = file_update(argv[3], argv[5]);
+			break;
+		default:
+			goto args_err;
+		}
 	} else {
 		fprintf(stderr, "Missing operation option add|delete|update\n\n");
 		goto args_err;
 	}
 
-	return rc;
+	return rc ? 1 : 0;
 
 args_err:
 	fprintf(stderr, "Wrong number of arguments\n\n");
@@ -440,9 +467,6 @@ int main(int argc, char * const argv[])
 		return rc;
 	}
 
-	if (argc > 5)
-		goto args_err;
-
 	opt = getopt_long(argc, argv, "Ddf:ht:lu",
 				 long_opts, &option_index);
 	switch (opt) {
@@ -457,7 +481,7 @@ int main(int argc, char * const argv[])
 		rc = do_dump_db();
 		break;
 	case 'f':
-		if (argc > 4)
+		if (argc > 6)
 			goto args_err;
 		rc = do_manage_files(argc, argv);
 		break;
