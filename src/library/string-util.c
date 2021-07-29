@@ -20,10 +20,13 @@
  *
  * Authors:
  *   Radovan Sroka <rsroka@redhat.com>
+ *   Zoltan Fridrich <zfridric@redhat.com>
  */
 
-#include <stdio.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "string-util.h"
 
@@ -51,3 +54,12 @@ char *fapolicyd_strtrim(char *s)
 	return s;
 }
 
+char *fapolicyd_strcat(const char *s1, const char *s2)
+{
+	size_t s1_len = strlen(s1);
+	size_t s2_len = strlen(s2);
+	char *r = malloc(s1_len + s2_len + 1);
+	strcpy(r, s1);
+	strcat(r, s2);
+	return r;
+}

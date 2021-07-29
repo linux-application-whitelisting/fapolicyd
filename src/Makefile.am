@@ -31,7 +31,6 @@ libfapolicyd_la_SOURCES = \
 	library/file.c \
 	library/file.h \
 	library/file-backend.c \
-	library/file-backend.h \
 	library/gcc-attributes.h \
 	library/llist.c \
 	library/llist.h \
@@ -57,7 +56,9 @@ libfapolicyd_la_SOURCES = \
 	library/subject.c \
 	library/subject.h \
 	library/string-util.c \
-	library/string-util.h
+	library/string-util.h \
+	library/trust-file.c \
+	library/trust-file.h
 
 if WITH_RPM
 libfapolicyd_la_SOURCES += library/rpm-backend.c
@@ -82,5 +83,9 @@ fapolicyd_LDADD = libfapolicyd.la
 fapolicyd_LDFLAGS += -static
 
 
-fapolicyd_cli_SOURCES = cli/fapolicyd-cli.c
+fapolicyd_cli_SOURCES = \
+	cli/fapolicyd-cli.c \
+	cli/file-cli.c \
+	cli/file-cli.h
+
 fapolicyd_cli_LDADD = libfapolicyd.la

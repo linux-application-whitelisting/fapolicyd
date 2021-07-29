@@ -1,5 +1,5 @@
 /*
- * file-backend.h - Header file for management functions of file-backend.c
+ * trust-file.h - Header for managing trust files
  * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
@@ -19,16 +19,27 @@
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
- *   Steve Grubb <sgrubb@redhat.com>
- *   Radovan Sroka <rsroka@redhat.com>
+ *   Zoltan Fridrich <zfridric@redhat.com>
  */
 
-#ifndef FILE_BACKEND_HEADER
-#define FILE_BACKEND_HEADER
+#ifndef TRUST_FILE_H
+#define TRUST_FILE_H
 
-int file_append(const char *path);
-int file_delete(const char *path);
-int file_update(const char *path);
+#include "llist.h"
+
+#define TRUST_FILE_PATH "/etc/fapolicyd/fapolicyd.trust"
+#define TRUST_DIR_PATH "/etc/fapolicyd/trust.d/"
+
+int trust_file_append(const char *fpath, const list_t *list);
+
+int trust_file_load(const char *fpath, list_t *list);
+int trust_file_update_path(const char *fpath, const char *path);
+int trust_file_delete_path(const char *fpath, const char *path);
+int trust_file_rm_duplicates(const char *fpath, list_t *list);
+
+void trust_file_load_all(list_t *list);
+int trust_file_update_path_all(const char *path);
+int trust_file_delete_path_all(const char *path);
+void trust_file_rm_duplicates_all(list_t *list);
 
 #endif
-

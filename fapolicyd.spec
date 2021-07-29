@@ -46,6 +46,7 @@ install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{n
 install -p -m 644 init/%{name}.rules.known-libs %{buildroot}/%{_sysconfdir}/%{name}/%{name}.rules
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
+mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
 
 #cleanup
 find %{buildroot} \( -name '*.la' -o -name '*.a' \) -exec rm -f {} ';'
@@ -72,6 +73,7 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %attr(755,root,%{name}) %dir %{_datadir}/%{name}
 %attr(644,root,%{name}) %{_datadir}/%{name}/%{name}.rules.*
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
+%attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/trust.d
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
@@ -93,5 +95,5 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
-* Thu Apr 02 2021 Steve Grubb <sgrubb@redhat.com> 1.0.4-1
+* Fri Apr 02 2021 Steve Grubb <sgrubb@redhat.com> 1.0.4-1
 - New release
