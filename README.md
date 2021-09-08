@@ -69,7 +69,7 @@ The known-libs policy (default) is designed with these goals in mind:
 
 1. No bypass of security by executing programs via ld.so.
 2. Anything requesting execution must be trusted.
-3. Any library or interpretted application or module must be trusted.
+3. Any library or interpreted application or module must be trusted.
 4. Everything else is not allowed.
 
 EXPERIMENTING
@@ -270,7 +270,7 @@ max_size by the page size, we get 9728 which matches the setting. Each entry
 in the lmdb database is 512 bytes. So, for each 4k page, we can have data on
 8 trusted files.
 
-An ideal size for the database is for the statistics to come up aound 75% in
+An ideal size for the database is for the statistics to come up around 75% in
 case you decide to install new software some day. The formula is 
 
 ```
@@ -435,7 +435,7 @@ file. Just add the places where libraries and applications are stored.
 2) Can SE Linux or AppArmor do this instead?
 
 SE Linux is modeling how an application behaves. It is not concerned about
-where the application came from or whether its known to the system. Basically,
+where the application came from or whether it's known to the system. Basically,
 anything in /bin gets bin_t type by default which is not a very restrive label.
 MAC systems serve a different purpose. Fapolicyd by design cares solely about
 if this is a known application/library. These are complimentary security
@@ -477,7 +477,7 @@ that will make it no longer trusted.
 5) Does this protect against root modifications?
 
 If you are root, you can change the fapolicyd rules or simply turn off the
-deamon. So, this is not designed to prevent root from doing things. None of
+daemon. So, this is not designed to prevent root from doing things. None of
 the integrity subsystems on Linux are designed to prevent root from doing
 things. There has to be a way of doing updates or disabling something for
 troubleshooting. For example, you can change IMA to ima_appraise=fix in
