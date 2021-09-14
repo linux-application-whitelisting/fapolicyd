@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora:rawhide
+    container: fedora:rawhide
 
     steps:
     - uses: actions/checkout@v2
@@ -27,7 +27,7 @@ jobs:
       run: ./autogen.sh
 
     - name: configure
-      run: ./configure --with-rpm --with-audit --disable-shared
+      run: ./configure --with-rpm --with-audit --disable-shared --disable-dependency-tracking
 
     - name: build
       run: make

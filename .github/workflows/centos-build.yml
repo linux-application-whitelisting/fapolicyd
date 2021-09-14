@@ -1,4 +1,4 @@
-name: stable-fedora-build
+name: centos-build
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: fedora:latest
+    container: centos
 
     steps:
     - uses: actions/checkout@v2
@@ -17,11 +17,14 @@ jobs:
     - name: getting envinronment info
       run: uname -a
 
-    - name: print fedora version
-      run: cat /etc/fedora-release
+    - name: print centos version
+      run: cat /etc/*release
 
-    - name: installing dependecies
-      run: dnf -y install dnf-plugins-core python3-dnf-plugins-core; dnf -y builddep ./fapolicyd.spec
+    - name: installing dependecies 1
+      run: dnf -y install epel-release dnf-plugins-core python3-dnf-plugins-core --nogpgcheck
+
+    - name: installing dependecies 2
+      run:  dnf -y builddep ./fapolicyd.spec --enablerepo='powertools' --nogpgcheck
 
     - name: generate config files
       run: ./autogen.sh
