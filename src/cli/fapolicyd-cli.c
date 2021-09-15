@@ -38,6 +38,7 @@
 #include <getopt.h>
 #include <stdatomic.h>
 #include <lmdb.h>
+#include <limits.h>
 #include "policy.h"
 #include "database.h"
 #include "file-cli.h"
@@ -220,51 +221,58 @@ static int do_manage_files(int argc, char * const argv[])
 {
 	int rc = 0;
 
-	if (strcmp("add", argv[2]) == 0) {
-		switch (argc) {
-		case 4:
-			rc = file_append(argv[3], NULL);
-			break;
-		case 6:
-			if (strcmp("--trust-file", argv[4]))
-				goto args_err;
-			rc = file_append(argv[3], argv[5]);
-			break;
-		default:
+	if (argc > 0) {
+		if ( (strcmp("add", argv[0]) != 0)
+			 && (strcmp("delete", argv[0]) != 0)
+			 && (strcmp("update", argv[0]) != 0) ) {
+			fprintf(stderr, "%s is not valid option, choose from add|delete|update\n", argv[0]);
 			goto args_err;
 		}
-	} else if (strcmp("delete", argv[2]) == 0) {
-		switch (argc) {
-		case 4:
-			rc = file_delete(argv[3], NULL);
-			break;
-		case 6:
-			if (strcmp("--trust-file", argv[4]))
-				goto args_err;
-			rc = file_delete(argv[3], argv[5]);
-			break;
-		default:
-			goto args_err;
-		}
-	} else if (strcmp("update", argv[2]) == 0) {
-		switch (argc) {
-		case 3:
-			rc = file_update("/", NULL);
-			break;
-		case 4:
-			rc = file_update(argv[3], NULL);
-			break;
-		case 6:
-			if (strcmp("--trust-file", argv[4]))
-				goto args_err;
-			rc = file_update(argv[3], argv[5]);
-			break;
-		default:
-			goto args_err;
-		}
-	} else {
-		fprintf(stderr, "Missing operation option add|delete|update\n\n");
+	}
+
+	if (argc < 2)
 		goto args_err;
+
+
+	if (strcmp("add", argv[0]) == 0) {
+		switch (argc) {
+		case 2:
+			rc = file_append(argv[1], NULL);
+			break;
+		case 4:
+			if (strcmp("--trust-file", argv[2]))
+				goto args_err;
+			rc = file_append(argv[1], argv[3]);
+			break;
+		default:
+			goto args_err;
+		}
+	} else if (strcmp("delete", argv[0]) == 0) {
+		switch (argc) {
+		case 2:
+			rc = file_delete(argv[1], NULL);
+			break;
+		case 4:
+			if (strcmp("--trust-file", argv[2]))
+				goto args_err;
+			rc = file_delete(argv[1], argv[3]);
+			break;
+		default:
+			goto args_err;
+		}
+	} else if (strcmp("update", argv[0]) == 0) {
+		switch (argc) {
+		case 2:
+			rc = file_update(argv[1], NULL);
+			break;
+		case 4:
+			if (strcmp("--trust-file", argv[2]))
+				goto args_err;
+			rc = file_update(argv[1], argv[3]);
+			break;
+		default:
+			goto args_err;
+		}
 	}
 
 	return rc ? 1 : 0;
@@ -483,7 +491,9 @@ int main(int argc, char * const argv[])
 	case 'f':
 		if (argc > 6)
 			goto args_err;
-		rc = do_manage_files(argc, argv);
+		// fapolicyd-cli, -f, | operation, path ...
+		// skip the first two args
+		rc = do_manage_files(argc-2, argv+2);
 		break;
 	case 'h':
 		printf("%s", usage);
