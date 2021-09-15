@@ -233,16 +233,23 @@ static int do_manage_files(int argc, char * const argv[])
 	if (argc < 2)
 		goto args_err;
 
+	char full_path[PATH_MAX] = {0};
+
+	if (realpath(argv[1], full_path) == NULL) {
+		fprintf(stderr, "Cannot get realpath from: %s\n", argv[1]);
+		perror("realpath");
+		goto args_err;
+	}
 
 	if (strcmp("add", argv[0]) == 0) {
 		switch (argc) {
 		case 2:
-			rc = file_append(argv[1], NULL);
+			rc = file_append(full_path, NULL);
 			break;
 		case 4:
 			if (strcmp("--trust-file", argv[2]))
 				goto args_err;
-			rc = file_append(argv[1], argv[3]);
+			rc = file_append(full_path, argv[3]);
 			break;
 		default:
 			goto args_err;
@@ -250,12 +257,12 @@ static int do_manage_files(int argc, char * const argv[])
 	} else if (strcmp("delete", argv[0]) == 0) {
 		switch (argc) {
 		case 2:
-			rc = file_delete(argv[1], NULL);
+			rc = file_delete(full_path, NULL);
 			break;
 		case 4:
 			if (strcmp("--trust-file", argv[2]))
 				goto args_err;
-			rc = file_delete(argv[1], argv[3]);
+			rc = file_delete(full_path, argv[3]);
 			break;
 		default:
 			goto args_err;
@@ -263,12 +270,12 @@ static int do_manage_files(int argc, char * const argv[])
 	} else if (strcmp("update", argv[0]) == 0) {
 		switch (argc) {
 		case 2:
-			rc = file_update(argv[1], NULL);
+			rc = file_update(full_path, NULL);
 			break;
 		case 4:
 			if (strcmp("--trust-file", argv[2]))
 				goto args_err;
-			rc = file_update(argv[1], argv[3]);
+			rc = file_update(full_path, argv[3]);
 			break;
 		default:
 			goto args_err;
