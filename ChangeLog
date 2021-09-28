@@ -1,5 +1,6 @@
 1.0.4
 - Tighten up ELF detection
+- Add support for multiple trust files in a trust.d directory
 
 1.0.3
 - Add startup and shutdown syslog message
