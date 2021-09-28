@@ -549,8 +549,14 @@ static int delete_all_entries_db()
 		return 3;
 	}
 
-	if (mdb_txn_commit(txn))
+	if ((rc = mdb_txn_commit(txn))) {
+		if (rc == MDB_MAP_FULL)
+			msg(LOG_ERR, "db_max_size needs to be increased");
+		else
+			msg(LOG_DEBUG, "mdb_txn_commit -> %s",
+			    mdb_strerror(rc));
 		return 4;
+	}
 
 	return 0;
 }
