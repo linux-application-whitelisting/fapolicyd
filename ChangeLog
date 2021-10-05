@@ -2,6 +2,7 @@
 - Tighten up ELF detection
 - Add support for multiple trust files in a trust.d directory
 - Add troubleshooting info for when the trust db is full
+- In permissive mode, allow audit events when rules say to log it
 
 1.0.3
 - Add startup and shutdown syslog message
