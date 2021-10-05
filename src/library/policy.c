@@ -430,7 +430,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 	if (metadata->mask & mask) {
 		response.fd = metadata->fd;
 		if (permissive)
-			response.response = FAN_ALLOW;
+			response.response = FAN_ALLOW | decision & AUDIT;
 		else
 			response.response = decision & FAN_RESPONSE_MASK;
 		close(metadata->fd);
