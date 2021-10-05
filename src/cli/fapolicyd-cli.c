@@ -71,7 +71,7 @@ static struct option long_opts[] =
 
 static const char *_pipe = "/run/fapolicyd/fapolicyd.fifo";
 volatile atomic_bool stop = 0;  // Library needs this
-int debug = 0;			// Library needs this
+unsigned int debug = 0;			// Library needs this
 
 static char *get_line(FILE *f, unsigned *lineno)
 {
