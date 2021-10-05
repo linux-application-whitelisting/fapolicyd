@@ -56,7 +56,7 @@
 
 
 // Global program variables
-int debug = 0, permissive = 0;
+unsigned int debug = 0, permissive = 0;
 
 // Signal handler notifications
 volatile atomic_bool stop = 0;

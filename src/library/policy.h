@@ -58,8 +58,8 @@ typedef enum {
 	DENY_LOG = FAN_DENY | AUDIT | SYSLOG
 } decision_t;
 
-extern int debug;
-extern int permissive;
+extern unsigned int debug;
+extern unsigned int permissive;
 
 int dec_name_to_val(const char *name);
 int load_config(const conf_t *config);
