@@ -44,6 +44,7 @@ typedef struct conf
 	const char *trust;
 	integrity_t integrity;
 	const char *syslog_format;
+	unsigned int rpm_sha256_only;
 } conf_t;
 
 #endif

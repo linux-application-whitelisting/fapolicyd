@@ -817,7 +817,7 @@ int init_database(conf_t *config)
 		return rc;
 	}
 
-	if ((rc = backend_load())) {
+	if ((rc = backend_load(config))) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
 		close_db();
 		return rc;
@@ -1071,7 +1071,7 @@ static int update_database(conf_t *config)
 	 * backend loading/reloading should be done in upper level
 	 */
 	/*
-	   if ((rc = backend_load())) {
+	   if ((rc = backend_load(config))) {
 	   msg(LOG_ERR, "Cannot open the backend database (%d)", rc);
 	   return rc;
 	   }*/
@@ -1233,7 +1233,7 @@ static void *update_thread_main(void *arg)
 
 					backend_close();
 					backend_init(config);
-					backend_load();
+					backend_load(config);
 
 					if ((rc = update_database(config))) {
 						msg(LOG_ERR,

@@ -25,6 +25,7 @@
 #ifndef FAPOLICYD_BACKEND_HEADER
 #define FAPOLICYD_BACKEND_HEADER
 
+#include "conf.h"
 #include "llist.h"
 
 typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB } trust_src_t;
@@ -36,7 +37,7 @@ typedef struct _backend
 {
 	const char * name;
 	int (*init)(void);
-	int (*load)(void);
+	int (*load)(const conf_t *);
 	int (*close)(void);
 	list_t list;
 } backend;

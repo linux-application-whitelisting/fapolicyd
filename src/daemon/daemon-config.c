@@ -91,6 +91,8 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int syslog_format_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
+static int rpm_sha256_only_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -108,6 +110,7 @@ static const struct kw_pair keywords[] =
   {"trust",		trust_parser },
   {"integrity",		integrity_parser },
   {"syslog_format",	syslog_format_parser },
+  {"rpm_sha256_only", rpm_sha256_only_parser},
   { NULL,		NULL }
 };
 
@@ -135,6 +138,7 @@ static void clear_daemon_config(conf_t *config)
 	config->integrity = IN_NONE;
 	config->syslog_format =
 		strdup("rule,dec,perm,auid,pid,exe,:,path,ftype");
+	config->rpm_sha256_only = 0;
 }
 
 int load_daemon_config(conf_t *config)
@@ -587,3 +591,20 @@ static int syslog_format_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+static int rpm_sha256_only_parser(const struct nv_pair *nv, int line,
+                conf_t *config)
+{
+	int rc = 0;
+#ifndef USE_RPM
+	msg(LOG_WARNING, "rpm_sha256_only: fapolicyd was not built with rpm support, ignoring" );
+#else
+	rc = unsigned_int_parser(&(config->rpm_sha256_only), nv->value, line);
+	if (rc == 0 && config->rpm_sha256_only > 1) {
+		msg(LOG_WARNING,
+			"rpm_sha256_only value reset to 0 - line %d", line);
+		config->rpm_sha256_only = 0;
+	}
+#endif
+
+	return rc;
+}

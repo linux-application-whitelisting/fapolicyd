@@ -37,7 +37,7 @@ typedef struct _backend_entry {
 
 
 int backend_init(const conf_t *conf);
-int backend_load(void);
+int backend_load(const conf_t *conf);
 void backend_close(void);
 backend_entry* backend_get_first(void);
 
