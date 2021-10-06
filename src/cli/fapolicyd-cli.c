@@ -422,33 +422,12 @@ static int do_update(void)
 			return 1;
 		}
 		// we will require pipe to have 0660 permissions
-		if (!(
-		      (s.st_mode & S_IRUSR) &&
-		      (s.st_mode & S_IWUSR) &&
-		      !(s.st_mode & S_IXUSR) &&
-
-		      (s.st_mode & S_IRGRP) &&
-		      (s.st_mode & S_IWGRP) &&
-		      !(s.st_mode & S_IXGRP) &&
-
-		      !(s.st_mode & S_IROTH) &&
-		      !(s.st_mode & S_IWOTH) &&
-		      !(s.st_mode & S_IXOTH)
-		     )) {
+		mode_t mode = s.st_mode & ~S_IFMT;
+		if (mode != 0660) {
 			fprintf(stderr,
-				"File: %s has 0%d%d%d instead of 0660 \n",
+				"File: %s has 0%o instead of 0660 \n",
 				_pipe,
-				((s.st_mode & S_IRUSR) ? 4 : 0) +
-				((s.st_mode & S_IWUSR) ? 2 : 0) +
-				((s.st_mode & S_IXUSR) ? 1 : 0)
-				,
-				((s.st_mode & S_IRGRP) ? 4 : 0) +
-				((s.st_mode & S_IWGRP) ? 2 : 0) +
-				((s.st_mode & S_IXGRP) ? 1 : 0)
-				,
-				((s.st_mode & S_IROTH) ? 4 : 0) +
-				((s.st_mode & S_IWOTH) ? 2 : 0) +
-				((s.st_mode & S_IXOTH) ? 1 : 0) );
+				mode);
 			close(fd);
 			return 1;
 		}
