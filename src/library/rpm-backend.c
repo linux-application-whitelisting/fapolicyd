@@ -40,7 +40,7 @@
 #include "llist.h"
 
 static int rpm_init_backend(void);
-static int rpm_load_list(void);
+static int rpm_load_list(const conf_t *);
 static int rpm_destroy_backend(void);
 
 backend rpm_backend =
@@ -276,7 +276,7 @@ struct _hash_record {
 };
 
 extern int debug;
-static int rpm_load_list(void)
+static int rpm_load_list(const conf_t *conf)
 {
 	int rc;
 	unsigned int msg_count = 0;
@@ -332,6 +332,13 @@ static int rpm_load_list(void)
 				if (debug || msg_count++ < 5) {
 					msg(LOG_WARNING, "No SHA256 for %s",
 							    file_name);
+				}
+
+				// skip the entry if there is no sha256
+				if (conf && conf->rpm_sha256_only) {
+					free((void *)file_name);
+					free((void *)sha);
+					continue;
 				}
 			}
 

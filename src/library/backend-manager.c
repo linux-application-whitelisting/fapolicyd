@@ -138,11 +138,11 @@ int backend_init(const conf_t *conf)
 }
 
 
-int backend_load(void)
+int backend_load(const conf_t *conf)
 {
 	for (backend_entry *be = backend_get_first();
 			be != NULL; be = be->next) {
-		if (be->backend->load())
+		if (be->backend->load(conf))
 			return 1;
 	}
 	return 0;

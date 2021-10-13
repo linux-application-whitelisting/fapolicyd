@@ -36,7 +36,7 @@
 
 
 static int file_init_backend(void);
-static int file_load_list(void);
+static int file_load_list(const conf_t *conf);
 static int file_destroy_backend(void);
 
 backend file_backend =
@@ -50,7 +50,7 @@ backend file_backend =
 
 
 
-static int file_load_list(void)
+static int file_load_list(const conf_t *conf)
 {
 	msg(LOG_DEBUG, "Loading file backend");
 	list_empty(&file_backend.list);
