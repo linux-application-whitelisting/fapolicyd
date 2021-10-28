@@ -287,12 +287,15 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 		ptr = "application/x-executable";
 		// libc and pthread actually have an interpreter?!?
 		// Need to carve out an exception to reclassify them.
-		if (strncmp("/usr/lib", path, 8) == 0) {
-			// first 2 are 64 bit, last 2 are 32 bit checks
-			if (strncmp(&path[8], "64/libc-2", 9) == 0 ||
-			    strncmp(&path[8], "64/libpthread-2", 15) == 0 ||
-			    strncmp(&path[8], "/libc-2", 7) == 0 ||
-			    strncmp(&path[8], "/libpthread-2", 13) == 0)
+		const char *p = path;
+		if (!strncmp(p, "/usr", 4))
+			p += 4;
+		if (!strncmp(p, "/lib", 4)) {
+			p += 4;
+			if (!strncmp(p, "64", 2))
+				p += 2;
+			if (!strncmp(p, "/libc-2", 7) ||
+				!strncmp(p, "/libpthread-2", 13))
 				ptr = "application/x-sharedlib";
 		}
 	} else {
