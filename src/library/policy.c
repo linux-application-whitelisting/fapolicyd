@@ -194,7 +194,7 @@ int load_config(const conf_t *config)
 	// Now open the file and load them one by one.
 	fd = open(RULES_FILE, O_NOFOLLOW|O_RDONLY);
 	if (fd < 0) {
-		msg(LOG_ERR, "Error opening config (%s)",
+		msg(LOG_ERR, "Error opening rules file (%s)",
 			strerror(errno));
 		return 1;
 	}
@@ -227,7 +227,7 @@ int load_config(const conf_t *config)
 	rules_regen_sets(&rules);
 
 	if (rules.cnt == 0) {
-		msg(LOG_INFO, "No rules in config - exiting");
+		msg(LOG_INFO, "No rules in file - exiting");
 		return 1;
 	} else {
 		msg(LOG_DEBUG, "Loaded %u rules", rules.cnt);
