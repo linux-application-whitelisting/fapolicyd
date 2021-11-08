@@ -179,93 +179,61 @@ static void close_rpm(void)
 // be kept or dropped. 1 means discard it, and 0 means keep it.
 static int drop_path(const char *file_name)
 {
-	if (file_name[1] == 'u') {
-		if (file_name[5] == 's') {
-			// Only keep languages from /usr/share
-			if (file_name[6] == 'h' ) {
-				// These are roughly ordered by quantity
-				// Python byte code
-				if (fnmatch("*.py?",
-						 file_name, 0) == 0)
-					return 0;
-				// Python text files
-				else if (fnmatch("*.py",
-						 file_name, 0) == 0)
-					return 0;
-				// Some apps have a private libexec
-				else if (fnmatch("*/libexec/*",
-						file_name, 0) == 0)
-					return 0;
-				// Ruby
-				else if (fnmatch("*.rb",
-						 file_name, 0) == 0)
-					return 0;
-				// Perl
-				else if (fnmatch("*.pl",
-						 file_name, 0) == 0)
-					return 0;
-				// System Tap
-				else if (fnmatch("*.stp",
-						 file_name, 0) == 0)
-					return 0;
-				// Javascript
-				else if (fnmatch("*.js",
-						 file_name, 0) == 0)
-					return 0;
-				// Java
-				else if (fnmatch("*.jar",
-						 file_name, 0) == 0)
-					return 0;
-				// M4
-				else if (fnmatch("*.m4",
-						 file_name, 0) == 0)
-					return 0;
-				// PHP
-				else if (fnmatch("*.php",
-						 file_name, 0) == 0)
-					return 0;
-				// Perl Modules
-				else if (fnmatch("*.pm",
-						 file_name, 0) == 0)
-					return 0;
-				// Lua
-				else if (fnmatch("*.lua",
-						 file_name, 0) == 0)
-					return 0;
-				// Java
-				else if (fnmatch("*.class",
-						 file_name, 0) == 0)
-					return 0;
-				// Typescript
-				else if (fnmatch("*.ts",
-						 file_name, 0) == 0)
-					return 0;
-				else if (fnmatch("*.tsx",
-						 file_name, 0) == 0)
-					return 0;
-				// Lisp
-				else if (fnmatch("*.el",
-						 file_name, 0) == 0)
-					return 0;
-				// Compiled Lisp
-				else if (fnmatch("*.elc",
-						 file_name, 0) == 0)
-					return 0;
-				return 1;
-			// Akmod need scripts in /usr/src/kernel
-			} else if (file_name[6] == 'r' ) {
-				if (fnmatch("*/scripts/*",
-						 file_name, 0) == 0)
-					return 0;
-				else if (fnmatch(
-					"*/tools/objtool/*",
-						 file_name, 0) == 0)
-					return 0;
-				return 1;
-			}
+	const char *p = file_name;
+	if (!strncmp(p, "/usr", 4)) {
+		p += 4;
+
 		// Drop anything in /usr/include
-		} else if (file_name[5] == 'i')
+		if (!strncmp(p, "/include", 8))
 			return 1;
+
+		// Only keep languages from /usr/share
+		if (!strncmp(p, "/share", 6)) {
+			p += 6;
+			
+			// These are roughly ordered by quantity
+			static const char *arr_share[] = {
+				"*.py?",       // Python byte code
+				"*.py",        // Python text files
+				"*/libexec/*", // Some apps have a private libexec
+				"*.rb",        // Ruby
+				"*.pl",        // Perl
+				"*.stp",       // System tap
+				"*.js",        // Javascript
+				"*.jar",       // Java archive
+				"*.m4",        // M4
+				"*.php",       // PHP
+				"*.pm",        // Perl Modules
+				"*.lua",       // Lua
+				"*.class",     // Java
+				"*.ts",        // Typescript
+				"*.tsx",       // Typescript JSX
+				"*.el",        // Lisp
+				"*.elc",       // Compiled Lisp
+				NULL
+			};
+
+			for (int i = 0; arr_share[i]; ++i)
+				if (!fnmatch(arr_share[i], p, 0))
+					return 0;
+			return 1;
+		}
+
+		// Akmod needs scripts in /usr/src/kernel
+		if (!strncmp(p, "/src/kernel", 11)) {
+			p += 11;
+			
+			static const char *arr_src_kernel[] = {
+				"*/scripts/*",
+				"*/tools/objtool/*",
+				NULL
+			};
+			
+			for (int i = 0; arr_src_kernel[i]; ++i)
+				if (!fnmatch(arr_src_kernel[i], p, 0))
+					return 0;
+			return 1;
+		}
 	}
 	return 0;
 }
