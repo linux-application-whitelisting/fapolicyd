@@ -156,6 +156,7 @@ static int write_out_list(list_t *list, const char *dest)
 		}
 		hlen = snprintf(buf, sizeof(buf), "%s %s\n", escaped, str + 2);
 		fwrite(buf, hlen, 1, f);
+		free((void *)escaped);
 	}
 
 	fclose(f);

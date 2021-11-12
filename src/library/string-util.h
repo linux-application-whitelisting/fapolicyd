@@ -26,6 +26,8 @@
 #ifndef STRING_UTIL_H
 #define STRING_UTIL_H
 
+#include "gcc-attributes.h"
+
 char *fapolicyd_strtrim(char *s);
 
 /**
@@ -35,6 +37,6 @@ char *fapolicyd_strtrim(char *s);
  * @param s2 Second NULL terminated string
  * @return Dynamically allocated NULL terminated string s1||s2
  */
-char *fapolicyd_strcat(const char *s1, const char *s2);
+char *fapolicyd_strcat(const char *s1, const char *s2) MALLOCLIKE;
 
 #endif

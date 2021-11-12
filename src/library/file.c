@@ -619,7 +619,7 @@ uint32_t gather_elf(int fd, off_t size)
 
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
-				uint8_t len;
+				uint32_t len;
 				char interp[23];
 				uint32_t filesz = ph_tbl[i].p_filesz;
 				uint32_t offset = ph_tbl[i].p_offset;
@@ -775,7 +775,7 @@ done32_obj:
 
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
-				uint8_t len;
+				uint64_t len;
 				char interp[33];
 				uint64_t filesz = ph_tbl[i].p_filesz;
 				uint64_t offset = ph_tbl[i].p_offset;

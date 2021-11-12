@@ -139,7 +139,7 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 
 	snprintf(path, sizeof(path), "/proc/%d/exe", pid);
 	path_len = readlink(path, buf, blen - 1);
-	if (path_len < 0) {
+	if (path_len <= 0) {
 		if (errno == ENOENT)
 			return get_comm_from_pid(pid, blen, buf);
 

@@ -99,15 +99,17 @@ int file_append(const char *path, const char *fname)
 	list_init(&add_list);
 	if (add_list_load_path(path))
 		return -1;
-	
+
 	trust_file_rm_duplicates_all(&add_list);
 
 	if (add_list.count == 0) {
-		msg(LOG_ERR, "After removing duplicates, there is nothing to add");
+		msg(LOG_ERR,
+		    "After removing duplicates, there is nothing to add");
 		return 1;
 	}
 
-	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) : TRUST_FILE_PATH;
+	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) :
+							TRUST_FILE_PATH;
 	int rc = trust_file_append(dest, &add_list);
 
 	if (fname)
