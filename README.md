@@ -528,6 +528,8 @@ daemon's policy.
 running a script or someone typing things in by hand. The aim at this
 point is to check that any program it calls meets the policy.
 
+* Some interpreters do not immediately read all lines of input. Rather, they read content as needed until they get to end of file. This means that if they do stuff like networking or sleeping or anything that takes time, someone with the privileges to modify the file can add to it after the file's integrity has been checked. This is not unique to fapolicyd, it's simply how things work. Make sure that trusted file permissions are not excessive so that no unexpected file content modifications can occur.
+
 * If for some reason rpm database errors are detected, you may need to do
 the following:
 
