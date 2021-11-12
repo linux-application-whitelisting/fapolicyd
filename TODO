@@ -4,7 +4,6 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-Handle paths with special characters
 Support other packaging manifests
 Allow rules to express paths using globbing (fnmatch)
 Consider adding rule testing to cli (uid, pgm, file)
