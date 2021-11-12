@@ -24,6 +24,8 @@ libfapolicyd_la_SOURCES = \
 	library/conf.h \
 	library/database.c \
 	library/database.h \
+	library/escape.c \
+	library/escape.h \
 	library/event.c \
 	library/event.h \
 	library/fapolicyd-defs.h \

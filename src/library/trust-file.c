@@ -39,6 +39,7 @@
 #include "llist.h"
 #include "message.h"
 #include "trust-file.h"
+#include "escape.h"
 
 
 
@@ -92,11 +93,25 @@ static char *make_path_string(const char *path, int *count)
 	char *hash = get_hash_from_fd(fd);
 	close(fd);
 
-	// Format the output
+
 	char *line;
-	*count = *count ?
-		asprintf(&line, FILE_WRITE_FORMAT, path, sb.st_size, hash) :
-		asprintf(&line, DATA_FORMAT, 0, sb.st_size, hash);
+	if (*count) {
+
+		char * escaped = escape(path, WHITESPACES);
+		if (escaped == NULL) {
+			msg(LOG_ERR, "Could not escape %s", path);
+			free(hash);
+			close(fd);
+			return NULL;
+		}
+
+		*count = asprintf(&line, FILE_WRITE_FORMAT, escaped, sb.st_size, hash);
+		free(escaped);
+
+	} else {
+		*count = asprintf(&line, DATA_FORMAT, 0, sb.st_size, hash);
+	}
+
 	free(hash);
 
 	if (*count < 0) {
@@ -134,7 +149,12 @@ static int write_out_list(list_t *list, const char *dest)
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
 		char buf[BUFFER_SIZE + 1];
 		char *str = (char *)(lptr->data);
-		hlen = snprintf(buf, sizeof(buf), "%s %s\n", (char *)lptr->index, str + 2);
+		char * escaped = escape((char *)lptr->index, WHITESPACES);
+		if (escaped == NULL) {
+			msg(LOG_ERR, "Could not escape %s: writing to %s", (char *)lptr->index, dest);
+			continue;
+		}
+		hlen = snprintf(buf, sizeof(buf), "%s %s\n", escaped, str + 2);
 		fwrite(buf, hlen, 1, f);
 	}
 
@@ -196,11 +216,15 @@ int trust_file_load(const char *fpath, list_t *list)
 		if (asprintf(&data, DATA_FORMAT, tsource, sz, sha) == -1)
 			data = NULL;
 
-		index = strdup(name);
-
-		if (!index || !data) {
-			free(index);
+		index = unescape(name);
+		if (index == NULL) {
+			msg(LOG_ERR, "Could not unescape %s from %s", name, fpath);
 			free(data);
+			continue;
+		}
+
+		if (data == NULL) {
+			free(index);
 			continue;
 		}
 
