@@ -325,7 +325,12 @@ static int do_ftype(const char *path)
 	}
 
 	// Change it back to blocking
-	fcntl(fd, F_SETFL, 0);
+	if (fcntl(fd, F_SETFL, 0)) {
+		fprintf(stderr, "Unable to make fd blocking");
+		close(fd);
+		magic_close(magic_cookie);
+		return 1;
+	}
 
 	if (fstat(fd, &sb) == 0) {
 		uint32_t elf = 0;
