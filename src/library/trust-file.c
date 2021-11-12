@@ -97,7 +97,7 @@ static char *make_path_string(const char *path, int *count)
 	char *line;
 	if (*count) {
 
-		char * escaped = escape(path, WHITESPACES);
+		const char *escaped = escape(path, WHITESPACES);
 		if (escaped == NULL) {
 			msg(LOG_ERR, "Could not escape %s", path);
 			free(hash);
@@ -106,7 +106,7 @@ static char *make_path_string(const char *path, int *count)
 		}
 
 		*count = asprintf(&line, FILE_WRITE_FORMAT, escaped, sb.st_size, hash);
-		free(escaped);
+		free((void *)escaped);
 
 	} else {
 		*count = asprintf(&line, DATA_FORMAT, 0, sb.st_size, hash);
@@ -148,8 +148,8 @@ static int write_out_list(list_t *list, const char *dest)
 
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
 		char buf[BUFFER_SIZE + 1];
-		char *str = (char *)(lptr->data);
-		char * escaped = escape((char *)lptr->index, WHITESPACES);
+		const char *str = (char *)(lptr->data);
+		const char *escaped = escape((char *)lptr->index, WHITESPACES);
 		if (escaped == NULL) {
 			msg(LOG_ERR, "Could not escape %s: writing to %s", (char *)lptr->index, dest);
 			continue;

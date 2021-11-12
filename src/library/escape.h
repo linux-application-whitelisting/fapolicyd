@@ -25,13 +25,15 @@
 #ifndef ESCAPE_H
 #define ESCAPE_H
 
+#include "gcc-attributes.h"
+
 enum {
 	WHITESPACES,
 	EVERYTHING
 };
 
-char *escape(const char *, int mode);
-char *unescape(const char *);
+char *escape(const char *input, int mode) MALLOCLIKE;
+char *unescape(const char *input) MALLOCLIKE;
 
 #endif
 
