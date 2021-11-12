@@ -1,3 +1,5 @@
+1.0.5
+
 1.0.4
 - Tighten up ELF detection
 - Add support for multiple trust files in a trust.d directory
