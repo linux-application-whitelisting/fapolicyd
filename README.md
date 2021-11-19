@@ -5,8 +5,8 @@ File Access Policy Daemon
 
 This is a simple application whitelisting daemon for Linux.
 
-DEPENDENCIES (fedora)
----------------------
+DEPENDENCIES (fedora and RHEL8)
+-------------------------------
 * gcc
 * autoconf
 * automake
@@ -26,9 +26,22 @@ DEPENDENCIES (fedora)
 * python3-devel
 * kernel >= 4.20 (Must support FANOTIFY_OPEN_EXEC_PERM. See [1] below.)
 
+RHEL8: ENABLE CODEREADY AND INSTALL EPEL REPOS
+----------------------------------------------
+```
+$ sudo subscription-manager repos --enable codeready-builder-for-rhel-8-$(arch)-rpms
+$ sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+```
+
+INSTALL DEPENDENCIES (fedora and RHEL8)
+---------------------------------------
+```
+$ sudo dnf install -y gcc autoconf automake libtool make libudev-devel kernel-headers systemd-devel libgcrypt-devel rpm-devel file file-devel libcap-ng-devel libseccomp-devel lmdb-devel uthash-devel python3-devel
+```
+
 BUILDING
 --------
-To build from the repo after cloning:
+To build from the repo after cloning and installing dependencies:
 
 ```
 $ cd fapolicyd
