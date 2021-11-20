@@ -207,87 +207,106 @@ env_close:
 	return rc;
 }
 
+static int do_file_add(int argc, char * const argv[])
+{
+	char full_path[PATH_MAX] = { 0 };
 
-/*
- * This function always requires at least one option, the command. We can
- * guarantee that argv[2] is the command because getopt_long would have
- * printed an error otherwise. argv[3] would be an optional parameter based
- * on which command is being run. If argv[4] == "--trust-file" then argv[5]
- * specifies a trust file to operate on.
- *
- * The function returns 0 on success and 1 on failure
- */
+	if (argc == 1) {
+		if (!realpath(argv[0], full_path))
+			return 3;
+		return file_append(full_path, NULL);
+	}
+	if (argc == 3) {
+		if (!realpath(argv[0], full_path))
+			return 3;
+		if (strcmp("--trust-file", argv[1]))
+			return 2;
+		return file_append(full_path, argv[2]);
+	}
+	return 2;
+}
+
+static int do_file_delete(int argc, char * const argv[])
+{
+	char full_path[PATH_MAX] = { 0 };
+
+	if (argc == 1) {
+		if (!realpath(argv[0], full_path))
+			return 3;
+		return file_delete(full_path, NULL);
+	}
+	if (argc == 3) {
+		if (!realpath(argv[0], full_path))
+			return 3;
+		if (strcmp("--trust-file", argv[1]))
+			return 2;
+		return file_delete(full_path, argv[2]);
+	}
+	return 2;
+}
+
+static int do_file_update(int argc, char * const argv[])
+{
+	char full_path[PATH_MAX] = { 0 };
+
+	if (argc == 0)
+		return file_update("/", NULL);
+	if (argc == 1) {
+		if (!realpath(argv[0], full_path))
+			return 3;
+		return file_update(full_path, NULL);
+	}
+	if (argc == 2) {
+		if (strcmp("--trust-file", argv[0]))
+			return 2;
+		return file_update("/", argv[1]);
+	}
+	if (argc == 3) {
+		if (!realpath(argv[0], full_path))
+			return 3;
+		if (strcmp("--trust-file", argv[1]))
+			return 2;
+		return file_update(full_path, argv[2]);
+	}
+	return 2;
+}
+
 static int do_manage_files(int argc, char * const argv[])
 {
 	int rc = 0;
 
-	if (argc > 0) {
-		if ( (strcmp("add", argv[0]) != 0)
-			 && (strcmp("delete", argv[0]) != 0)
-			 && (strcmp("update", argv[0]) != 0) ) {
-			fprintf(stderr, "%s is not valid option, choose from add|delete|update\n", argv[0]);
-			goto args_err;
-		}
+	if (argc < 1 || argc > 4) {
+		fprintf(stderr, "Wrong number of arguments\n");
+		fprintf(stderr, "\n%s", usage);
+		return 1;
 	}
 
-	if (argc < 2)
-		goto args_err;
-
-	char full_path[PATH_MAX] = {0};
-
-	if (realpath(argv[1], full_path) == NULL) {
-		fprintf(stderr, "Cannot get realpath from: %s\n", argv[1]);
-		perror("realpath");
-		goto args_err;
+	if (!strcmp("add", argv[0]))
+		rc = do_file_add(argc - 1, argv + 1);
+	else if (!strcmp("delete", argv[0]))
+		rc = do_file_delete(argc - 1, argv + 1);
+	else if (!strcmp("update", argv[0]))
+		rc = do_file_update(argc - 1, argv + 1);
+	else {
+		fprintf(stderr, "%s is not a valid option, choose one of add|delete|update\n", argv[0]);
+		fprintf(stderr, "\n%s", usage);
+		return 1;
 	}
 
-	if (strcmp("add", argv[0]) == 0) {
-		switch (argc) {
-		case 2:
-			rc = file_append(full_path, NULL);
-			break;
-		case 4:
-			if (strcmp("--trust-file", argv[2]))
-				goto args_err;
-			rc = file_append(full_path, argv[3]);
-			break;
-		default:
-			goto args_err;
-		}
-	} else if (strcmp("delete", argv[0]) == 0) {
-		switch (argc) {
-		case 2:
-			rc = file_delete(full_path, NULL);
-			break;
-		case 4:
-			if (strcmp("--trust-file", argv[2]))
-				goto args_err;
-			rc = file_delete(full_path, argv[3]);
-			break;
-		default:
-			goto args_err;
-		}
-	} else if (strcmp("update", argv[0]) == 0) {
-		switch (argc) {
-		case 2:
-			rc = file_update(full_path, NULL);
-			break;
-		case 4:
-			if (strcmp("--trust-file", argv[2]))
-				goto args_err;
-			rc = file_update(full_path, argv[3]);
-			break;
-		default:
-			goto args_err;
-		}
+	switch (rc) {
+	case 0: // no error
+		return 0;
+	case 2: // args error
+		fprintf(stderr, "Wrong number of arguments\n");
+		fprintf(stderr, "\n%s", usage);
+		break;
+	case 3: // realpath error
+		fprintf(stderr, "Can't obtain realpath from: %s\n", argv[1]);
+		fprintf(stderr, "\n%s", usage);
+		break;
+	default: // file function errors
+		break;
 	}
-
-	return rc ? 1 : 0;
-
-args_err:
-	fprintf(stderr, "Wrong number of arguments\n\n");
-	fprintf(stderr, "%s", usage);
-
 	return 1;
 }
 
