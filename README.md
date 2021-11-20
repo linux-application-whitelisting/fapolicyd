@@ -65,6 +65,24 @@ passing --without-rpm and it will not link against librpm. In this mode, it
 purely uses the file database in fapolicyd.trust. If rpm is used, then the
 file trust database can be used in addition to rpmdb.
 
+BUILDING THE RPMS
+-----------------
+
+To build the RPMs, first install the RPM development tools:
+
+```
+$sudo dnf install -y rpmdevtools
+```
+
+Then in the root of the repository where fapolicyd was built, use `rpmbuild`
+to build the RPMs:
+
+```
+$ rpmbuild -ta fapolicyd-*.tar.gz
+```
+
+By default, the RPMs will appear in `~/rpmbuild/RPMS/$(arch)`.
+
 POLICIES
 --------
 You might want to look at the fapolicyd.rules file to see what the default
