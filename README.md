@@ -67,6 +67,7 @@ file trust database can be used in addition to rpmdb.
 
 BUILDING THE RPMS
 -----------------
+:exclamation: These unofficial RPMs should only be used for testing and experimentation purposes and not for production systems. :exclamation: 
 
 To build the RPMs, first install the RPM development tools:
 
