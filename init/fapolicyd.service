@@ -2,12 +2,14 @@
 Description=File Access Policy Daemon
 DefaultDependencies=no
 After=local-fs.target systemd-tmpfiles-setup.service
+Documentation=man:fapolicyd(8)
 
 [Service]
 Type=forking
 PIDFile=/run/fapolicyd.pid
-Restart=on-abnormal
+ExecStartPre=/usr/sbin/fagenrules
 ExecStart=/usr/sbin/fapolicyd
+Restart=on-abnormal
 
 [Install]
 WantedBy=multi-user.target

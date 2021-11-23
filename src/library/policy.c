@@ -194,9 +194,13 @@ int load_config(const conf_t *config)
 	// Now open the file and load them one by one.
 	fd = open(RULES_FILE, O_NOFOLLOW|O_RDONLY);
 	if (fd < 0) {
-		msg(LOG_ERR, "Error opening rules file (%s)",
-			strerror(errno));
-		return 1;
+		// See if the old rules exist
+		fd = open(OLD_RULES_FILE, O_NOFOLLOW|O_RDONLY);
+		if (fd < 0) {
+			msg(LOG_ERR, "Error opening rules file (%s)",
+				strerror(errno));
+			return 1;
+		}
 	}
 
 	f = fdopen(fd, "r");

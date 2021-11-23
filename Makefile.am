@@ -1,5 +1,5 @@
 
-SUBDIRS = src init doc
+SUBDIRS = src init doc rules.d
 EXTRA_DIST = ChangeLog AUTHORS NEWS README.md INSTALL fapolicyd.spec dnf/fapolicyd-dnf-plugin.py autogen.sh
 
 clean-generic:

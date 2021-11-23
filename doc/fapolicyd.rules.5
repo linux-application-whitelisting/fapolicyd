@@ -1,8 +1,11 @@
-.TH FAPOLICYD.RULES: "5" "Feb 2021" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.RULES: "5" "Nov 2021" "Red Hat" "System Administration Utilities"
 .SH NAME
-fapolicyd.rules \- fapolicyd rules to determine access rights
+compiled.rules \- compiled fapolicyd rules to determine access rights
+fapolicyd.rules \- deprecated fapolicyd rules to determine access rights
 .SH DESCRIPTION
-\fBfapolicyd.rules\fP is a file that contains the rules that \fBfapolicyd\fP uses to make decisions about access rights. The rules follow a simple format of:
+\fBcompiled.rules\fP is a file that is compiled by
+.B fagenrules
+which contains the rules that \fBfapolicyd\fP uses to make decisions about access rights. The rules follow a simple format of:
 
 .nf
 .B decision perm subject : object
@@ -157,6 +160,12 @@ Set is a named group of values of the same type. Fapolicyd internally distinguis
 .fi
 
 .SH NOTES
+When writing rules, you should keep them focused to one goal and store them in one file. These rule files are kept in the /etc/fapolicyd/rules.d directory. During daemon startup,
+.B fagenrules
+will run and compile all these component files into one master file, compiled.rules. See the
+.B fagenrules
+man page for more information.
+
 When you are writing a rule for the execute permission, remember that the file to be executed is an 
 .B object.
 For example, you type ssh into the shell. The shell calls execve on /usr/bin/ssh. At that instant in time, ssh is the object that bash is working on. However, if you are blocking execution
@@ -183,7 +192,8 @@ The following rules illustrate the rule syntax.
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),
-.BR fapolicyd-cli (1)
+.B fagenrules (8),
+.BR fapolicyd-cli (1),
 and
 .BR fapolicyd.conf (5)
 

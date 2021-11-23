@@ -1,4 +1,4 @@
-.TH "FAPOLICYD" "8" "January 2020" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD" "8" "Nov 2021" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd \- File Access Policy Daemon
 .SH SYNOPSIS
@@ -7,12 +7,12 @@ fapolicyd \- File Access Policy Daemon
 \fBfapolicyd\fP is a userspace daemon that determines access rights to files based on a trust database and file or process attributes. It can be used to either blacklist or whitelist file access and execution.
 
 Configuring \fBfapolicyd\fP is done with the files in the \fI/etc/fapolicyd/\fP directory. There are three files:
-.B fapolicyd.rules
+.B compiled.rules
 ,
 .B fapolicyd.conf
 , and
-.B fapolicyd.trust
- . The first one sets the access rights, the second determines the daemon's configuration, and the last allows admin defined trusted files.
+.B fapolicyd.trust.
+The first one contains the access policy, the second determines the daemon's configuration, and the last allows admin defined trusted files.
 
 The default rules will generate audit events whenever there is a denial. NOTE:
 you must have at least 1 audit rule loaded for the audit system to create the full FANOTIFY event. It doesn't matter which rule is loaded. To see if you have any denials, you can run the following command:
@@ -49,6 +49,13 @@ To get audit events, you must have auditing enabled and at least one systemcall 
 
 If the rpmdb is set as a trust source, you should minimize the number of 32 bit packages on the system. In such cases, there may be a 32 bit and 64 file with the same pathname. Obviously only one can exist on the disk. So, this will always cause database miscompares and cause a delay in the daemon being operational.
 
+The
+.B compiled.rules
+file is the resulting merge of component rules in /etc/fapolicyd/rules.d/ See
+the
+.B fagenrules
+man page for more information.
+
 If you are running in the debug mode and wish to compare rule numbers reported in the output with which rule is actually triggering, you can see the rules with the corresponding number by running the following command:
 
 .nf
@@ -59,7 +66,7 @@ If you are running in the debug mode and wish to compare rule numbers reported i
 .B /etc/fapolicyd/fapolicyd.conf
 - daemon configuration
 .P
-.B /etc/fapolicyd/fapolicyd.rules
+.B /etc/fapolicyd/compiled.rules
 - access control rules
 .P
 .B /etc/fapolicyd/fapolicyd.trust
@@ -72,6 +79,7 @@ If you are running in the debug mode and wish to compare rule numbers reported i
 .BR fapolicyd-cli (1),
 .BR fapolicyd.rules (5),
 .BR fapolicyd.trust (5),
+.BR fagenrules (8),
 and
 .BR fapolicyd.conf (5)
 
