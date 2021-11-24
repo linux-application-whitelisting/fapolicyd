@@ -355,7 +355,7 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
-		"[--no-details]\n");
+		"[--no-details] [--config-check]\n");
 	exit(1);
 }
 
@@ -366,6 +366,7 @@ int main(int argc, const char *argv[])
 	struct sigaction sa;
 	struct rlimit limit;
 	int rc, i;
+	unsigned int configcheck;
 
 	if (argc > 1 && strcmp(argv[1], "--help") == 0)
 		usage();
@@ -376,6 +377,7 @@ int main(int argc, const char *argv[])
 		return 1;
 	}
 	permissive = config.permissive;
+	configcheck = 0;
 	for (i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--debug") == 0) {
 			debug = 1;
@@ -403,6 +405,8 @@ int main(int argc, const char *argv[])
 				" deprecated - ignoring");
 		} else if (strcmp(argv[i], "--no-details") == 0) {
 			config.detailed_report = 0;
+		} else if (strcmp(argv[i], "--config-check") == 0) {
+			configcheck = 1;
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
 			free_daemon_config(&config);
@@ -437,6 +441,8 @@ int main(int argc, const char *argv[])
 	// Load the rule configuration
 	if (load_config(&config))
 		exit(1);
+	if (configcheck)
+		exit(0);
 	if (!debug) {
 		if (become_daemon() < 0) {
 			msg(LOG_ERR, "Exiting due to failure daemonizing");
