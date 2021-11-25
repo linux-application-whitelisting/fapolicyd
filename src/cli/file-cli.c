@@ -89,9 +89,6 @@ static int add_list_load_path(const char *path)
 	return 0;
 }
 
-
-
-
 int file_append(const char *path, const char *fname)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
@@ -110,11 +107,14 @@ int file_append(const char *path, const char *fname)
 
 	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) :
 							TRUST_FILE_PATH;
+
 	int rc = trust_file_append(dest, &add_list);
+
+	list_empty(&add_list);
 
 	if (fname)
 		free(dest);
-	list_empty(&add_list);
+
 	return rc ? -1 : 0;
 }
 
