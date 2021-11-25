@@ -171,31 +171,27 @@ static int write_out_list(list_t *list, const char *dest)
 	return 0;
 }
 
+int trust_file_append(const char *fpath, list_t *list)
+{
+	list_t content;
+	list_init(&content);
 
-
-int trust_file_append(const char *fpath, const list_t *list) {
-	int fd = open(fpath, O_CREAT | O_WRONLY | O_APPEND, 0600);
-	if (fd == -1) {
-		msg(LOG_ERR, "Cannot open %s", fpath);
+	int rc = 0;
+	rc = trust_file_load(fpath, &content);
+	if (rc)
 		return 1;
-	}
 
+	int i = 0;
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
-		int count = 1;
-		char *line = make_path_string(lptr->index, &count);
-		if (!line)
-			continue;
-
-		if (write(fd, line, count) == -1) {
-			msg(LOG_ERR, "failed writing to %s\n", fpath);
-			free(line);
-			close(fd);
-			return 2;
-		}
-		free(line);
+		lptr->data = make_path_string(lptr->index, &i);
 	}
 
-	close(fd);
+	list_merge(&content, list);
+	write_out_list(&content, fpath);
+	list_empty(&content);
+	if (rc)
+		return 1;
+
 	return 0;
 }
 
@@ -329,33 +325,23 @@ int trust_file_update_path(const char *fpath, const char *path)
 
 int trust_file_rm_duplicates(const char *fpath, list_t *list)
 {
-	FILE *file = fopen(fpath, "r");
-	if (!file) {
-		msg(LOG_ERR, "Cannot open %s", fpath);
-		return 1;
-	}
 
-	char buffer[BUFFER_SIZE];
-	while (fgets(buffer, BUFFER_SIZE, file)) {
-		char thash[65], tpath[4097];
-		long unsigned size;
+	list_t trust_file;
+	list_init(&trust_file);
 
-		if (iscntrl(buffer[0]) || buffer[0] == '#')
-			continue;
+	int rc = trust_file_load(fpath, &trust_file);
+	if (rc)
+		goto end;
 
-		if (sscanf(buffer, FILE_READ_FORMAT, tpath, &size, thash) != 3) {
-			msg(LOG_WARNING, "Can't parse %s", buffer);
-			fclose(file);
-			return 2;
-		}
-
-		list_remove(list, tpath);
+	for (list_item_t *lptr = trust_file.first; lptr; lptr = lptr->next) {
+		list_remove(list, lptr->index);
 		if (list->count == 0)
 			break;
 	}
 
-	fclose(file);
-	return 0;
+end:
+	list_empty(&trust_file);
+	return rc;
 }
 
 
