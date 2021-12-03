@@ -45,10 +45,6 @@ deny_audit perm=execute all : ftype=application/x-executable
 # in rule 3.
 allow perm=execute all : path=%ld_so_path% trust=1
 
-# Need to carve out an exception for ansible, which uses python
-allow perm=any uid=0 : dir=/tmp/ansible
-allow perm=any uid=0 : dir=/root/.ansible/tmp/
-
 # Only allow system python executables and libs
 # File type by: fapolicyd-cli --ftype /path-to-file
 allow perm=any all : ftype=text/x-python trust=1

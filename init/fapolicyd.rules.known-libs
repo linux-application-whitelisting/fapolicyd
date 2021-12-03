@@ -28,10 +28,6 @@ deny_audit perm=open all : ftype=application/x-sharedlib
 # Allow trusted programs to execute
 allow perm=execute all : trust=1
 
-# Need to carve out an exception for ansible, which uses python
-allow perm=any uid=0 : dir=/tmp/ansible
-allow perm=any uid=0 : dir=/root/.ansible/tmp/
-
 # Allow any program to open trusted language files
 allow perm=open all : ftype=%languages trust=1
 deny_audit perm=any all : ftype=%languages
