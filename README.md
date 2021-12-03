@@ -5,84 +5,14 @@ File Access Policy Daemon
 
 This is a simple application whitelisting daemon for Linux.
 
-DEPENDENCIES (fedora and RHEL8)
--------------------------------
-* gcc
-* autoconf
-* automake
-* libtool
-* make
-* libudev-devel
-* kernel-headers
-* systemd-devel
-* libgcrypt-devel
-* rpm-devel (optional)
-* file
-* file-devel
-* libcap-ng-devel
-* libseccomp-devel
-* lmdb-devel
-* uthash-devel
-* python3-devel
+RUNTIME DEPENDENCIES
+--------------------
 * kernel >= 4.20 (Must support FANOTIFY_OPEN_EXEC_PERM. See [1] below.)
-
-RHEL8: ENABLE CODEREADY AND INSTALL EPEL REPOS
-----------------------------------------------
-```
-$ sudo subscription-manager repos --enable codeready-builder-for-rhel-8-$(arch)-rpms
-$ sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
-```
-
-INSTALL DEPENDENCIES (fedora and RHEL8)
----------------------------------------
-```
-$ sudo dnf install -y gcc autoconf automake libtool make libudev-devel kernel-headers systemd-devel libgcrypt-devel rpm-devel file file-devel libcap-ng-devel libseccomp-devel lmdb-devel uthash-devel python3-devel
-```
 
 BUILDING
 --------
-To build from the repo after cloning and installing dependencies:
 
-```
-$ cd fapolicyd
-$ ./autogen.sh
-$ ./configure --with-audit --disable-shared
-$ make
-$ make dist
-```
-
-This will create a tarball. You can use the new tarball with the spec file
-and create your own rpm. If you want to experiment without installing, just
-run make with no arguments. It should run fine from where it was built as
-long as you put the configuration files in /etc/fapolicyd (fapolicyd.rules,
-fapolicyd.trust, fapolicyd.conf).
-
-Note that the shipped policy expects that auditing is enabled. This is done
-by passing --with-audit to ./configure.
-
-The use of rpm as a trust source is now optional. You can run ./configure
-passing --without-rpm and it will not link against librpm. In this mode, it
-purely uses the file database in fapolicyd.trust. If rpm is used, then the
-file trust database can be used in addition to rpmdb.
-
-BUILDING THE RPMS
------------------
-:exclamation: These unofficial RPMs should only be used for testing and experimentation purposes and not for production systems. :exclamation: 
-
-To build the RPMs, first install the RPM development tools:
-
-```
-$sudo dnf install -y rpmdevtools
-```
-
-Then in the root of the repository where fapolicyd was built, use `rpmbuild`
-to build the RPMs:
-
-```
-$ rpmbuild -ta fapolicyd-*.tar.gz
-```
-
-By default, the RPMs will appear in `~/rpmbuild/RPMS/$(arch)`.
+See [BUILD.md](./BUILD.md) for build-time dependencies and instructions for building.
 
 POLICIES
 --------
@@ -169,26 +99,37 @@ design is to stay out of your way as much as possible. All that you need
 to do is add unpackaged but trusted files to the trust database. See the
 "Managing Trust" section for more.
 
-But if you had to write rules, they follow a simple "decision permission subject : object" recipe. The idea is to write a couple things that you want to
-allow, and then deny everything else. For example, this is how shared libraries are handled:
+But if you had to write rules, they follow a simple
+"decision permission subject : object" recipe. The idea is to write a
+couple things that you want to allow, and then deny everything else. For
+example, this is how shared libraries are handled:
 
 ```
 allow perm=open all : ftype=application/x-sharedlib trust=1
 deny_audit perm=open all : ftype=application/x-sharedlib
 ```
 
-What this says is let any program open shared libraries if the library being opened is trusted. Otherwise, deny with an audit event any open of untrusted libraries.
+What this says is let any program open shared libraries if the librar
+being opened is trusted. Otherwise, deny with an audit event any open of
+untrusted libraries.
 
-First and foremost, fapolicyd rules are based on trust relationships. It is not meant to be an access control system of Mandatory Access Control Policy. But you can do that. It is not recommended to do this except when necessary. Every rule that is added has to potentially be evaluated - which delays the decision.
+First and foremost, fapolicyd rules are based on trust relationships.
+It is not meant to be an access control system of Mandatory Access Control
+Policy. But you can do that. It is not recommended to do this except when
+necessary. Every rule that is added has to potentially be evaluated - which
+delays the decision.
 
-If you needed to allow admins access to ping, but deny it to everyone else, you could do that with the following rules:
+If you needed to allow admins access to ping, but deny it to everyone 
+else, you could do that with the following rules:
 
 ```
 allow perm=any gid=wheel : trust=1 path=/usr/bin/ping
 deny_audit perm=execute all : trust=1 path=/usr/bin/ping
 ```
 
-You can similarly do this for trusted users that have to execute things in the home dir. You can create a trusted_user group, add them the group, and then write a rule allowing them to execute from their home dir.
+You can similarly do this for trusted users that have to execute things in
+the home dir. You can create a trusted_user group, add them the group,
+and then write a rule allowing them to execute from their home dir.
 
 ```
 allow perm=any gid=trusted_user : ftype=%languages dir=/home
@@ -560,7 +501,13 @@ daemon's policy.
 running a script or someone typing things in by hand. The aim at this
 point is to check that any program it calls meets the policy.
 
-* Some interpreters do not immediately read all lines of input. Rather, they read content as needed until they get to end of file. This means that if they do stuff like networking or sleeping or anything that takes time, someone with the privileges to modify the file can add to it after the file's integrity has been checked. This is not unique to fapolicyd, it's simply how things work. Make sure that trusted file permissions are not excessive so that no unexpected file content modifications can occur.
+* Some interpreters do not immediately read all lines of input. Rather, they
+read content as needed until they get to end of file. This means that if they
+do stuff like networking or sleeping or anything that takes time, someone with
+the privileges to modify the file can add to it after the file's integrity has
+been checked. This is not unique to fapolicyd, it's simply how things work.
+Make sure that trusted file permissions are not excessive so that no unexpected
+file content modifications can occur.
 
 * If for some reason rpm database errors are detected, you may need to do
 the following:
