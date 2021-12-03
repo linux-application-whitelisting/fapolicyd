@@ -5,7 +5,8 @@ EXTRA_DIST = \
 	fapolicyd.conf \
 	fapolicyd.trust \
 	fapolicyd-tmpfiles.conf \
-	fapolicyd-magic
+	fapolicyd-magic \
+	fagenrules
 
 fapolicyddir = $(sysconfdir)/fapolicyd
 
@@ -16,7 +17,7 @@ dist_fapolicyd_DATA = \
 systemdservicedir = $(systemdsystemunitdir)
 dist_systemdservice_DATA = fapolicyd.service
 
-
+sbin_SCRIPTS = fagenrules
 
 MAGIC = fapolicyd-magic.mgc
 pkgdata_DATA = ${MAGIC} fapolicyd.rules.known-libs fapolicyd.rules.restrictive

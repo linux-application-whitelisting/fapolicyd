@@ -1,0 +1,32 @@
+.TH FAGENRULES "8" "Nov 2021" "Red Hat" "System Administration Utilities"
+.SH NAME
+fagenrules \- a script that merges component fapolicyd rule files
+.SH SYNOPSIS
+.B fagenrules
+.RI [ \-\-check ]\ [ \-\-load ]
+.SH DESCRIPTION
+\fBfagenrules\fP is a script that merges all component fapolicyd rules files,
+found in the fapolicyd rules directory, \fI/etc/fapolicyd/rules.d\fP, placing
+the merged file in \fI/etc/fapolicyd/compiled.rules\fP. Component fapolicyd
+rule files, must end in \fI.rules\fP in order to be processed. All other
+files in \fI/etc/fapolicyd/rules.d\fP are ignored.
+.P
+The files are concatenated in order, based on their natural sort (see -v option of ls(1)) and stripped of empty and comment (#) lines.
+.P
+The generated file is only copied to \fI/etc/fapolicyd/compiled.rules\fP, if
+it differs.
+.SH OPTIONS
+.TP
+.B \-\-check
+test if rules have changed and need updating without overwriting compiled.rules.
+.TP
+.B \-\-load
+load old or newly built rules into the daemon.
+
+.SH FILES
+/etc/fapolicyd/rules.d/
+/etc/fapolicyd/compiled.rules
+.SH "SEE ALSO"
+.BR fapolicyd.rules (5),
+.BR fapolicyd-cli (1),
+.BR fapolicyd (8).

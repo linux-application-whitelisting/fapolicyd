@@ -48,6 +48,7 @@ install -p -m 644 init/%{name}.rules.known-libs %{buildroot}/%{_sysconfdir}/%{na
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
+mkdir -p %{buildroot}%{_sysconfdir}/%{name}/rules.d
 
 #cleanup
 find %{buildroot} \( -name '*.la' -o -name '*.a' \) -exec rm -f {} ';'
@@ -59,6 +60,19 @@ make check
 getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{name} -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}
 
 %post
+# if no pre-existing rule file
+if [ ! -e %{_sysconfdir}/%{name}/%{name}.rules ] ; then
+	files=`ls %{_sysconfdir}/%{name}/rules.d/ 2>/dev/null | wc -w`
+	# Only if no pre-existing component rules
+	if [ "$files" -eq 0 ] ; then
+		## cp % {_datadir}/%{name}/10-some.rule  %{_sysconfdir}/%{name}/rules.d/
+		if [ -x /usr/sbin/restorecon ] ; then
+			# restore correct label
+			/usr/sbin/restorecon -F %{_sysconfdir}/%{name}/rules.d/*
+		fi
+		fagenrules --load
+	fi
+fi
 %systemd_post %{name}.service
 
 %preun
@@ -72,9 +86,10 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %{!?_licensedir:%global license %%doc}
 %license COPYING
 %attr(755,root,%{name}) %dir %{_datadir}/%{name}
-%attr(644,root,%{name}) %{_datadir}/%{name}/%{name}.rules.*
+%attr(644,root,%{name}) %{_datadir}/%{name}/*
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/trust.d
+%attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/rules.d
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
@@ -82,6 +97,7 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}
 %attr(755,root,root) %{_sbindir}/%{name}-cli
+%attr(755,root,root) %{_sbindir}/fagenrules
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*
 %attr(644,root,root) %{_mandir}/man1/*
