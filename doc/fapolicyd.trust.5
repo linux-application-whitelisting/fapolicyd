@@ -7,6 +7,12 @@ The file
 contains list of trusted files/binaries for the application whitelisting daemon. You may add comments to the file by starting the line with a '#' character.
 Each line has to contain three columns and space is a valid separator. The first column contains full path to the file, the second is size of the file in bytes
 and the third is valid sha256 hash.
+.sp
+The directory \fI/etc/fapolicyd/trust\&.d\fR can be used to store multiple trust files\&.
+This way user can split the trust database into multiple files and manage them separately through \fBfapolicyd\-cli\fR\&.
+Functionaly, the fapolicy daemon will behave the same way as if the whole trust database has been defined inside \fBfapolicyd\&.trust\fR file\&.
+Syntax and semantics of trust files inside \fBtrust\&.d\fR directory are the same as for \fBfapolicyd\&.trust\fR file (described above)\&.
+Trust files can either be created manually inside \fBtrust\&.d\fR directory or via \fBfapolicyd\-cli\fR\&.
 
 .SH EXAMPLE
 .PP
