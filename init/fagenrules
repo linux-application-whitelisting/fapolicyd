@@ -92,14 +92,6 @@ END     {
         for (i = 0; i < rest; i++) { printf "%s\n", rules[i]; }
 }' >> ${TmpRules}
 
-# If empty then quit
-if [ ! -s ${TmpRules} ]; then
-	echo "$0: No rules"
-	rm -f ${TmpRules}
-	try_load
-	exit $RETVAL
-fi
-
 # If the same then quit
 cmp -s ${TmpRules} ${DestinationFile} > /dev/null 2>&1
 if [ $? -eq 0 ]; then
