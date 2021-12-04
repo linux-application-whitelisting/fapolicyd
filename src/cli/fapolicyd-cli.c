@@ -484,10 +484,13 @@ static int do_update(void)
 
 static const char *bad_filesystems[] = {
 	"autofs",
+	"bdev",
+	"binder",
 	"binfmt_misc",
 	"bpf",
 	"cgroup2",
 	"configfs",
+	"cpuset",
 	"devpts",
 	"devtmpfs",
 	"efivarfs",
@@ -495,11 +498,14 @@ static const char *bad_filesystems[] = {
 	"fuse.gvfsd-fuse",
 	"hugetlbfs",
 	"mqueue",
+	"pipefs",
 	"proc",
 	"pstore",
+	"resctrl",
 	"rpc_pipefs",
 	"securityfs",
 	"selinuxfs",
+	"sockfs",
 	"sysfs",
 	"tracefs"
 };
@@ -525,7 +531,7 @@ static int check_watch_fs(void)
 	char buf[PATH_MAX * 2], device[1025], point[4097];
 	char type[32], mntops[128];
 	int fs_req, fs_passno, fd, found = 0;
-	list_t fs;
+	list_t fs, mnt;
 	char *ptr, *saved, *tmp;
 
 	set_message_mode(MSG_STDERR, DBG_YES);
@@ -555,6 +561,9 @@ static int check_watch_fs(void)
 		list_empty(&fs);
 		return 1;
 	}
+
+	// Build the list of mount point types
+	list_init(&mnt);
 	do {
 		if (fd_fgets(buf, sizeof(buf), fd)) {
 			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
@@ -562,15 +571,27 @@ static int check_watch_fs(void)
 			// Some file systems are not watchable
 			if (not_watchable(type))
 				continue;
-			// See if it's on our list
-			if (list_contains(&fs, type) == 0) {
-				printf("%s not watched\n", type);
-				found = 1;
-				// Remove it so we get 1 report
-				list_remove(&fs, type);
-			}
+			list_append(&mnt, strdup(type), strdup("0"));
 		}
 	} while (!fd_fgets_eof());
+
+	// Now search the list we just built
+	for (list_item_t *lptr = mnt.first; lptr; lptr = lptr->next) {
+		// See if the file system is watched
+		if (list_contains(&fs, lptr->index) == 0) {
+			found = 1;
+			printf("%s not watched\n", (char *)lptr->index);
+
+			// Remove the file system so that we get 1 report
+			char *tmpfs = strdup(lptr->index);
+			while (list_remove(&mnt, tmpfs))
+				;
+			free(tmpfs);
+
+			// Start from the beginning
+			lptr = mnt.first;
+		}
+	}
 
 	free_daemon_config(&config);
 	list_empty(&fs);
