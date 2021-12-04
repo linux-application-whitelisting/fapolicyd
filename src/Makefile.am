@@ -24,6 +24,8 @@ libfapolicyd_la_SOURCES = \
 	library/conf.h \
 	library/database.c \
 	library/database.h \
+	library/daemon-config.c \
+	library/daemon-config.h \
 	library/escape.c \
 	library/escape.h \
 	library/event.c \
@@ -71,8 +73,6 @@ libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread
 
 fapolicyd_SOURCES = \
 	daemon/fapolicyd.c \
-	daemon/daemon-config.c \
-	daemon/daemon-config.h \
 	daemon/fd-fgets.c \
 	daemon/fd-fgets.h \
 	daemon/mounts.c \
