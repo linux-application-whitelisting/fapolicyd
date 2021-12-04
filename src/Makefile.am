@@ -32,6 +32,8 @@ libfapolicyd_la_SOURCES = \
 	library/event.h \
 	library/fapolicyd-defs.h \
 	library/fapolicyd-backend.h \
+	library/fd-fgets.c \
+	library/fd-fgets.h \
 	library/file.c \
 	library/file.h \
 	library/file-backend.c \
@@ -73,8 +75,6 @@ libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread
 
 fapolicyd_SOURCES = \
 	daemon/fapolicyd.c \
-	daemon/fd-fgets.c \
-	daemon/fd-fgets.h \
 	daemon/mounts.c \
 	daemon/mounts.h \
 	daemon/notify.c \
