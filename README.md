@@ -109,7 +109,7 @@ allow perm=open all : ftype=application/x-sharedlib trust=1
 deny_audit perm=open all : ftype=application/x-sharedlib
 ```
 
-What this says is let any program open shared libraries if the librar
+What this says is let any program open shared libraries if the library
 being opened is trusted. Otherwise, deny with an audit event any open of
 untrusted libraries.
 
@@ -370,7 +370,7 @@ its files over in /opt, you can add them all with the following command:
 fapolicyd-cli --file add /opt/my-app/
 ```
 
-The commandline utility will walk the directory tree and add all files to
+The command line utility will walk the directory tree and add all files to
 fapolicyd.trust. To do this, it opens each one and calculates the sha256 hash
 of the file and write that information to the new entry. Later if you decide
 to uninstall that app and you want to cleanup the list, then simply run:
@@ -379,7 +379,7 @@ to uninstall that app and you want to cleanup the list, then simply run:
 fapolicyd-cli --file delete /opt/my-app/
 ```
 
-The commandline utility will remove all files that match that directory from
+The command line utility will remove all files that match that directory from
 fapolicyd.trust. There is also a --file update extension that can update the
 size and hash information with what is currently on disk.
 
@@ -409,9 +409,9 @@ file. Just add the places where libraries and applications are stored.
 
 SE Linux is modeling how an application behaves. It is not concerned about
 where the application came from or whether it's known to the system. Basically,
-anything in /bin gets bin_t type by default which is not a very restrive label.
-MAC systems serve a different purpose. Fapolicyd by design cares solely about
-if this is a known application/library. These are complimentary security
+anything in /bin gets bin_t type by default which is not a very restrictive
+label. MAC systems serve a different purpose. Fapolicyd by design cares solely
+about if this is a known application/library. These are complimentary security
 subsystems. There is more information about application whitelisting use cases
 at the following NIST website:
 
