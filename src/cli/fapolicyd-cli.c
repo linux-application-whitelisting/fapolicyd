@@ -46,11 +46,14 @@
 #include "string-util.h"
 #include "daemon-config.h"
 #include "message.h"
+#include "llist.h"
+#include "fd-fgets.h"
 
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "--check-config        Check the daemon config for syntax errors\n"
+"--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
@@ -64,6 +67,7 @@ static const char *usage =
 static struct option long_opts[] =
 {
 	{"check-config",0, NULL,  1 },
+	{"check-watch_fs",0, NULL,  2 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -478,6 +482,103 @@ static int do_update(void)
 	return 0;
 }
 
+static const char *bad_filesystems[] = {
+	"autofs",
+	"binfmt_misc",
+	"bpf",
+	"cgroup2",
+	"configfs",
+	"devpts",
+	"devtmpfs",
+	"efivarfs",
+	"fusectl",
+	"fuse.gvfsd-fuse",
+	"hugetlbfs",
+	"mqueue",
+	"proc",
+	"pstore",
+	"rpc_pipefs",
+	"securityfs",
+	"selinuxfs",
+	"sysfs",
+	"tracefs"
+};
+#define FS_NAMES (sizeof(bad_filesystems)/sizeof(bad_filesystems[0]))
+
+// Returns 1 if not a real file system and 0 if its a file system we can watch
+static int not_watchable(const char *type)
+{
+	unsigned int i;
+
+	for (i = 0; i < FS_NAMES; i++)
+		if (strcmp(bad_filesystems[i], type) == 0)
+			return 1;
+
+	return 0;
+}
+
+// Returns 1 on error and 0 on success.
+// Finding unwatched file systems is not considered an error
+static int check_watch_fs(void)
+{
+	conf_t config;
+	char buf[PATH_MAX * 2], device[1025], point[4097];
+	char type[32], mntops[128];
+	int fs_req, fs_passno, fd, found = 0;
+	list_t fs;
+	char *ptr, *saved, *tmp;
+
+	set_message_mode(MSG_STDERR, DBG_YES);
+	if (load_daemon_config(&config)) {
+		free_daemon_config(&config);
+		return 1;
+	}
+	if (config.watch_fs == NULL) {
+		fprintf(stderr, "File systems to watch is empty");
+		return 1;
+	}
+	tmp = strdup(config.watch_fs);
+
+	list_init(&fs);
+	ptr = strtok_r(tmp, ",", &saved);
+	while (ptr) {
+		// we do not care about the data
+		list_append(&fs, strdup(ptr), strdup("0"));
+		ptr = strtok_r(NULL, ",", &saved);
+	}
+	free(tmp);
+
+	fd = open("/proc/mounts", O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "Unable to open mounts\n");
+		free_daemon_config(&config);
+		list_empty(&fs);
+		return 1;
+	}
+	do {
+		if (fd_fgets(buf, sizeof(buf), fd)) {
+			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
+			       device,point, type, mntops, &fs_req, &fs_passno);
+			// Some file systems are not watchable
+			if (not_watchable(type))
+				continue;
+			// See if it's on our list
+			if (list_contains(&fs, type) == 0) {
+				printf("%s not watched\n", type);
+				found = 1;
+				// Remove it so we get 1 report
+				list_remove(&fs, type);
+			}
+		}
+	} while (!fd_fgets_eof());
+
+	free_daemon_config(&config);
+	list_empty(&fs);
+	if (found == 0)
+		printf("Nothing appears missing\n");
+
+	return 0;
+}
 
 int main(int argc, char * const argv[])
 {
@@ -545,6 +646,11 @@ int main(int argc, char * const argv[])
 			free_daemon_config(&config);
 			return 0;
 		} }
+		break;
+	case 2: // --check-watch_fs
+		if (argc > 2)
+			goto args_err;
+		return check_watch_fs();
 		break;
 	default:
 		printf("%s", usage);
