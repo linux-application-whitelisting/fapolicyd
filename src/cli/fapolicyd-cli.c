@@ -44,10 +44,13 @@
 #include "file-cli.h"
 #include "fapolicyd-backend.h"
 #include "string-util.h"
+#include "daemon-config.h"
+#include "message.h"
 
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
+"--check-config        Check the daemon config for syntax errors\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
@@ -60,6 +63,7 @@ static const char *usage =
 
 static struct option long_opts[] =
 {
+	{"check-config",0, NULL,  1 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -523,6 +527,24 @@ int main(int argc, char * const argv[])
 		if (argc > 2)
 			goto args_err;
 		rc = do_update();
+		break;
+
+	// Now the pure long options
+	case 1: { // --check-config
+		conf_t config;
+
+		if (argc > 2)
+			goto args_err;
+		set_message_mode(MSG_STDERR, DBG_YES);
+		if (load_daemon_config(&config)) {
+			free_daemon_config(&config);
+			fprintf(stderr, "Configuration errors reported\n");
+			return 1;
+		} else {
+			printf("Daemon config is OK\n");
+			free_daemon_config(&config);
+			return 0;
+		} }
 		break;
 	default:
 		printf("%s", usage);

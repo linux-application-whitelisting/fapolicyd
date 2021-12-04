@@ -1,5 +1,6 @@
 1.0.5
 - Add support for a rules.d directory
+- Add --check-config to fapolicyd-cli
 
 1.0.4
 - Tighten up ELF detection

@@ -1,4 +1,4 @@
-.TH "FAPOLICYD-CLI" "1" "May 2020" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD-CLI" "1" "Dec 2021" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd-cli \- Fapolicyd CLI Tool
 .SH SYNOPSIS
@@ -9,6 +9,9 @@ The fapolicyd command line utility is a tool to tell the daemon that it needs to
 .TP
 .B \-h, \-\-help
 Prints a list of command line options.
+.TP
+.B \-\-check-config
+Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.
 .TP
 .B \-d, \-\-delete-db
 Deletes the trust database. Normally this never needs to be done. But if for some reason the trust database becomes corrupted, then the only method of recovery is to run this command.
