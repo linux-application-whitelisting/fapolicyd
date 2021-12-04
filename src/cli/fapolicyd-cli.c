@@ -574,6 +574,7 @@ static int check_watch_fs(void)
 			list_append(&mnt, strdup(type), strdup("0"));
 		}
 	} while (!fd_fgets_eof());
+	close(fd);
 
 	// Now search the list we just built
 	for (list_item_t *lptr = mnt.first; lptr; lptr = lptr->next) {
