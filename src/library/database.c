@@ -26,7 +26,6 @@
 
 #include "config.h"
 #include <stdio.h>
-#include <lmdb.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdatomic.h>
@@ -181,17 +180,19 @@ static int init_db(const conf_t *config)
 
 static unsigned get_pages_in_use(void);
 static unsigned long pages, max_pages;
-static void close_db(void)
+static void close_db(int do_report)
 {
-	MDB_envinfo stat;
+	if (do_report) {
+		MDB_envinfo stat;
 
-	// Collect useful stats
-	unsigned size = get_pages_in_use();
-	mdb_env_info(env, &stat);
-	max_pages = stat.me_mapsize / size;
-	msg(LOG_DEBUG, "Database max pages: %lu", max_pages);
-	msg(LOG_DEBUG, "Database pages in use: %lu (%lu%%)", pages,
-	    max_pages ? ((100*pages)/max_pages) : 0);
+		// Collect useful stats
+		unsigned size = get_pages_in_use();
+		mdb_env_info(env, &stat);
+		max_pages = stat.me_mapsize / size;
+		msg(LOG_DEBUG, "Database max pages: %lu", max_pages);
+		msg(LOG_DEBUG, "Database pages in use: %lu (%lu%%)", pages,
+		    max_pages ? ((100*pages)/max_pages) : 0);
+	}
 
 	// Now close down
 	mdb_close(env, dbi);
@@ -813,13 +814,13 @@ int init_database(conf_t *config)
 
 	if ((rc = backend_init(config))) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
-		close_db();
+		close_db(1);
 		return rc;
 	}
 
 	if ((rc = backend_load(config))) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
-		close_db();
+		close_db(1);
 		return rc;
 	}
 
@@ -829,7 +830,7 @@ int init_database(conf_t *config)
 			msg(LOG_ERR,
 			   "Failed to create database, create_database() (%d)",
 			   rc);
-			close_db();
+			close_db(1);
 			return rc;
 		}
 	} else {
@@ -1024,7 +1025,7 @@ void close_database(void)
 	pthread_join(update_thread, NULL);
 
 	// we can close db when we are really sure update_thread does not exist
-	close_db();
+	close_db(1);
 	pthread_mutex_destroy(&update_lock);
 
 	backend_close();
@@ -1094,7 +1095,7 @@ static int update_database(conf_t *config)
 
 	if (rc) {
 		msg(LOG_ERR, "Failed to create database (%d)", rc);
-		close_db();
+		close_db(1);
 		return rc;
 	}
 
@@ -1264,5 +1265,80 @@ err_out:
 	unlink_fifo();
 
 	return NULL;
+}
+
+
+/***********************************************************************
+ * This section of functions are used by the command line utility to
+ * iterate across the database to verify each entry. It will be a read
+ * only operation.
+ ***********************************************************************/
+static walkdb_entry_t wdb_entry;
+
+// Returns 0 on success and 1 on failure
+int walk_database_start(conf_t *config)
+{
+	int rc;
+
+	// Initialize the database
+	if (init_db(config)) {
+		printf("Cannot open the database\n");
+		return 1;
+	}
+	if (database_empty()) {
+		printf("The database is empty - nothing to do\n");
+		return 1;
+	}
+
+	// Position to the first entry
+	mdb_txn_begin(env, NULL, MDB_RDONLY, &lt_txn);
+
+	if ((rc = open_dbi(lt_txn))) {
+		puts(mdb_strerror(rc));
+		abort_transaction(lt_txn);
+		return 1;
+	}
+
+	if ((rc = mdb_cursor_open(lt_txn, dbi, &lt_cursor))) {
+		puts(mdb_strerror(rc));
+		abort_transaction(lt_txn);
+		return 1;
+	}
+
+	if ((rc = mdb_cursor_get(lt_cursor, &wdb_entry.path, &wdb_entry.data,
+							MDB_FIRST)) == 0)
+		return 0;
+
+	if (rc != MDB_NOTFOUND)
+		puts(mdb_strerror(rc));
+
+	return 1;
+}
+
+walkdb_entry_t *walk_database_get_entry(void)
+{
+	return &wdb_entry;
+}
+
+// Returns 1 on success and 0 in error
+int walk_database_next(void)
+{
+	int rc;
+
+	if ((rc = mdb_cursor_get(lt_cursor, &wdb_entry.path, &wdb_entry.data,
+							MDB_NEXT)) == 0)
+		return 1;
+
+	if (rc != MDB_NOTFOUND)
+		puts(mdb_strerror(rc));
+
+	return 0;
+}
+
+void walk_database_finish(void)
+{
+	mdb_cursor_close(lt_cursor);
+	abort_transaction(lt_txn);
+	close_db(0);
 }
 

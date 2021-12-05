@@ -16,6 +16,9 @@ Opens fapolicyd.conf and parses it to see if there are any syntax errors in the 
 .B \-\-check-watch_fs
 Check the mounted file systems against the watch_fs daemon config entry to determine is any file systems need to be added to the configuration.
 .TP
+.B \-\-check-trustdb
+Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.
+.TP
 .B \-d, \-\-delete-db
 Deletes the trust database. Normally this never needs to be done. But if for some reason the trust database becomes corrupted, then the only method of recovery is to run this command.
 .TP

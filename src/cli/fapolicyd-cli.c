@@ -54,6 +54,7 @@ static const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "--check-config        Check the daemon config for syntax errors\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
+"--check-trustdb       Check the trustdb against files on disk for problems\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
@@ -68,6 +69,7 @@ static struct option long_opts[] =
 {
 	{"check-config",0, NULL,  1 },
 	{"check-watch_fs",0, NULL,  2 },
+	{"check-trustdb",0, NULL,  3 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -602,6 +604,85 @@ static int check_watch_fs(void)
 	return 0;
 }
 
+// Returns 0 = everything is OK, 1 = there is a problem
+static int verify_file(const char *path, off_t size, const char *sha)
+{
+	int fd, warn_size = 0, warn_sha = 0;
+	struct stat sb;
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		printf("Can't open %s (%s)\n", path, strerror(errno));
+		return 1;
+	}
+	if (fstat(fd, &sb)) {
+		printf("Can't stat %s (%s)\n", path, strerror(errno));
+		close(fd);
+		return 1;
+	}
+	if (sb.st_size != size)
+		warn_size = 1;
+
+	char *sha_buf = get_hash_from_fd(fd);
+	close(fd);
+
+	if (strcmp(sha, sha_buf))
+	    warn_sha = 1;
+	free(sha_buf);
+
+	if (warn_size || warn_sha) {
+		printf("%s miscompares: %s %s\n", path,
+		   warn_size ? "size" : "",
+		   warn_sha ? (strlen(sha) < 64 ? "is a sha1" : "sha256") : "");
+		return 1;
+	}
+	return 0;
+}
+
+static int check_trustdb(void)
+{
+	conf_t config;
+	int found = 0;
+
+	set_message_mode(MSG_STDERR, DBG_NO);
+	if (load_daemon_config(&config)) {
+		free_daemon_config(&config);
+		return 1;
+	}
+	set_message_mode(MSG_QUIET, DBG_NO);
+	if (walk_database_start(&config))
+		return 1;
+	free_daemon_config(&config);
+
+	do {
+		unsigned int tsource; // unused
+		off_t size;
+		char sha[65];
+		char path[448];
+		char data[80];
+
+		// Get the entry and format it for use.
+		walkdb_entry_t *entry = walk_database_get_entry();
+		snprintf(path, sizeof(path), "%.*s", (int) entry->path.mv_size,
+			(char *) entry->path.mv_data);
+		snprintf(data, sizeof(data), "%.*s", (int) entry->data.mv_size,
+			(char *) entry->data.mv_data);
+		if (sscanf(data, DATA_FORMAT, &tsource, &size, sha) != 3) {
+			fprintf(stderr, "%s data entry is corrupted\n", path);
+			continue;
+		}
+		if (verify_file(path, size, sha))
+			found =1 ;
+	} while (walk_database_next());
+
+	walk_database_finish();
+
+	if (found == 0)
+		puts("No problems found");
+
+	return 0;
+}
+
 int main(int argc, char * const argv[])
 {
 	int opt, option_index, rc = 1;
@@ -673,6 +754,11 @@ int main(int argc, char * const argv[])
 		if (argc > 2)
 			goto args_err;
 		return check_watch_fs();
+		break;
+	case 3: // --check-trustdb
+		if (argc > 2)
+			goto args_err;
+		return check_trustdb();
 		break;
 	default:
 		printf("%s", usage);

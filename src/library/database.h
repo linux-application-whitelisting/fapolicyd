@@ -26,11 +26,17 @@
 #ifndef DATABASE_HEADER
 #define DATABASE_HEADER
 
+#include <lmdb.h>
 #include "conf.h"
 #include "file.h"
 
 #define DB_DIR "/var/lib/fapolicyd"
 #define DB_NAME "trust.db"
+
+typedef struct {
+	MDB_val path;
+	MDB_val data;
+} walkdb_entry_t;
 
 void lock_update_thread(void);
 void unlock_update_thread(void);
@@ -43,5 +49,11 @@ void close_database(void);
 void database_report(FILE *f);
 int unlink_db(void);
 void unlink_fifo(void);
+
+// Database verification functions
+int walk_database_start(conf_t *config);
+walkdb_entry_t *walk_database_get_entry(void);
+int walk_database_next(void);
+void walk_database_finish(void);
 
 #endif
