@@ -501,7 +501,7 @@ static Elf32_Ehdr *read_header32(int fd)
 {
 	Elf32_Ehdr *ptr = malloc(sizeof(Elf32_Ehdr));
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
-	ssize_t rc = safe_read(fd, (char *)&(ptr->e_type),
+	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
 				sizeof(Elf32_Ehdr) - EI_NIDENT);
 	if (rc == (sizeof(Elf32_Ehdr) - EI_NIDENT))
 		return ptr;
@@ -515,7 +515,7 @@ static Elf64_Ehdr *read_header64(int fd)
 {
 	Elf64_Ehdr *ptr = malloc(sizeof(Elf64_Ehdr));
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
-	ssize_t rc = safe_read(fd, (char *)&(ptr->e_type),
+	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
 				sizeof(Elf64_Ehdr) - EI_NIDENT);
 	if (rc == (sizeof(Elf64_Ehdr) - EI_NIDENT))
 		return ptr;
