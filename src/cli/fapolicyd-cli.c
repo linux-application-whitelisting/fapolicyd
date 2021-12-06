@@ -650,9 +650,10 @@ static int check_trustdb(void)
 		return 1;
 	}
 	set_message_mode(MSG_QUIET, DBG_NO);
-	if (walk_database_start(&config))
-		return 1;
+	int rc = walk_database_start(&config);
 	free_daemon_config(&config);
+	if (rc)
+		return 1;
 
 	do {
 		unsigned int tsource; // unused
