@@ -175,31 +175,26 @@ int trust_file_append(const char *fpath, list_t *list)
 {
 	list_t content;
 	list_init(&content);
-
-	int rc = 0;
-	rc = trust_file_load(fpath, &content);
+	int rc = trust_file_load(fpath, &content);
 	if (rc)
 		return 1;
 
-	int i = 0;
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
+		int i = 0;
 		lptr->data = make_path_string(lptr->index, &i);
 	}
 
 	list_merge(&content, list);
 	write_out_list(&content, fpath);
 	list_empty(&content);
-	if (rc)
-		return 1;
-
-	return 0;
+	return rc ? 1 : 0;
 }
 
 int trust_file_load(const char *fpath, list_t *list)
 {
-	long line = 0;
 	char buffer[BUFFER_SIZE];
 	int escaped = 0;
+	long line = 0;
 
 	FILE *file = fopen(fpath, "r");
 	if (!file) {
@@ -215,7 +210,7 @@ int trust_file_load(const char *fpath, list_t *list)
 		line++;
 
 		if (iscntrl(buffer[0]) || buffer[0] == '#') {
-			if (line == 1 && (strncmp(buffer, HEADER0, strlen(HEADER0)) == 0))
+			if (line == 1 && strncmp(buffer, HEADER0, strlen(HEADER0)) == 0)
 				escaped = 1;
 			continue;
 		}
@@ -229,9 +224,7 @@ int trust_file_load(const char *fpath, list_t *list)
 		if (asprintf(&data, DATA_FORMAT, tsource, sz, sha) == -1)
 			data = NULL;
 
-
 		index = escaped ? unescape(name) : strdup(name);
-
 		if (index == NULL) {
 			msg(LOG_ERR, "Could not unescape %s from %s", name, fpath);
 			free(data);
@@ -325,13 +318,12 @@ int trust_file_update_path(const char *fpath, const char *path)
 
 int trust_file_rm_duplicates(const char *fpath, list_t *list)
 {
-
 	list_t trust_file;
 	list_init(&trust_file);
 
 	int rc = trust_file_load(fpath, &trust_file);
 	if (rc)
-		goto end;
+		goto cleanup;
 
 	for (list_item_t *lptr = trust_file.first; lptr; lptr = lptr->next) {
 		list_remove(list, lptr->index);
@@ -339,7 +331,7 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
 			break;
 	}
 
-end:
+cleanup:
 	list_empty(&trust_file);
 	return rc;
 }
