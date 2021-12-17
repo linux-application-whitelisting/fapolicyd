@@ -295,6 +295,7 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 			if (!strncmp(p, "64", 2))
 				p += 2;
 			if (!strncmp(p, "/libc-2", 7) ||
+				!strncmp(p, "/libc.so", 8) ||
 				!strncmp(p, "/libpthread-2", 13))
 				ptr = "application/x-sharedlib";
 		}
