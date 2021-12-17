@@ -176,8 +176,11 @@ int trust_file_append(const char *fpath, list_t *list)
 	list_t content;
 	list_init(&content);
 	int rc = trust_file_load(fpath, &content);
-	if (rc)
+	// if trust file does not exist, we ignore it as it will be created while writing
+	if (rc == 2) {
+		// exit on parse error, we dont want invalid entries to be autoremoved
 		return 1;
+	}
 
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
 		int i = 0;
@@ -187,9 +190,16 @@ int trust_file_append(const char *fpath, list_t *list)
 	list_merge(&content, list);
 	write_out_list(&content, fpath);
 	list_empty(&content);
-	return rc ? 1 : 0;
+	return 0;
 }
 
+/**
+ * @brief Load trust file into list
+ *
+ * @param fpath Full path to trust file
+ * @param list Trust file will be loaded into this list
+ * @return 0 on success, 1 if file can't be open, 2 on parsing error
+ */
 int trust_file_load(const char *fpath, list_t *list)
 {
 	char buffer[BUFFER_SIZE];
@@ -197,10 +207,8 @@ int trust_file_load(const char *fpath, list_t *list)
 	long line = 0;
 
 	FILE *file = fopen(fpath, "r");
-	if (!file) {
-		msg(LOG_ERR, "Cannot open %s", fpath);
+	if (!file)
 		return 1;
-	}
 
 	while (fgets(buffer, BUFFER_SIZE, file)) {
 		char name[4097], sha[65], *index = NULL, *data = NULL;
@@ -257,7 +265,17 @@ int trust_file_delete_path(const char *fpath, const char *path)
 {
 	list_t list;
 	list_init(&list);
-	trust_file_load(fpath, &list);
+	int rc = trust_file_load(fpath, &list);
+	switch (rc) {
+	case 1:
+		msg(LOG_ERR, "Cannot open %s", fpath);
+		return 0;
+	case 2:
+		list_empty(&list);
+		return -1;
+	default:
+		break;
+	}
 
 	int count = 0;
 	size_t path_len = strlen(path);
@@ -295,7 +313,17 @@ int trust_file_update_path(const char *fpath, const char *path)
 {
 	list_t list;
 	list_init(&list);
-	trust_file_load(fpath, &list);
+	int rc = trust_file_load(fpath, &list);
+	switch (rc) {
+	case 1:
+		msg(LOG_ERR, "Cannot open %s", fpath);
+		return 0;
+	case 2:
+		list_empty(&list);
+		return -1;
+	default:
+		break;
+	}
 
 	int count = 0;
 	size_t path_len = strlen(path);
@@ -320,10 +348,17 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
 {
 	list_t trust_file;
 	list_init(&trust_file);
-
 	int rc = trust_file_load(fpath, &trust_file);
-	if (rc)
-		goto cleanup;
+	switch (rc) {
+	case 1:
+		msg(LOG_ERR, "Cannot open %s", fpath);
+		return -1;
+	case 2:
+		list_empty(&trust_file);
+		return -1;
+	default:
+		break;
+	}
 
 	for (list_item_t *lptr = trust_file.first; lptr; lptr = lptr->next) {
 		list_remove(list, lptr->index);
@@ -331,9 +366,8 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
 			break;
 	}
 
-cleanup:
 	list_empty(&trust_file);
-	return rc;
+	return 0;
 }
 
 
