@@ -37,10 +37,10 @@ sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//
     --with-audit \
     --disable-shared
 
-make CFLAGS="%{optflags}" %{?_smp_mflags}
+%make_build
 
 %install
-make DESTDIR="%{buildroot}" INSTALL='install -p' install
+%make_install
 mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
