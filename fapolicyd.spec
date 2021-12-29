@@ -51,7 +51,7 @@ mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/rules.d
 
 #cleanup
-find %{buildroot} \( -name '*.la' -o -name '*.a' \) -exec rm -f {} ';'
+find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
 
 %check
 make check
