@@ -49,6 +49,9 @@
 0	belong		0x420d0d0a	python 3.7 byte-compiled
 !:mime	application/x-bytecode.python
 
+0	belong		0x6f0d0d0a	python 3.10 byte-compiled
+!:mime application/x-bytecode.python
+
 0	search/1/wt	#!\ /usr/bin/python3	Python script text executable
 !:strength + 15
 !:mime text/x-python
