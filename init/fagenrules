@@ -25,6 +25,7 @@
 #   Suffix for previous fapolicyd.rules file if this script replaces it.
 #   The file is left in the destination directory with suffix with $ASuffix
 
+OldDestinationFile=/etc/fapolicyd/fapolicyd.rules
 DestinationFile=/etc/fapolicyd/compiled.rules
 SourceRulesDir=/etc/fapolicyd/rules.d
 TmpRules=`mktemp /tmp/farules.XXXXXXXX`
@@ -72,6 +73,10 @@ if [ $files -eq 0 ] ; then
 	rm -f ${TmpRules}
 	# won't call this an error as they may not have migrated
 	exit 0
+elif [ -e ${OldDestinationFile} ] ; then
+	echo "Error - both old and new rules exist. Delete one or the other"
+	rm -f ${TmpRules}
+	exit 1
 fi
 
 # Create the interim rules file ensuring its access modes protect it
