@@ -37,10 +37,10 @@ sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//
     --with-audit \
     --disable-shared
 
-make CFLAGS="%{optflags}" %{?_smp_mflags}
+%make_build
 
 %install
-make DESTDIR="%{buildroot}" INSTALL='install -p' install
+%make_install
 mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
@@ -51,7 +51,7 @@ mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/rules.d
 
 #cleanup
-find %{buildroot} \( -name '*.la' -o -name '*.a' \) -exec rm -f {} ';'
+find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
 
 %check
 make check
@@ -102,12 +102,12 @@ fi
 %attr(644,root,root) %{_mandir}/man5/*
 %attr(644,root,root) %{_mandir}/man1/*
 %attr(644,root,root) %{_datadir}/%{name}/*
-%ghost %{_localstatedir}/log/%{name}-access.log
+%ghost %attr(440,%{name},%{name}) %verify(not md5 size maj min mtime) %{_localstatedir}/log/%{name}-access.log
 %attr(770,root,%{name}) %dir %{_localstatedir}/lib/%{name}
 %attr(770,root,%{name}) %dir /run/%{name}
-%ghost /run/%{name}/%{name}.fifo
-%ghost %{_localstatedir}/lib/%{name}/data.mdb
-%ghost %{_localstatedir}/lib/%{name}/lock.mdb
+%ghost %attr(660,root,%{name}) /run/%{name}/%{name}.fifo
+%ghost %attr(660,%{name},%{name}) %verify(not md5 size maj min mtime) %{_localstatedir}/lib/%{name}/data.mdb
+%ghost %attr(660,%{name},%{name}) %verify(not md5 size maj min mtime) %{_localstatedir}/lib/%{name}/lock.mdb
 %{python3_sitelib}/dnf-plugins/%{name}-dnf-plugin.py
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
