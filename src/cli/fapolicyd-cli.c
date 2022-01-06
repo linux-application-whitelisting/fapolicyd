@@ -407,7 +407,17 @@ static int do_list(void)
 						strerror(errno));
 			return 1;
 		}
+	} else {
+		FILE *t = fopen(OLD_RULES_FILE, "rm");
+		if (t) {
+			fclose(t);
+			fprintf(stderr,
+				"Error - old and new rules file detected. "
+				"Delete one or the other.\n");
+			return 1;
+		}
 	}
+
 	while ((buf = get_line(f, &lineno))) {
 		char *str = buf;
 		lineno++;
