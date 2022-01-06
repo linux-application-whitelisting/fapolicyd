@@ -1,6 +1,7 @@
 1.0.5
 - Add support for a rules.d directory
 - Add --check-config, --check-watch_fs, and --check-trustdb to fapolicyd-cli
+- Add libgcrypt initialization
 
 1.0.4
 - Tighten up ELF detection

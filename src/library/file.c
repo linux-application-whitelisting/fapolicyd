@@ -90,6 +90,11 @@ void file_init(void)
 		msg(LOG_ERR, "Unable to load magic database");
 		exit(1);
 	}
+
+	// Initialize libgcrypt
+	gcry_check_version(NULL);
+	gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
+	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
 }
 
 
