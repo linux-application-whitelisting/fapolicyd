@@ -401,9 +401,12 @@ static int do_list(void)
 	char *buf;
 
 	if (f == NULL) {
-		fprintf(stderr, "Cannot open rules file (%s)\n",
+		f = fopen(OLD_RULES_FILE, "rm");
+		if (f == NULL) {
+			fprintf(stderr, "Cannot open rules file (%s)\n",
 						strerror(errno));
-		return 1;
+			return 1;
+		}
 	}
 	while ((buf = get_line(f, &lineno))) {
 		char *str = buf;
