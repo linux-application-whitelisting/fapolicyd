@@ -1,0 +1,5 @@
+# Only allow system perl files
+
+allow perm=any all : ftype=text/x-perl trust=1
+deny_audit perm=any all : ftype=text/x-perl
+

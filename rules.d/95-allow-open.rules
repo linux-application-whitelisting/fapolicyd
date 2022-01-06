@@ -1,0 +1,4 @@
+# Allow everything else to open any file
+
+allow perm=open all : all
+

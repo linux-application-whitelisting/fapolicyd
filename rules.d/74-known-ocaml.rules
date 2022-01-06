@@ -1,0 +1,5 @@
+# Only allow system Ocaml files
+
+allow perm=any all : ftype=application/x-bytecode.ocaml trust=1
+deny_audit perm=any all : ftype=application/x-bytecode.ocaml
+

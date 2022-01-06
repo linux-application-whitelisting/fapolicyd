@@ -1,0 +1,5 @@
+# Only allow system PHP files
+
+allow perm=any all : ftype=text/x-php trust=1
+deny_audit perm=any all : ftype=text/x-php
+

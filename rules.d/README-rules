@@ -4,13 +4,15 @@ The rules will get processed in a specific order based on their natural
 sort order. To make things easier to use, the files in this directory are
 organized into groups with the following meanings:
 
-10 - Kernel and auditctl configuration
-20 - Rules that could match general rules but we want a different match
-30 - Main rules
-40 - Optional rules
-50 - Server Specific rules
-70 - System local rules
-90 - Finalize (immutable)
+10 - macros
+20 - patterns
+30 - loop holes
+40 - ELF rules
+50 - user/group access rules
+60 - application access rules
+70 - language rules
+80 - trusted execute
+90 - general open access to documents
 
 that should be thought out and individual files copied to
 /etc/fapolicyd/rules.d/
@@ -18,3 +20,38 @@ that should be thought out and individual files copied to
 Once you have the rules in the rules.d directory, you can load them by running
 fagenrules --load
 
+You can reconstruct the old policy files by including the following:
+
+fapolicyd.rules.known-libs
+--------------------------
+10-languages.rules
+20-patterns.rules
+30-dracut.rules
+30-updaters.rules
+40-bad-elf.rules
+41-shared-obj.rules
+42-trusted-elf.rules
+70-trusted-lang.rules
+72-shell.rules
+90-deny-execute.rules
+95-allow-open.rules
+
+fapolicyd.rules.restrictive
+---------------------------
+10-languages.rules
+20-patterns.rules
+30-dracut.rules
+30-updaters.rules
+40-bad-elf.rules
+41-shared-obj.rules
+43-known-elf.rules
+71-known-python.rules
+72-shell.rules
+73-known-perl.rules (optional)
+74-known-ocaml.rules (optiona)
+75-known-php.rules (optional)
+76-known-ruby.rules (optional)
+77-known-lua.rules (optional)
+90-deny-execute.rules
+91-deny-lang.rules
+95-allow-open.rules

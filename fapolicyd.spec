@@ -28,9 +28,9 @@ makes use of the kernel's fanotify interface to determine file access rights.
 %setup -q
 
 # generate rules for python
-sed -i "s/%python2_path%/`readlink -f %{__python2} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules.*
-sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" init/%{name}.rules.*
-sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//\\\\\//g'`/g" init/%{name}.rules.*
+sed -i "s/%python2_path%/`readlink -f %{__python2} | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
+sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
+sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
 
 %build
 %configure \
@@ -44,7 +44,6 @@ sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//
 mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
-install -p -m 644 init/%{name}.rules.known-libs %{buildroot}/%{_sysconfdir}/%{name}/%{name}.rules
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
@@ -65,7 +64,19 @@ if [ ! -e %{_sysconfdir}/%{name}/%{name}.rules ] ; then
 	files=`ls %{_sysconfdir}/%{name}/rules.d/ 2>/dev/null | wc -w`
 	# Only if no pre-existing component rules
 	if [ "$files" -eq 0 ] ; then
-		## cp % {_datadir}/%{name}/10-some.rule  %{_sysconfdir}/%{name}/rules.d/
+		## Install the known libs policy
+cp %{_datadir}/%{name}/sample-rules/10-languages.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/20-patterns.rules %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/30-dracut.rules %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/30-updaters.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/40-bad-elf.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/41-shared-obj.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/42-trusted-elf.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/70-trusted-lang.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/72-shell.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/90-deny-execute.rules %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/95-allow-open.rules  %{_sysconfdir}/%{name}/rules.d/
+		chgrp %{name} %{_sysconfdir}/%{name}/rules.d/*
 		if [ -x /usr/sbin/restorecon ] ; then
 			# restore correct label
 			/usr/sbin/restorecon -F %{_sysconfdir}/%{name}/rules.d/*
@@ -86,13 +97,16 @@ fi
 %{!?_licensedir:%global license %%doc}
 %license COPYING
 %attr(755,root,%{name}) %dir %{_datadir}/%{name}
-%attr(644,root,%{name}) %{_datadir}/%{name}/*
+%attr(755,root,%{name}) %dir %{_datadir}/%{name}/sample-rules
+%attr(644,root,%{name}) %{_datadir}/%{name}/sample-rules/*
+%attr(644,root,%{name}) %{_datadir}/%{name}/fapolicyd-magic.mgc
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/trust.d
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/rules.d
+%ghost %{_sysconfdir}/%{name}/rules.d/*
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
-%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
+%ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/compiled.rules
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}

@@ -1,0 +1,5 @@
+# Carve out an exception for dracut's initramfs building
+
+allow perm=any uid=0 : dir=/var/tmp/
+allow perm=any uid=0 trust=1 : all
+

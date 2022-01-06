@@ -1,0 +1,7 @@
+# Only allow system python executables and libs
+
+allow perm=any all : ftype=text/x-python trust=1
+allow perm=open all : ftype=application/x-bytecode.python trust=1
+deny_audit perm=any all : ftype=text/x-python
+deny_audit perm=any all : ftype=application/x-bytecode.python
+

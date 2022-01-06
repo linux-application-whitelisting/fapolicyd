@@ -1,0 +1,5 @@
+# Only allow system ruby files
+
+allow perm=any all : ftype=text/x-ruby trust=1
+deny_audit perm=any all : ftype=text/x-ruby
+

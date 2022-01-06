@@ -1,0 +1,4 @@
+# Do not allow malformed ELF even if trusted
+
+deny_audit perm=any all : ftype=application/x-bad-elf
+

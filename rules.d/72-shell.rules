@@ -1,0 +1,4 @@
+# Allow all shell script execution and sourcing
+
+allow perm=any all : ftype=text/x-shellscript
+

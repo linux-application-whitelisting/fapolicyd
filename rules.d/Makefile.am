@@ -1,5 +1,5 @@
 # Makefile.am --
-# Copyright 2021 Red Hat Inc.
+# Copyright 2022 Red Hat Inc.
 # All Rights Reserved.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -23,7 +23,14 @@
 
 CONFIG_CLEAN_FILES = *.rej *.orig
 
-EXTRA_DIST = README-rules
+EXTRA_DIST = README-rules 10-languages.rules 20-patterns.rules \
+	30-dracut.rules 30-updaters.rules \
+	40-bad-elf.rules 41-shared-obj.rules 42-trusted-elf.rules \
+	43-known-elf.rules \
+	70-trusted-lang.rules 71-known-python.rules 72-shell.rules \
+	73-known-perl.rules 74-known-ocaml.rules 75-known-php.rules \
+	76-known-ruby.rules 77-known-lua.rules \
+	90-deny-execute.rules 91-deny-lang.rules 95-allow-open.rules
 
 rulesdir = $(datadir)/fapolicyd/sample-rules
 dist_rules_DATA = $(EXTRA_DIST)

@@ -1,0 +1,6 @@
+# Only allow known ELF libs - this is ahead of executable because typical
+# executable is linked with a dozen or more libraries.
+
+allow perm=open all : ftype=application/x-sharedlib trust=1
+deny_audit perm=open all : ftype=application/x-sharedlib
+

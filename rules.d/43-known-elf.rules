@@ -1,0 +1,11 @@
+# Only allow known ELF Applications
+
+allow perm=execute all : ftype=application/x-executable trust=1
+deny_audit perm=execute all : ftype=application/x-executable
+
+# This is a workaround for kernel thinking this is being executed because it
+# occurs during the execve call for an ELF binary. We catch actual execution
+# in the ld_so pattern rule.
+
+allow perm=execute all : path=%ld_so_path% trust=1
+

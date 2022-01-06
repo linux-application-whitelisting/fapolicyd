@@ -1,0 +1,7 @@
+# This file contains the list of all patterns. Only the ld_so pattern
+# is enabled by default.
+
+deny_audit perm=any pattern=ld_so : all
+#deny_audit perm=any pattern=ld_preload : all
+#deny_audit perm=any pattern=static : all
+

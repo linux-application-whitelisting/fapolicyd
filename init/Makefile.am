@@ -1,6 +1,4 @@
 EXTRA_DIST = \
-	fapolicyd.rules.known-libs \
-	fapolicyd.rules.restrictive \
 	fapolicyd.service \
 	fapolicyd.conf \
 	fapolicyd.trust \
@@ -20,7 +18,7 @@ dist_systemdservice_DATA = fapolicyd.service
 sbin_SCRIPTS = fagenrules
 
 MAGIC = fapolicyd-magic.mgc
-pkgdata_DATA = ${MAGIC} fapolicyd.rules.known-libs fapolicyd.rules.restrictive
+pkgdata_DATA = ${MAGIC} 
 CLEANFILES = ${MAGIC}
 
 ${MAGIC}: $(EXTRA_DIST)

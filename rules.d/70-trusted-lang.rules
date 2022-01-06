@@ -1,0 +1,5 @@
+# Allow any program to open trusted language files
+
+allow perm=open all : ftype=%languages trust=1
+deny_audit perm=any all : ftype=%languages
+

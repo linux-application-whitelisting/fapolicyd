@@ -1,0 +1,4 @@
+# Allow trusted programs to execute
+
+allow perm=execute all : trust=1
+

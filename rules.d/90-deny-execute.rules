@@ -1,0 +1,4 @@
+# Deny execution for anything untrusted
+
+deny_audit perm=execute all : all
+
