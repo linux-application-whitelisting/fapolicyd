@@ -92,3 +92,6 @@
 
 0       search/1/wt      #!\ /usr/bin/stap      Systemtap script text executable
 !:mime  text/x-systemtap
+
+0	string/wt	#!\ /usr/sbin/nft	Netfilter tables script text executable
+!:mime	text/x-nftables

@@ -3,6 +3,7 @@
 - Add --check-config, --check-watch_fs, and --check-trustdb to fapolicyd-cli
 - Add libgcrypt initialization
 - Break up all the rules so they can be installed in rules.d
+- Add text/x-nftables magic
 
 1.0.4
 - Tighten up ELF detection
