@@ -54,10 +54,11 @@ static struct cache c = { 0, NULL };
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
 	"/lib64/ld-linux-x86-64.so.2",
-	"/lib/ld-linux.so.2",
+	"/lib/ld-linux.so.2",			// i686
 	"/usr/lib64/ld-linux-x86-64.so.2",
-	"/usr/lib/ld-linux.so.2",
+	"/usr/lib/ld-linux.so.2",		// i686
 	"/lib/ld.so.2",
+	"/lib/ld64.so.1",			// rhel8 s390x
 };
 #define MAX_INTERPS (sizeof(interpreters)/sizeof(interpreters[0]))
 
