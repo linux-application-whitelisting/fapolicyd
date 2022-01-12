@@ -59,6 +59,7 @@ static const char *interpreters[] = {
 	"/usr/lib/ld-linux.so.2",		// i686
 	"/lib/ld.so.2",
 	"/lib/ld64.so.1",			// rhel8 s390x
+	"/lib64/ld64.so.2",			// rhel8 ppc64le
 };
 #define MAX_INTERPS (sizeof(interpreters)/sizeof(interpreters[0]))
 

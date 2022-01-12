@@ -4,7 +4,7 @@
 - Add libgcrypt initialization
 - Break up all the rules so they can be installed in rules.d
 - Add text/x-nftables magic
-- Add interpreter for s390x
+- Add interpreter for s390x, ppc64le
 
 1.0.4
 - Tighten up ELF detection
