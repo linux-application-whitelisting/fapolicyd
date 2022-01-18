@@ -397,18 +397,18 @@ static int do_ftype(const char *path)
 static int do_list(void)
 {
 	unsigned count = 1, lineno = 0;
-	FILE *f = fopen(RULES_FILE, "rm");
+	FILE *f = fopen(OLD_RULES_FILE, "rm");
 	char *buf;
 
 	if (f == NULL) {
-		f = fopen(OLD_RULES_FILE, "rm");
+		f = fopen(RULES_FILE, "rm");
 		if (f == NULL) {
 			fprintf(stderr, "Cannot open rules file (%s)\n",
 						strerror(errno));
 			return 1;
 		}
 	} else {
-		FILE *t = fopen(OLD_RULES_FILE, "rm");
+		FILE *t = fopen(RULES_FILE, "rm");
 		if (t) {
 			fclose(t);
 			fprintf(stderr,

@@ -1,6 +1,6 @@
 /*
  * policy.c - functions that encapsulate the notion of a policy
- * Copyright (c) 2016,2019-21 Red Hat
+ * Copyright (c) 2016,2019-22 Red Hat
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -191,11 +191,12 @@ int load_config(const conf_t *config)
 	if (rules_create(&rules))
 		return 1;
 
-	// Now open the file and load them one by one.
-	fd = open(RULES_FILE, O_NOFOLLOW|O_RDONLY);
+	// Now open the file and load them one by one. We default to
+	// opening the old file first in case there are both
+	fd = open(OLD_RULES_FILE, O_NOFOLLOW|O_RDONLY);
 	if (fd < 0) {
-		// See if the old rules exist
-		fd = open(OLD_RULES_FILE, O_NOFOLLOW|O_RDONLY);
+		// See if the new rules exist
+		fd = open(RULES_FILE, O_NOFOLLOW|O_RDONLY);
 		if (fd < 0) {
 			msg(LOG_ERR, "Error opening rules file (%s)",
 				strerror(errno));
