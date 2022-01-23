@@ -339,7 +339,7 @@ to debug the policy is:
 Look at the rule that triggered and see if it makes sense that it triggered. If
 the rule is a catch all denial, then check if the file is in the trust db.
 
-Starting qith 1.0.5, fapolicyd-cli includes some diagnostic capabilities.
+Starting with 1.0.5, fapolicyd-cli includes some diagnostic capabilities.
 
 |         Option         |              What it does                  |
 |------------------------|--------------------------------------------|
