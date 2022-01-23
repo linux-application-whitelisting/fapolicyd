@@ -147,6 +147,26 @@ your rule above the thing that denies it. But again, if you are writing rules
 to allow execution, you should reconsider if adding the programs to the trust
 database is better.
 
+RULE ORDERING
+-------------
+Starting with 1.0.5, the rules should be placed in a rules.d directory under
+the fapolicyd configuration directory. There is a new utility, fagenrules,
+which will compile the rules into a single file, compiled.rules, and place the
+resulting file in the main config directory.
+
+If you want to migrate your existing rules, just move them as is to the rules.d
+directory. You cannot have both compiled.rules and fapolicyd.rules. The
+fagenrules will notice this and put a warning in syslog. If you use fapolicyd-cli --list, it will also notice and warn. If you do have both files, the old rules
+file will be used instead of the new one.
+
+This new rules.d directory is intended to make it easier to develop application
+specific rules that can be dropped off by automation / orchestration. This
+should make managing the configuration easier.
+
+The files in the rules.d directory are processed in a specific order. See the
+[rules.d README] (rules.d/README-rules) file for more information.
+
+
 REPORT
 ------
 On shutdown the daemon will write an object access report to
