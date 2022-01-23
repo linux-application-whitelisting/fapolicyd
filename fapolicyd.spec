@@ -126,5 +126,5 @@ fi
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
-* Fri Nov 12 2021 Steve Grubb <sgrubb@redhat.com> 1.0.5-1
+* Sun Jan 23 2022 Steve Grubb <sgrubb@redhat.com> 1.0.5-1
 - New release
