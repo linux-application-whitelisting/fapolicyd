@@ -341,11 +341,11 @@ the rule is a catch all denial, then check if the file is in the trust db.
 
 Starting qith 1.0.5, fapolicyd-cli includes some diagnostic capabilities.
 
-|      Option      |              What it does                  |
-|------------------|--------------------------------------------|
-| --check-config   | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                     |
-| --check-watch_fs | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
-| --check-trustdb  | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
+|         Option         |              What it does                  |
+|------------------------|--------------------------------------------|
+| --check-config         | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                     |
+| --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
+| --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
 
 
 
