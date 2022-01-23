@@ -164,7 +164,7 @@ specific rules that can be dropped off by automation / orchestration. This
 should make managing the configuration easier.
 
 The files in the rules.d directory are processed in a specific order. See the
-[rules.d README] (rules.d/README-rules) file for more information.
+[rules.d README](rules.d/README-rules) file for more information.
 
 
 REPORT
