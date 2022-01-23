@@ -149,7 +149,7 @@ database is better.
 
 RULE ORDERING
 -------------
-Starting with 1.0.5, the rules should be placed in a rules.d directory under
+Starting with 1.1, the rules should be placed in a rules.d directory under
 the fapolicyd configuration directory. There is a new utility, fagenrules,
 which will compile the rules into a single file, compiled.rules, and place the
 resulting file in the main config directory.
@@ -359,7 +359,7 @@ to debug the policy is:
 Look at the rule that triggered and see if it makes sense that it triggered. If
 the rule is a catch all denial, then check if the file is in the trust db.
 
-Starting with 1.0.5, fapolicyd-cli includes some diagnostic capabilities.
+Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 
 |         Option         |              What it does                  |
 |------------------------|--------------------------------------------|
