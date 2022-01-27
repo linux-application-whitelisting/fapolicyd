@@ -58,6 +58,8 @@ static const char *interpreters[] = {
 	"/usr/lib64/ld-linux-x86-64.so.2",
 	"/usr/lib/ld-linux.so.2",		// i686
 	"/lib/ld.so.2",
+	"/lib/ld-linux-armhf.so.3",   // fedora armv7hl
+	"/lib/ld-linux-aarch64.so.1", // fedora aarch64
 	"/lib/ld64.so.1",			// rhel8 s390x
 	"/lib64/ld64.so.2",			// rhel8 ppc64le
 };
