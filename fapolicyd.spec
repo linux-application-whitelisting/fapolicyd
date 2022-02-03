@@ -106,6 +106,7 @@ fi
 %ghost %{_sysconfdir}/%{name}/rules.d/*
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
+%ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/fapolicyd.rules
 %ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/compiled.rules
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
