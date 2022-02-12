@@ -1,6 +1,6 @@
 /*
  * process.h - Header file for process.c
- * Copyright (c) 2016,2019-21 Red Hat Inc.
+ * Copyright (c) 2016,2019-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -77,9 +77,12 @@ struct proc_info
 struct proc_info *stat_proc_entry(pid_t pid) MALLOCLIKE;
 void clear_proc_info(struct proc_info *info);
 int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2);
-char *get_comm_from_pid(pid_t pid, size_t blen, char *buf);
-char *get_program_from_pid(pid_t pid, size_t blen, char *buf);
-char *get_type_from_pid(pid_t pid, size_t blen, char *buf);
+char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
+	__attr_access ((__write_only__, 3, 2));
+char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
+	__attr_access ((__write_only__, 3, 2));
+char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
+	__attr_access ((__write_only__, 3, 2));
 uid_t get_program_auid_from_pid(pid_t pid);
 int get_program_sessionid_from_pid(pid_t pid);
 uid_t get_program_uid_from_pid(pid_t pid);

@@ -1,6 +1,6 @@
 /*
  * file.h - Header file for file.c
- * Copyright (c) 2016,2018-20 Red Hat Inc.
+ * Copyright (c) 2016,2018-20,2022 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -44,8 +44,10 @@ void file_init(void);
 void file_close(void);
 struct file_info *stat_file_entry(int fd) MALLOCLIKE;
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
-char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf);
-char *get_device_from_stat(unsigned int device, size_t blen, char *buf);
+char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
+	__attr_access ((__write_only__, 4, 3));
+char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
+	__attr_access ((__write_only__, 3, 2));
 const char *classify_device(mode_t mode);
 const char *classify_elf_info(uint32_t elf, const char *path);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,

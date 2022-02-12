@@ -1,5 +1,5 @@
 /* fd-fgets.h -- a replacement for glibc's fgets
- * Copyright 2019,2020 Red Hat Inc.
+ * Copyright 2019,2020,2022 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -23,11 +23,18 @@
 #ifndef FD_FGETS_HEADER
 #define FD_FGETS_HEADER
 
+#include <sys/cdefs.h>
+#ifndef __attr_access
+#  define __attr_access(x)
+#  define __attr_access_none(argno)
+#endif
+
 #include <sys/types.h>
 
 int fd_fgets_eof(void);
 void fd_fgets_rewind(void);
-int fd_fgets(char *buf, size_t blen, int fd);
+int fd_fgets(char *buf, size_t blen, int fd)
+	__attr_access ((__write_only__, 1, 2));
 
 #endif
 
