@@ -16,10 +16,9 @@
 #define MALLOCLIKE __attribute__ ((malloc))
 #define NORETURN __attribute__ ((noreturn))
 
-#include <sys/cdefs.h>
+#include <features.h>
 #ifndef __attr_access
 #  define __attr_access(x)
-#  define __attr_access_none(argno)
 #endif
 
 #endif

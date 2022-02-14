@@ -23,10 +23,9 @@
 #ifndef FD_FGETS_HEADER
 #define FD_FGETS_HEADER
 
-#include <sys/cdefs.h>
+#include <features.h>
 #ifndef __attr_access
 #  define __attr_access(x)
-#  define __attr_access_none(argno)
 #endif
 
 #include <sys/types.h>
