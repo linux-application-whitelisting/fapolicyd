@@ -418,6 +418,9 @@ int main(int argc, const char *argv[])
 	sa.sa_handler = term_handler;
 	sigaction(SIGTERM, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
+	/* Ignore SIGHUP until a handler is written */
+	sa.sa_handler = SIG_IGN;
+	sigaction(SIGHUP, &sa, NULL);
 
 	// Bump up resources
 	limit.rlim_cur = RLIM_INFINITY;
