@@ -413,14 +413,15 @@ int main(int argc, const char *argv[])
 	// Set a couple signal handlers
 	sa.sa_flags = 0;
 	sigemptyset(&sa.sa_mask);
-	sa.sa_handler = segv_handler;
-	sigaction(SIGSEGV, &sa, NULL);
-	sa.sa_handler = term_handler;
-	sigaction(SIGTERM, &sa, NULL);
-	sigaction(SIGINT, &sa, NULL);
 	/* Ignore SIGHUP until a handler is written */
 	sa.sa_handler = SIG_IGN;
 	sigaction(SIGHUP, &sa, NULL);
+	sa.sa_handler = segv_handler;
+	sigaction(SIGSEGV, &sa, NULL);
+	/* These need to be last since they are used later */
+	sa.sa_handler = term_handler;
+	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGINT, &sa, NULL);
 
 	// Bump up resources
 	limit.rlim_cur = RLIM_INFINITY;
