@@ -411,6 +411,7 @@ static int do_list(void)
 		FILE *t = fopen(RULES_FILE, "rm");
 		if (t) {
 			fclose(t);
+			fclose(f);
 			fprintf(stderr,
 				"Error - old and new rules file detected. "
 				"Delete one or the other.\n");

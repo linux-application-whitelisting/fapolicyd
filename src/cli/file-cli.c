@@ -107,6 +107,8 @@ int file_append(const char *path, const char *fname)
 
 	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) :
 							TRUST_FILE_PATH;
+	if (dest == NULL)
+		return -1;
 
 	int rc = trust_file_append(dest, &add_list);
 
@@ -121,12 +123,14 @@ int file_append(const char *path, const char *fname)
 int file_delete(const char *path, const char *fname)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
-	int count;
+	int count = 0;
 
 	if (fname) {
 		char *file = fapolicyd_strcat(TRUST_DIR_PATH, fname);
-		count = trust_file_delete_path(file, path);
-		free(file);
+		if (file) {
+			count = trust_file_delete_path(file, path);
+			free(file);
+		}
 	} else {
 		count = trust_file_delete_path_all(path);
 	}
@@ -140,12 +144,14 @@ int file_delete(const char *path, const char *fname)
 int file_update(const char *path, const char *fname)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
-	int count;
+	int count = 0;
 
 	if (fname) {
 		char *file = fapolicyd_strcat(TRUST_DIR_PATH, fname);
-		count = trust_file_update_path(file, path);
-		free(file);
+		if (file) {
+			count = trust_file_update_path(file, path);
+			free(file);
+		}
 	} else {
 		count = trust_file_update_path_all(path);
 	}
