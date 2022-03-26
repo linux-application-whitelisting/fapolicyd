@@ -66,9 +66,9 @@ if [ ! -e %{_sysconfdir}/%{name}/%{name}.rules ] ; then
 	if [ "$files" -eq 0 ] ; then
 		## Install the known libs policy
 cp %{_datadir}/%{name}/sample-rules/10-languages.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/20-patterns.rules %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/30-dracut.rules %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/30-updaters.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/20-dracut.rules %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/21-updaters.rules  %{_sysconfdir}/%{name}/rules.d/
+cp %{_datadir}/%{name}/sample-rules/30-patterns.rules %{_sysconfdir}/%{name}/rules.d/
 cp %{_datadir}/%{name}/sample-rules/40-bad-elf.rules  %{_sysconfdir}/%{name}/rules.d/
 cp %{_datadir}/%{name}/sample-rules/41-shared-obj.rules  %{_sysconfdir}/%{name}/rules.d/
 cp %{_datadir}/%{name}/sample-rules/42-trusted-elf.rules  %{_sysconfdir}/%{name}/rules.d/

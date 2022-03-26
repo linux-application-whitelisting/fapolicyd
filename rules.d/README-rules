@@ -5,8 +5,8 @@ sort order. To make things easier to use, the files in this directory are
 organized into groups with the following meanings:
 
 10 - macros
-20 - patterns
-30 - loop holes
+20 - loop holes
+30 - patterns
 40 - ELF rules
 50 - user/group access rules
 60 - application access rules
@@ -25,9 +25,9 @@ You can reconstruct the old policy files by including the following:
 fapolicyd.rules.known-libs
 --------------------------
 10-languages.rules
-20-patterns.rules
-30-dracut.rules
-30-updaters.rules
+20-dracut.rules
+21-updaters.rules
+30-patterns.rules
 40-bad-elf.rules
 41-shared-obj.rules
 42-trusted-elf.rules
@@ -39,9 +39,9 @@ fapolicyd.rules.known-libs
 fapolicyd.rules.restrictive
 ---------------------------
 10-languages.rules
-20-patterns.rules
-30-dracut.rules
-30-updaters.rules
+20-dracut.rules
+21-updaters.rules
+30-patterns.rules
 40-bad-elf.rules
 41-shared-obj.rules
 43-known-elf.rules
