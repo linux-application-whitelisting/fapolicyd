@@ -59,7 +59,7 @@
 unsigned int debug = 0, permissive = 0;
 
 // Signal handler notifications
-volatile atomic_bool stop = 0;
+volatile atomic_bool stop = 0, hup = 0;
 
 // Local variables
 static const char *pidfile = "/run/fapolicyd.pid";
@@ -209,6 +209,12 @@ static void segv_handler(int signum)
 	unlink_fifo();
 	signal(signum, SIG_DFL);
 	kill(getpid(), signum);
+}
+
+
+static void hup_handler(int sig)
+{
+	hup = 1 + sig; // Just so its used...
 }
 
 
@@ -413,8 +419,7 @@ int main(int argc, const char *argv[])
 	// Set a couple signal handlers
 	sa.sa_flags = 0;
 	sigemptyset(&sa.sa_mask);
-	/* Ignore SIGHUP until a handler is written */
-	sa.sa_handler = SIG_IGN;
+	sa.sa_handler = hup_handler;
 	sigaction(SIGHUP, &sa, NULL);
 	sa.sa_handler = segv_handler;
 	sigaction(SIGSEGV, &sa, NULL);
@@ -508,6 +513,10 @@ int main(int argc, const char *argv[])
 
 	msg(LOG_INFO, "Starting to listen for events");
 	while (!stop) {
+		if (hup) {
+			hup = 0;
+			//reconfigure();
+		}
 		rc = poll(pfd, 2, -1);
 
 #ifdef DEBUG
