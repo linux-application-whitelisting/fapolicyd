@@ -252,6 +252,28 @@ int get_program_sessionid_from_pid(pid_t pid)
 }
 
 
+pid_t get_program_ppid_from_pid(pid_t pid)
+{
+	char path[128];
+	int ppid = -1;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "/proc/%d/status", pid);
+	f = fopen(path, "rt");
+	if (f) {
+		__fsetlocking(f, FSETLOCKING_BYCALLER);
+		while (fgets(path, 128, f)) {
+			if (memcmp(path, "PPid:", 4) == 0) {
+				sscanf(path, "PPid: %d ", &ppid);
+                                break;
+                        }
+		}
+		fclose(f);
+	}
+	return ppid;
+}
+
+
 uid_t get_program_uid_from_pid(pid_t pid)
 {
 	char path[128];

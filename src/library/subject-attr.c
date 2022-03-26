@@ -1,6 +1,6 @@
 /*
  * subject-attr.c - functions to abstract subject attributes
- * Copyright (c) 2016,2019 Red Hat Inc.
+ * Copyright (c) 2016,2019,2022 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -56,6 +56,7 @@ static const nv_t table2[] = {
 {	UID,        "uid"	},
 {	SESSIONID,  "sessionid"	},
 {	PID,        "pid"	},
+{	PPID,       "ppid"	},
 {	PATTERN,    "pattern"	},
 {	SUBJ_TRUST, "trust"	},
 {	GID,        "gid"       },

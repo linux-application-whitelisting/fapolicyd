@@ -1,4 +1,4 @@
-.TH FAPOLICYD.RULES: "5" "Nov 2021" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.RULES: "5" "March 2022" "Red Hat" "System Administration Utilities"
 .SH NAME
 compiled.rules \- compiled fapolicyd rules to determine access rights
 fapolicyd.rules \- deprecated fapolicyd rules to determine access rights
@@ -48,6 +48,9 @@ This is the numeric session id that the audit system assigns to users when they 
 .TP
 .B pid
 This is the numeric process id that a program has.
+.TP
+.B pid
+This is the numeric process id of the program's parent. Note that programs that are orphaned or started directly from systemd have a ppid value of 1. Kernel threads have a ppid value of 2.
 .TP
 .B trust
 This is a boolean describing whether it is required for the subject to be in the trust database or not. A value of 1 means its required while 0 means its not. Trust checking is extended by the integrity setting in fapolicyd.conf. When trust is used on the subject, it could be a daemon. If that daemon gets updated on disk, the trustdb will be updated to the new SHA256 hash. If the integrity setting is not none, the running daemon is not likely to be trusted unless it gets restarted. The default rules are not written in a way that this would happen. But this needs to be highlighted as it may not be obvious when writing a new rule.

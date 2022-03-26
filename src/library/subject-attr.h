@@ -1,6 +1,6 @@
 /*
  * subject-attr.h - Header file for subject-attr.c
- * Copyright (c) 2016,2019-20 Red Hat Inc.
+ * Copyright (c) 2016,2019-20,2022 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -31,7 +31,7 @@
 #include "attr-sets.h"
 
 // Top is numbers, bottom is strings
-typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID,
+typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, PPID,
        PATTERN, SUBJ_TRUST, GID, COMM, EXE, EXE_DIR, EXE_TYPE,
        EXE_DEVICE } subject_type_t;
 

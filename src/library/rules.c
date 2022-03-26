@@ -302,7 +302,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 		}
 
 		// numbers
-		if (type <= PID && set->type != INT ) {
+		if (type <= PPID && set->type != INT ) {
 			msg(LOG_ERR, "rules: line:%d: assign_subject: "
 				"cannot assign %%%s which has STRING type to INT",
 				lineno, defined_set);
@@ -339,7 +339,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	case UID:
 	case SESSIONID:
 	case GID:
-	case PID: {
+	case PID:
+	case PPID: {
 		if (add_attr_set(name, INT, &index)) {
 			goto free_and_error;
 		}
@@ -1156,7 +1157,8 @@ static int check_subject(lnode *r, event_t *e)
 		case AUID:
 		case UID:
 		case SESSIONID:
-		case PID: {
+		case PID:
+		case PPID: {
 			if (!check_int_attr_set(r->s[cnt].set, subj->val))
 				return 0;
 			break;

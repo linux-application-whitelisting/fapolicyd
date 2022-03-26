@@ -1,6 +1,7 @@
 1.1.1
 - Ignore sighup for the moment
 - Reorder patterns and loopholes in rule.d
+- Add support for subject ppid rule matching
 
 1.1
 - Add support for a rules.d directory
