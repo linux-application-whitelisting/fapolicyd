@@ -1,5 +1,6 @@
 1.1.1
 - Ignore sighup for the moment
+- Reorder patterns and loopholes in rule.d
 
 1.1
 - Add support for a rules.d directory
