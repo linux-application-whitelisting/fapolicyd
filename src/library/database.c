@@ -189,8 +189,8 @@ static void close_db(int do_report)
 		unsigned size = get_pages_in_use();
 		mdb_env_info(env, &stat);
 		max_pages = stat.me_mapsize / size;
-		msg(LOG_DEBUG, "Database max pages: %lu", max_pages);
-		msg(LOG_DEBUG, "Database pages in use: %lu (%lu%%)", pages,
+		msg(LOG_DEBUG, "Trust database max pages: %lu", max_pages);
+		msg(LOG_DEBUG, "Trust database pages in use: %lu (%lu%%)", pages,
 		    max_pages ? ((100*pages)/max_pages) : 0);
 	}
 
@@ -201,8 +201,8 @@ static void close_db(int do_report)
 
 void database_report(FILE *f)
 {
-	fprintf(f, "Database max pages: %lu\n", max_pages);
-	fprintf(f, "Database pages in use: %lu (%lu%%)\n\n", pages,
+	fprintf(f, "Trust database max pages: %lu\n", max_pages);
+	fprintf(f, "Trust database pages in use: %lu (%lu%%)\n\n", pages,
 		max_pages ? ((100*pages)/max_pages) : 0);
 }
 
@@ -565,12 +565,13 @@ static int delete_all_entries_db()
 
 static int create_database(int with_sync)
 {
-	msg(LOG_INFO, "Creating database");
+	msg(LOG_INFO, "Creating trust database");
 	int rc = 0;
 
 	for (backend_entry *be = backend_get_first() ; be != NULL ;
 						     be = be->next ) {
-		msg(LOG_INFO,"Loading data from %s backend", be->backend->name);
+		msg(LOG_INFO,"Loading trust data from %s backend",
+		    be->backend->name);
 
 		list_item_t *item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
@@ -762,7 +763,7 @@ static int migrate_database(void)
 	snprintf(vpath, sizeof(vpath), "%s/db.ver", data_dir);
 	fd = open(vpath, O_RDONLY);
 	if (fd < 0) {
-		msg(LOG_INFO, "Database migration will be performed.");
+		msg(LOG_INFO, "Trust database migration will be performed.");
 
 		// Then we have a version1 db since it does not track versions
 		if (unlink_db())
@@ -802,7 +803,7 @@ int init_database(conf_t *config)
 {
 	int rc;
 
-	msg(LOG_INFO, "Initializing the database");
+	msg(LOG_INFO, "Initializing the trust database");
 
 	// update_lock is used in update_database()
 	pthread_mutex_init(&update_lock, NULL);
@@ -811,12 +812,13 @@ int init_database(conf_t *config)
 		return 1;
 
 	if ((rc = init_db(config))) {
-		msg(LOG_ERR, "Cannot open the database, init_db() (%d)", rc);
+		msg(LOG_ERR, "Cannot open the trust database, init_db() (%d)",
+		    rc);
 		return rc;
 	}
 
 	if ((rc = backend_init(config))) {
-		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
+		msg(LOG_ERR, "Failed to load trust data from backend (%d)", rc);
 		close_db(1);
 		return rc;
 	}
@@ -831,7 +833,7 @@ int init_database(conf_t *config)
 	if (rc > 0) {
 		if ((rc = create_database(/*with_sync*/1))) {
 			msg(LOG_ERR,
-			   "Failed to create database, create_database() (%d)",
+			"Failed to create trust database, create_database() (%d)",
 			   rc);
 			close_db(1);
 			return rc;
@@ -1068,8 +1070,8 @@ static int update_database(conf_t *config)
 {
 	int rc;
 
-	msg(LOG_INFO, "Updating database");
-	msg(LOG_DEBUG, "Loading database backends");
+	msg(LOG_INFO, "Updating trust database");
+	msg(LOG_DEBUG, "Loading trust database backends");
 
 	/*
 	 * backend loading/reloading should be done in upper level
@@ -1097,7 +1099,7 @@ static int update_database(conf_t *config)
 	mdb_env_sync(env, 1);
 
 	if (rc) {
-		msg(LOG_ERR, "Failed to create database (%d)", rc);
+		msg(LOG_ERR, "Failed to create the trust database (%d)", rc);
 		close_db(1);
 		return rc;
 	}
@@ -1241,7 +1243,7 @@ static void *update_thread_main(void *arg)
 
 					if ((rc = update_database(config))) {
 						msg(LOG_ERR,
-						   "Cannot update a database!");
+						   "Cannot update trust database!");
 						close(ffd[0].fd);
 						backend_close();
 						unlink_fifo();
@@ -1285,11 +1287,11 @@ int walk_database_start(conf_t *config)
 
 	// Initialize the database
 	if (init_db(config)) {
-		printf("Cannot open the database\n");
+		printf("Cannot open the trust database\n");
 		return 1;
 	}
 	if (database_empty()) {
-		printf("The database is empty - nothing to do\n");
+		printf("The trust database is empty - nothing to do\n");
 		return 1;
 	}
 
