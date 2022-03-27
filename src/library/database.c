@@ -637,7 +637,7 @@ static int check_data_presence(const char * index, const char * data, int * matc
  */
 static int check_database_copy(void)
 {
-	msg(LOG_INFO, "Checking if database up to date");
+	msg(LOG_INFO, "Checking if the trust database up to date");
 	long problems = 0;
 
 	if (start_long_term_read_ops())
@@ -648,7 +648,7 @@ static int check_database_copy(void)
 
 	for (backend_entry *be = backend_get_first() ; be != NULL ;
 							 be = be->next ) {
-		msg(LOG_INFO, "Importing data from %s backend",
+		msg(LOG_INFO, "Importing trust data from %s backend",
 							 be->backend->name);
 
 		backend_total_entries += be->backend->list.count;
@@ -665,7 +665,7 @@ static int check_database_copy(void)
 				// missing in db
 				// recently added file
 				if (matched == 0) {
-					msg(LOG_DEBUG, "%s is not in database",
+					msg(LOG_DEBUG, "%s is not in the trust database",
 					    (char*)item->index);
 					backend_added_entries++;
 				}
@@ -673,7 +673,7 @@ static int check_database_copy(void)
 				// updated file
 				// data miscompare
 				if (matched > 0) {
-					msg(LOG_DEBUG, "Data miscompare for %s",
+					msg(LOG_DEBUG, "Trust data miscompare for %s",
 					    (char*)item->index);
 				}
 			}
@@ -688,16 +688,16 @@ static int check_database_copy(void)
 		return -1;
 
 	msg(	LOG_INFO,
-		"Entries in DB: %ld",
+		"Entries in trust DB: %ld",
 		db_total_entries);
 
 	msg(	LOG_INFO,
-		"Loaded from all backends(without duplicates): %ld",
+		"Loaded trust info from all backends(without duplicates): %ld",
 		backend_total_entries);
 
 	// do not print 0
 	if (backend_added_entries > 0)
-		msg(LOG_INFO, "New database entries: %ld",
+		msg(LOG_INFO, "New trust database entries: %ld",
 		    backend_added_entries);
 
 	// db contains records that are not present in backends anymore
@@ -706,16 +706,16 @@ static int check_database_copy(void)
 			    );
 	// do not print 0
 	if (removed > 0)
-		msg(LOG_INFO, "Removed database entries: %ld", removed);
+		msg(LOG_INFO, "Removed trust database entries: %ld", removed);
 
 	problems += removed;
 
 	if (problems) {
-		msg(LOG_WARNING, "Found %ld problematic database entries",
+		msg(LOG_WARNING, "Found %ld problematic trust database entries",
 		    problems);
 		return 1;
 	} else
-		msg(LOG_INFO, "Database checks OK");
+		msg(LOG_INFO, "Trust database checks OK");
 	return 0;
 }
 
