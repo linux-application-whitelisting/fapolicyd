@@ -637,7 +637,7 @@ static int check_data_presence(const char * index, const char * data, int * matc
  */
 static int check_database_copy(void)
 {
-	msg(LOG_INFO, "Checking database");
+	msg(LOG_INFO, "Checking if database up to date");
 	long problems = 0;
 
 	if (start_long_term_read_ops())
@@ -665,19 +665,20 @@ static int check_database_copy(void)
 				// missing in db
 				// recently added file
 				if (matched == 0) {
-					msg(LOG_DEBUG, "%s is not in database", (char*)item->index);
+					msg(LOG_DEBUG, "%s is not in database",
+					    (char*)item->index);
 					backend_added_entries++;
 				}
 
 				// updated file
 				// data miscompare
 				if (matched > 0) {
-					msg(LOG_DEBUG, "Data miscompare for %s", (char*)item->index);
+					msg(LOG_DEBUG, "Data miscompare for %s",
+					    (char*)item->index);
 				}
 			}
 		}
 	}
-
 
 	end_long_term_read_ops();
 
@@ -696,7 +697,8 @@ static int check_database_copy(void)
 
 	// do not print 0
 	if (backend_added_entries > 0)
-		msg(LOG_INFO, "New entries: %ld", backend_added_entries);
+		msg(LOG_INFO, "New database entries: %ld",
+		    backend_added_entries);
 
 	// db contains records that are not present in backends anymore
 	long removed = labs(db_total_entries
@@ -704,12 +706,13 @@ static int check_database_copy(void)
 			    );
 	// do not print 0
 	if (removed > 0)
-		msg(LOG_INFO, "Removed entries: %ld", removed);
+		msg(LOG_INFO, "Removed database entries: %ld", removed);
 
 	problems += removed;
 
 	if (problems) {
-		msg(LOG_WARNING, "Found %ld problems", problems);
+		msg(LOG_WARNING, "Found %ld problematic database entries",
+		    problems);
 		return 1;
 	} else
 		msg(LOG_INFO, "Database checks OK");
