@@ -143,6 +143,8 @@ int preconstruct_fifo(const conf_t *config)
 }
 
 
+static unsigned get_pages_in_use(void);
+static unsigned long pages, max_pages;
 static int init_db(const conf_t *config)
 {
 	unsigned int flags = MDB_MAPASYNC|MDB_NOSYNC;
@@ -176,12 +178,20 @@ static int init_db(const conf_t *config)
 	bin_symlink = is_link("/bin");
 	sbin_symlink = is_link("/sbin");
 
+	{ // Check if database is getting full and warn
+	MDB_envinfo stat;
+	unsigned size = get_pages_in_use();
+	mdb_env_info(env, &stat);
+	max_pages = stat.me_mapsize / size;
+	if (((100*pages)/max_pages) > 80)
+		msg(LOG_WARNING, "Trust database at %u%% capacity - might want"
+		    " to increase db_max_size setting", (100*pages)/max_pages);
+	}
+
 	return 0;
 }
 
 
-static unsigned get_pages_in_use(void);
-static unsigned long pages, max_pages;
 static void close_db(int do_report)
 {
 	if (do_report) {
