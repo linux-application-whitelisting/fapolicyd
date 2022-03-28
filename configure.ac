@@ -34,6 +34,19 @@ AS_HELP_STRING([--with-debug],[turn on debugging (default=no)]),
 AC_DEFINE(DEBUG,1,[Define if you want to enable runtime debug checking.]),
 [])
 
+AC_MSG_CHECKING(__attr_access support)
+AC_COMPILE_IFELSE(
+  [AC_LANG_SOURCE(
+    [[
+      #include <stdio.h>
+      int audit_fgets(char *buf, size_t blen, int fd)
+        __attr_access ((__write_only__, 1, 2));
+      int main(void) { return 0; }]])],
+  [ACCESS="yes"],
+  [ACCESS="no"]
+)
+AC_MSG_RESULT($ACCESS)
+
 AC_ARG_WITH(audit,
 AS_HELP_STRING([--with-audit],[turn on decision auditing (default=no)]),
 AC_DEFINE(USE_AUDIT,1,[Define if you want to enable decision auditing.]),
@@ -93,5 +106,6 @@ echo "
   Compiler:               $CC
   Compiler flags:
 `echo $CFLAGS | fmt -w 50 | sed 's,^,                          ,'`
+  __attr_access support:  $ACCESS
 "
  

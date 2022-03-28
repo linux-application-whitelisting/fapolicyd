@@ -23,12 +23,11 @@
 #ifndef FD_FGETS_HEADER
 #define FD_FGETS_HEADER
 
-#include <features.h>
+#include <sys/types.h>
+
 #ifndef __attr_access
 #  define __attr_access(x)
 #endif
-
-#include <sys/types.h>
 
 int fd_fgets_eof(void);
 void fd_fgets_rewind(void);

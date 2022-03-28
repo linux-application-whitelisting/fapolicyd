@@ -16,7 +16,7 @@
 #define MALLOCLIKE __attribute__ ((malloc))
 #define NORETURN __attribute__ ((noreturn))
 
-#include <features.h>
+#include <string.h>  // any major header brings cdefs.h
 #ifndef __attr_access
 #  define __attr_access(x)
 #endif
