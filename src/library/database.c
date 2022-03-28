@@ -184,7 +184,7 @@ static int init_db(const conf_t *config)
 	mdb_env_info(env, &stat);
 	max_pages = stat.me_mapsize / size;
 	if (((100*pages)/max_pages) > 80)
-		msg(LOG_WARNING, "Trust database at %u%% capacity - might want"
+		msg(LOG_WARNING, "Trust database at %lu%% capacity - might want"
 		    " to increase db_max_size setting", (100*pages)/max_pages);
 	}
 
