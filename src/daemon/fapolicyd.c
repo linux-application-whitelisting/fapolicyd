@@ -1,6 +1,6 @@
 /*
  * fapolicyd.c - Main file for the program
- * Copyright (c) 2016,2018-20 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -217,6 +217,18 @@ static void hup_handler(int sig)
 	hup = 1 + sig; // Just so its used...
 }
 
+/*
+ * This function handles the reconfiguration of the daemon
+ * after receiving a SIGHUP signal.
+ */
+static void reconfigure(void)
+{
+	update_trust_database();
+
+	// TODO: Update rules
+
+	// TODO: Update configuration
+}
 
 // This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031
 #define UNUSED(x) (void)(x)
@@ -515,7 +527,7 @@ int main(int argc, const char *argv[])
 	while (!stop) {
 		if (hup) {
 			hup = 0;
-			//reconfigure();
+			reconfigure();
 		}
 		rc = poll(pfd, 2, -1);
 

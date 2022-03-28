@@ -1,6 +1,6 @@
 /*
  * database.c - Trust database
- * Copyright (c) 2016,2018-21 Red Hat Inc.
+ * Copyright (c) 2016,2018-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -51,7 +51,7 @@
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
-typedef enum { ONE_FILE, RELOAD_DB, FLUSH_CACHE } db_ops_t;
+typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE } db_ops_t;
 #define BUFFER_SIZE 4096
 #define MEGABYTE	(1024*1024)
 
@@ -1139,6 +1139,10 @@ static int handle_record(const char * buffer)
 	return 0;
 }
 
+void update_trust_database(void)
+{
+	db_operation = RELOAD_DB;
+}
 
 static void *update_thread_main(void *arg)
 {
@@ -1190,6 +1194,8 @@ static void *update_thread_main(void *arg)
 #ifdef DEBUG
 			msg(LOG_DEBUG, "Update poll timeout expired");
 #endif
+			if (db_operation != DB_NO_OP)
+				goto handle_db_ops;
 			continue;
 		} else {
 			if (ffd[0].revents & POLLIN) {
@@ -1216,12 +1222,13 @@ static void *update_thread_main(void *arg)
 #ifdef DEBUG
 				msg(LOG_DEBUG, "Buffer contains: \"%s\"", buff);
 #endif
-				db_operation = ONE_FILE;
 				for (int i = 0 ; i < count ; i++) {
 					// assume file name
 					// operation = 0
-					if (buff[i] == '/')
+					if (buff[i] == '/') {
+						db_operation = ONE_FILE;
 						break;
+					}
 
 					if (buff[i] == '1') {
 						db_operation = RELOAD_DB;
@@ -1234,8 +1241,10 @@ static void *update_thread_main(void *arg)
 					}
 				}
 
+handle_db_ops:
 				// got "1" -> reload db
 				if (db_operation == RELOAD_DB) {
+					db_operation = DB_NO_OP;
 					msg(LOG_INFO,
 	    "It looks like there was an update of the system... Syncing DB.");
 
@@ -1257,8 +1266,10 @@ static void *update_thread_main(void *arg)
 					backend_close();
 				// got "2" -> flush cache
 				} else if (db_operation == FLUSH_CACHE) {
+					db_operation = DB_NO_OP;
 					needs_flush = true;
-				} else {
+				} else if (db_operation == ONE_FILE) {
+					db_operation = DB_NO_OP;
 					if (handle_record(buff))
 						continue;
 				}

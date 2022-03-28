@@ -1,4 +1,4 @@
-.TH "FAPOLICYD" "8" "Nov 2021" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD" "8" "March 2022" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd \- File Access Policy Daemon
 .SH SYNOPSIS
@@ -39,8 +39,12 @@ the daemon will allow file access regardless of the policy decision. This is use
 when fapolicyd ends, it dumps a usage report with various statistics that may be useful for tuning performance. It can also detail which processes it knew about and files being accessed by them. This can be useful for forensics investigations. In some settings, this may not be desirable as the file names may be sensitive. Using this option removes process and file names leaving only the statistics. The default without giving this option is to generate a full report.
 .SH SIGNALS
 .TP
-SIGTERM
-caused fapolicyd to discontinue processing events and exit.
+.B SIGTERM
+caused fapolicyd to discontinue processing events, write it's performance report, and exit.
+
+.TP
+.B SIGHUP
+causes fapolicyd to reload the trust database.
 
 .SH NOTES
 Whatever you do, DO NOT TRY TO ATTACH WITH PTRACE. Ptrace attachment sends a SIGSTOP which cannot be blocked. Since your whole system depends on fapolicyd approving access to glibc and various critical libraries, that will not happen until SIGCONT is sent. The system can deadlock if the continue signal is not sent.

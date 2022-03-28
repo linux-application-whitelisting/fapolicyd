@@ -1,6 +1,6 @@
 /*
  * database.h - Header file for trust database
- * Copyright (c) 2018-21 Red Hat Inc.
+ * Copyright (c) 2018-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -45,6 +45,7 @@ const char *lookup_tsource(unsigned int tsource);
 int preconstruct_fifo(const conf_t *config);
 int init_database(conf_t *config);
 int check_trust_database(const char *path, struct file_info *info, int fd);
+void update_trust_database(void);
 void close_database(void);
 void database_report(FILE *f);
 int unlink_db(void);
