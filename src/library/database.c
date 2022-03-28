@@ -51,6 +51,7 @@
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
+typedef enum { ONE_FILE, RELOAD_DB, FLUSH_CACHE } db_ops_t;
 #define BUFFER_SIZE 4096
 #define MEGABYTE	(1024*1024)
 
@@ -65,6 +66,7 @@ static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static const char *fifo_path = "/run/fapolicyd/fapolicyd.fifo";
 static integrity_t integrity;
+static atomic_int db_operation;
 
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
@@ -1214,7 +1216,7 @@ static void *update_thread_main(void *arg)
 #ifdef DEBUG
 				msg(LOG_DEBUG, "Buffer contains: \"%s\"", buff);
 #endif
-				int operation = 0;
+				db_operation = ONE_FILE;
 				for (int i = 0 ; i < count ; i++) {
 					// assume file name
 					// operation = 0
@@ -1222,18 +1224,18 @@ static void *update_thread_main(void *arg)
 						break;
 
 					if (buff[i] == '1') {
-						operation = 1;
+						db_operation = RELOAD_DB;
 						break;
 					}
 
 					if (buff[i] == '2') {
-						operation = 2;
+						db_operation = FLUSH_CACHE;
 						break;
 					}
 				}
 
 				// got "1" -> reload db
-				if (operation == 1) {
+				if (db_operation == RELOAD_DB) {
 					msg(LOG_INFO,
 	    "It looks like there was an update of the system... Syncing DB.");
 
@@ -1254,7 +1256,7 @@ static void *update_thread_main(void *arg)
 					// Conserve memory
 					backend_close();
 				// got "2" -> flush cache
-				} else if (operation == 2) {
+				} else if (db_operation == FLUSH_CACHE) {
 					needs_flush = true;
 				} else {
 					if (handle_record(buff))
