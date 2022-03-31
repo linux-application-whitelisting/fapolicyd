@@ -1,4 +1,5 @@
 1.1.2
+- Release the update lock if starting trust db read operations errors
 
 1.1.1
 - Reorder patterns and loopholes in rule.d

@@ -997,8 +997,10 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 	// our hands
 	lock_update_thread();
 
-	if (start_long_term_read_ops())
+	if (start_long_term_read_ops()) {
+		unlock_update_thread();
 		return -1;
+	}
 
 	res = read_trust_db(path, &error, info, fd);
 	if (error)
