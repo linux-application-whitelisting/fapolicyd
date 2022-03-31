@@ -329,6 +329,26 @@ static int check_mount_entry(const char *device, const char *point,
 		return 0;
 }
 
+#define isoctal(a) (((a) & ~7) == '0')
+static void unmangle(char *s, size_t len)
+{
+	size_t sz = 0;
+	char *buf = s;
+
+	while (*s) {
+		if (*s == '\\' && sz + 3 < len && isoctal(s[1]) &&
+		    isoctal(s[2]) && isoctal(s[3])) {
+
+			*buf++ = 64*(s[1] & 7) + 8*(s[2] & 7) + (s[3] & 7);
+			s += 4;
+			sz += 4;
+		} else {
+			*buf++ = *s++;
+			sz++;
+		}
+	}
+	*buf = '\0';
+}
 
 static mlist *m = NULL;
 static void handle_mounts(int fd)
@@ -352,6 +372,9 @@ static void handle_mounts(int fd)
 			// Parse it
 			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
 			    device, point, type, mntops, &fs_req, &fs_passno);
+			// Transform escape sequences
+			unmangle(device, strlen(device));
+			unmangle(point, strlen(point));
 			// Is this one that we care about?
 			if (check_mount_entry(device, point, type)) {
 				// Can we find it in the old list?
