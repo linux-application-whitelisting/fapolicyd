@@ -28,7 +28,7 @@
 OldDestinationFile=/etc/fapolicyd/fapolicyd.rules
 DestinationFile=/etc/fapolicyd/compiled.rules
 SourceRulesDir=/etc/fapolicyd/rules.d
-TmpRules=`mktemp /tmp/farules.XXXXXXXX`
+TmpRules=$(mktemp /tmp/farules.XXXXXXXX)
 ASuffix="prev"
 OnlyCheck=0
 LoadRules=0
