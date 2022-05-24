@@ -37,13 +37,42 @@
 #include <magic.h>
 #include "process.h"
 
+#define BUFSZ 12  // Largest unsigned int is 10 characters long
+/*
+ * This is an optimized integer to string conversion. It only
+ * does base 10 which is exactly what you need to access per
+ * process files in the proc file system. It is about 30% faster
+ * than snprint.
+ */
+static const char *uitoa(unsigned int j)
+{
+	static char buf[BUFSZ];
+	if (j == 0)
+		return "0";
+
+	char *ptr = &buf[BUFSZ - 1];
+	*ptr = 0;
+	do {
+		*--ptr = '0' + (j % 10);
+		j /= 10;
+	} while (j);
+
+	return ptr;
+}
+
+static char ppath[40] = "/proc/";
+static inline const char *proc_path(unsigned int pid, const char *file)
+{
+	char *p = stpcpy(ppath + 6, uitoa(pid));
+	if (file)
+		stpcpy(p, file);
+	return ppath;
+}
 
 struct proc_info *stat_proc_entry(pid_t pid)
 {
-	char path[32];
 	struct stat sb;
-
-	snprintf(path, sizeof(path), "/proc/%d", pid);
+	const char *path = proc_path(pid, NULL);
 	if (stat(path, &sb) == 0) {
 		struct proc_info *info = malloc(sizeof(struct proc_info));
 		if (info == NULL)
@@ -99,11 +128,10 @@ int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
 
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 {
-	char path[32];
 	ssize_t rc;
 	int fd;
 
-	snprintf(path, sizeof(path), "/proc/%d/comm", pid);
+	const char *path = proc_path(pid, "/comm");
 	fd = open(path, O_RDONLY|O_CLOEXEC);
 	if (fd >= 0) {
 		char *ptr;
@@ -131,13 +159,12 @@ char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 {
-	char path[32];
 	ssize_t path_len;
 
 	if (blen == 0)
 		return NULL;
 
-	snprintf(path, sizeof(path), "/proc/%d/exe", pid);
+	const char *path = proc_path(pid, "/exe");
 	path_len = readlink(path, buf, blen - 1);
 	if (path_len <= 0) {
 		if (errno == ENOENT)
@@ -174,10 +201,9 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 {
-	char path[32];
 	int fd;
 
-	snprintf(path, sizeof(path), "/proc/%d/exe", pid);
+	const char *path = proc_path(pid, "/exe");
 	fd = open(path, O_RDONLY|O_NOATIME|O_CLOEXEC);
 	if (fd >= 0) {
 		const char *ptr;
@@ -204,21 +230,21 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 
 uid_t get_program_auid_from_pid(pid_t pid)
 {
-	char path[32];
 	ssize_t rc;
 	int fd;
 
-	snprintf(path, sizeof(path), "/proc/%d/loginuid", pid);
+	const char *path = proc_path(pid, "/loginuid");
 	fd = open(path, O_RDONLY|O_CLOEXEC);
 	if (fd >= 0) {
+		char buf[16];
 		uid_t auid;
 
-		rc = read(fd, path, sizeof(path)-1);
+		rc = read(fd, buf, sizeof(buf)-1);
 		close(fd);
 		if (rc > 0) {
-			path[rc] = 0;  // manually terminate, read doesn't
+			buf[rc] = 0;  // manually terminate, read doesn't
 			errno = 0;
-			auid = strtol(path, NULL, 10);
+			auid = strtol(buf, NULL, 10);
 			if (errno == 0)
 				return auid;
 		}
@@ -229,21 +255,21 @@ uid_t get_program_auid_from_pid(pid_t pid)
 
 int get_program_sessionid_from_pid(pid_t pid)
 {
-	char path[32];
 	ssize_t rc;
 	int fd;
 
-	snprintf(path, sizeof(path), "/proc/%d/sessionid", pid);
+	const char *path = proc_path(pid, "/sessionid");
 	fd = open(path, O_RDONLY|O_CLOEXEC);
 	if (fd >= 0) {
+		char buf[16];
 		int ses;
 
-		rc = read(fd, path, sizeof(path)-1);
+		rc = read(fd, buf, sizeof(buf)-1);
 		close(fd);
 		if (rc > 0) {
-			path[rc] = 0;  // manually terminate, read doesn't
+			buf[rc] = 0;  // manually terminate, read doesn't
 			errno = 0;
-			ses = strtol(path, NULL, 10);
+			ses = strtol(buf, NULL, 10);
 			if (errno == 0)
 				return ses;
 		}
@@ -254,17 +280,17 @@ int get_program_sessionid_from_pid(pid_t pid)
 
 pid_t get_program_ppid_from_pid(pid_t pid)
 {
-	char path[128];
+	char buf[128];
 	int ppid = -1;
 	FILE *f;
 
-	snprintf(path, sizeof(path), "/proc/%d/status", pid);
+	const char *path = proc_path(pid, "/status");
 	f = fopen(path, "rt");
 	if (f) {
 		__fsetlocking(f, FSETLOCKING_BYCALLER);
-		while (fgets(path, 128, f)) {
-			if (memcmp(path, "PPid:", 4) == 0) {
-				sscanf(path, "PPid: %d ", &ppid);
+		while (fgets(buf, 128, f)) {
+			if (memcmp(buf, "PPid:", 4) == 0) {
+				sscanf(buf, "PPid: %d ", &ppid);
                                 break;
                         }
 		}
@@ -276,17 +302,17 @@ pid_t get_program_ppid_from_pid(pid_t pid)
 
 uid_t get_program_uid_from_pid(pid_t pid)
 {
-	char path[128];
+	char buf[128];
 	int uid = -1;
 	FILE *f;
 
-	snprintf(path, sizeof(path), "/proc/%d/status", pid);
+	const char *path = proc_path(pid, "/status");
 	f = fopen(path, "rt");
 	if (f) {
 		__fsetlocking(f, FSETLOCKING_BYCALLER);
-		while (fgets(path, 128, f)) {
-			if (memcmp(path, "Uid:", 4) == 0) {
-				sscanf(path, "Uid: %d ", &uid);
+		while (fgets(buf, 128, f)) {
+			if (memcmp(buf, "Uid:", 4) == 0) {
+				sscanf(buf, "Uid: %d ", &uid);
                                 break;
                         }
 		}
@@ -298,19 +324,19 @@ uid_t get_program_uid_from_pid(pid_t pid)
 
 attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 {
-	char path[128];
+	char buf[128];
 	int gid = -1;
 	FILE *f;
 	attr_sets_entry_t *set = init_standalone_set(INT);
 
 	if (set) {
-		snprintf(path, sizeof(path), "/proc/%d/status", pid);
+		const char *path = proc_path(pid, "/status");
 		f = fopen(path, "rt");
 		if (f) {
 			__fsetlocking(f, FSETLOCKING_BYCALLER);
-			while (fgets(path, 128, f)) {
-				if (memcmp(path, "Gid:", 4) == 0) {
-					sscanf(path, "Gid: %d ", &gid);
+			while (fgets(buf, 128, f)) {
+				if (memcmp(buf, "Gid:", 4) == 0) {
+					sscanf(buf, "Gid: %d ", &gid);
 					append_int_attr_set(set, gid);
 		                        break;
 			        }
@@ -318,9 +344,9 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 
 			char *data;
 			int offset;
-			while (fgets(path, 128, f)) {
-				if (memcmp(path, "Groups:", 7) == 0) {
-					data = path + 7;
+			while (fgets(buf, 128, f)) {
+				if (memcmp(buf, "Groups:", 7) == 0) {
+					data = buf + 7;
 					while (sscanf(data," %d%n", &gid,
 						      &offset) == 1){
 						data += offset;
@@ -340,12 +366,11 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 int check_environ_from_pid(pid_t pid)
 {
 	int rc = -1;
-	char path[128];
 	char *line = NULL;
 	size_t len = 0;
 	FILE *f;
 
-	snprintf(path, sizeof(path), "/proc/%d/environ", pid);
+	const char *path = proc_path(pid, "/environ");
 	f = fopen(path, "rt");
 	if (f) {
 		__fsetlocking(f, FSETLOCKING_BYCALLER);
