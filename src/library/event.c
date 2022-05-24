@@ -140,7 +140,14 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 
 		// We need to reset everything now that execve has finished
 		if (s->info->state == STATE_STATIC_PARTIAL && !rc) {
-			s->info->state = STATE_STATIC;
+			// If the static app itself launches an app right
+			// away, go back to collecting.
+			if (e->type & FAN_OPEN_EXEC_PERM)
+				s->info->state = STATE_COLLECTING;
+			else {
+				s->info->state = STATE_STATIC;
+				skip_path = 1;
+			}
 			evict = 0;
 			skip_path = 1;
 			subject_reset(s, EXE);
