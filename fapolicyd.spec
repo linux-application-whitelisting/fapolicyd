@@ -1,6 +1,6 @@
 Summary: Application Whitelisting Daemon
 Name: fapolicyd
-Version: 1.1.2
+Version: 1.1.3
 Release: 1
 License: GPLv3+
 URL: http://people.redhat.com/sgrubb/fapolicyd
@@ -135,5 +135,5 @@ fi
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
-* Tue May 24 2022 Steve Grubb <sgrubb@redhat.com> 1.1.2-1
+* Tue May 24 2022 Steve Grubb <sgrubb@redhat.com> 1.1.3-1
 - New release
