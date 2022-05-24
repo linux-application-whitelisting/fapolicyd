@@ -30,7 +30,15 @@ makes use of the kernel's fanotify interface to determine file access rights.
 # generate rules for python
 sed -i "s/%python2_path%/`readlink -f %{__python2} | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
 sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
-sed -i "s/%ld_so_path%/`find /usr/lib64/ -type f -name 'ld-2\.*.so' | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
+
+# Detect run time linker directly from bash
+interpret=`readelf -e /usr/bin/bash \
+		| grep Requesting \
+		| sed 's/.$//' \
+		| rev | cut -d" " -f1 \
+		| rev`
+
+sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
 
 %build
 %configure \
