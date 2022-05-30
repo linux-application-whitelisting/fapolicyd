@@ -1,6 +1,6 @@
 /*
  * queue.c - a simple queue implementation
- * Copyright 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2016,2018,2022 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -171,7 +171,3 @@ int q_drop_head(struct queue *q)
 	return 0;
 }
 
-size_t q_queue_length(const struct queue *q)
-{
-	return q->queue_length;
-}
