@@ -306,13 +306,10 @@ static void *decision_thread_main(void *arg)
 
 static void enqueue_event(const struct fanotify_event_metadata *metadata)
 {
-	pthread_mutex_lock(&decision_lock);
 	if (q_append(q, metadata))
 		msg(LOG_DEBUG, "enqueue error");
 	else
 		set_ready();
-	pthread_cond_signal(&do_decision);
-	pthread_mutex_unlock(&decision_lock);
 }
 
 static void approve_event(const struct fanotify_event_metadata *metadata)
@@ -348,6 +345,9 @@ void handle_events(void)
 			return;
 	}
 
+	// Do all the locking outside of the loop so that we do
+	// not keep reacquiring the locks with each iteration
+	pthread_mutex_lock(&decision_lock);
 	metadata = (const struct fanotify_event_metadata *)buf;
 	while (FAN_EVENT_OK(metadata, len)) {
 		if (metadata->vers != FANOTIFY_METADATA_VERSION) {
@@ -367,9 +367,13 @@ void handle_events(void)
 			// to update the cache.
 			else {
 				close(metadata->fd);
-				return;
+				goto out;
 			}
 		}
 		metadata = FAN_EVENT_NEXT(metadata, len);
 	}
+out:
+	pthread_cond_signal(&do_decision);
+	pthread_mutex_unlock(&decision_lock);
 }
+
