@@ -1,6 +1,6 @@
 /*
  * notify.c - functions handle recieving and enqueuing events
- * Copyright (c) 2016-18,21 Red Hat Inc.
+ * Copyright (c) 2016-18,22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -39,7 +39,6 @@
 #include "message.h"
 #include "queue.h"
 #include "mounts.h"
-#include "database.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192
 
@@ -360,11 +359,8 @@ void handle_events(void)
 			if (metadata->mask & mask) {
 				if (metadata->pid == our_pid)
 					approve_event(metadata);
-				else {
-					lock_update_thread();
+				else
 					enqueue_event(metadata);
-					unlock_update_thread();
-				}
 			}
 			// For now, prevent leaking descriptors
 			// in the near future we should do processing
