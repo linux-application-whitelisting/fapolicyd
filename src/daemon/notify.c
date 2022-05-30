@@ -41,6 +41,7 @@
 #include "mounts.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192
+#define MAX_EVENTS 4
 
 // External variables
 extern volatile atomic_bool stop;
@@ -274,7 +275,7 @@ static void *decision_thread_main(void *arg)
 
 	while (!stop) {
 		int len;
-		struct fanotify_event_metadata metadata;
+		struct fanotify_event_metadata metadata[MAX_EVENTS];
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
@@ -285,20 +286,35 @@ static void *decision_thread_main(void *arg)
 			}
 		}
 		alive = 1;
-		len = q_peek(q, &metadata);
-		if (len == 0) {
-			// Should never happen
-			clear_ready(); // Reset to reality
-			pthread_mutex_unlock(&decision_lock);
-			msg(LOG_DEBUG, "queue size is 0 but event recieved");
-			continue;
+
+		// Grab up to MAX_EVENTS events while locked
+		unsigned i = 0;
+		size_t num = q_queue_length(q);
+		if (num > MAX_EVENTS)
+			num = MAX_EVENTS;
+		while (i < num) {
+			len = q_peek(q, &metadata[i]);
+			if (len == 0) {
+				// Should never happen
+				clear_ready(); // Reset to reality
+				msg(LOG_DEBUG,
+					"queue size is 0 but event recieved");
+				// limit processing to what we have
+				num = i;
+				goto out;
+			}
+			q_drop_head(q);
+			if (q_queue_length(q) == 0)
+				clear_ready();
+			i++;
 		}
-		q_drop_head(q);
-		if (q_queue_length(q) == 0)
-			clear_ready();
+out:
 		pthread_mutex_unlock(&decision_lock);
 
-		make_policy_decision(&metadata, fd, mask);
+		for (i=0; i<num; i++) {
+			alive = 1;
+			make_policy_decision(&metadata[i], fd, mask);
+		}
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
