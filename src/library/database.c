@@ -244,13 +244,14 @@ static char *path_to_hash(const char *path, const size_t path_len)
 {
 	gcry_md_hd_t h;
 	unsigned int len;
-	char *digest, *hptr;
+	unsigned char *hptr;
+	char *digest;
 
 	if (gcry_md_open(&h, GCRY_MD_SHA512, GCRY_MD_FLAG_SECURE))
 		return NULL;
 
 	gcry_md_write(h, path, path_len);
-	hptr = (char *)gcry_md_read(h, GCRY_MD_SHA512);
+	hptr = gcry_md_read(h, GCRY_MD_SHA512);
 
 	len = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * sizeof(char);
 	digest = malloc((2 * len) + 1);

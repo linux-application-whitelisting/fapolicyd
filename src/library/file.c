@@ -493,7 +493,7 @@ char *get_hash_from_fd2(int fd, size_t size)
 // This function returns 0 on error and 1 if successful
 int get_ima_hash(int fd, char *sha)
 {
-	char tmp[34];
+	unsigned char tmp[34];
 
 	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 0) {
 		msg(LOG_DEBUG, "Can't read ima xattr");
