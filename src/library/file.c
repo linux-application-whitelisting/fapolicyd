@@ -479,7 +479,6 @@ char *get_hash_from_fd2(int fd, size_t size)
 	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
 		unsigned char hptr[80];
-		ssize_t len;
 
 		gcry_md_hash_buffer(GCRY_MD_SHA256, &hptr, mapped, size);
 		munmap(mapped, size);
