@@ -37,6 +37,7 @@
 #include <elf.h>
 #include <sys/xattr.h>
 #include <linux/hash_info.h>
+#include <sys/mman.h>
 
 #include "file.h"
 #include "message.h"
@@ -50,6 +51,7 @@ static struct udev *udev;
 magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
 static struct cache c = { 0, NULL };
+static size_t hash_size;
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
@@ -99,6 +101,7 @@ void file_init(void)
 	gcry_check_version(NULL);
 	gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
 	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
+	hash_size = gcry_md_get_algo_dlen(GCRY_MD_SHA256) * sizeof(char);
 }
 
 
@@ -395,7 +398,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 
 
 // This function converts byte array into asciie hex
-char *bytes2hex(char *final, const char *buf, unsigned int size)
+char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
 {
 	unsigned int i;
 	char *ptr = final;
@@ -426,7 +429,7 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 /*
  * On success this function returns a buffer that the caller must free.
  * on error, it returns NULL
- */
+ *
 char *get_hash_from_fd(int fd)
 {
 	gcry_md_hd_t ctx;
@@ -450,8 +453,7 @@ char *get_hash_from_fd(int fd)
 	gcry_md_final(ctx);
 
 	// Ask for buffer size and allocate it
-	len = gcry_md_get_algo_dlen(GCRY_MD_SHA256) * sizeof(char);
-	digest = malloc((2 * len) + 1);
+	digest = malloc((2 * hash_size) + 1);
 	if (digest == NULL) {
 		gcry_md_close(ctx);
 		rewind_fd(fd);
@@ -462,13 +464,32 @@ char *get_hash_from_fd(int fd)
 	hptr = (char *)gcry_md_read(ctx, GCRY_MD_SHA256);
 
 	// Convert to ASCII string
-	bytes2hex(digest, hptr, len);
+	bytes2hex(digest, hptr, hash_size);
 	gcry_md_close(ctx);
 	rewind_fd(fd);
 
 	return digest;
-}
+} */
 
+char *get_hash_from_fd2(int fd, size_t size)
+{
+	unsigned char *mapped;
+	char *digest = NULL;
+
+	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
+	if (mapped != MAP_FAILED) {
+		unsigned char hptr[80];
+		ssize_t len;
+
+		gcry_md_hash_buffer(GCRY_MD_SHA256, &hptr, mapped, size);
+		munmap(mapped, size);
+		digest = malloc(65);
+
+		// Convert to ASCII string
+		bytes2hex(digest, hptr, hash_size);
+	}
+	return digest;
+}
 
 // This function returns 0 on error and 1 if successful
 int get_ima_hash(int fd, char *sha)

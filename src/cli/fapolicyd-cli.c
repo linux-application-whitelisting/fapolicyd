@@ -637,7 +637,7 @@ static int verify_file(const char *path, off_t size, const char *sha)
 	if (sb.st_size != size)
 		warn_size = 1;
 
-	char *sha_buf = get_hash_from_fd(fd);
+	char *sha_buf = get_hash_from_fd2(fd, sb.st_size);
 	close(fd);
 
 	if (strcmp(sha, sha_buf))

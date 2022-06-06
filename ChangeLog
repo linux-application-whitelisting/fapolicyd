@@ -1,6 +1,7 @@
 1.1.3
 - Replace snprintf integer to char conversion with uitoa function
 - Update the locking between the main and decision threads
+- Speedup sha256 hashing by mmap'ing the object
 
 1.1.2
 - Release the update lock if starting trust db read operations errors

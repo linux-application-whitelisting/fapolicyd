@@ -438,7 +438,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			}
 			break;
 		case SHA256HASH:
-			obj.o = get_hash_from_fd(e->fd);
+			obj.o = get_hash_from_fd2(e->fd, o->info->size);
 			break;
 		case OBJ_TRUST: {
 			object_attr_t *path =  get_obj_attr(e, PATH);

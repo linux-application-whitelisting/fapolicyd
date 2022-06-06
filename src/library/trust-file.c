@@ -91,7 +91,7 @@ static char *make_path_string(const char *path, int *count)
 	}
 
 	// Get the hash
-	char *hash = get_hash_from_fd(fd);
+	char *hash = get_hash_from_fd2(fd, sb.st_size);
 	close(fd);
 
 

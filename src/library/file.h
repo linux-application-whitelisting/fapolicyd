@@ -52,8 +52,9 @@ const char *classify_device(mode_t mode);
 const char *classify_elf_info(uint32_t elf, const char *path);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf);
-char *bytes2hex(char *final, const char *buf, unsigned int size);
-char *get_hash_from_fd(int fd) MALLOCLIKE;
+char *bytes2hex(char *final, const unsigned char *buf, unsigned int size);
+//char *get_hash_from_fd(int fd) MALLOCLIKE;
+char *get_hash_from_fd2(int fd, size_t size) MALLOCLIKE;
 int get_ima_hash(int fd, char *sha);
 uint32_t gather_elf(int fd, off_t size);
 
