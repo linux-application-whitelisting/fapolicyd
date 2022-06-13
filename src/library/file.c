@@ -51,7 +51,7 @@ static struct udev *udev;
 magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
 static struct cache c = { 0, NULL };
-static size_t hash_size;
+static size_t hash_size = 32;	// init so cli doesn't need to call file_init
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
@@ -471,14 +471,23 @@ char *get_hash_from_fd(int fd)
 	return digest;
 } */
 
+/*
+ * Given a fd, calculate the hash by accessing size bytes of the file.
+ * Returns a char pointer of the hash which the caller must free.
+ * If a size of 0 is passed, it will return a NULL pointer.
+ * If there is an error with mmap, it will also return a NULL pointer.
+ */
 char *get_hash_from_fd2(int fd, size_t size)
 {
 	unsigned char *mapped;
 	char *digest = NULL;
 
+	if (size == 0)
+		return digest;
+
 	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
-		unsigned char hptr[80];
+		unsigned char hptr[40];
 
 		gcry_md_hash_buffer(GCRY_MD_SHA256, &hptr, mapped, size);
 		munmap(mapped, size);
