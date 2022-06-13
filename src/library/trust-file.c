@@ -93,7 +93,10 @@ static char *make_path_string(const char *path, int *count)
 	// Get the hash
 	char *hash = get_hash_from_fd2(fd, sb.st_size);
 	close(fd);
-
+	if (!hash) {
+		msg(LOG_ERR, "Cannot hash %s", path);
+		return NULL;
+	}
 
 	char *line;
 	if (*count) {

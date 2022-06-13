@@ -1316,7 +1316,10 @@ static decision_t check_object(lnode *r, event_t *e)
 		case SHA256HASH:
 		case FMODE: {
 
-			if (!obj->o){
+			if (!obj->o) {
+				// Treat errors as a denial for sha256
+				if (type == SHA256HASH)
+					return 0;
 				break;
 			}
 
