@@ -1,6 +1,6 @@
 /*
  * file.c - functions for accessing attributes of files
- * Copyright (c) 2016,2018-21 Red Hat Inc.
+ * Copyright (c) 2016,2018-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -425,51 +425,6 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 	return len;
 }
 
-
-/*
- * On success this function returns a buffer that the caller must free.
- * on error, it returns NULL
- *
-char *get_hash_from_fd(int fd)
-{
-	gcry_md_hd_t ctx;
-	gcry_error_t error;
-	char fbuf[4096], *hptr, *digest;
-	ssize_t len;
-
-	// Initialize a context
-	error=gcry_md_open(&ctx, GCRY_MD_SHA256, 0);
-	if (error)
-		return NULL;
-
-	// read in a buffer at a time and hand to gcrypt
-	while ((len = safe_read(fd, fbuf, 4096)) > 0) {
-		gcry_md_write(ctx, fbuf, len);
-		if (len != 4096)
-			break;
-	}
-
-	// Ask for the grand total to be calculated
-	gcry_md_final(ctx);
-
-	// Ask for buffer size and allocate it
-	digest = malloc((2 * hash_size) + 1);
-	if (digest == NULL) {
-		gcry_md_close(ctx);
-		rewind_fd(fd);
-		return NULL;
-	}
-
-	// Get pointer to array of hex bytes
-	hptr = (char *)gcry_md_read(ctx, GCRY_MD_SHA256);
-
-	// Convert to ASCII string
-	bytes2hex(digest, hptr, hash_size);
-	gcry_md_close(ctx);
-	rewind_fd(fd);
-
-	return digest;
-} */
 
 /*
  * Given a fd, calculate the hash by accessing size bytes of the file.
