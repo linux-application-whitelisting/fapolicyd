@@ -1,6 +1,6 @@
 /*
  * fapolicy-cli.c - CLI tool for fapolicyd
- * Copyright (c) 2019-2021 Red Hat Inc.
+ * Copyright (c) 2019-2022 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -39,6 +39,7 @@
 #include <stdatomic.h>
 #include <lmdb.h>
 #include <limits.h>
+#include <gcrypt.h>
 #include "policy.h"
 #include "database.h"
 #include "file-cli.h"
@@ -637,12 +638,14 @@ static int verify_file(const char *path, off_t size, const char *sha)
 	if (sb.st_size != size)
 		warn_size = 1;
 
-	char *sha_buf = get_hash_from_fd2(fd, sb.st_size);
-	close(fd);
+	if (sb.st_size) {
+		char *sha_buf = get_hash_from_fd2(fd, sb.st_size);
 
-	if (strcmp(sha, sha_buf))
-	    warn_sha = 1;
-	free(sha_buf);
+		if (sha_buf == NULL || strcmp(sha, sha_buf))
+			warn_sha = 1;
+		free(sha_buf);
+	}
+	close(fd);
 
 	if (warn_size || warn_sha) {
 		printf("%s miscompares: %s %s\n", path,
@@ -668,6 +671,11 @@ static int check_trustdb(void)
 	free_daemon_config(&config);
 	if (rc)
 		return 1;
+
+	// Initialize libgcrypt
+	gcry_check_version(NULL);
+	gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
+	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
 
 	do {
 		unsigned int tsource; // unused
