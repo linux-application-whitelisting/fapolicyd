@@ -6,6 +6,9 @@
 
 1.1.2
 - Release the update lock if starting trust db read operations errors
+- CVE-2022-1117 fapolicyd incorrectly detects the run time linker
+- Add the btrfs to the watch_fs config option
+- Fix a problem tracking trusted static apps that launch other apps
 
 1.1.1
 - Reorder patterns and loopholes in rule.d
