@@ -1,6 +1,6 @@
 /*
  * process.c - functions to access attributes of processes
- * Copyright (c) 2016,2020 Red Hat Inc.
+ * Copyright (c) 2016,2020-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <magic.h>
 #include "process.h"
+#include "file.h"
 
 #define BUFSZ 12  // Largest unsigned int is 10 characters long
 /*
@@ -208,6 +209,20 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 	if (fd >= 0) {
 		const char *ptr;
 		extern magic_t magic_cookie;
+		struct stat sb;
+
+		// Most of the time, the process will be ELF.
+		// We can identify it much faster than libmagic.
+		if (fstat(fd, &sb) == 0) {
+			uint32_t elf = gather_elf(fd, sb.st_size);
+			if (elf) {
+				ptr = classify_elf_info(elf, path);
+				close(fd);
+				if (ptr == NULL)
+					return (char *)ptr;
+				return strncpy(buf, ptr, blen-1);
+			}
+		}
 
 		ptr = magic_descriptor(magic_cookie, fd);
 		close(fd);
