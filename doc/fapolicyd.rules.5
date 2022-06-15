@@ -1,4 +1,4 @@
-.TH FAPOLICYD.RULES: "5" "March 2022" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.RULES: "5" "June 2022" "Red Hat" "System Administration Utilities"
 .SH NAME
 compiled.rules \- compiled fapolicyd rules to determine access rights
 fapolicyd.rules \- deprecated fapolicyd rules to determine access rights
@@ -90,7 +90,7 @@ in favor of using obj_trust with execute permission when writing rules.
 This option takes the mime type of a file as an argument. If you wish to check the mime type of a file while writing rules, run the following command:
 
 .nf
-.B file \-\-mime-type /path-to-file
+.B fapolicyd-cli \-\-ftype /path-to-file
 .fi
 
 .TP
