@@ -271,7 +271,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 			break;
 		case F_PERM:
 			if (asprintf(&out, "%s",
-					e->type & FAN_OPEN_EXEC_PERM ?
+					e->type & (FAN_OPEN_EXEC_PERM|FAN_OPEN_EXEC) ?
 					"execute" : "open") < 0)
 				out = NULL;
 			break;
@@ -427,18 +427,19 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 	else
 		decision = process_event(&e);
 
+	close(metadata->fd);
+
 	if ((decision & DENY) == DENY)
 		denied++;
 	else
 		allowed++;
-
+	
 	if (metadata->mask & mask) {
 		response.fd = metadata->fd;
 		if (permissive)
 			response.response = FAN_ALLOW | (decision & AUDIT);
 		else
 			response.response = decision & FAN_RESPONSE_MASK;
-		close(metadata->fd);
 		write(fd, &response, sizeof(struct fanotify_response));
 	}
 }

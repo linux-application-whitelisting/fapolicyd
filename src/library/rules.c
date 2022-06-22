@@ -1050,7 +1050,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 			goto make_decision;
 		} else if (pinfo->state == STATE_STATIC_PARTIAL)
 			goto make_decision;
-		else if ((e->type & FAN_OPEN_EXEC_PERM) && pinfo->path1 &&
+		else if ((e->type & (FAN_OPEN_EXEC_PERM|FAN_OPEN_EXEC)) && pinfo->path1 &&
 				strcmp(pinfo->path1, SYSTEM_LD_SO) == 0) {
 			pinfo->state = STATE_LD_SO;
 			goto make_decision;
@@ -1118,7 +1118,7 @@ static int check_access(const lnode *r, const event_t *e)
 	if (r->a == ANY_ACC)
 		return 1;
 
-	if (e->type & FAN_OPEN_EXEC_PERM)
+	if (e->type & (FAN_OPEN_EXEC_PERM|FAN_OPEN_EXEC))
 		perm = EXEC_ACC;
 	else
 		perm = OPEN_ACC;

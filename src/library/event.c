@@ -40,7 +40,7 @@
 #include "message.h"
 
 #define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
-	FAN_OPEN_EXEC_PERM)
+	FAN_OPEN_EXEC_PERM|FAN_OPEN|FAN_ACCESS|FAN_OPEN_EXEC)
 
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
@@ -130,13 +130,13 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// be sure we are the same process. We skip collecting path
 		// because it was collected on perm = execute.
 		if ((s->info->state == STATE_COLLECTING) &&
-			(e->type & FAN_OPEN_PERM) && !rc) {
+			(e->type & (FAN_OPEN_PERM|FAN_OPEN)) && !rc) {
 			skip_path = 1;
 			s->info->state = STATE_REOPEN;
 		}
 
 		// If not same proc or we detect execution, evict
-		evict = rc || e->type & FAN_OPEN_EXEC_PERM;
+		evict = rc || e->type & (FAN_OPEN_EXEC_PERM|FAN_OPEN_EXEC);
 
 		// We need to reset everything now that execve has finished
 		if (s->info->state == STATE_STATIC_PARTIAL && !rc) {
@@ -159,7 +159,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// the point where we can do a full subject reset. Still
 		// in execve at this point.
 		if ((s->info->state == STATE_STATIC_REOPEN) &&
-					(e->type & FAN_OPEN_PERM) && !rc) {
+					(e->type & (FAN_OPEN_PERM|FAN_OPEN)) && !rc) {
 			s->info->state = STATE_STATIC_PARTIAL;
 			evict = 0;
 			skip_path = 1;
@@ -171,7 +171,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// !skip_path is to prevent the STATE_REOPEN change above from
 		// falling into this.
 		if ((s->info->state == STATE_REOPEN) && !skip_path &&
-				(e->type & FAN_OPEN_EXEC_PERM) &&
+				(e->type & (FAN_OPEN_EXEC_PERM|FAN_OPEN_EXEC)) &&
 				(s->info->elf_info & HAS_INTERP) && !rc) {
 			evict = 0;
 			skip_path = 1;
@@ -200,7 +200,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// If this is the first time we've seen this process
 		// and its doing a file open, its likely to be a running
 		// process. That means we should not do pattern detection.
-		if (!s && (e->type & FAN_OPEN_PERM))
+		if (!s && (e->type & (FAN_OPEN_PERM|FAN_OPEN)))
 			pinfo->state = STATE_NORMAL;
 	} else	{ // Use the one from the cache
 		e->s = s;

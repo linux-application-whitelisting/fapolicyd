@@ -113,7 +113,11 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	pthread_create(&deadmans_switch_thread, NULL,
 			deadmans_switch_thread_main, NULL);
 
-	mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
+	if (permissive) {
+		mask = FAN_OPEN | FAN_OPEN_EXEC;
+	} else {
+		mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
+	}
 
 	// Iterate through the mount points and add a mark
 	path = mlist_first(m);
@@ -130,7 +134,11 @@ retry_mark:
 			if (errno == EINVAL && mask & FAN_OPEN_EXEC_PERM) {
 				msg(LOG_INFO,
 				    "Kernel doesn't support OPEN_EXEC_PERM");
-				mask = FAN_OPEN_PERM;
+				if (permissive) {
+					mask = FAN_OPEN;
+				} else{
+					mask = FAN_OPEN_PERM;
+				}
 				goto retry_mark;
 			}
 			msg(LOG_ERR, "Error (%s) adding fanotify mark for %s",
@@ -322,10 +330,13 @@ out:
 
 static void enqueue_event(const struct fanotify_event_metadata *metadata)
 {
-	if (q_append(q, metadata))
+	if (q_append(q, metadata)) {
 		msg(LOG_DEBUG, "enqueue error");
-	else
+		close(metadata->fd);
+	}
+	else {
 		set_ready();
+	}
 }
 
 static void approve_event(const struct fanotify_event_metadata *metadata)
@@ -335,7 +346,9 @@ static void approve_event(const struct fanotify_event_metadata *metadata)
 	response.fd = metadata->fd;
 	response.response = FAN_ALLOW;
 	close(metadata->fd);
-	write(fd, &response, sizeof(struct fanotify_response));
+	if (!permissive) {
+		write(fd, &response, sizeof(struct fanotify_response));
+	}
 }
 
 void handle_events(void)
