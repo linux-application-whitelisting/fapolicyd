@@ -433,7 +433,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 		denied++;
 	else
 		allowed++;
-	
+
 	if (metadata->mask & mask) {
 		response.fd = metadata->fd;
 		if (permissive)
