@@ -322,8 +322,10 @@ out:
 
 static void enqueue_event(const struct fanotify_event_metadata *metadata)
 {
-	if (q_append(q, metadata))
+	if (q_append(q, metadata)){
 		msg(LOG_DEBUG, "enqueue error");
+		close(metadata->fd);
+	}
 	else
 		set_ready();
 }
