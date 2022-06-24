@@ -45,18 +45,35 @@ list_item_t *list_get_first(const list_t *list)
 	return list->first;
 }
 
-
-int list_append(list_t *list, const char *index, const char *data)
+static list_item_t * create_item(const char *index, const char *data)
 {
 	list_item_t *item = malloc(sizeof(list_item_t));
 	if (!item) {
 		msg(LOG_ERR, "Malloc failed");
-		return 1;
+		return item;
 	}
 
 	item->index = index;
 	item->data = data;
 	item->next = NULL;
+
+	return item;
+}
+
+int list_prepend(list_t *list, const char *index, const char *data)
+{
+	list_item_t *item = create_item(index, data);
+
+	item->next = list->first;
+	list->first = item;
+
+	++list->count;
+	return 0;
+}
+
+int list_append(list_t *list, const char *index, const char *data)
+{
+	list_item_t *item = create_item(index, data);
 
 	if (list->first) {
 		list->last->next = item;

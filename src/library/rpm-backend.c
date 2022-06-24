@@ -40,6 +40,8 @@
 #include "fapolicyd-backend.h"
 #include "llist.h"
 
+#include "rpm-filter.h"
+
 static int rpm_init_backend(void);
 static int rpm_load_list(const conf_t *);
 static int rpm_destroy_backend(void);
@@ -176,69 +178,6 @@ static void close_rpm(void)
 	rpmlogClose();
 }
 
-// This function will check a passed file name to see if the path should
-// be kept or dropped. 1 means discard it, and 0 means keep it.
-static int drop_path(const char *file_name)
-{
-	const char *p = file_name;
-	if (!strncmp(p, "/usr", 4)) {
-		p += 4;
-
-		// Drop anything in /usr/include
-		if (!strncmp(p, "/include", 8))
-			return 1;
-
-		// Only keep languages from /usr/share
-		if (!strncmp(p, "/share", 6)) {
-			p += 6;
-			
-			// These are roughly ordered by quantity
-			static const char *arr_share[] = {
-				"*.py?",       // Python byte code
-				"*.py",        // Python text files
-				"*/libexec/*", // Some apps have a private libexec
-				"*.rb",        // Ruby
-				"*.pl",        // Perl
-				"*.stp",       // System tap
-				"*.js",        // Javascript
-				"*.jar",       // Java archive
-				"*.m4",        // M4
-				"*.php",       // PHP
-				"*.pm",        // Perl Modules
-				"*.lua",       // Lua
-				"*.class",     // Java
-				"*.ts",        // Typescript
-				"*.tsx",       // Typescript JSX
-				"*.el",        // Lisp
-				"*.elc",       // Compiled Lisp
-				NULL
-			};
-
-			for (int i = 0; arr_share[i]; ++i)
-				if (!fnmatch(arr_share[i], p, 0))
-					return 0;
-			return 1;
-		}
-
-		// Akmod needs scripts in /usr/src/kernel
-		if (!strncmp(p, "/src/kernel", 11)) {
-			p += 11;
-			
-			static const char *arr_src_kernel[] = {
-				"*/scripts/*",
-				"*/tools/objtool/*",
-				NULL
-			};
-			
-			for (int i = 0; arr_src_kernel[i]; ++i)
-				if (!fnmatch(arr_src_kernel[i], p, 0))
-					return 0;
-			return 1;
-		}
-	}
-	return 0;
-}
-
 struct _hash_record {
 	const char * key;
 	UT_hash_handle hh;
@@ -290,7 +229,8 @@ static int rpm_load_list(const conf_t *conf)
 			if (file_name == NULL)
 				continue;
 
-			if (drop_path(file_name)) {
+			// should we drop a path?
+			if (!filter_check(file_name)) {
 				free((void *)file_name);
 				free((void *)sha);
 				continue;
@@ -358,12 +298,23 @@ static int rpm_load_list(const conf_t *conf)
 
 static int rpm_init_backend(void)
 {
+	if (filter_init())
+		return 1;
+
+	if (filter_load_file()) {
+		filter_destroy();
+		return 1;
+	}
+
+
 	list_init(&rpm_backend.list);
+
 	return 0;
 }
 
 static int rpm_destroy_backend(void)
 {
+	filter_destroy();
 	list_empty(&rpm_backend.list);
 	return 0;
 }

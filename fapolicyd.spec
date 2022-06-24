@@ -114,6 +114,7 @@ fi
 %attr(644,root,root) %{_sysconfdir}/bash_completion.d/*
 %ghost %{_sysconfdir}/%{name}/rules.d/*
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
+%config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/rpm-filter.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
 %ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/fapolicyd.rules
 %ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/compiled.rules

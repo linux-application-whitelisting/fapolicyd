@@ -62,13 +62,19 @@ libfapolicyd_la_SOURCES = \
 	library/subject-attr.h \
 	library/subject.c \
 	library/subject.h \
+	library/stack.c \
+	library/stack.h \
 	library/string-util.c \
 	library/string-util.h \
 	library/trust-file.c \
 	library/trust-file.h
 
 if WITH_RPM
-libfapolicyd_la_SOURCES += library/rpm-backend.c
+libfapolicyd_la_SOURCES += \
+	library/rpm-backend.c \
+	library/rpm-filter.c \
+	library/rpm-filter.h
+
 endif
 
 libfapolicyd_la_CFLAGS = $(fapolicyd_CFLAGS)

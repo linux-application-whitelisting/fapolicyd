@@ -28,4 +28,5 @@ man_MANS = \
 	fapolicyd-cli.1 \
 	fapolicyd.rules.5 \
 	fapolicyd.trust.5 \
-	fapolicyd.conf.5
+	fapolicyd.conf.5 \
+	rpm-filter.conf.5
