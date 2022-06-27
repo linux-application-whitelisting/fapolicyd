@@ -382,13 +382,11 @@ void handle_events(void)
 					reply_event(metadata, FAN_ALLOW);
 				else
 					enqueue_event(metadata);
-			}
-			// For now, prevent leaking descriptors
-			// in the near future we should do processing
-			// to update the cache.
-			else {
-				close(metadata->fd);
-				goto out;
+			} else {
+				// This should never happen. Reply with deny
+				// which releases the descriptor and kernel
+				// memory. Continue processing what was read.
+				reply_event(metadata, FAN_DENY);
 			}
 		}
 		metadata = FAN_EVENT_NEXT(metadata, len);
