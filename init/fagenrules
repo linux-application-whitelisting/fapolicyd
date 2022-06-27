@@ -117,7 +117,8 @@ fi
 
 # We copy the file so that it gets the right selinux label
 cp ${TmpRules} ${DestinationFile}
-chmod 0640 ${DestinationFile}
+chmod 0644 ${DestinationFile}
+chgrp fapolicyd ${DestinationFile}
 
 # Restore context on MLS system.
 # /tmp is SystemLow & fapolicyd.rules is SystemHigh
