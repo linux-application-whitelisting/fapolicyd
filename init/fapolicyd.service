@@ -11,6 +11,8 @@ PIDFile=/run/fapolicyd.pid
 ExecStartPre=/usr/sbin/fagenrules
 ExecStart=/usr/sbin/fapolicyd
 Restart=on-abnormal
+# Uncomment the following line if rules need user/group name lookup
+#After=nss-user-lookup.target
 
 [Install]
 WantedBy=multi-user.target

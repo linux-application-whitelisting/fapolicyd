@@ -35,13 +35,13 @@ The subject is the process that is performing actions on system resources. The f
 This matches against any subject. When used, this must be the only subject in the rule.
 .TP
 .B auid
-This is the login uid that the audit system assigns users when they log in to the system. Daemons have a value of -1.
+This is the login uid that the audit system assigns users when they log in to the system. Daemons have a value of -1. The given value may be numeric or the account name.
 .TP
 .B uid
-This is the user id that the program is running under.
+This is the user id that the program is running under. The given value may be numeric or the account name.
 .TP
 .B gid
-This is the group id that the program is running under.
+This is the group id that the program is running under. The given value may be numeric or the group name.
 .TP
 .B sessionid
 This is the numeric session id that the audit system assigns to users when they log in. Daemons have a value of -1.
