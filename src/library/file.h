@@ -40,6 +40,9 @@ struct file_info
 	struct timespec time;
 };
 
+#define SHA256_LEN	32
+#define SHA512_LEN	64
+
 void file_init(void);
 void file_close(void);
 struct file_info *stat_file_entry(int fd) MALLOCLIKE;

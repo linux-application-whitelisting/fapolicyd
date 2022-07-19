@@ -39,7 +39,6 @@
 #include <stdatomic.h>
 #include <lmdb.h>
 #include <limits.h>
-#include <gcrypt.h>
 #include "policy.h"
 #include "database.h"
 #include "file-cli.h"
@@ -669,11 +668,6 @@ static int check_trustdb(void)
 	free_daemon_config(&config);
 	if (rc)
 		return 1;
-
-	// Initialize libgcrypt
-	gcry_check_version(NULL);
-	gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
-	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
 
 	do {
 		unsigned int tsource; // unused

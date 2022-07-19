@@ -87,7 +87,7 @@ AC_CHECK_HEADER(uthash.h, , [AC_MSG_ERROR(
 echo .
 echo Checking for required libraries
 AC_CHECK_LIB(udev, udev_device_get_devnode, , [AC_MSG_ERROR([libudev not found])], -ludev)
-AC_CHECK_LIB(gcrypt, gcry_md_open, , [AC_MSG_ERROR([libgcrypt not found])], -lgcrypt)
+AC_CHECK_LIB(crypto, SHA256, , [AC_MSG_ERROR([openssl libcrypto not found])], -lcrypto)
 AC_CHECK_LIB(magic, magic_descriptor, , [AC_MSG_ERROR([libmagic not found])], -lmagic)
 AC_CHECK_LIB(cap-ng, capng_change_id, , [AC_MSG_ERROR([libcap-ng not found])], -lcap-ng)
 AC_CHECK_LIB(seccomp, seccomp_rule_add, , [AC_MSG_ERROR([libseccomp not found])], -lseccomp)

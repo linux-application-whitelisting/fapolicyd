@@ -16,7 +16,8 @@ BUILD-TIME DEPENDENCIES (fedora and RHEL8)
 * libudev-devel
 * kernel-headers
 * systemd-devel
-* libgcrypt-devel
+* libgcrypt-devel ( <= fapolicyd-1.1.3)
+* openssl         ( >= fapolicyd-1.1.4)
 * rpm-devel (optional)
 * file
 * file-devel

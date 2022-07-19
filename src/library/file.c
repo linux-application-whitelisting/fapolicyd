@@ -31,7 +31,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
-#include <gcrypt.h>
+#include <openssl/sha.h>
 #include <magic.h>
 #include <libudev.h>
 #include <elf.h>
@@ -51,7 +51,6 @@ static struct udev *udev;
 magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
 static struct cache c = { 0, NULL };
-static size_t hash_size = 32;	// init so cli doesn't need to call file_init
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
@@ -96,12 +95,6 @@ void file_init(void)
 		msg(LOG_ERR, "Unable to load magic database");
 		exit(1);
 	}
-
-	// Initialize libgcrypt
-	gcry_check_version(NULL);
-	gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
-	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
-	hash_size = gcry_md_get_algo_dlen(GCRY_MD_SHA256) * sizeof(char);
 }
 
 
@@ -445,12 +438,12 @@ char *get_hash_from_fd2(int fd, size_t size)
 	if (mapped != MAP_FAILED) {
 		unsigned char hptr[40];
 
-		gcry_md_hash_buffer(GCRY_MD_SHA256, &hptr, mapped, size);
+		SHA256(mapped, size, (unsigned char *)&hptr);
 		munmap(mapped, size);
-		digest = malloc(65);
+		digest = malloc((SHA256_LEN * 2) + 1);
 
 		// Convert to ASCII string
-		bytes2hex(digest, hptr, hash_size);
+		bytes2hex(digest, hptr, SHA256_LEN);
 	}
 	return digest;
 }
@@ -476,7 +469,7 @@ int get_ima_hash(int fd, char *sha)
 	}
 
 	// Looks like it what we want...
-	bytes2hex(sha, &tmp[2], 32);
+	bytes2hex(sha, &tmp[2], SHA256_LEN);
 	return 1;
 }
 

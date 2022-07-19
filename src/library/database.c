@@ -34,7 +34,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <gcrypt.h>
+#include <openssl/sha.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -242,26 +242,18 @@ static void abort_transaction(MDB_txn *txn)
 static char *path_to_hash(const char *path, const size_t path_len) MALLOCLIKE;
 static char *path_to_hash(const char *path, const size_t path_len)
 {
-	gcry_md_hd_t h;
-	unsigned int len;
-	unsigned char *hptr;
+	unsigned char hptr[80];
 	char *digest;
 
-	if (gcry_md_open(&h, GCRY_MD_SHA512, GCRY_MD_FLAG_SECURE))
+	if (path_len == 0)
 		return NULL;
 
-	gcry_md_write(h, path, path_len);
-	hptr = gcry_md_read(h, GCRY_MD_SHA512);
-
-	len = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * sizeof(char);
-	digest = malloc((2 * len) + 1);
-	if (digest == NULL) {
-		gcry_md_close(h);
+	SHA512((unsigned char *)path, path_len, (unsigned char *)&hptr);
+	digest = malloc((SHA512_LEN * 2) + 1);
+	if (digest == NULL)
 		return digest;
-	}
 
-	bytes2hex(digest, hptr, len);
-	gcry_md_close(h);
+	bytes2hex(digest, hptr, SHA512_LEN);
 
 	return digest;
 }
@@ -294,7 +286,7 @@ static int write_db(const char *idx, const char *data)
 		if (hash == NULL)
 			return 5;
 		key.mv_data = (void *)hash;
-		key.mv_size = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * 2 + 1;
+		key.mv_size = (SHA512_LEN * 2) + 1;
 	} else {
 		key.mv_data = (void *)idx;
 		key.mv_size = len;
@@ -414,7 +406,7 @@ static char *lt_read_db(const char *index, int operation, int *error)
 		if (hash == NULL)
 			return NULL;
 		key.mv_data = (void *)hash;
-		key.mv_size = gcry_md_get_algo_dlen(GCRY_MD_SHA512) * 2 + 1;
+		key.mv_size = (SHA512_LEN * 2) + 1;
 	} else {
 		key.mv_data = (void *)index;
 		key.mv_size = len;
