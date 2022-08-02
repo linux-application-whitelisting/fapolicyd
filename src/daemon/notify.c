@@ -294,6 +294,7 @@ static void *decision_thread_main(void *arg)
 					do_stat_report(f);
 					fclose(f);
 				}
+				run_stats = 0;
 			}
 		}
 		alive = 1;
