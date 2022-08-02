@@ -4,12 +4,12 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-Allow rules to express paths using globbing (fnmatch)
-Do trust db size check on all updates
-add db_max_size = auto
-On startup, pid file and check if /proc maps to fapolicyd terminate if so
-Add –check-status cli to send a signal to the daemon to output metrics to /var/run/ cli then reads and writes to console
-Close issue 182 since we keep the pid file
+* Add --check-status cli to send a signal to the daemon to output metrics to /var/run/ cli then reads and writes to console
+* On startup, pid file and check if /proc maps to fapolicyd terminate if so
+* Close issue 182 since we keep the pid file
+* Do trust db size check on all updates
+* add db_max_size = auto
+* Allow rules to express paths using globbing (fnmatch)
 
 Consider adding rule testing to cli (uid, pgm, file)
 Support other packaging manifests
