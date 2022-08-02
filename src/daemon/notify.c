@@ -402,7 +402,7 @@ void handle_events(void)
 		}
 		metadata = FAN_EVENT_NEXT(metadata, len);
 	}
-out:
+
 	pthread_cond_signal(&do_decision);
 	pthread_mutex_unlock(&decision_lock);
 }
