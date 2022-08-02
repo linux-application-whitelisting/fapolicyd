@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <openssl/sha.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -43,6 +44,7 @@
 #include "message.h"
 #include "llist.h"
 #include "file.h"
+#include "fd-fgets.h"
 
 #include "fapolicyd-backend.h"
 #include "backend-manager.h"
@@ -1173,6 +1175,7 @@ static void *update_thread_main(void *arg)
 			return NULL;
 	}
 
+	fcntl(ffd[0].fd, F_SETFL, O_NONBLOCK);
 	ffd[0].events = POLLIN;
 
 	while (!stop) {
@@ -1192,97 +1195,102 @@ static void *update_thread_main(void *arg)
 			} else {
 				msg(LOG_ERR, "Update poll error (%s)",
 				    strerror_r(errno, err_buff, BUFFER_SIZE));
-				goto err_out;
+				goto finalize;
 			}
 		} else if (rc == 0) {
 #ifdef DEBUG
 			msg(LOG_DEBUG, "Update poll timeout expired");
 #endif
-			if (db_operation != DB_NO_OP)
-				goto handle_db_ops;
 			continue;
 		} else {
 			if (ffd[0].revents & POLLIN) {
-				ssize_t count = read(ffd[0].fd, buff,
-						     BUFFER_SIZE-1);
 
-				if (count == -1) {
-					msg(LOG_ERR,
-					   "Failed to read from a pipe %s (%s)",
-					   fifo_path,
-					   strerror_r(errno, err_buff,
-						      BUFFER_SIZE));
-					goto err_out;
-				}
+				do {
+					fd_fgets_rewind();
+					int res = fd_fgets(buff, sizeof(buff), ffd[0].fd);
 
-				if (count == 0) {
-#ifdef DEBUG
-					msg(LOG_DEBUG,
-					    "Buffer contains zero bytes!");
-#endif
-					continue;
-				} else // Manually terminate buff
-					buff[count] = 0;
-#ifdef DEBUG
-				msg(LOG_DEBUG, "Buffer contains: \"%s\"", buff);
-#endif
-				for (int i = 0 ; i < count ; i++) {
-					// assume file name
-					// operation = 0
-					if (buff[i] == '/') {
-						db_operation = ONE_FILE;
+					// nothing to read
+					if (res == -1)
 						break;
+					else if (res > 0) {
+						char* end  = strchr(buff, '\n');
+
+						if (end == NULL) {
+							msg(LOG_ERR, "Too long line?");
+							continue;
+						}
+
+						int count = end - buff;
+
+						*end = '\0';
+
+						for (int i = 0 ; i < count ; i++) {
+							// assume file name
+							// operation = 0
+							if (buff[i] == '/') {
+								db_operation = ONE_FILE;
+								break;
+							}
+
+							if (buff[i] == '1') {
+								db_operation = RELOAD_DB;
+								break;
+							}
+
+							if (buff[i] == '2') {
+								db_operation = FLUSH_CACHE;
+								break;
+							}
+
+							if (isspace(buff[i]))
+								continue;
+
+							msg(LOG_ERR, "Cannot handle data \"%s\" from pipe", buff);
+							break;
+						}
+
+						*end = '\n';
+
+						// got "1" -> reload db
+						if (db_operation == RELOAD_DB) {
+							db_operation = DB_NO_OP;
+							msg(LOG_INFO,
+								"It looks like there was an update of the system... Syncing DB.");
+
+							backend_close();
+							backend_init(config);
+							backend_load(config);
+
+							if ((rc = update_database(config))) {
+								msg(LOG_ERR,
+									"Cannot update trust database!");
+								close(ffd[0].fd);
+								backend_close();
+								unlink_fifo();
+								exit(rc);
+							}
+
+							msg(LOG_INFO, "Updated");
+
+							// Conserve memory
+							backend_close();
+							// got "2" -> flush cache
+						} else if (db_operation == FLUSH_CACHE) {
+							db_operation = DB_NO_OP;
+							needs_flush = true;
+						} else if (db_operation == ONE_FILE) {
+							db_operation = DB_NO_OP;
+							if (handle_record(buff))
+								continue;
+						}
 					}
 
-					if (buff[i] == '1') {
-						db_operation = RELOAD_DB;
-						break;
-					}
-
-					if (buff[i] == '2') {
-						db_operation = FLUSH_CACHE;
-						break;
-					}
-				}
-
-handle_db_ops:
-				// got "1" -> reload db
-				if (db_operation == RELOAD_DB) {
-					db_operation = DB_NO_OP;
-					msg(LOG_INFO,
-	    "It looks like there was an update of the system... Syncing DB.");
-
-					backend_close();
-					backend_init(config);
-					backend_load(config);
-
-					if ((rc = update_database(config))) {
-						msg(LOG_ERR,
-						   "Cannot update trust database!");
-						close(ffd[0].fd);
-						backend_close();
-						unlink_fifo();
-						exit(rc);
-					} else
-						msg(LOG_INFO, "Updated");
-
-					// Conserve memory
-					backend_close();
-				// got "2" -> flush cache
-				} else if (db_operation == FLUSH_CACHE) {
-					db_operation = DB_NO_OP;
-					needs_flush = true;
-				} else if (db_operation == ONE_FILE) {
-					db_operation = DB_NO_OP;
-					if (handle_record(buff))
-						continue;
-				}
+				} while(!fd_fgets_eof());
 			}
 		}
-
 	}
 
-err_out:
+finalize:
 	close(ffd[0].fd);
 	unlink_fifo();
 
