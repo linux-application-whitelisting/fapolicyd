@@ -42,9 +42,10 @@
 
 #define FANOTIFY_BUFFER_SIZE 8192
 #define MAX_EVENTS 4
+#define STAT_REPORT "/var/run/fapolicyd.state"
 
 // External variables
-extern volatile atomic_bool stop;
+extern volatile atomic_bool stop, run_stats;
 
 // Local variables
 static pid_t our_pid;
@@ -58,6 +59,9 @@ static volatile atomic_bool events_ready;
 static volatile atomic_int alive = 1;
 static int fd = -1;
 static uint64_t mask;
+
+// External functions
+void do_stat_report(FILE *f);
 
 // Local functions
 static void *decision_thread_main(void *arg);
@@ -283,6 +287,13 @@ static void *decision_thread_main(void *arg)
 			if (stop) {
 				pthread_mutex_unlock(&decision_lock);
 				return NULL;
+			}
+			if (run_stats) {
+				FILE *f = fopen(STAT_REPORT, "w");
+				if (f) {
+					do_stat_report(f);
+					fclose(f);
+				}
 			}
 		}
 		alive = 1;

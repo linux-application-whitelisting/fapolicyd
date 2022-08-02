@@ -4,7 +4,6 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-* Add --check-status cli to send a signal to the daemon to output metrics to /var/run/ cli then reads and writes to console
 * On startup, pid file and check if /proc maps to fapolicyd terminate if so
 * Close issue 182 since we keep the pid file
 * Do trust db size check on all updates

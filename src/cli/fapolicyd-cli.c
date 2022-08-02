@@ -39,6 +39,7 @@
 #include <stdatomic.h>
 #include <lmdb.h>
 #include <limits.h>
+#include <signal.h>
 #include "policy.h"
 #include "database.h"
 #include "file-cli.h"
@@ -53,8 +54,9 @@
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "--check-config        Check the daemon config for syntax errors\n"
-"--check-watch_fs      Check watch_fs against currently mounted file systems\n"
+"--check-status        Dump the deamon's internal performance statistics\n"
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
+"--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
@@ -68,8 +70,9 @@ static const char *usage =
 static struct option long_opts[] =
 {
 	{"check-config",0, NULL,  1 },
-	{"check-watch_fs",0, NULL,  2 },
+	{"check-watch_fs",0, NULL, 2 },
 	{"check-trustdb",0, NULL,  3 },
+	{"check-status",0, NULL,  4 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -79,7 +82,9 @@ static struct option long_opts[] =
 	{"update",	0, NULL, 'u'},
 };
 
+#define STAT_REPORT "/var/run/fapolicyd.state"
 static const char *_pipe = "/run/fapolicyd/fapolicyd.fifo";
+static const char *pidfile = "/run/fapolicyd.pid";
 volatile atomic_bool stop = 0;  // Library needs this
 unsigned int debug = 0;			// Library needs this
 
@@ -698,6 +703,66 @@ static int check_trustdb(void)
 	return 0;
 }
 
+static int do_status_report(void)
+{
+	// open pid file
+	int pidfd = open(pidfile, O_RDONLY);
+	if (pidfd >= 0) {
+		char pid_buf[16];
+
+		// read contents
+		if (fd_fgets(pid_buf, sizeof(pid_buf), pidfd)) {
+			int rpt_fd;
+			unsigned int pid, tries = 0;
+			char exe_buf[32];
+
+			// convert to integer
+			errno = 0;
+			pid = strtoul(pid_buf, NULL, 10);
+			if (errno)
+				goto err_out;
+			// verify it really is fapolicyd
+			if (get_program_from_pid(pid,
+					sizeof(exe_buf), exe_buf) == NULL)
+				goto err_out;
+			if (strcmp(exe_buf, "/usr/sbin/fapolicyd"))
+				goto err_out;
+
+			// delete the old report
+			unlink(STAT_REPORT);
+
+			// send the signal for the report
+			kill(pid, SIGUSR1);
+retry:
+			// wait for it
+			sleep(2);
+
+			// display the report
+			rpt_fd = open(STAT_REPORT, O_RDONLY);
+			if (rpt_fd < 0) {
+				if (tries < 15) {
+					tries++;
+					goto retry;
+				} else
+					goto err_out;
+			}
+			do {
+				char buf[80];
+				if (fd_fgets(buf, sizeof(buf), rpt_fd))
+					write(1, buf, strlen(buf));
+			} while (!fd_fgets_eof());
+			close(rpt_fd);
+		}
+		close(pidfd);
+		return 0;
+	}
+err_out:
+		if (pidfd >= 0)
+			close(pidfd);
+		puts("Can't find fapolicyd");
+		return 1;
+}
+
 int main(int argc, char * const argv[])
 {
 	int opt, option_index, rc = 1;
@@ -774,6 +839,11 @@ int main(int argc, char * const argv[])
 		if (argc > 2)
 			goto args_err;
 		return check_trustdb();
+		break;
+	case 4: // --check-status
+		if (argc > 2)
+			goto args_err;
+		return do_status_report();
 		break;
 	default:
 		printf("%s", usage);

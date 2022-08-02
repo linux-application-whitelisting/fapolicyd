@@ -59,7 +59,7 @@
 unsigned int debug = 0, permissive = 0;
 
 // Signal handler notifications
-volatile atomic_bool stop = 0, hup = 0;
+volatile atomic_bool stop = 0, hup = 0, run_stats = 0;
 
 // Local variables
 static const char *pidfile = "/run/fapolicyd.pid";
@@ -215,6 +215,11 @@ static void segv_handler(int signum)
 static void hup_handler(int sig)
 {
 	hup = 1 + sig; // Just so its used...
+}
+
+static void usr1_handler(int sig __attribute__((unused)))
+{
+	run_stats = 1;
 }
 
 /*
@@ -377,6 +382,14 @@ static void usage(void)
 	exit(1);
 }
 
+void do_stat_report(FILE *f)
+{
+	fprintf(f, "Permissive: %s\n", config.permissive ? "true" : "false");
+	fprintf(f, "q_size: %u\n", config.q_size);
+	q_report(f);
+	decision_report(f);
+	database_report(f);
+}
 
 int main(int argc, const char *argv[])
 {
@@ -435,6 +448,8 @@ int main(int argc, const char *argv[])
 	sigaction(SIGHUP, &sa, NULL);
 	sa.sa_handler = segv_handler;
 	sigaction(SIGSEGV, &sa, NULL);
+	sa.sa_handler = usr1_handler;
+	sigaction(SIGUSR1, &sa, NULL);
 	/* These need to be last since they are used later */
 	sa.sa_handler = term_handler;
 	sigaction(SIGTERM, &sa, NULL);
@@ -578,12 +593,7 @@ int main(int argc, const char *argv[])
 		if (f == NULL)
 			msg(LOG_WARNING, "Cannot create usage report");
 		else {
-			fprintf(f, "Permissive: %s\n",
-					config.permissive ? "true" : "false");
-			fprintf(f, "q_size: %u\n", config.q_size);
-			q_report(f);
-			decision_report(f);
-			database_report(f);
+			do_stat_report(f);
 			run_usage_report(&config, f);
 			fclose(f);
 		}

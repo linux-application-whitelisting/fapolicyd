@@ -46,6 +46,10 @@ caused fapolicyd to discontinue processing events, write it's performance report
 .B SIGHUP
 causes fapolicyd to reload the trust database.
 
+.TP
+.B SIGUSR1
+causes fapolicyd to dump it's internal statistics to /var/run/fapolicyd.state
+
 .SH NOTES
 Whatever you do, DO NOT TRY TO ATTACH WITH PTRACE. Ptrace attachment sends a SIGSTOP which cannot be blocked. Since your whole system depends on fapolicyd approving access to glibc and various critical libraries, that will not happen until SIGCONT is sent. The system can deadlock if the continue signal is not sent.
 
@@ -78,6 +82,9 @@ If you are running in the debug mode and wish to compare rule numbers reported i
 .P
 .B /var/log/fapolicyd-access.log
 - information about what was being accessed.
+.P
+.B /var/run/fapolicyd.state
+- internal performance metrics
 
 .SH "SEE ALSO"
 .BR fapolicyd-cli (1),

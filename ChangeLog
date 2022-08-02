@@ -1,6 +1,7 @@
 1.1.4
 - Fix descriptor leak on enqueue failure (Steven Brzozowski)
 - Switch SHA256 hashing to openssl
+- Add --check-status to fapolicyd-cli
 
 1.1.3
 - Replace snprintf integer to char conversion with uitoa function
