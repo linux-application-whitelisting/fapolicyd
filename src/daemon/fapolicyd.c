@@ -624,8 +624,7 @@ int main(int argc, const char *argv[])
 	free(m);
 	file_close();
 	close_database();
-	if (pidfile)
-		unlink(pidfile);
+	unlink(pidfile);
 	// Reinstate the strict umask in case rpm messed with it
 	(void) umask( 0237 );
 	if (config.do_stat_report) {

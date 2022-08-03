@@ -102,15 +102,16 @@ static char *make_path_string(const char *path, int *count)
 		if (escaped == NULL) {
 			msg(LOG_ERR, "Could not escape %s", path);
 			free(hash);
-			close(fd);
 			return NULL;
 		}
 
-		*count = asprintf(&line, FILE_WRITE_FORMAT, escaped, sb.st_size, hash);
+		*count = asprintf(&line, FILE_WRITE_FORMAT, escaped,
+				  sb.st_size, hash);
 		free((void *)escaped);
 
 	} else {
-		*count = asprintf(&line, DATA_FORMAT, 0, sb.st_size, hash);
+		*count = asprintf(&line, DATA_FORMAT, 0,
+				  sb.st_size, hash);
 	}
 
 	free(hash);
