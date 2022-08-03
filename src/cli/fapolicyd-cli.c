@@ -80,6 +80,7 @@ static struct option long_opts[] =
 	{"ftype",	1, NULL, 't'},
 	{"list",	0, NULL, 'l'},
 	{"update",	0, NULL, 'u'},
+	{ NULL,		0, NULL, 0 }
 };
 
 #define STAT_REPORT "/var/run/fapolicyd.state"
