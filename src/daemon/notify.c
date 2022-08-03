@@ -39,10 +39,10 @@
 #include "message.h"
 #include "queue.h"
 #include "mounts.h"
+#include "paths.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192
 #define MAX_EVENTS 4
-#define STAT_REPORT "/var/run/fapolicyd.state"
 
 // External variables
 extern volatile atomic_bool stop, run_stats;

@@ -49,7 +49,7 @@
 #include "message.h"
 #include "llist.h"
 #include "fd-fgets.h"
-
+#include "paths.h"
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
@@ -83,9 +83,6 @@ static struct option long_opts[] =
 	{ NULL,		0, NULL, 0 }
 };
 
-#define STAT_REPORT "/var/run/fapolicyd.state"
-static const char *_pipe = "/run/fapolicyd/fapolicyd.fifo";
-static const char *pidfile = "/run/fapolicyd.pid";
 volatile atomic_bool stop = 0;  // Library needs this
 unsigned int debug = 0;			// Library needs this
 
@@ -457,21 +454,21 @@ static int do_update(void)
 	int fd = -1;
 	struct stat s;
 
-	fd = open(_pipe, O_WRONLY);
+	fd = open(fifo_path, O_WRONLY);
 	if (fd == -1) {
-		fprintf(stderr, "Open: %s -> %s\n", _pipe, strerror(errno));
+		fprintf(stderr, "Open: %s -> %s\n", fifo_path, strerror(errno));
 		return 1;
 	}
 
-	if (stat(_pipe, &s) == -1) {
-		fprintf(stderr, "Stat: %s -> %s\n", _pipe, strerror(errno));
+	if (fstat(fd, &s) == -1) {
+		fprintf(stderr, "Stat: %s -> %s\n", fifo_path, strerror(errno));
 		close(fd);
 		return 1;
 	} else {
 		if (!S_ISFIFO(s.st_mode)) {
 			fprintf(stderr,
 				"File: %s exists but it is not a pipe!\n",
-				 _pipe);
+				 fifo_path);
 			close(fd);
 			return 1;
 		}
@@ -480,7 +477,7 @@ static int do_update(void)
 		if (mode != 0660) {
 			fprintf(stderr,
 				"File: %s has 0%o instead of 0660 \n",
-				_pipe,
+				fifo_path,
 				mode);
 			close(fd);
 			return 1;
@@ -490,13 +487,13 @@ static int do_update(void)
 	ssize_t ret = write(fd, "1\n", 2);
 
 	if (ret == -1) {
-		fprintf(stderr, "Write: %s -> %s\n", _pipe, strerror(errno));
+		fprintf(stderr,"Write: %s -> %s\n", fifo_path, strerror(errno));
 		close(fd);
 		return 1;
 	}
 
 	if (close(fd)) {
-		fprintf(stderr, "Close: %s -> %s\n", _pipe, strerror(errno));
+		fprintf(stderr,"Close: %s -> %s\n", fifo_path, strerror(errno));
 		return 1;
 	}
 

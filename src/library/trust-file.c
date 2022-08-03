@@ -40,11 +40,8 @@
 #include "message.h"
 #include "trust-file.h"
 #include "escape.h"
+#include "paths.h"
 
-
-
-#define TRUST_FILE_PATH "/etc/fapolicyd/fapolicyd.trust"
-#define TRUST_DIR_PATH "/etc/fapolicyd/trust.d/"
 #define BUFFER_SIZE 4096+1+1+1+10+1+64+1
 #define FILE_READ_FORMAT  "%4096s %lu %64s" // path size SHA256
 #define FILE_WRITE_FORMAT "%s %lu %s\n"     // path size SHA256

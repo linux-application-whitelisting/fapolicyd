@@ -39,6 +39,7 @@
 #include "message.h"
 #include "gcc-attributes.h"
 #include "string-util.h"
+#include "paths.h"
 
 #define MAX_SYSLOG_FIELDS	21
 

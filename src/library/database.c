@@ -49,7 +49,7 @@
 #include "fapolicyd-backend.h"
 #include "backend-manager.h"
 #include "gcc-attributes.h"
-
+#include "paths.h"
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
@@ -66,7 +66,6 @@ static const char *data_dir = DB_DIR;
 static const char *db = DB_NAME;
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
-static const char *fifo_path = "/run/fapolicyd/fapolicyd.fifo";
 static integrity_t integrity;
 static atomic_int db_operation;
 

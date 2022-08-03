@@ -28,9 +28,6 @@
 #include <sys/fanotify.h>
 #include "event.h"
 
-#define RULES_FILE "/etc/fapolicyd/compiled.rules"
-#define OLD_RULES_FILE "/etc/fapolicyd/fapolicyd.rules"
-
 #ifdef USE_AUDIT
 #if HAVE_DECL_FAN_AUDIT
 #define AUDIT FAN_AUDIT

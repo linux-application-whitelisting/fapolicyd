@@ -53,6 +53,7 @@
 #include "queue.h"
 #include "gcc-attributes.h"
 #include "avl.h"
+#include "paths.h"
 
 
 // Global program variables
@@ -62,8 +63,6 @@ unsigned int debug = 0, permissive = 0;
 volatile atomic_bool stop = 0, hup = 0, run_stats = 0;
 
 // Local variables
-static const char *pidfile = "/run/fapolicyd.pid";
-#define REPORT "/var/log/fapolicyd-access.log"
 static conf_t config;
 // This holds info about all file systems to watch
 struct fs_avl {
@@ -256,21 +255,18 @@ static int write_pid_file(void)
 	len = snprintf(val, sizeof(val), "%u\n", getpid());
 	if (len <= 0) {
 		msg(LOG_ERR, "Pid error (%s)", strerror(errno));
-		pidfile = NULL;
 		return 1;
 	}
 	pidfd = open(pidfile, O_CREAT | O_TRUNC | O_NOFOLLOW | O_WRONLY, 0644);
 	if (pidfd < 0) {
-		msg(LOG_ERR, "Unable to set pidfile (%s)",
+		msg(LOG_ERR, "Unable to create pidfile (%s)",
 			strerror(errno));
-		pidfile = NULL;
 		return 1;
 	}
 	if (write(pidfd, val, (unsigned int)len) != len) {
 		msg(LOG_ERR, "Unable to write pidfile (%s)",
 			strerror(errno));
 		close(pidfd);
-		pidfile = NULL;
 		return 1;
 	}
 	close(pidfd);

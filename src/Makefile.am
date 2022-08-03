@@ -49,6 +49,7 @@ libfapolicyd_la_SOURCES = \
 	library/object-attr.h \
 	library/object.c \
 	library/object.h \
+	library/paths.h \
 	library/policy.c \
 	library/policy.h \
 	library/process.c \

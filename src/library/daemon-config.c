@@ -37,8 +37,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <grp.h>
-
-#define CONFIG_FILE "/etc/fapolicyd/fapolicyd.conf"
+#include "paths.h"
 
 /* Local prototypes */
 struct nv_pair

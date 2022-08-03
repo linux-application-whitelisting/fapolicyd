@@ -30,8 +30,6 @@
 #include "conf.h"
 #include "file.h"
 
-#define DB_DIR "/var/lib/fapolicyd"
-#define DB_NAME "trust.db"
 
 typedef struct {
 	MDB_val path;

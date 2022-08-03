@@ -4,9 +4,8 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-* Consolidate global paths and defines into one header
-* add db_max_size = auto
 * Allow rules to express paths using globbing (fnmatch)
+* add db_max_size = auto
 
 Improve reconfigure via SIGHUP to update configuration and rules
 Consider adding rule testing to cli (uid, pgm, file)
