@@ -487,7 +487,7 @@ static int do_update(void)
 		}
 	}
 
-	ssize_t ret = write(fd, "1", 2);
+	ssize_t ret = write(fd, "1\n", 2);
 
 	if (ret == -1) {
 		fprintf(stderr, "Write: %s -> %s\n", _pipe, strerror(errno));
