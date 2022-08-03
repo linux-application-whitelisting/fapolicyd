@@ -4,7 +4,6 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-* On startup, pid file and check if /proc maps to fapolicyd terminate if so
 * Close issue 182 since we keep the pid file
 * Do trust db size check on all updates
 * add db_max_size = auto
