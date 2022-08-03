@@ -203,6 +203,20 @@ static void close_db(int do_report)
 	mdb_env_close(env);
 }
 
+static void check_db_size(void)
+{
+	MDB_envinfo stat;
+
+	// Collect stats
+	unsigned long size = get_pages_in_use();
+	mdb_env_info(env, &stat);
+	max_pages = stat.me_mapsize / size;
+	unsigned long percent = max_pages ? (100*pages)/max_pages : 0;
+	if (percent > 80)
+		msg(LOG_WARNING, "Trust database at %lu%% capacity - "
+		   "might want to increase db_max_size setting", percent);
+}
+
 void database_report(FILE *f)
 {
 	fprintf(f, "Trust database max pages: %lu\n", max_pages);
@@ -582,6 +596,10 @@ static int create_database(int with_sync)
 	// Flush everything to disk
 	if (with_sync)
 		mdb_env_sync(env, 1);
+
+	// Check if database is getting full and warn
+	check_db_size();
+
 	return rc;
 }
 
@@ -689,14 +707,8 @@ static int check_database_copy(void)
 		"Entries in trust DB: %ld",
 		db_total_entries);
 
-	{ // Check if database is getting full and warn
-	MDB_envinfo stat;
-	mdb_env_info(env, &stat);
-	max_pages = stat.me_mapsize / get_pages_in_use();
-	if (((100*pages)/max_pages) > 80)
-		msg(LOG_WARNING, "Trust database at %lu%% capacity - might want"
-		    " to increase db_max_size setting", (100*pages)/max_pages);
-	}
+	// Check if database is getting full and warn
+	check_db_size();
 
 	msg(	LOG_INFO,
 		"Loaded trust info from all backends(without duplicates): %ld",

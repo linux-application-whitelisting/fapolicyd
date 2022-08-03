@@ -4,7 +4,7 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-* Do trust db size check on all updates
+* Consolidate global paths and defines into one header
 * add db_max_size = auto
 * Allow rules to express paths using globbing (fnmatch)
 
