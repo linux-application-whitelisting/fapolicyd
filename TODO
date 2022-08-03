@@ -4,11 +4,11 @@ Add ability to specify auxiliary information about which rule number triggers
 
 Userspace
 =========
-* Close issue 182 since we keep the pid file
 * Do trust db size check on all updates
 * add db_max_size = auto
 * Allow rules to express paths using globbing (fnmatch)
 
+Improve reconfigure via SIGHUP to update configuration and rules
 Consider adding rule testing to cli (uid, pgm, file)
 Support other packaging manifests
 
