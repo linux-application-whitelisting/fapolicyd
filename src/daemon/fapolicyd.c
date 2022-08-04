@@ -582,6 +582,7 @@ int main(int argc, const char *argv[])
 	while (!stop) {
 		if (hup) {
 			hup = 0;
+			msg(LOG_DEBUG, "Got SIGHUP");
 			reconfigure();
 		}
 		rc = poll(pfd, 2, -1);
