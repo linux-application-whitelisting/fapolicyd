@@ -4,6 +4,7 @@ EXTRA_DIST = \
 	fapolicyd.trust \
 	fapolicyd-tmpfiles.conf \
 	fapolicyd-magic \
+	fapolicyd.bash_completion \
 	fagenrules
 
 fapolicyddir = $(sysconfdir)/fapolicyd
@@ -16,6 +17,9 @@ systemdservicedir = $(systemdsystemunitdir)
 dist_systemdservice_DATA = fapolicyd.service
 
 sbin_SCRIPTS = fagenrules
+
+completiondir = $(sysconfdir)/bash_completion.d/
+dist_completion_DATA = fapolicyd.bash_completion
 
 MAGIC = fapolicyd-magic.mgc
 pkgdata_DATA = ${MAGIC} 

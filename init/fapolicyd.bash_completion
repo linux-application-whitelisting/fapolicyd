@@ -1,0 +1,50 @@
+# fapolicyd-cli(1) completion                             -*- shell-script -*-
+
+_fapolicydcli()
+{
+	local cur prev words cword split
+	_init_completion -s || return
+
+	case $prev in
+		--check-config | --check-status | --check-trustdb | \
+		--check-watch_fs | --delete-db | --dump-db | \
+		--help | --list | --update)
+			return
+		;;
+	--ftype)
+			_filedir
+		;;
+	--file) 	# missing support to suggest files or dirs after these
+			# but it's better than nothing
+			COMPREPLY=($(compgen -W 'add delete update' -- "$cur"))
+			return
+		;;
+	esac
+
+	$split && return
+
+	if [[ $cur == -* ]]; then
+		COMPREPLY=($(compgen -W '$(_parse_help "$1")' -- "$cur"))
+		[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
+		return
+	fi
+}
+
+_fapolicyd()
+{
+	local cur prev opts
+	COMPREPLY=()
+	cur="${COMP_WORDS[COMP_CWORD]}"
+	prev="${COMP_WORDS[COMP_CWORD-1]}"
+	opts="--debug --debug-deny --help --no-details --permissive"
+
+	if [[ ${cur} == -* ]] ; then
+		COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+		return 0
+	fi
+}
+
+complete -F _fapolicydcli fapolicyd-cli
+complete -F _fapolicyd fapolicyd
+
+# ex: filetype=sh
