@@ -67,7 +67,7 @@ static const char *db = DB_NAME;
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static integrity_t integrity;
-static atomic_int db_operation;
+static atomic_int reload_db = 0;
 
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
@@ -1158,7 +1158,31 @@ static int handle_record(const char * buffer)
 
 void update_trust_database(void)
 {
-	db_operation = RELOAD_DB;
+	reload_db = 1;
+}
+
+static void do_reload_db(conf_t* config)
+{
+	msg(LOG_INFO,"It looks like there was an update of the system... Syncing DB.");
+
+	int rc;
+	backend_close();
+	backend_init(config);
+	backend_load(config);
+
+	if ((rc = update_database(config))) {
+		msg(LOG_ERR,
+			"Cannot update trust database!");
+		close(ffd[0].fd);
+		backend_close();
+		unlink_fifo();
+		exit(rc);
+	}
+
+	msg(LOG_INFO, "Updated");
+
+	// Conserve memory
+	backend_close();
 }
 
 static void *update_thread_main(void *arg)
@@ -1168,6 +1192,8 @@ static void *update_thread_main(void *arg)
 	char buff[BUFFER_SIZE];
 	char err_buff[BUFFER_SIZE];
 	conf_t *config = (conf_t *)arg;
+
+	int do_operation = DB_NO_OP;;
 
 #ifdef DEBUG
 	msg(LOG_DEBUG, "Update thread main started");
@@ -1192,6 +1218,12 @@ static void *update_thread_main(void *arg)
 	while (!stop) {
 
 		rc = poll(ffd, 1, 1000);
+
+		// got SIGHUP
+		if (reload_db) {
+			reload_db = 0;
+			do_reload_db(config);
+		}
 
 #ifdef DEBUG
 		msg(LOG_DEBUG, "Update poll interrupted");
@@ -1239,17 +1271,17 @@ static void *update_thread_main(void *arg)
 							// assume file name
 							// operation = 0
 							if (buff[i] == '/') {
-								db_operation = ONE_FILE;
+								do_operation = ONE_FILE;
 								break;
 							}
 
 							if (buff[i] == '1') {
-								db_operation = RELOAD_DB;
+								do_operation = RELOAD_DB;
 								break;
 							}
 
 							if (buff[i] == '2') {
-								db_operation = FLUSH_CACHE;
+								do_operation = FLUSH_CACHE;
 								break;
 							}
 
@@ -1263,34 +1295,16 @@ static void *update_thread_main(void *arg)
 						*end = '\n';
 
 						// got "1" -> reload db
-						if (db_operation == RELOAD_DB) {
-							db_operation = DB_NO_OP;
-							msg(LOG_INFO,
-								"It looks like there was an update of the system... Syncing DB.");
+						if (do_operation == RELOAD_DB) {
+							do_operation = DB_NO_OP;
+							do_reload_db(config);
 
-							backend_close();
-							backend_init(config);
-							backend_load(config);
-
-							if ((rc = update_database(config))) {
-								msg(LOG_ERR,
-									"Cannot update trust database!");
-								close(ffd[0].fd);
-								backend_close();
-								unlink_fifo();
-								exit(rc);
-							}
-
-							msg(LOG_INFO, "Updated");
-
-							// Conserve memory
-							backend_close();
 							// got "2" -> flush cache
-						} else if (db_operation == FLUSH_CACHE) {
-							db_operation = DB_NO_OP;
+						} else if (do_operation == FLUSH_CACHE) {
+							do_operation = DB_NO_OP;
 							needs_flush = true;
-						} else if (db_operation == ONE_FILE) {
-							db_operation = DB_NO_OP;
+						} else if (do_operation == ONE_FILE) {
+							do_operation = DB_NO_OP;
 							if (handle_record(buff))
 								continue;
 						}
