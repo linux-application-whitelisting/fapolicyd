@@ -55,7 +55,6 @@
 #define HEADER4 "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87\n"
 
 
-
 list_t _list;
 char *_path;
 int _count;
@@ -66,12 +65,9 @@ int _count;
  * Take a path and create a string that is ready to be written to the disk.
  *
  * @param path Path to create a string from
- * @param count The count variable is used to select which format to use.
- *    non-zero = trust db format, zero = lmdb format.
- *    Writes the size of the path string into the \p count at the end
- * @return Path string ready to be written to the disk or NULL on error 
+ * @return Data string ready to be written to the disk or NULL on error
  */
-static char *make_path_string(const char *path, int *count)
+static char *make_data_string(const char *path)
 {
 	int fd = open(path, O_RDONLY);
 	if (fd < 0) {
@@ -96,27 +92,17 @@ static char *make_path_string(const char *path, int *count)
 	}
 
 	char *line;
-	if (*count) {
-
-		const char *escaped = escape(path, WHITESPACES);
-		if (escaped == NULL) {
-			msg(LOG_ERR, "Could not escape %s", path);
-			free(hash);
-			return NULL;
-		}
-
-		*count = asprintf(&line, FILE_WRITE_FORMAT, escaped,
-				  sb.st_size, hash);
-		free((void *)escaped);
-
-	} else {
-		*count = asprintf(&line, DATA_FORMAT, 0,
-				  sb.st_size, hash);
-	}
+	/*
+	 * formated data to be saved
+	 * source size sha256
+	 * path is stored as lmdb index
+	 */
+	int count = asprintf(&line, DATA_FORMAT, 0,
+					  sb.st_size, hash);
 
 	free(hash);
 
-	if (*count < 0) {
+	if (count < 0) {
 		msg(LOG_ERR, "Cannot format entry for %s", path);
 		return NULL;
 	}
@@ -163,6 +149,12 @@ static int write_out_list(list_t *list, const char *dest)
 			msg(LOG_ERR, "Could not escape %s: writing to %s", (char *)lptr->index, dest);
 			continue;
 		}
+
+		/*
+		 * + 2 because we are omitting source number
+		 * "0 12345 ..."
+		 * 0 -> filedb source
+		 */
 		hlen = snprintf(buf, sizeof(buf), "%s %s\n", escaped, str + 2);
 		fwrite(buf, hlen, 1, f);
 		free((void *)escaped);
@@ -184,8 +176,7 @@ int trust_file_append(const char *fpath, list_t *list)
 	}
 
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
-		int i = 0;
-		lptr->data = make_path_string(lptr->index, &i);
+		lptr->data = make_data_string(lptr->index);
 	}
 
 	list_merge(&content, list);
@@ -331,9 +322,8 @@ int trust_file_update_path(const char *fpath, const char *path)
 
 	for (list_item_t *lptr = list.first; lptr; lptr = lptr->next) {
 		if (!strncmp(lptr->index, path, path_len)) {
-			int i = 0;
 			free((char *)lptr->data);
-			lptr->data = make_path_string(lptr->index, &i);
+			lptr->data = make_data_string(lptr->index);
 			++count;
 		}
 	}
