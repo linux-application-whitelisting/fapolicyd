@@ -131,6 +131,12 @@ You can similarly do this for trusted users that have to execute things in
 the home dir. You can create a trusted_user group, add them the group,
 and then write a rule allowing them to execute from their home dir.
 
+When you want to use user or group name (as a string). You have to guarantee
+that these names were correctly resolved. In case of systemd, you need to add
+a new after target 'After=nss-user-lookup.target'.
+To achieve that you can use `systemctl edit --full fapolicyd`,
+uncomment the respective line and save the change.
+
 ```
 allow perm=any gid=trusted_user : ftype=%languages dir=/home
 deny_audit perm=any all : ftype=%languages dir=/home
