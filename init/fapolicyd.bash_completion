@@ -2,31 +2,37 @@
 
 _fapolicydcli()
 {
-	local cur prev words cword split
-	_init_completion -s || return
+	local cur prev opts
+	COMPREPLY=()
+	cur="${COMP_WORDS[COMP_CWORD]}"
+	prev="${COMP_WORDS[COMP_CWORD-1]}"
+	opts="--check-config --check-status --check-trustdb \
+                --check-watch_fs --delete-db --dump-db \
+                --file --ftype --help --list --update"
 
 	case $prev in
-		--check-config | --check-status | --check-trustdb | \
-		--check-watch_fs | --delete-db | --dump-db | \
-		--help | --list | --update)
-			return
+		--ftype)
+			# If bash completions is installed, use it
+			if [ -e /usr/share/bash-completion/bash_completion ] ; then
+				_filedir
+				return 0
+			else    # this is almost as good
+				compopt -o filenames 2>/dev/null
+				COMPREPLY=( $(compgen -f -- ${cur}) )
+				return 0
+			fi
 		;;
-	--ftype)
-			_filedir
-		;;
-	--file) 	# missing support to suggest files or dirs after these
+		--file) # missing support to suggest files or dirs after these
 			# but it's better than nothing
 			COMPREPLY=($(compgen -W 'add delete update' -- "$cur"))
-			return
+			return 0
 		;;
 	esac
 
-	$split && return
-
 	if [[ $cur == -* ]]; then
-		COMPREPLY=($(compgen -W '$(_parse_help "$1")' -- "$cur"))
+		COMPREPLY=($(compgen -W "${opts}" -- "$cur"))
 		[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
-		return
+		return 0
 	fi
 }
 
