@@ -24,6 +24,7 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#define DAEMON_PATH     "/usr/sbin/fapolicyd"
 #define CONFIG_FILE     "/etc/fapolicyd/fapolicyd.conf"
 #define OLD_RULES_FILE  "/etc/fapolicyd/fapolicyd.rules"
 #define RULES_FILE      "/etc/fapolicyd/compiled.rules"

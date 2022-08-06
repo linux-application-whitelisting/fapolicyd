@@ -703,6 +703,7 @@ static int check_trustdb(void)
 
 static int do_status_report(void)
 {
+	const char *reason = "no pid file";
 	// open pid file
 	int pidfd = open(pidfile, O_RDONLY);
 	if (pidfd >= 0) {
@@ -712,37 +713,51 @@ static int do_status_report(void)
 		if (fd_fgets(pid_buf, sizeof(pid_buf), pidfd)) {
 			int rpt_fd;
 			unsigned int pid, tries = 0;
-			char exe_buf[32];
+			char exe_buf[64];
 
 			// convert to integer
 			errno = 0;
 			pid = strtoul(pid_buf, NULL, 10);
-			if (errno)
+			if (errno) {
+				reason = "bad pid in pid file";
 				goto err_out;
+			}
+
 			// verify it really is fapolicyd
 			if (get_program_from_pid(pid,
-					sizeof(exe_buf), exe_buf) == NULL)
+					sizeof(exe_buf), exe_buf) == NULL) {
+				reason = "can't read proc file";
 				goto err_out;
-			if (strcmp(exe_buf, "/usr/sbin/fapolicyd"))
+			}
+			if (strcmp(exe_buf, DAEMON_PATH)) {
+				reason = "pid file doesn't point to fapolicyd";
 				goto err_out;
+			}
 
 			// delete the old report
 			unlink(STAT_REPORT);
 
 			// send the signal for the report
 			kill(pid, SIGUSR1);
+
+			// Access a file to provoke a response
+			int fd = open(CONFIG_FILE, O_RDONLY);
+			close(fd);
+
 retry:
 			// wait for it
-			sleep(2);
+			sleep(1);
 
 			// display the report
 			rpt_fd = open(STAT_REPORT, O_RDONLY);
 			if (rpt_fd < 0) {
-				if (tries < 15) {
+				if (tries < 25) {
 					tries++;
 					goto retry;
-				} else
+				} else {
+					reason = "timed out waiting for report";
 					goto err_out;
+				}
 			}
 			do {
 				char buf[80];
@@ -750,14 +765,15 @@ retry:
 					write(1, buf, strlen(buf));
 			} while (!fd_fgets_eof());
 			close(rpt_fd);
-		}
+		} else
+			reason = "can't read pid file";
 		close(pidfd);
 		return 0;
 	}
 err_out:
 		if (pidfd >= 0)
 			close(pidfd);
-		puts("Can't find fapolicyd");
+		printf("Can't find fapolicyd: %s\n", reason);
 		return 1;
 }
 
