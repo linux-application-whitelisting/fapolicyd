@@ -219,7 +219,7 @@ static void check_db_size(void)
 void database_report(FILE *f)
 {
 	fprintf(f, "Trust database max pages: %lu\n", max_pages);
-	fprintf(f, "Trust database pages in use: %lu (%lu%%)\n\n", pages,
+	fprintf(f, "Trust database pages in use: %lu (%lu%%)\n", pages,
 		max_pages ? ((100*pages)/max_pages) : 0);
 }
 

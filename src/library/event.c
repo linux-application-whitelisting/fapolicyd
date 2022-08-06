@@ -582,3 +582,9 @@ void run_usage_report(const conf_t *config, FILE *f)
 	fprintf(f, "\n");
 }
 
+void do_cache_reports(FILE *f)
+{
+	print_queue_stats(f, subj_cache);
+	print_queue_stats(f, obj_cache);
+}
+

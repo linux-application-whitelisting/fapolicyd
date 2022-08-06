@@ -61,7 +61,7 @@ static int fd = -1;
 static uint64_t mask;
 
 // External functions
-void do_stat_report(FILE *f);
+void do_stat_report(FILE *f, int shutdown);
 
 // Local functions
 static void *decision_thread_main(void *arg);
@@ -291,7 +291,7 @@ static void *decision_thread_main(void *arg)
 			if (run_stats) {
 				FILE *f = fopen(STAT_REPORT, "w");
 				if (f) {
-					do_stat_report(f);
+					do_stat_report(f, 0);
 					fclose(f);
 				}
 				run_stats = 0;

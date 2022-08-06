@@ -378,13 +378,17 @@ static void usage(void)
 	exit(1);
 }
 
-void do_stat_report(FILE *f)
+void do_stat_report(FILE *f, int shutdown)
 {
 	fprintf(f, "Permissive: %s\n", config.permissive ? "true" : "false");
 	fprintf(f, "q_size: %u\n", config.q_size);
 	q_report(f);
 	decision_report(f);
 	database_report(f);
+	if (shutdown)
+		fputs("\n", f);
+	else
+		do_cache_reports(f);
 }
 
 int already_running(void)
@@ -633,7 +637,7 @@ int main(int argc, const char *argv[])
 		if (f == NULL)
 			msg(LOG_WARNING, "Cannot create usage report");
 		else {
-			do_stat_report(f);
+			do_stat_report(f, 1);
 			run_usage_report(&config, f);
 			fclose(f);
 		}
