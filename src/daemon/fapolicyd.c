@@ -399,7 +399,12 @@ int already_running(void)
 
 		if (fd_fgets(pid_buf, sizeof(pid_buf), pidfd)) {
 			int pid;
-			char exe_buf[32];
+			char exe_buf[80], my_path[80];
+
+			// Get our path
+			if (get_program_from_pid(getpid(),
+					sizeof(exe_buf), my_path) == NULL)
+				goto err_out; // shouldn't happen, but be safe
 
 			// convert to integer
 			errno = 0;
@@ -411,7 +416,7 @@ int already_running(void)
 			if (get_program_from_pid(pid,
 					sizeof(exe_buf), exe_buf) == NULL)
 				goto good; //if pid doesn't exist, we're OK
-			if (strcmp(exe_buf, "/usr/sbin/fapolicyd") == 0)
+			if (strcmp(exe_buf, my_path) == 0)
 				goto err_out; // if the same, we need to exit
 
 			// one last sanity check in case path is unexpected
