@@ -63,6 +63,8 @@ int dec_name_to_val(const char *name);
 int load_config(const conf_t *config);
 int reload_config(const conf_t *config);
 decision_t process_event(event_t *e);
+void reply_event(int fd, const struct fanotify_event_metadata *metadata,
+		unsigned reply);
 void make_policy_decision(const struct fanotify_event_metadata *metadata,
 						int fd, uint64_t mask);
 unsigned long getAllowed(void);

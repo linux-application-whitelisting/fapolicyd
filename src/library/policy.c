@@ -415,11 +415,21 @@ decision_t process_event(event_t *e)
 	return ALLOW;
 }
 
+void reply_event(int fd, const struct fanotify_event_metadata *metadata,
+		unsigned reply)
+{
+	struct fanotify_response response;
+
+	response.fd = metadata->fd;
+	response.response = reply;
+	close(metadata->fd);
+	write(fd, &response, sizeof(struct fanotify_response));
+}
+
 
 void make_policy_decision(const struct fanotify_event_metadata *metadata,
 						int fd, uint64_t mask)
 {
-	struct fanotify_response response;
 	event_t e;
 	int decision;
 
@@ -434,13 +444,10 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 		allowed++;
 
 	if (metadata->mask & mask) {
-		response.fd = metadata->fd;
 		if (permissive)
-			response.response = FAN_ALLOW | (decision & AUDIT);
+			reply_event(fd, metadata,FAN_ALLOW |(decision & AUDIT));
 		else
-			response.response = decision & FAN_RESPONSE_MASK;
-		close(metadata->fd);
-		write(fd, &response, sizeof(struct fanotify_response));
+			reply_event(fd, metadata, decision & FAN_RESPONSE_MASK);
 	}
 }
 

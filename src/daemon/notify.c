@@ -332,24 +332,13 @@ out:
 	return NULL;
 }
 
-static void reply_event(const struct fanotify_event_metadata *metadata,
-			unsigned reply)
-{
-	struct fanotify_response response;
-
-	response.fd = metadata->fd;
-	response.response = reply;
-	close(metadata->fd);
-	write(fd, &response, sizeof(struct fanotify_response));
-}
-
 static void enqueue_event(const struct fanotify_event_metadata *metadata)
 {
 	if (q_append(q, metadata)) {
 		// We have to deny. This allows the kernel to free it's
 		// memory related to this request. reply_event also closes
 		// the descriptor, so we don't need to do it here.
-		reply_event(metadata, FAN_DENY);
+		reply_event(fd, metadata, FAN_DENY);
 		msg(LOG_DEBUG, "enqueue error");
 	} else
 		set_ready();
@@ -391,14 +380,14 @@ void handle_events(void)
 		if (metadata->fd >= 0) {
 			if (metadata->mask & mask) {
 				if (metadata->pid == our_pid)
-					reply_event(metadata, FAN_ALLOW);
+					reply_event(fd, metadata, FAN_ALLOW);
 				else
 					enqueue_event(metadata);
 			} else {
 				// This should never happen. Reply with deny
 				// which releases the descriptor and kernel
 				// memory. Continue processing what was read.
-				reply_event(metadata, FAN_DENY);
+				reply_event(fd, metadata, FAN_DENY);
 			}
 		}
 		metadata = FAN_EVENT_NEXT(metadata, len);
