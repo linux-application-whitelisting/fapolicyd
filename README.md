@@ -372,6 +372,7 @@ Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 | --check-config         | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                     |
 | --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
 | --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
+| --check-status         | Output internal metrics kept by the daemon. (New in 1.1.4)                                                |
 
 
 
