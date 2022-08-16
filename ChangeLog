@@ -1,3 +1,5 @@
+1.1.5
+
 1.1.4
 - Fix descriptor leak on enqueue failure (Steven Brzozowski)
 - Switch SHA256 hashing to openssl
