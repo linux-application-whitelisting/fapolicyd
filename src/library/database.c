@@ -283,7 +283,7 @@ static int write_db(const char *idx, const char *data)
 {
 	MDB_val key, value;
 	MDB_txn *txn;
-	int rc;
+	int rc, ret_val = 0;
 	size_t len;
 	char *hash = NULL;
 
@@ -298,8 +298,10 @@ static int write_db(const char *idx, const char *data)
 	len = strlen(idx);
 	if (len > MDB_maxkeysize) {
 		hash = path_to_hash(idx, len);
-		if (hash == NULL)
+		if (hash == NULL) {
+			abort_transaction(txn);
 			return 5;
+		}
 		key.mv_data = (void *)hash;
 		key.mv_size = (SHA512_LEN * 2) + 1;
 	} else {
@@ -312,18 +314,21 @@ static int write_db(const char *idx, const char *data)
 	if ((rc = mdb_put(txn, dbi, &key, &value, 0))) {
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
 		abort_transaction(txn);
-		return 3;
+		ret_val = 3;
+		goto out;
 	}
 
 	if ((rc = mdb_txn_commit(txn))) {
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
-		return 4;
+		ret_val = 4;
+		goto out;
 	}
 
+out:
 	if (len > MDB_maxkeysize)
 		free(hash);
 
-	return 0;
+	return ret_val;
 }
 
 
