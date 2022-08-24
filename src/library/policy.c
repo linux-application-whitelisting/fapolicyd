@@ -444,6 +444,12 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 		allowed++;
 
 	if (metadata->mask & mask) {
+		// if in debug mode, do not allow audit events
+		if (debug)
+			decision &= ~AUDIT;
+
+		// If permissive, always allow and honor the audit bit
+		// if not in debug mode
 		if (permissive)
 			reply_event(fd, metadata,FAN_ALLOW |(decision & AUDIT));
 		else
