@@ -515,8 +515,11 @@ static const char *bad_filesystems[] = {
 	"efivarfs",
 	"fusectl",
 	"fuse.gvfsd-fuse",
+	"fuse.portal",
 	"hugetlbfs",
 	"mqueue",
+	"nsfs",
+	"overlayfs", // No source of trust for what's in this
 	"pipefs",
 	"proc",
 	"pstore",
