@@ -13,6 +13,9 @@ Prints a list of command line options.
 .B \-\-check-config
 Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.
 .TP
+.B \-\-check-path
+Check the PATH environmental variable against the trustdb to look for file not in the trustdb which could cause problems at run time.
+.TP
 .B \-\-check-status
 Dump the daemon's internal performance statistics.
 .TP

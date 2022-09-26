@@ -6,7 +6,7 @@ _fapolicydcli()
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--check-config --check-status --check-trustdb \
+	opts="--check-config --check-path --check-status --check-trustdb \
                 --check-watch_fs --delete-db --dump-db \
                 --file --ftype --help --list --update"
 

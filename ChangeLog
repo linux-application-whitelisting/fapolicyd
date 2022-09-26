@@ -1,6 +1,7 @@
 1.1.5
 - If in debug mode, do not write audit events to audit system
 - Update filesystems we dont care about
+- Add --check-path to fapolicyd-cli to locate missed files
 
 1.1.4
 - Fix descriptor leak on enqueue failure (Steven Brzozowski)

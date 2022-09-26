@@ -40,6 +40,7 @@
 #include <lmdb.h>
 #include <limits.h>
 #include <signal.h>
+#include <ftw.h>
 #include "policy.h"
 #include "database.h"
 #include "file-cli.h"
@@ -54,6 +55,7 @@
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "--check-config        Check the daemon config for syntax errors\n"
+"--check-path          Check files in $PATH against the trustdb for problems\n"
 "--check-status        Dump the deamon's internal performance statistics\n"
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
@@ -73,6 +75,7 @@ static struct option long_opts[] =
 	{"check-watch_fs",0, NULL, 2 },
 	{"check-trustdb",0, NULL,  3 },
 	{"check-status",0, NULL,  4 },
+	{"check-path",  0, NULL,  5 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -704,6 +707,85 @@ static int check_trustdb(void)
 	return 0;
 }
 
+static int is_link(const char *path)
+{
+	struct stat sb;
+
+	if (lstat(path, &sb)) {
+		fprintf(stderr, "Can't stat %s\n", path);
+		return -1;
+	}
+	if (S_ISLNK(sb.st_mode))
+		return 1;
+
+	return 0;
+}
+
+// Check that the file is in the trust db
+static int path_found = 0;
+static int check_file(const char *fpath,
+		const struct stat *sb,
+		int typeflag_unused __attribute__ ((unused)),
+		struct FTW *s_unused __attribute__ ((unused)))
+{
+	int ret = FTW_CONTINUE;
+
+	if (S_ISREG(sb->st_mode) == 0)
+		return ret;
+
+	int fd = open(fpath, O_RDONLY|O_CLOEXEC);
+	if (fd >= 0) {
+		struct file_info info;
+		info.size = sb->st_size;
+
+		if (check_trust_database(fpath, &info, fd) != 1) {
+			path_found = 1;
+			fprintf(stderr, "%s is not trusted\n", fpath);
+		}
+
+		close(fd);
+	}
+	return ret;
+}
+
+static int check_path(void)
+{
+	conf_t config;
+	char *ptr, *saved;
+	const char *env_path = getenv("PATH");
+	if (env_path == NULL) {
+		puts("PATH not found");
+		return 1;
+	}
+
+	set_message_mode(MSG_STDERR, DBG_NO);
+	if (load_daemon_config(&config)) {
+		free_daemon_config(&config);
+		return 1;
+	}
+	set_message_mode(MSG_QUIET, DBG_NO);
+	init_database(&config);
+	char *path = strdup(env_path);
+	ptr = strtok_r(path, ":", &saved);
+	while (ptr) {
+		if (is_link(path))
+			goto next;
+
+		nftw(ptr, check_file, 1024, FTW_PHYS);
+next:
+		ptr = strtok_r(NULL, ":", &saved);
+	}
+	free(path);
+	stop = 1; // Need this to terminate update thread
+	close_database();
+	free_daemon_config(&config);
+
+	if (path_found == 0)
+		puts("No problems found");
+
+	return 0;
+}
+
 static int do_status_report(void)
 {
 	const char *reason = "no pid file";
@@ -861,6 +943,11 @@ int main(int argc, char * const argv[])
 		if (argc > 2)
 			goto args_err;
 		return do_status_report();
+		break;
+	case 5: // --check-path
+		if (argc > 2)
+			goto args_err;
+		return check_path();
 		break;
 	default:
 		printf("%s", usage);
