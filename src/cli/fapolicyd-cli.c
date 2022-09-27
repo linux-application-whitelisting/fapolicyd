@@ -775,8 +775,8 @@ static int check_path(void)
 next:
 		ptr = strtok_r(NULL, ":", &saved);
 	}
-	free(path);
 	stop = 1; // Need this to terminate update thread
+	free(path);
 	close_database();
 	free_daemon_config(&config);
 
