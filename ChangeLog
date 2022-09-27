@@ -1,3 +1,5 @@
+1.1.6
+
 1.1.5
 - If in debug mode, do not write audit events to audit system
 - Update filesystems we dont care about
