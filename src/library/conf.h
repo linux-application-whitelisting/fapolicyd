@@ -1,5 +1,5 @@
 /* conf.h configuration structure
- * Copyright 2018-20 Red Hat Inc.
+ * Copyright 2018-20,22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -45,6 +45,7 @@ typedef struct conf
 	integrity_t integrity;
 	const char *syslog_format;
 	unsigned int rpm_sha256_only;
+	unsigned int allow_filesystem_mark;
 } conf_t;
 
 #endif

@@ -3,6 +3,7 @@
 - Update filesystems we dont care about
 - Add --check-path to fapolicyd-cli to locate missed files
 - Detect trusted static apps running programs by ld.so
+- Add support for using FAN_MARK_FILESYSTEM to see bind mounted accesses
 
 1.1.4
 - Fix descriptor leak on enqueue failure (Steven Brzozowski)

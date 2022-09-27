@@ -1,7 +1,7 @@
 /*
  * daemon-config.c - This is a config file parser
  *
- * Copyright 2018-21 Red Hat Inc.
+ * Copyright 2018-22 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -92,6 +92,8 @@ static int syslog_format_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int rpm_sha256_only_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
+static int fs_mark_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -110,6 +112,7 @@ static const struct kw_pair keywords[] =
   {"integrity",		integrity_parser },
   {"syslog_format",	syslog_format_parser },
   {"rpm_sha256_only", rpm_sha256_only_parser},
+  {"allow_filesystem_mark",	fs_mark_parser },
   { NULL,		NULL }
 };
 
@@ -138,6 +141,7 @@ static void clear_daemon_config(conf_t *config)
 	config->syslog_format =
 		strdup("rule,dec,perm,auid,pid,exe,:,path,ftype");
 	config->rpm_sha256_only = 0;
+	config->allow_filesystem_mark = 0;
 }
 
 int load_daemon_config(conf_t *config)
@@ -590,6 +594,7 @@ static int syslog_format_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+
 static int rpm_sha256_only_parser(const struct nv_pair *nv, int line,
                 conf_t *config)
 {
@@ -602,6 +607,27 @@ static int rpm_sha256_only_parser(const struct nv_pair *nv, int line,
 		msg(LOG_WARNING,
 			"rpm_sha256_only value reset to 0 - line %d", line);
 		config->rpm_sha256_only = 0;
+	}
+#endif
+
+	return rc;
+}
+
+
+static int fs_mark_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	int rc = 0;
+#ifndef HAVE_DECL_FAN_MARK_FILESYSTEM
+	msg(LOG_WARNING,
+	    "allow_filesystem_mark is unsupported on this kernel - ignoring");
+#else
+	rc = unsigned_int_parser(&(config->allow_filesystem_mark), nv->value, line);
+
+	if (rc == 0 && config->allow_filesystem_mark > 1) {
+		msg(LOG_WARNING,
+			"allow_filesystem_mark value reset to 0 - line %d", line);
+		config->allow_filesystem_mark = 0;
 	}
 #endif
 

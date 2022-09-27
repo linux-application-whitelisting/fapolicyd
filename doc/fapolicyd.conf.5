@@ -1,4 +1,4 @@
-.TH FAPOLICYD.CONF: "6" "October 2021" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.CONF: "6" "September 2022" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd.conf \- fapolicyd configuration file
 .SH DESCRIPTION
@@ -87,6 +87,9 @@ Example:
 .B rpm_sha256_only
 The option set to 1 forces the daemon to work only with SHA256 hashes. This is useful on the systems where the integrity is set to SHA256 or IMA and some rpms were originally built with e.g. SHA1. The daemon will ingore these SHA1 entries therefore they can be added manually via CLI with correct SHA256 to a trust file later. If set to 0 the daemon stores SHA1 in trustdb as well. This is compatible with older behavior which works with the integrity set to NONE and SIZE. The NONE or SIZE integrity setting considers the files installed via rpm as trusted and it does not care about their hashes at all. On the other hand the integrity set to SHA256 or IMA will never consider a file with SHA1 in trustdb as trusted. The default value is 0.
 
+.TP
+.B allow_filesystem_mark
+When this option is set to 1, it allows fapolicyd to monitor file access events on the underlying file system when they are bind mounted or are overlayed (e.g. the overlayfs). Normally they block fapolicyd from seeing events on the underlying file systems. This may or may not be desirable. For example, you might start seeing containers accessing things outside of the container but there is no source of trust for the container. In that case you probably do not want to see access from the container. Or maybe you do not use containers but want to control anything run by systemd-run when dynamic users are allowed. In that case you probably want to turn it on. Not all kernel's supoport this option. Therefore the default value is 0.
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),

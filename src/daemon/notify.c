@@ -123,8 +123,16 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	path = mlist_first(m);
 	while (path) {
 retry_mark:
-		if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-				mask, -1, path) == -1) {
+		unsigned int flags = FAN_MARK_ADD;
+#ifdef HAVE_DECL_FAN_MARK_FILESYSTEM
+		if (conf->allow_filesystem_mark)
+		    flags |= FAN_MARK_FILESYSTEM;
+#else
+		if (conf->allow_filesystem_mark)
+			msg(LOG_ERR,
+	    "allow_filesystem_mark is unsupported for this kernel - ignoring");
+#endif
+		if (fanotify_mark(fd, flags, mask, -1, path) == -1) {
 			/*
 			 * The FAN_OPEN_EXEC_PERM mask is not supported by
 			 * all kernel releases prior to 5.0. Retry setting
