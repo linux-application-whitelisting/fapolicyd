@@ -618,7 +618,7 @@ static int fs_mark_parser(const struct nv_pair *nv, int line,
 		conf_t *config)
 {
 	int rc = 0;
-#ifndef HAVE_DECL_FAN_MARK_FILESYSTEM
+#if HAVE_DECL_FAN_MARK_FILESYSTEM == 0
 	msg(LOG_WARNING,
 	    "allow_filesystem_mark is unsupported on this kernel - ignoring");
 #else

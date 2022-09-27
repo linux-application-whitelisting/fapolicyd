@@ -1,4 +1,5 @@
 1.1.6
+- Correct the optional inclusion of code based on HAVE_DECL_FAN_MARK_FILESYSTEM
 
 1.1.5
 - If in debug mode, do not write audit events to audit system
