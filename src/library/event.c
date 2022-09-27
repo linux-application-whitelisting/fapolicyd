@@ -149,7 +149,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				skip_path = 1;
 			}
 			evict = 0;
-			skip_path = 1;
 			subject_reset(s, EXE);
 			subject_reset(s, COMM);
 			subject_reset(s, EXE_TYPE);
