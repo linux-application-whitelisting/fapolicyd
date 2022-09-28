@@ -122,8 +122,9 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	// Iterate through the mount points and add a mark
 	path = mlist_first(m);
 	while (path) {
+		unsigned int flags;
 retry_mark:
-		unsigned int flags = FAN_MARK_ADD;
+		flags = FAN_MARK_ADD;
 #if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
 		if (conf->allow_filesystem_mark)
 		    flags |= FAN_MARK_FILESYSTEM;
