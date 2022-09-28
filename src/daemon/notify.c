@@ -124,7 +124,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	while (path) {
 retry_mark:
 		unsigned int flags = FAN_MARK_ADD;
-#if HAVE_DECL_FAN_MARK_FILESYSTEM != 0
+#if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
 		if (conf->allow_filesystem_mark)
 		    flags |= FAN_MARK_FILESYSTEM;
 #else

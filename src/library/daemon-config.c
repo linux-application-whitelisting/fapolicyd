@@ -618,17 +618,19 @@ static int fs_mark_parser(const struct nv_pair *nv, int line,
 		conf_t *config)
 {
 	int rc = 0;
-#if HAVE_DECL_FAN_MARK_FILESYSTEM == 0
-	msg(LOG_WARNING,
-	    "allow_filesystem_mark is unsupported on this kernel - ignoring");
-#else
-	rc = unsigned_int_parser(&(config->allow_filesystem_mark), nv->value, line);
+#if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
+	rc = unsigned_int_parser(&(config->allow_filesystem_mark),
+				 nv->value, line);
 
 	if (rc == 0 && config->allow_filesystem_mark > 1) {
 		msg(LOG_WARNING,
-			"allow_filesystem_mark value reset to 0 - line %d", line);
+			"allow_filesystem_mark value reset to 0 - line %d",
+			line);
 		config->allow_filesystem_mark = 0;
 	}
+#else
+	msg(LOG_WARNING,
+	    "allow_filesystem_mark is unsupported on this kernel - ignoring");
 #endif
 
 	return rc;
