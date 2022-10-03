@@ -363,16 +363,21 @@ to debug the policy is:
 * The trust value
 
 Look at the rule that triggered and see if it makes sense that it triggered. If
-the rule is a catch all denial, then check if the file is in the trust db.
+the rule is a catch all denial, then check if the file is in the trust db. To see the rule that is being triggered, either reproduce the problem with the daemon running in debug-deny mode or change the rules from deny_audit to deny_syslog. If you choose this method, the denials will go into syslog. To see them run:
+```
+journalctl -b -u fapolicyd.service
+```
+to list out any events since boot by the fapolicyd service.
 
 Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 
 |         Option         |              What it does                  |
 |------------------------|--------------------------------------------|
 | --check-config         | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                     |
-| --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
-| --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
+| --check-path           | Check that every file in $PATH is in the trustdb. (New in 1.1.5)                                          |
 | --check-status         | Output internal metrics kept by the daemon. (New in 1.1.4)                                                |
+| --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
+| --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
 
 
 
