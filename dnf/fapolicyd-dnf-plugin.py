@@ -8,7 +8,7 @@ import sys
 class Fapolicyd(dnf.Plugin):
 
     name = "fapolicyd"
-    pipe = "/var/run/fapolicyd/fapolicyd.fifo"
+    pipe = "/run/fapolicyd/fapolicyd.fifo"
     file = None
 
     def __init__(self, base, cli):
@@ -32,5 +32,5 @@ class Fapolicyd(dnf.Plugin):
             sys.stderr.write("fapolicy-plugin does not have write permission: " + self.pipe + "\n")
             return
 
-        self.file.write("1")
+        self.file.write("1\n")
         self.file.close()
