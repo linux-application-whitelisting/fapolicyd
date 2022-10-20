@@ -128,10 +128,13 @@ retry_mark:
 #if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
 		if (conf->allow_filesystem_mark)
 		    flags |= FAN_MARK_FILESYSTEM;
+		else
+		    flags |= FAN_MARK_MOUNT;
 #else
 		if (conf->allow_filesystem_mark)
 			msg(LOG_ERR,
 	    "allow_filesystem_mark is unsupported for this kernel - ignoring");
+		flags |= FAN_MARK_MOUNT;
 #endif
 		if (fanotify_mark(fd, flags, mask, -1, path) == -1) {
 			/*
