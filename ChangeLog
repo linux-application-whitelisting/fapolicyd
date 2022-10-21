@@ -1,4 +1,5 @@
 1.1.7
+- Re-add dropped FAN_MARK_MOUNT for monitoring events (Steven Brzozowski)
 
 1.1.6
 - Correct the optional inclusion of code based on HAVE_DECL_FAN_MARK_FILESYSTEM
