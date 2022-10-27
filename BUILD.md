@@ -90,3 +90,49 @@ rpmbuild -ta fapolicyd-*.tar.gz
 ```
 
 By default, the RPMs will appear in `~/rpmbuild/RPMS/$(arch)`.
+
+NOT BUILDING RPMS
+-----------------
+If you chose to do it yourself, you need to do a couple prep steps:
+
+```
+1) sed -i "s/%python2_path%/`readlink -f /bin/python2 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
+2) sed -i "s/%python2_path%/`readlink -f /bin/python3 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
+3) interpret=`readelf -e /usr/bin/bash \
+                | grep Requesting \
+                | sed 's/.$//' \
+                | rev | cut -d" " -f1 \
+                | rev`
+4) sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
+```
+This corrects the placeholders to match your current system. Then follow the
+rules listed above for compiling except run make install instead of make dist.
+
+CREATING RUNTIME ENVIRONMENT
+----------------------------
+If you are not using rpm's spec file and are doing it yourself, there are
+a few more steps. You need to create the necessary directories in the right
+spot:
+
+```
+mkdir -p /etc/fapolicyd/{rules.d,trust.d}
+mkdir -p /var/lib/fapolicyd
+mkdir --mode=0755 -p /usr/share/fapolicyd/
+mkdir -p /usr/lib/tmpfiles.d/
+mkdir --mode=0755 -p /run/fapolicyd/
+
+cp fapolicyd.bash_completion /etc/bash_completion.d/
+cp fapolicyd.conf /etc/fapolicyd/
+cp fapolicyd-magic /usr/share/fapolicyd/
+cp fapolicyd.service /usr/lib/systemd/system/
+cp fapolicyd-tmpfiles.conf /usr/lib/tmpfiles.d/fapolicyd.conf
+cp fapolicyd.trust /etc/fapolicyd/trust.d
+
+useradd -r -M -d /var/lib/fapolicyd -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
+chown root:fapolicyd /etc/fapolicyd/
+chown root:fapolicyd /etc/fapolicyd/rules.d/
+chown root:fapolicyd /etc/fapolicyd/trust.d/
+chown root:fapolicyd /var/lib/fapolicyd/
+chown root:fapolicyd /usr/share/fapolicyd/
+```
+

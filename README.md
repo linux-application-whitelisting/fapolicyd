@@ -16,10 +16,19 @@ See [BUILD.md](./BUILD.md) for build-time dependencies and instructions for buil
 
 POLICIES
 --------
-You might want to look at the fapolicyd.rules file to see what the default
-policy looks like. There are 2 policies shipped, known-libs and restrictive.
+The current design for policy is that it is split up into units of rules
+that are designed to work together. They are copied into /etc/fapolicyd/rules.d/
+When the service starts, the systemd service file runs fagenrules which
+assembles the units of rules into a comprehensive policy. The policy is
+evaluated from top to bottom with the first match winning. You can see the
+assembled policy by running 
 
-The restrictive policy is designed with these goals in mind:
+```
+fapolicyd-cli --list
+```
+Originally, there were 2 policies shipped, known-libs and restrictive.
+
+The restrictive policy was designed with these goals in mind:
 
 1. No bypass of security by executing programs via ld.so.
 2. Anything requesting execution must be trusted.
@@ -27,12 +36,45 @@ The restrictive policy is designed with these goals in mind:
    applications/libraries.
 4. Other languages are not allowed or must be enabled.
 
-The known-libs policy (default) is designed with these goals in mind:
+It can be recreated by copying the following policy units into rules.d.
+The optional ones are not included unless they are needed:
+
+20-dracut.rules
+21-updaters.rules
+30-patterns.rules
+40-bad-elf.rules
+41-shared-obj.rules
+43-known-elf.rules
+71-known-python.rules
+72-shell.rules
+optional: 73-known-perl.rules
+optional: 74-known-ocaml.rules
+optional: 75-known-php.rules
+optional: 76-known-ruby.rules
+optional: 77-known-lua.rules
+90-deny-execute.rules
+95-allow-open.rules
+
+The known-libs policy (default) was designed with these goals in mind:
 
 1. No bypass of security by executing programs via ld.so.
 2. Anything requesting execution must be trusted.
 3. Any library or interpreted application or module must be trusted.
 4. Everything else is not allowed.
+
+It can be created by copying the following policy units into rules.d:
+
+10-languages.rules
+20-dracut.rules
+21-updaters.rules
+30-patterns.rules
+40-bad-elf.rules
+41-shared-obj.rules
+42-trusted-elf.rules
+70-trusted-lang.rules
+72-shell.rules
+90-deny-execute.rules
+95-allow-open.rules
 
 EXPERIMENTING
 -------------
