@@ -841,7 +841,7 @@ int init_database(conf_t *config)
 
 	if ((rc = backend_init(config))) {
 		msg(LOG_ERR, "Failed to load trust data from backend (%d)", rc);
-		close_db(1);
+		close_db(0);
 		return rc;
 	}
 
