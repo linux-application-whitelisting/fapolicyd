@@ -763,6 +763,12 @@ int unlink_db(void)
 		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
 		ret_val = 1;
 	}
+	snprintf(path, sizeof(path), "%s/db.ver", data_dir);
+	rc = unlink(path);
+	if (rc == -1 && errno != ENOENT) {
+		msg(LOG_ERR, "Could not unlink %s (%s)", path, strerror(errno));
+		ret_val = 1;
+	}
 
 	return ret_val;
 }

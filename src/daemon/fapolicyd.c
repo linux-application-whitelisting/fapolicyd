@@ -574,6 +574,7 @@ int main(int argc, const char *argv[])
 		destroy_config();
 		destroy_fs_list();
 		free_daemon_config(&config);
+		unlink(pidfile);
 		exit(1);
 	}
 
