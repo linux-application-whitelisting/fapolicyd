@@ -59,7 +59,7 @@ static int backend_push(const char *name)
 	}
 
 	if (index == -1) {
-		msg(LOG_ERR, "%s backend not supported, aborting!", name);
+		msg(LOG_ERR, "%s backend not supported, skipping!", name);
 		return 1;
 	} else {
 		backend_entry *tmp = (backend_entry *)
