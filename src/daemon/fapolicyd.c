@@ -406,7 +406,7 @@ int already_running(void)
 					sizeof(exe_buf), my_path) == NULL)
 				goto err_out; // shouldn't happen, but be safe
 
-			// convert to integer
+			// convert pidfile to integer
 			errno = 0;
 			pid = strtoul(pid_buf, NULL, 10);
 			if (errno)
@@ -416,14 +416,21 @@ int already_running(void)
 			if (get_program_from_pid(pid,
 					sizeof(exe_buf), exe_buf) == NULL)
 				goto good; //if pid doesn't exist, we're OK
+
+			// If the path doesn't have fapolicyd in it, we're OK
+			if (strstr(exe_buf, "fapolicyd") == NULL)
+				goto good;
+
 			if (strcmp(exe_buf, my_path) == 0)
 				goto err_out; // if the same, we need to exit
 
 			// one last sanity check in case path is unexpected
+			// for example: /sbin/fapolicyd & /home/test/fapolicyd
 			if (pid != getpid())
 				goto err_out;
 good:
 			close(pidfd);
+			unlink(pidfile);
 			return 0;
 		} else
 		    msg(LOG_ERR, "fapolicyd pid file found but unreadable");
