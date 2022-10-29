@@ -1,6 +1,6 @@
 /*
  * backend-manager.c - backend management
- * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2020,2022 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -59,7 +59,7 @@ static int backend_push(const char *name)
 	}
 
 	if (index == -1) {
-		msg(LOG_ERR, "%s backend not supported, skipping!", name);
+		msg(LOG_INFO, "%s backend not supported, skipping!", name);
 		return 0;
 	} else {
 		backend_entry *tmp = (backend_entry *)
