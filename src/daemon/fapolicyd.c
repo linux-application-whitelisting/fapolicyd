@@ -544,6 +544,7 @@ int main(int argc, const char *argv[])
 	(void) umask( 0117 );
 
 	if (preconstruct_fifo(&config)) {
+		unlink(pidfile);
 		msg(LOG_ERR, "Cannot contruct a pipe");
 		exit(1);
 	}
