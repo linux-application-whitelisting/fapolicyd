@@ -60,7 +60,7 @@ static int backend_push(const char *name)
 
 	if (index == -1) {
 		msg(LOG_ERR, "%s backend not supported, skipping!", name);
-		return 1;
+		return 0;
 	} else {
 		backend_entry *tmp = (backend_entry *)
 				malloc(sizeof(backend_entry));
@@ -132,7 +132,7 @@ int backend_init(const conf_t *conf)
 			be != NULL;
 			be = be->next) {
 		if (be->backend->init())
-			return 1;
+			return 2;
 	}
 	return 0;
 }
