@@ -853,7 +853,7 @@ int init_database(conf_t *config)
 
 	if ((rc = backend_load(config))) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
-		close_db(1);
+		close_db(0);
 		return rc;
 	}
 
@@ -863,7 +863,7 @@ int init_database(conf_t *config)
 			msg(LOG_ERR,
 			"Failed to create trust database, create_database() (%d)",
 			   rc);
-			close_db(1);
+			close_db(0);
 			return rc;
 		}
 	} else {
