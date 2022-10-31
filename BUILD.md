@@ -116,7 +116,7 @@ spot:
 
 ```
 mkdir -p /etc/fapolicyd/{rules.d,trust.d}
-mkdir -p /var/lib/fapolicyd
+mkdir -p /var/lib/fapolicyd/
 mkdir --mode=0755 -p /usr/share/fapolicyd/
 mkdir -p /usr/lib/tmpfiles.d/
 mkdir --mode=0755 -p /run/fapolicyd/
@@ -124,10 +124,10 @@ mkdir --mode=0755 -p /run/fapolicyd/
 cd init
 cp fapolicyd.bash_completion /etc/bash_completion.d/
 cp fapolicyd.conf /etc/fapolicyd/
-cp fapolicyd-magic /usr/share/fapolicyd/
+cp fapolicyd-magic.mgc /usr/share/fapolicyd/
 cp fapolicyd.service /usr/lib/systemd/system/
 cp fapolicyd-tmpfiles.conf /usr/lib/tmpfiles.d/fapolicyd.conf
-cp fapolicyd.trust /etc/fapolicyd/trust.d
+cp fapolicyd.trust /etc/fapolicyd/trust.d/
 
 useradd -r -M -d /var/lib/fapolicyd -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
 chown root:fapolicyd /etc/fapolicyd/
