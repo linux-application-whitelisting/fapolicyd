@@ -1,3 +1,5 @@
+1.1.8
+
 1.1.7
 - Re-add dropped FAN_MARK_MOUNT for monitoring events (Steven Brzozowski)
 - Make some updates to allow running without an rpm back successful
