@@ -30,6 +30,7 @@
 #include <rpm/rpmmacro.h>
 #include <rpm/rpmlog.h>
 #include <rpm/rpmdb.h>
+#include <rpm/rpmpgp.h>
 #include <fnmatch.h>
 
 #include <uthash.h>
