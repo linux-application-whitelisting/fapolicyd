@@ -133,6 +133,12 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			(e->type & FAN_OPEN_PERM) && !rc) {
 			skip_path = 1;
 			s->info->state = STATE_REOPEN;
+
+			// special branch after ld_so exec
+			// next opens will go fall trough
+			if (s->info->path1 &&
+				(strcmp(s->info->path1, SYSTEM_LD_SO) == 0))
+				s->info->state = STATE_DEFAULT_REOPEN;
 		}
 
 		// If not same proc or we detect execution, evict
@@ -164,6 +170,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			skip_path = 1;
 		}
 
+
 		// If we've seen the reopen and its an execute and process
 		// has an interpreter and we're the same process, don't evict
 		// and don't collect the path since reopen interp will. The
@@ -172,7 +179,16 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		if ((s->info->state == STATE_REOPEN) && !skip_path &&
 				(e->type & FAN_OPEN_EXEC_PERM) &&
 				(s->info->elf_info & HAS_INTERP) && !rc) {
+			s->info->state = STATE_DEFAULT_REOPEN;
 			evict = 0;
+			skip_path = 1;
+		}
+
+		// this is how STATE_REOPEN and
+		// STATE_DEFAULT_REOPEN differs
+		// in STATE_REOPEN path is always skipped
+		if ((s->info->state == STATE_REOPEN) && !skip_path &&
+				(e->type & FAN_OPEN_PERM) && !rc) {
 			skip_path = 1;
 		}
 
