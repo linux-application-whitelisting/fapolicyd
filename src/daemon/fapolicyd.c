@@ -66,11 +66,11 @@ volatile atomic_bool stop = 0, hup = 0, run_stats = 0;
 static conf_t config;
 // This holds info about all file systems to watch
 struct fs_avl {
-	avl_tree index;
+	avl_tree_t index;
 };
 // This is the data about a specific file system to watch
 typedef struct fs_data {
-        avl avl;        // This has to be first
+        avl_t avl;        // This has to be first
         const char *fs_name;
 } fs_data_t;
 static struct fs_avl filesystems;
@@ -127,10 +127,10 @@ static void free_filesystem(fs_data_t *s)
 
 static void destroy_filesystem(void)
 {
-	avl *cur = filesystems.index.root;
+	avl_t *cur = filesystems.index.root;
 
 	fs_data_t *tmp =(fs_data_t *)avl_remove(&filesystems.index, cur);
-	if ((avl *)tmp != cur)
+	if ((avl_t *)tmp != cur)
 		msg(LOG_DEBUG, "filesystem: removal of invalid node");
 	free_filesystem(tmp);
 }
@@ -145,7 +145,7 @@ static void destroy_fs_list(void)
 
 static int add_filesystem(fs_data_t *f)
 {
-	fs_data_t *tmp = (fs_data_t *)avl_insert(&filesystems.index,(avl *)(f));
+	fs_data_t *tmp=(fs_data_t *)avl_insert(&filesystems.index,(avl_t *)(f));
 	if (tmp) {
 		if (tmp != f) {
 			msg(LOG_DEBUG, "fs_list: duplicate filesystem found");
@@ -174,7 +174,7 @@ static fs_data_t *find_filesystem(const char *f)
 	fs_data_t tmp;
 
 	tmp.fs_name = f;
-	return (fs_data_t *)avl_search(&filesystems.index, (avl *) &tmp);
+	return (fs_data_t *)avl_search(&filesystems.index, (avl_t *) &tmp);
 }
 
 

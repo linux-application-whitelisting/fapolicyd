@@ -4,11 +4,11 @@
 #include "avl.h"
 
 typedef struct _avl_int_data {
-        avl avl;
+        avl_t avl;
         int num;
 } avl_int_data_t;
 
-static avl_tree tree;
+static avl_tree_t tree;
 
 static int intcmp_cb(void *a, void *b)
 {
@@ -19,8 +19,8 @@ int append(int num)
 {
 	avl_int_data_t *data = malloc(sizeof(avl_int_data_t));
 	data->num = num;
-	avl *ret = avl_insert(&tree, (avl *)data);
-	if (ret != (avl *)data) {
+	avl_t *ret = avl_insert(&tree, (avl_t *)data);
+	if (ret != (avl_t *)data) {
 		free(data);
 		return 1;
 	}
@@ -32,7 +32,7 @@ int node_remove(int num)
 	avl_int_data_t node, *n;
 	node.num = num;
 
-	n = (avl_int_data_t *)avl_remove(&tree, (avl *)&node);
+	n = (avl_int_data_t *)avl_remove(&tree, (avl_t *)&node);
 	if (n) {
 		if (n->num != num)
 			error(1, 0, "Remove wrong item %d looking for %d",

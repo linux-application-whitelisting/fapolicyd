@@ -1,7 +1,7 @@
 /*
  * attr-sets.c - Attribute sets dynamic data structure
  *
- * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -196,8 +196,8 @@ int append_int_attr_set(attr_sets_entry_t * set, const int num)
 
 	data->num = num;
 
-	avl * ret = avl_insert(&set->tree, (avl *)data);
-	if (ret != (avl *)data) {
+	avl_t * ret = avl_insert(&set->tree, (avl_t *)data);
+	if (ret != (avl_t *)data) {
 		// Already present in avl tree
 		free(data);
 		return 1;
@@ -227,8 +227,8 @@ int append_str_attr_set(attr_sets_entry_t * set, const char * str)
 
 	data->len = strlen(str);
 
-	avl * ret = avl_insert(&set->tree, (avl *)data);
-	if (ret != (avl *)data) {
+	avl_t * ret = avl_insert(&set->tree, (avl_t *)data);
+	if (ret != (avl_t *)data) {
 		// Already present in avl tree
 		free((void *)data->str);
 		free(data);
@@ -255,7 +255,7 @@ int check_int_attr_set(attr_sets_entry_t * set, const int num)
 
 	// valid pointer to data if found
 	// NULL -> 0 if not
-	return avl_search(&set->tree, (avl*)(&data)) ? 1 : 0;
+	return avl_search(&set->tree, (avl_t*)(&data)) ? 1 : 0;
 }
 
 
@@ -276,7 +276,7 @@ int check_str_attr_set(attr_sets_entry_t * set, const char * str)
 
 	// valid pointer to data if found
 	// NULL -> 0 if not
-	return avl_search(&set->tree, (avl*)(&data)) ? 1 : 0;
+	return avl_search(&set->tree, (avl_t*)(&data)) ? 1 : 0;
 }
 
 int check_pstr_attr_set(attr_sets_entry_t * set, const char * str)
@@ -349,12 +349,12 @@ void destroy_attr_set(attr_sets_entry_t * set)
 	free(set->name);
 
 	// free tree
-	avl *cur;
+	avl_t *cur;
 
 	while ((cur = set->tree.root) != NULL) {
 
 		void *tmp =(void *)avl_remove(&set->tree, cur);
-		if ((avl *)tmp != cur)
+		if ((avl_t *)tmp != cur)
 			msg(LOG_DEBUG, "attr_set_entry: removal of invalid node");
 		if (set->type == STRING) {
 			free((void *)((avl_str_data_t *)tmp)->str);

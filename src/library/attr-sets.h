@@ -1,6 +1,6 @@
 /*
  * attr-sets.h - Header file for attribute sets
- * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -30,13 +30,13 @@
 #include "avl.h"
 
 typedef struct _avl_str_data {
-	avl avl;
+	avl_t avl;
 	size_t len;
 	const char * str;
 } avl_str_data_t;
 
 typedef struct _avl_int_data {
-	avl avl;
+	avl_t avl;
 	int num;
 } avl_int_data_t;
 
@@ -46,7 +46,7 @@ typedef struct attr_sets_entry {
 	char * name;
 	// STRING, INT from DATA_TYPES
 	int type;
-	avl_tree tree;
+	avl_tree_t tree;
 } attr_sets_entry_t;
 
 // variable size array
