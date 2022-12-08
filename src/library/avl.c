@@ -28,7 +28,7 @@
 
 /* Search |tree| for an item matching |item|, and return it if found.
      Otherwise return |NULL|. */
-avl_t *avl_search(avl_tree_t *tree, avl_t *item) {
+avl_t *avl_search(const avl_tree_t *tree, avl_t *item) {
     avl_t *p;
 
     // assert (tree != NULL && item != NULL);
@@ -317,7 +317,7 @@ int avl_walker(avl_t *node, int (*callback)(void *entry, void *data), void *data
     return total;
 }
 
-int avl_traverse(avl_tree_t *t, int (*callback)(void *entry, void *data),
+int avl_traverse(const avl_tree_t *t, int (*callback)(void *entry, void *data),
                  void *data) {
     if(t->root)
         return avl_walker(t->root, callback, data);
@@ -417,7 +417,7 @@ static int avl_walker2(avl_t *node, avl_tree_t *haystack) {
     return 0;
 }
 
-int avl_intersection(avl_tree_t *needle, avl_tree_t *haystack)
+int avl_intersection(const avl_tree_t *needle, avl_tree_t *haystack)
 {
 	// traverse the needle and search the haystack
 	// this implies that needle should be smaller than haystack

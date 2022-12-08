@@ -315,8 +315,7 @@ static int become_daemon(void)
 
 
 // Returns 1 if we care about the entry and 0 if we do not
-static int check_mount_entry(const char *device, const char *point,
-	const char *type)
+static int check_mount_entry(const char *point, const char *type)
 {
 	// Some we know we don't want
 	if (strcmp(point, "/run") == 0)
@@ -354,7 +353,7 @@ static void handle_mounts(int fd)
 			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
 			    device, point, type, mntops, &fs_req, &fs_passno);
 			// Is this one that we care about?
-			if (check_mount_entry(device, point, type)) {
+			if (check_mount_entry(point, type)) {
 				// Can we find it in the old list?
 				if (mlist_find(m, point)) {
 					// Mark no change

@@ -186,12 +186,12 @@ static unsigned long pages, max_pages;
 static void close_db(int do_report)
 {
 	if (do_report) {
-		MDB_envinfo stat;
+		MDB_envinfo st;
 
 		// Collect useful stats
 		unsigned size = get_pages_in_use();
-		mdb_env_info(env, &stat);
-		max_pages = stat.me_mapsize / size;
+		mdb_env_info(env, &st);
+		max_pages = st.me_mapsize / size;
 		msg(LOG_DEBUG, "Trust database max pages: %lu", max_pages);
 		msg(LOG_DEBUG, "Trust database pages in use: %lu (%lu%%)", pages,
 		    max_pages ? ((100*pages)/max_pages) : 0);
@@ -204,12 +204,12 @@ static void close_db(int do_report)
 
 static void check_db_size(void)
 {
-	MDB_envinfo stat;
+	MDB_envinfo st;
 
 	// Collect stats
 	unsigned long size = get_pages_in_use();
-	mdb_env_info(env, &stat);
-	max_pages = stat.me_mapsize / size;
+	mdb_env_info(env, &st);
+	max_pages = st.me_mapsize / size;
 	unsigned long percent = max_pages ? (100*pages)/max_pages : 0;
 	if (percent > 80)
 		msg(LOG_WARNING, "Trust database at %lu%% capacity - "
@@ -381,14 +381,14 @@ static void end_long_term_read_ops(void)
 
 static unsigned get_pages_in_use(void)
 {
-	MDB_stat stat;
+	MDB_stat st;
 
 	start_long_term_read_ops();
-	mdb_stat(lt_txn, dbi, &stat);
+	mdb_stat(lt_txn, dbi, &st);
 	end_long_term_read_ops();
-	pages = stat.ms_leaf_pages + stat.ms_branch_pages +
-		stat.ms_overflow_pages;
-	return stat.ms_psize;
+	pages = st.ms_leaf_pages + st.ms_branch_pages +
+		st.ms_overflow_pages;
+	return st.ms_psize;
 }
 
 // if success, the function returns positive number of entries in database
@@ -898,13 +898,12 @@ int init_database(conf_t *config)
 static int read_trust_db(const char *path, int *error, struct file_info *info,
 	int fd)
 {
-	int do_integrity = 0, mode = READ_TEST_KEY;
+	int mode = READ_TEST_KEY;
 	char *res;
 	int retry = 0;
 	char sha_xattr[65];
 
 	if (integrity != IN_NONE && info) {
-		do_integrity = 1;
 		mode = READ_DATA;
 		sha_xattr[0] = 0; // Make sure we can't re-use stack value
 	}
@@ -921,7 +920,7 @@ retry_res:
 
 	res = lt_read_db(path, mode, error);
 
-	if (!do_integrity) {
+	if (!info) {
 		return res ? 1 : 0;
 	} else {
 		unsigned int tsource;

@@ -52,7 +52,7 @@ avl_t *avl_remove(avl_tree_t *t, avl_t *a) WARNUNUSED;
  * (equal as returned by t->compar())
  * returns NULL is no element is equal to a
  */
-avl_t *avl_search(avl_tree_t *t, avl_t *a);
+avl_t *avl_search(const avl_tree_t *t, avl_t *a);
 
 /* Initialize the avl_tree_t
  */
@@ -60,7 +60,7 @@ void avl_init(avl_tree_t *t, int (*compar)(void *a, void *b));
 
 /* Walk the tree and call callback at each node
  */
-int avl_traverse(avl_tree_t *t, int (*callback)(void *entry, void *data),
+int avl_traverse(const avl_tree_t *t, int (*callback)(void *entry, void *data),
 		 void *data);
 
 /* Walk the tree down to the first node and return it
@@ -73,6 +73,6 @@ avl_t *avl_next(avl_iterator *i);
 
 /* Given two trees, see if any in needle are contained in haystack
  */
-int avl_intersection(avl_tree_t *needle, avl_tree_t *haystack);
+int avl_intersection(const avl_tree_t *needle, avl_tree_t *haystack);
 
-#endif /* avl_t.h */
+#endif /* avl.h */
