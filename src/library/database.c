@@ -483,8 +483,12 @@ static char *lt_read_db(const char *index, int operation, int *error)
 	// A next step might be to check the status field to see that its
 	// trusted.
 	*error = 0;
-	if (operation == READ_TEST_KEY)
-		return (char *)db;
+	if (operation == READ_TEST_KEY) {
+		int db_len = strlen(db);
+		char * db_alloc = malloc(sizeof(char)*db_len);
+		memcpy(db_alloc, db, db_len);
+		return db_alloc;
+	}
 
 	if ((data = malloc(value.mv_size+1))) {
 		memcpy(data, value.mv_data, value.mv_size);
