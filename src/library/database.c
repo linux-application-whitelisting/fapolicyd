@@ -484,10 +484,7 @@ static char *lt_read_db(const char *index, int operation, int *error)
 	// trusted.
 	*error = 0;
 	if (operation == READ_TEST_KEY) {
-		int db_len = strlen(db);
-		char * db_alloc = malloc(sizeof(char)*db_len);
-		memcpy(db_alloc, db, db_len);
-		return db_alloc;
+		return strndup(db, MDB_maxkeysize);
 	}
 
 	if ((data = malloc(value.mv_size+1))) {
