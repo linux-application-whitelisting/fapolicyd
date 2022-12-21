@@ -899,12 +899,13 @@ int init_database(conf_t *config)
 static int read_trust_db(const char *path, int *error, struct file_info *info,
 	int fd)
 {
-	int mode = READ_TEST_KEY;
+	int do_integrity = 0, mode = READ_TEST_KEY;
 	char *res;
 	int retry = 0;
 	char sha_xattr[65];
 
 	if (integrity != IN_NONE && info) {
+		do_integrity = 1;
 		mode = READ_DATA;
 		sha_xattr[0] = 0; // Make sure we can't re-use stack value
 	}
@@ -924,7 +925,7 @@ retry_res:
 	// Info is valid only checking objects. For subjects we do a limited
 	// check because the process had to pass some kind of trust check
 	// to even be started and we do not have an open fd to the file.
-	if (!info) {
+	if (!do_integrity) {
 		return res ? 1 : 0;
 	} else {
 		unsigned int tsource;
