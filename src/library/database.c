@@ -922,9 +922,9 @@ retry_res:
 
 	res = lt_read_db(path, mode, error);
 
-	// Info is valid only checking objects. For subjects we do a limited
-	// check because the process had to pass some kind of trust check
-	// to even be started and we do not have an open fd to the file.
+	// For subjects we do a limited check because the process had to
+	// pass some kind of trust check to even be started and we do not
+	// have an open fd to the file.
 	if (!do_integrity) {
 		return res ? 1 : 0;
 	} else {
