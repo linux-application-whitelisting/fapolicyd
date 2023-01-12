@@ -1,4 +1,4 @@
-name: centos-build
+name: almalinux-build
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: centos
+    container: almalinux
 
     steps:
     - uses: actions/checkout@v2
@@ -17,7 +17,7 @@ jobs:
     - name: getting envinronment info
       run: uname -a
 
-    - name: print centos version
+    - name: print version
       run: cat /etc/*release
 
     - name: installing dependecies 1
