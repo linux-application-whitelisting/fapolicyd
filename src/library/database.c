@@ -190,11 +190,16 @@ static void close_db(int do_report)
 
 		// Collect useful stats
 		unsigned size = get_pages_in_use();
-		mdb_env_info(env, &st);
-		max_pages = st.me_mapsize / size;
-		msg(LOG_DEBUG, "Trust database max pages: %lu", max_pages);
-		msg(LOG_DEBUG, "Trust database pages in use: %lu (%lu%%)", pages,
-		    max_pages ? ((100*pages)/max_pages) : 0);
+		if (size == 0) {
+			msg(LOG_WARNING,
+			    "The size obtained by get_pages_in_use() was 0.");
+		} else {
+			mdb_env_info(env, &st);
+			max_pages = st.me_mapsize / size;
+			msg(LOG_DEBUG, "Trust database max pages: %lu", max_pages);
+			msg(LOG_DEBUG, "Trust database pages in use: %lu (%lu%%)", pages,
+			    max_pages ? ((100*pages)/max_pages) : 0);
+		}
 	}
 
 	// Now close down
@@ -208,6 +213,13 @@ static void check_db_size(void)
 
 	// Collect stats
 	unsigned long size = get_pages_in_use();
+
+	if (size == 0) {
+		msg(LOG_WARNING,
+		    "The size obtained by get_pages_in_use() was 0.");
+		return;
+	}
+
 	mdb_env_info(env, &st);
 	max_pages = st.me_mapsize / size;
 	unsigned long percent = max_pages ? (100*pages)/max_pages : 0;
