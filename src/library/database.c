@@ -191,8 +191,8 @@ static void close_db(int do_report)
 		// Collect useful stats
 		unsigned size = get_pages_in_use();
 		if (size == 0) {
-			msg(LOG_WARNING,
-			    "The size obtained by get_pages_in_use() was 0.");
+			msg(LOG_DEBUG,
+			    "The trust database is empty.");
 		} else {
 			mdb_env_info(env, &st);
 			max_pages = st.me_mapsize / size;
@@ -216,7 +216,7 @@ static void check_db_size(void)
 
 	if (size == 0) {
 		msg(LOG_WARNING,
-		    "The size obtained by get_pages_in_use() was 0.");
+		    "The trust database is empty");
 		return;
 	}
 
