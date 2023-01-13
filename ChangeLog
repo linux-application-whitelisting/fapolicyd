@@ -1,4 +1,5 @@
 1.1.8
+- On shutdown when running reports, if trust db empty warn (Nobuhiro Iwamatsu)
 
 1.1.7
 - Re-add dropped FAN_MARK_MOUNT for monitoring events (Steven Brzozowski)
