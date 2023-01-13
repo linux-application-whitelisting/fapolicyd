@@ -31,7 +31,8 @@
 #include "gcc-attributes.h"
 
 typedef enum {	STATE_COLLECTING=0,	// initial state - execute
-		STATE_REOPEN,		// anticipating open perm next
+		STATE_REOPEN,		// anticipating open perm next, always skips the path
+		STATE_DEFAULT_REOPEN,  // reopen after dyn. linker exec, never skips the path
 		STATE_STATIC_REOPEN,	// static app aniticipating
 		STATE_PARTIAL,		// second path collected
 		STATE_STATIC_PARTIAL,	// second path collected
