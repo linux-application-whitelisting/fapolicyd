@@ -551,7 +551,7 @@ int main(int argc, const char *argv[])
 
 	if (preconstruct_fifo(&config)) {
 		unlink(pidfile);
-		msg(LOG_ERR, "Cannot contruct a pipe");
+		msg(LOG_ERR, "Cannot construct a pipe");
 		exit(1);
 	}
 

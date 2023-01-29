@@ -85,7 +85,7 @@ Example:
 
 .TP
 .B rpm_sha256_only
-The option set to 1 forces the daemon to work only with SHA256 hashes. This is useful on the systems where the integrity is set to SHA256 or IMA and some rpms were originally built with e.g. SHA1. The daemon will ingore these SHA1 entries therefore they can be added manually via CLI with correct SHA256 to a trust file later. If set to 0 the daemon stores SHA1 in trustdb as well. This is compatible with older behavior which works with the integrity set to NONE and SIZE. The NONE or SIZE integrity setting considers the files installed via rpm as trusted and it does not care about their hashes at all. On the other hand the integrity set to SHA256 or IMA will never consider a file with SHA1 in trustdb as trusted. The default value is 0.
+The option set to 1 forces the daemon to work only with SHA256 hashes. This is useful on the systems where the integrity is set to SHA256 or IMA and some rpms were originally built with e.g. SHA1. The daemon will ignore these SHA1 entries therefore they can be added manually via CLI with correct SHA256 to a trust file later. If set to 0 the daemon stores SHA1 in trustdb as well. This is compatible with older behavior which works with the integrity set to NONE and SIZE. The NONE or SIZE integrity setting considers the files installed via rpm as trusted and it does not care about their hashes at all. On the other hand the integrity set to SHA256 or IMA will never consider a file with SHA1 in trustdb as trusted. The default value is 0.
 
 .TP
 .B allow_filesystem_mark
