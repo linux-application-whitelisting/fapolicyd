@@ -322,7 +322,7 @@ static void *decision_thread_main(void *arg)
 				// Should never happen
 				clear_ready(); // Reset to reality
 				msg(LOG_DEBUG,
-					"queue size is 0 but event recieved");
+					"queue size is 0 but event received");
 				// limit processing to what we have
 				num = i;
 				goto out;
