@@ -25,7 +25,7 @@ EXTRA_DIST = $(man_MANS)
 man_MANS = \
 	fapolicyd.8 \
 	fagenrules.8 \
-	fapolicyd-cli.1 \
+	fapolicyd-cli.8 \
 	fapolicyd.rules.5 \
 	fapolicyd.trust.5 \
 	fapolicyd.conf.5 \
