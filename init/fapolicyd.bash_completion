@@ -1,4 +1,4 @@
-# fapolicyd-cli(1) completion                             -*- shell-script -*-
+# fapolicyd-cli (8) completion                             -*- shell-script -*-
 
 _fapolicydcli()
 {
