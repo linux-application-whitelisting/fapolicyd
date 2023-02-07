@@ -1,6 +1,6 @@
 /*
  * event.h - Header file for event.c
- * Copyright (c) 2016,2018-19 Red Hat Inc.
+ * Copyright (c) 2016,2018-19,2023 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -37,6 +37,7 @@ typedef struct ev {
 	pid_t pid;
 	int fd;
 	int type;
+	unsigned num;
 	s_array *s;
 	o_array *o;
 } event_t;

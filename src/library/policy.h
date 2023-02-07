@@ -1,6 +1,6 @@
 /*
  * policy.h - Header file for policy.c
- * Copyright (c) 2016,2020 Red Hat
+ * Copyright (c) 2016,2020,2023 Red Hat
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -64,7 +64,7 @@ int load_config(const conf_t *config);
 int reload_config(const conf_t *config);
 decision_t process_event(event_t *e);
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
-		unsigned reply);
+		unsigned reply, event_t *e);
 void make_policy_decision(const struct fanotify_event_metadata *metadata,
 						int fd, uint64_t mask);
 unsigned long getAllowed(void);

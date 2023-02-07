@@ -1,6 +1,6 @@
 /*
  * policy.c - functions that encapsulate the notion of a policy
- * Copyright (c) 2016,2019-22 Red Hat
+ * Copyright (c) 2016,2019-23 Red Hat
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -71,6 +71,13 @@ static const nv_t table[] = {
 #define F_PERM 32
 #define F_COLON 33
 
+#ifdef FAN_AUDIT_RULE_NUM
+struct fan_audit_response
+{
+	struct fanotify_response r;
+	struct fanotify_response_info_audit_rule a;
+};
+#endif
 
 // This function returns 1 on success and 0 on failure
 static int parsing_obj;
@@ -408,6 +415,10 @@ decision_t process_event(event_t *e)
 	     (debug > 1 && (results & DENY)) )
 		log_it2(r ? r->num : 0xFFFFFFFF, results, e);
 
+	// Record which rule (rules are 1 based when listed by the cli tool)
+	if (r)
+		e->num = r->num + 1;
+
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)
 		return results;
@@ -415,14 +426,76 @@ decision_t process_event(event_t *e)
 	return ALLOW;
 }
 
-void reply_event(int fd, const struct fanotify_event_metadata *metadata,
-		unsigned reply)
+#ifdef FAN_AUDIT_RULE_NUM
+static int test_info_api(int fd)
 {
+	int rc;
+	struct fan_audit_response f;
+
+	f.r.fd = FAN_NOFD;
+	f.r.response = FAN_DENY | FAN_INFO;
+	f.a.hdr.type = FAN_RESPONSE_INFO_AUDIT_RULE;
+	f.a.hdr.pad = 0;
+	f.a.hdr.len = sizeof(struct fanotify_response_info_audit_rule);
+	f.a.rule_number = 0;
+	f.a.subj_trust = 2;
+	f.a.obj_trust = 2;
+	rc = write(fd, &f, sizeof(struct fan_audit_response));
+	msg(LOG_DEBUG, "Rule number API supported %s", rc < 0 ? "no" : "yes");
+	if (rc < 0)
+		return 0;
+	else
+		return 1;
+}
+#endif
+
+void reply_event(int fd, const struct fanotify_event_metadata *metadata,
+		unsigned reply, event_t *e)
+{
+	close(metadata->fd);
+#ifdef FAN_AUDIT_RULE_NUM
+	static int use_new = 2;
+	if (use_new == 2)
+		use_new = test_info_api(fd);
+	if (reply & FAN_AUDIT && use_new) {
+		struct fan_audit_response f;
+		subject_attr_t *sn;
+		object_attr_t *obj;
+
+		f.r.fd = metadata->fd;
+		f.r.response = reply | FAN_INFO;
+		f.a.hdr.type = FAN_RESPONSE_INFO_AUDIT_RULE;
+		f.a.hdr.pad = 0;
+		f.a.hdr.len = sizeof(struct fanotify_response_info_audit_rule);
+		if (e)
+			f.a.rule_number = e->num;
+		else
+			f.a.rule_number = 0;
+
+		// Subj trust is rare. See if we have it.
+		if (e && (sn = subject_access(e->s, SUBJ_TRUST))) {
+			if (sn)
+				f.a.subj_trust = sn->val;
+			else
+				f.a.subj_trust = 2;
+		} else
+				f.a.subj_trust = 2;
+		// All objects have a trust value
+		if (e && (obj = get_obj_attr(e, OBJ_TRUST))) {
+			if (obj)
+				f.a.obj_trust = obj->val;
+			else  // Only serious errors cause this
+				f.a.obj_trust = 2;
+		} else
+			f.a.obj_trust = 2;
+		write(fd, &f, sizeof(struct fan_audit_response));
+		return;
+	}
+#endif
 	struct fanotify_response response;
 
 	response.fd = metadata->fd;
 	response.response = reply;
-	close(metadata->fd);
 	write(fd, &response, sizeof(struct fanotify_response));
 }
 
@@ -451,9 +524,11 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 		// If permissive, always allow and honor the audit bit
 		// if not in debug mode
 		if (permissive)
-			reply_event(fd, metadata,FAN_ALLOW |(decision & AUDIT));
+			reply_event(fd, metadata,FAN_ALLOW | (decision & AUDIT),
+					&e);
 		else
-			reply_event(fd, metadata, decision & FAN_RESPONSE_MASK);
+			reply_event(fd, metadata, decision & FAN_RESPONSE_MASK,
+					&e);
 	}
 }
 

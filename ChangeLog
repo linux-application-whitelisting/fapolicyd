@@ -2,6 +2,7 @@
 - On shutdown when running reports, if trust db empty warn (Nobuhiro Iwamatsu)
 - Extend state machine to skip opens after exec until dyn linker found
 - Control filtering of unwanted files in rpm backend with config file
+- Add support for logging rule number of decision in the audit event
 
 1.1.7
 - Re-add dropped FAN_MARK_MOUNT for monitoring events (Steven Brzozowski)

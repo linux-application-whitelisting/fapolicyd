@@ -1,6 +1,6 @@
 /*
  * notify.c - functions handle recieving and enqueuing events
- * Copyright (c) 2016-18,22 Red Hat Inc.
+ * Copyright (c) 2016-18,2022-23 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -350,7 +350,7 @@ static void enqueue_event(const struct fanotify_event_metadata *metadata)
 		// We have to deny. This allows the kernel to free it's
 		// memory related to this request. reply_event also closes
 		// the descriptor, so we don't need to do it here.
-		reply_event(fd, metadata, FAN_DENY);
+		reply_event(fd, metadata, FAN_DENY, NULL);
 		msg(LOG_DEBUG, "enqueue error");
 	} else
 		set_ready();
@@ -392,14 +392,15 @@ void handle_events(void)
 		if (metadata->fd >= 0) {
 			if (metadata->mask & mask) {
 				if (metadata->pid == our_pid)
-					reply_event(fd, metadata, FAN_ALLOW);
+					reply_event(fd, metadata, FAN_ALLOW,
+							NULL);
 				else
 					enqueue_event(metadata);
 			} else {
 				// This should never happen. Reply with deny
 				// which releases the descriptor and kernel
 				// memory. Continue processing what was read.
-				reply_event(fd, metadata, FAN_DENY);
+				reply_event(fd, metadata, FAN_DENY, NULL);
 			}
 		}
 		metadata = FAN_EVENT_NEXT(metadata, len);

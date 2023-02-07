@@ -1,6 +1,6 @@
 /*
  * event.c - Functions to access event attributes
- * Copyright (c) 2016,2018-20 Red Hat Inc.
+ * Copyright (c) 2016,2018-20,2023 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -109,6 +109,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	e->pid = m->pid;
 	e->fd = m->fd;
 	e->type = m->mask & ALL_EVENTS;
+	e->num = 0;
 
 	key = compute_subject_key(subj_cache, m->pid);
 	q_node = check_lru_cache(subj_cache, key);
