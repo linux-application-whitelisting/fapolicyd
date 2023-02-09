@@ -18,6 +18,8 @@ static int intcmp_cb(void *a, void *b)
 int append(int num)
 {
 	avl_int_data_t *data = malloc(sizeof(avl_int_data_t));
+	if (data == NULL)
+		return 0;
 	data->num = num;
 	avl_t *ret = avl_insert(&tree, (avl_t *)data);
 	if (ret != (avl_t *)data) {

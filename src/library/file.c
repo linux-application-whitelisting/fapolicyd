@@ -397,6 +397,9 @@ char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
 	char *ptr = final;
 	const char *hex = "0123456789abcdef";
 
+	if (final == NULL)
+		return final;
+
 	for (i=0; i<size; i++) {
 		*ptr++ = hex[(buf[i] & 0xF0)>>4]; /* Upper nibble */
 		*ptr++ = hex[buf[i] & 0x0F];      /* Lower nibble */
@@ -488,6 +491,9 @@ static Elf32_Ehdr *read_header32(int fd) MALLOCLIKE;
 static Elf32_Ehdr *read_header32(int fd)
 {
 	Elf32_Ehdr *ptr = malloc(sizeof(Elf32_Ehdr));
+	if (ptr == NULL)
+		return NULL;
+
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
 	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
 				sizeof(Elf32_Ehdr) - EI_NIDENT);
@@ -502,6 +508,9 @@ static Elf64_Ehdr *read_header64(int fd) MALLOCLIKE;
 static Elf64_Ehdr *read_header64(int fd)
 {
 	Elf64_Ehdr *ptr = malloc(sizeof(Elf64_Ehdr));
+	if (ptr == NULL)
+		return NULL;
+
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
 	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
 				sizeof(Elf64_Ehdr) - EI_NIDENT);
