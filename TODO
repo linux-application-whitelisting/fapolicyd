@@ -1,7 +1,3 @@
-Kernel
-======
-Add ability to specify auxiliary information about which rule number triggers
-
 Userspace
 =========
 * Allow rules to express paths using globbing (fnmatch)
