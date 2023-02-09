@@ -1,5 +1,6 @@
 Userspace
 =========
+* Rearrange rules to contain patterns to indicate rule that triggered
 * Allow rules to express paths using globbing (fnmatch)
 * add db_max_size = auto
 
