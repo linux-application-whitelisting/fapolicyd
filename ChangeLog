@@ -1,4 +1,4 @@
-1.1.8
+1.2
 - On shutdown when running reports, if trust db empty warn (Nobuhiro Iwamatsu)
 - Extend state machine to skip opens after exec until dyn linker found
 - Control filtering of unwanted files in rpm backend with config file
