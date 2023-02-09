@@ -386,9 +386,10 @@ total  file
 ```
 
 However, you probably want to know the rule that is blocking it. Unfortunately
-the audit system cannot tell you this. What you can do is change the decisions
-to deny_log. This will write the event to syslog as well as the audit log. In
-syslog, you will have the same output as the debug mode.
+the audit system cannot tell you this unless you are using the 6.4 kernel or
+later. What you can do is change the decisions to deny_log. This will write
+the event to syslog as well as the audit log. In syslog, you will have the
+same output as the debug mode.
 
 The shipped rules expect that everything installed is in the trust database.
 If you have installed anything by unzipping it or untarring it, then you need
