@@ -32,6 +32,7 @@
 #include <limits.h>
 #include <stdlib.h>
 
+#include "escape.h"
 #include "file.h"
 #include "rules.h"
 #include "policy.h"
@@ -291,8 +292,16 @@ static char *format_value(int item, unsigned int num, decision_t results,
 	} else if (item >= OBJ_START) {
 		object_attr_t *obj = get_obj_attr(e, item);
 		if (item != OBJ_TRUST) {
-			if (asprintf(&out, "%s", obj ? obj->o : "?") < 0)
+			char * str = obj ? obj->o : "?";
+			size_t need_escape = check_escape_shell(str);
+
+			if (need_escape)
+				// need_escape contains potential size of escaped string
+				str = escape_shell(str, need_escape);
+
+			if (asprintf(&out, "%s", str ? str : "??") < 0)
 				out = NULL;
+
 		} else {
 		    if (asprintf(&out, "%d", obj ? (obj->val ? 1 : 0) : 9) < 0)
 				out = NULL;
@@ -303,8 +312,16 @@ static char *format_value(int item, unsigned int num, decision_t results,
 			if (asprintf(&out, "%d", subj ? subj->val : -2) < 0)
 				out = NULL;
 		} else if (item >= COMM) {
-			if (asprintf(&out, "%s", subj ? subj->str : "?") < 0)
+			char * str = subj ? subj->str : "?";
+			size_t need_escape = check_escape_shell(str);
+
+			if (need_escape)
+				// need_escape contains potential size of escaped string
+				str = escape_shell(str, need_escape);
+
+			if (asprintf(&out, "%s", str ? str : "??") < 0)
 				out = NULL;
+
 		} else { // GID
 			out = malloc(16*12); // gid's are limited to 16
 			if (out && subj->set) {
