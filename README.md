@@ -477,6 +477,10 @@ fapolicyd-cli --dump-db
 
 which will dump which database the entry came from, path, size, and hash value.
 
+GUI
+---
+If you need a GUI to create policy, manage trust, analyze policy, test policy, and deploy rules, you might want to checkout the [fapolicy-analyzer](https://github.com/ctc-oss/fapolicy-analyzer) project. RPM packages are in Fedora and EPEL.
+
 FAQ
 ---
 1) Can this work with other distributions?
