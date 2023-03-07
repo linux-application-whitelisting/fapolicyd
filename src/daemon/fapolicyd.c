@@ -44,6 +44,7 @@
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
+#include "escape.h"
 #include "fd-fgets.h"
 #include "file.h"
 #include "database.h"
@@ -352,6 +353,8 @@ static void handle_mounts(int fd)
 			// Parse it
 			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
 			    device, point, type, mntops, &fs_req, &fs_passno);
+			unescape_shell(device, strlen(device));
+			unescape_shell(point, strlen(point));
 			// Is this one that we care about?
 			if (check_mount_entry(point, type)) {
 				// Can we find it in the old list?
