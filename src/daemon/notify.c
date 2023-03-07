@@ -59,6 +59,7 @@ static volatile atomic_bool events_ready;
 static volatile atomic_int alive = 1;
 static int fd = -1;
 static uint64_t mask;
+static unsigned int mark_flag;
 
 // External functions
 void do_stat_report(FILE *f, int shutdown);
@@ -122,21 +123,20 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	// Iterate through the mount points and add a mark
 	path = mlist_first(m);
 	while (path) {
-		unsigned int flags;
-retry_mark:
-		flags = FAN_MARK_ADD;
 #if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
 		if (conf->allow_filesystem_mark)
-		    flags |= FAN_MARK_FILESYSTEM;
+		    mark_flag = FAN_MARK_FILESYSTEM;
 		else
-		    flags |= FAN_MARK_MOUNT;
+		    mark_flag = FAN_MARK_MOUNT;
 #else
 		if (conf->allow_filesystem_mark)
 			msg(LOG_ERR,
 	    "allow_filesystem_mark is unsupported for this kernel - ignoring");
-		flags |= FAN_MARK_MOUNT;
+		mark_flag = FAN_MARK_MOUNT;
 #endif
-		if (fanotify_mark(fd, flags, mask, -1, path) == -1) {
+retry_mark:
+		if (fanotify_mark(fd, FAN_MARK_ADD | mark_flag,
+				  mask, -1, path) == -1) {
 			/*
 			 * The FAN_OPEN_EXEC_PERM mask is not supported by
 			 * all kernel releases prior to 5.0. Retry setting
@@ -171,7 +171,7 @@ void fanotify_update(mlist *m)
 	while (m->cur) {
 		if (m->cur->status == ADD) {
 			// We will trust that the mask was set correctly
-			if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+			if (fanotify_mark(fd, FAN_MARK_ADD | mark_flag,
 					mask, -1, m->cur->path) == -1) {
 				msg(LOG_ERR,
 				    "Error (%s) adding fanotify mark for %s",
@@ -202,7 +202,8 @@ void shutdown_fanotify(mlist *m)
 
 	// Stop the flow of events
 	while (path) {
-		if (fanotify_mark(fd, FAN_MARK_FLUSH, 0, -1, path) == -1)
+		if (fanotify_mark(fd, FAN_MARK_FLUSH | mark_flag,
+				  0, -1, path) == -1)
 			msg(LOG_ERR, "Failed flushing path %s  (%s)",
 				path, strerror(errno));
 		path = mlist_next(m);

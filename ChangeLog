@@ -1,4 +1,5 @@
 1.2.1
+- Be consistent in updating and removing file system marks
 
 1.2
 - On shutdown when running reports, if trust db empty warn (Nobuhiro Iwamatsu)
