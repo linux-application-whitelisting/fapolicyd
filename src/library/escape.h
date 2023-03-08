@@ -27,16 +27,10 @@
 
 #include "gcc-attributes.h"
 
-enum {
-	WHITESPACES,
-	EVERYTHING
-};
-
 char *escape_shell(const char*, const size_t) MALLOCLIKE;
 size_t check_escape_shell(const char*);
 
-char *escape(const char*, int) MALLOCLIKE;
-char *unescape(const char*);
+char *unescape(const char *input) MALLOCLIKE;
 
 #endif
 

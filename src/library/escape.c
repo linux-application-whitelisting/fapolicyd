@@ -104,76 +104,8 @@ static char asciiHex2Bits(char X)
 	return (X - base) & 0X00FF;
 }
 
-
-/*
- * the function returns escaped copy of the input string
- * returned string should be freed by caller
- * it returns NULL in case of error
- *
-*/
-char *escape(const char *input, int mode)
-{
-	char buffer[4096 + 1] = {0};
-	size_t input_len = strlen(input);
-	size_t pos = 0;
-
-	for (size_t i = 0 ; i < input_len; i++) {
-		int should_escape = 0;
-
-		switch(mode) {
-
-		case EVERYTHING:
-			should_escape = 1;
-			break;
-
-		case WHITESPACES:
-			if (isblank(input[i]))
-				should_escape = 1;
-			break;
-
-		default:
-			return NULL;
-			break;
-
-		}
-
-		// always ascape % sign !!!
-		if (input[i] == '%')
-			should_escape = 1;
-
-		if (should_escape) {
-			char buff[4] = {0}; // "%A5\0"
-			int res = snprintf(buff, 4, "%c%02X", '%', input[i]);
-
-			if (res == -1)
-				return NULL;
-
-			/*
-			buffer[pos++] = buff[0]; // '%'
-			buffer[pos++] = buff[1]; // 'A'
-			buffer[pos++] = buff[2]; // '5'
-			*/
-
-			for (size_t ii = 0; ii < 3; ii++) {
-
-				if (pos >=(sizeof(buffer) - 1))
-					return NULL;
-
-				buffer[pos++] = buff[ii];
-			}
-
-		} else {
-
-			if (pos >=(sizeof(buffer) - 1))
-				return NULL;
-
-			buffer[pos++] = input[i];
-		}
-	}
-
-	return strdup(buffer);
-}
-
+// unescape old format of a trust file
+// it makes code backwards compatible
 char *unescape(const char *input)
 {
 	char buffer[4096 + 1] = {0};
