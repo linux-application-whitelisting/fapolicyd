@@ -30,6 +30,66 @@
 
 #include "message.h"
 
+static const char sh_set[] = "\"'`$\\!()| ";
+/*
+ * this function checks whether esxaping is needed and if yes
+ * it returns positive value and this value represents the size
+ * of the string after escaping
+ */
+size_t check_escape_shell(const char *input)
+{
+	unsigned int len = strlen(input);
+	size_t i = 0, cnt = 0;
+
+	while (i < len) {
+		// \000
+		if (input[i] < 32)
+			cnt += 4;
+		// \\ \/
+		else if (strchr(sh_set, input[i]))
+			cnt += 2;
+		// non escaped char
+		else
+			cnt++;
+		i++;
+	}
+	// if no escaped char
+	if (cnt == len)
+		return 0;
+
+	return cnt;
+}
+
+#define MAX_SIZE 8192
+static char escape_buffer[MAX_SIZE];
+char *escape_shell(const char *input, const size_t expected_size)
+{
+	if(!input)
+		return NULL;
+
+	if (expected_size >= MAX_SIZE)
+		return NULL;
+
+	size_t len = strlen(input);
+
+	unsigned int i = 0, j = 0;
+	while (i < len) {
+		if ((unsigned char)input[i] < 32) {
+			escape_buffer[j++] = ('\\');
+			escape_buffer[j++] = ('0' + ((input[i] & 0300) >> 6));
+			escape_buffer[j++] = ('0' + ((input[i] & 0070) >> 3));
+			escape_buffer[j++] = ('0' + (input[i] & 0007));
+		} else if (strchr(sh_set, input[i])) {
+			escape_buffer[j++] = ('\\');
+			escape_buffer[j++] = input[i];
+		} else
+			escape_buffer[j++] = input[i];
+		i++;
+	}
+	escape_buffer[j] = '\0';	/* terminate string */
+
+	return escape_buffer;
+}
 
 #define IS_HEX(X) (isxdigit(X) > 0 && !(islower(X) > 0))
 

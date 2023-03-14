@@ -32,8 +32,11 @@ enum {
 	EVERYTHING
 };
 
-char *escape(const char *input, int mode) MALLOCLIKE;
-char *unescape(const char *input) MALLOCLIKE;
+char *escape_shell(const char*, const size_t) MALLOCLIKE;
+size_t check_escape_shell(const char*);
+
+char *escape(const char*, int) MALLOCLIKE;
+char *unescape(const char*);
 
 #endif
 
