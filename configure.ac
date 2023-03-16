@@ -75,11 +75,10 @@ if test x$use_rpm = xyes ; then
 fi
 AM_CONDITIONAL(WITH_RPM, test x$use_rpm = xyes)
 
-# TODO default deb to be disabled.
 withval=""
 AC_ARG_WITH(deb,
 AS_HELP_STRING([--with-deb],[Use the deb database as a trust source]),
-use_deb=$withval,use_deb=yes)
+use_deb=$withval,use_deb=no)
 
 if test x$use_deb = xyes ; then
     AC_CHECK_LIB(dpkg, pkg_array_init_from_hash, , [AC_MSG_ERROR([libdpkg not found])], -ldpkg)
