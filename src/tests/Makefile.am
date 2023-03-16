@@ -20,8 +20,7 @@
 #
 
 CONFIG_CLEAN_FILES = *.orig *.cur
-check_PROGRAMS = avl_test gid_proc_test deb_test
-TESTS = $(check_PROGRAMS)
+check_PROGRAMS = avl_test gid_proc_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 
@@ -29,6 +28,8 @@ avl_test_SOURCES = avl_test.c ${top_srcdir}/src/library/avl.c
 gid_proc_test_SOURCES = gid_proc_test.c 
 gid_proc_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 
+if WITH_DEB
+check_PROGRAMS += deb_test
 deb_test_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE -DLIBDPKG_VOLATILE_API
 deb_test_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now,-ldpkg
 
@@ -38,3 +39,6 @@ deb_test_SOURCES = \
   ${top_srcdir}/src/library/file.c \
   ${top_srcdir}/src/library/backend-manager.c \
   ${top_srcdir}/src/library/deb-backend.c
+endif
+
+TESTS = $(check_PROGRAMS)

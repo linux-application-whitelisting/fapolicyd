@@ -32,6 +32,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <openssl/sha.h>
+#include <openssl/md5.h>
 #include <magic.h>
 #include <libudev.h>
 #include <elf.h>
