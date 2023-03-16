@@ -424,29 +424,40 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 
 /*
  * Given a fd, calculate the hash by accessing size bytes of the file.
+ * Calculate SHA256 by default or compute MD5.
  * Returns a char pointer of the hash which the caller must free.
  * If a size of 0 is passed, it will return a NULL pointer.
  * If there is an error with mmap, it will also return a NULL pointer.
  */
-static const char *degenerate_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-char *get_hash_from_fd2(int fd, size_t size)
+static const char *degenerate_hash_sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+static const char *degenerate_hash_md5 = "d41d8cd98f00b204e9800998ecf8427e";
+char *get_hash_from_fd2(int fd, size_t size, const int is_sha)
 {
 	unsigned char *mapped;
 	char *digest = NULL;
 
-	if (size == 0)
-		return strdup(degenerate_hash);
+	if (size == 0) {
+		if (is_sha)
+			return strdup(degenerate_hash_sha);
+		return strdup(degenerate_hash_md5);
+	}
 
 	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
-		unsigned char hptr[40];
+		const int digest_length = is_sha ? SHA256_DIGEST_LENGTH : 16;
+		// Just use the larger one as buffer.
+		unsigned char hptr[SHA256_DIGEST_LENGTH];
 
-		SHA256(mapped, size, (unsigned char *)&hptr);
+		if (is_sha) {
+			SHA256(mapped, size, (unsigned char *)&hptr);
+		} else {
+			MD5(mapped, size, (unsigned char *)&hptr);
+		}
 		munmap(mapped, size);
 		digest = malloc((SHA256_LEN * 2) + 1);
 
 		// Convert to ASCII string
-		bytes2hex(digest, hptr, SHA256_LEN);
+		bytes2hex(digest, hptr, digest_length);
 	}
 	return digest;
 }
