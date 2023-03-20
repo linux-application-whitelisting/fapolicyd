@@ -282,6 +282,13 @@ performance impact, this is very workload dependent. For a typical desktop
 scenario, you won't notice it's running. A system that opens lots of random
 files for short periods of time will have more impact.
 
+Another configuration option that can affect performance is the integrity
+setting. If this is set to sha256, then every miss in the object cache will
+cause a hash to be calculated on the file being accessed. One trade-off would
+be to use size checking rather than sha256. This is not as secure, but it is
+an option if performance is problematic.
+
+
 MEMORY USAGE
 ------------
 Fapolicyd uses lmdb as its trust database. The database has very fast
