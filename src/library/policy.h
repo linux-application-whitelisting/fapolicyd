@@ -60,8 +60,8 @@ extern unsigned int debug;
 extern unsigned int permissive;
 
 int dec_name_to_val(const char *name);
-int load_config(const conf_t *config);
-int reload_config(const conf_t *config);
+int load_rules(const conf_t *config);
+int reload_rules(const conf_t *config);
 decision_t process_event(event_t *e);
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e);
@@ -70,7 +70,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 unsigned long getAllowed(void);
 unsigned long getDenied(void);
 void policy_no_audit(void);
-void destroy_config(void);
+void destroy_rules(void);
 
 #endif
 

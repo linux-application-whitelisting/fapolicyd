@@ -523,7 +523,7 @@ int main(int argc, const char *argv[])
 				strerror(errno));
 
 	// Load the rule configuration
-	if (load_config(&config))
+	if (load_rules(&config))
 		exit(1);
 	if (!debug) {
 		if (become_daemon() < 0) {
@@ -578,7 +578,7 @@ int main(int argc, const char *argv[])
 	// Init the database
 	if (init_database(&config)) {
 		destroy_event_system();
-		destroy_config();
+		destroy_rules();
 		destroy_fs_list();
 		free_daemon_config(&config);
 		unlink(pidfile);
@@ -656,7 +656,7 @@ int main(int argc, const char *argv[])
 		}
 	}
 	destroy_event_system();
-	destroy_config();
+	destroy_rules();
 	destroy_fs_list();
 	free_daemon_config(&config);
 
