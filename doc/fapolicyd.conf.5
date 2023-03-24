@@ -16,7 +16,7 @@ This option gives fapolicyd a scheduler boost. The number can be from 0 to 20. T
 
 .TP
 .B q_size
-This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 1024.
+This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 1024. Also note, this value means that fapolicyd gets a file descriptor for that entry. There is an rlimit cap controlled by systemd's LimitNOFILE setting for the service. You may also need to adjust it if the q_size exceeds it's value.
 
 .TP
 .B uid

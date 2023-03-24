@@ -2,6 +2,7 @@
 - Be consistent in updating and removing file system marks
 - Add escaping to /proc/mount entries
 - Revise escaping of trust files
+- Add LimitNOFILE to the service file
 
 1.2
 - On shutdown when running reports, if trust db empty warn (Nobuhiro Iwamatsu)
