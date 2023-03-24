@@ -190,7 +190,7 @@ static const char *dec_val_to_name(unsigned int v)
 }
 
 // Returns 0 on success and 1 on error
-int load_config(const conf_t *config)
+int load_rules(const conf_t *config)
 {
 	int fd, rc, lineno = 1;
 	FILE *f;
@@ -255,10 +255,10 @@ int load_config(const conf_t *config)
 }
 
 
-int reload_config(const conf_t *config)
+int reload_rules(const conf_t *config)
 {
-	destroy_config();
-	return load_config(config);
+	destroy_rules();
+	return load_rules(config);
 }
 
 static char *format_value(int item, unsigned int num, decision_t results,
@@ -568,7 +568,7 @@ void policy_no_audit(void)
 }
 
 
-void destroy_config(void)
+void destroy_rules(void)
 {
 	unsigned int i = 0;
 
