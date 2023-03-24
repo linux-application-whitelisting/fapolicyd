@@ -24,6 +24,7 @@
  */
 
 #include "config.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -31,7 +32,9 @@
 #include <string.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
+#include "database.h"
 #include "escape.h"
 #include "file.h"
 #include "rules.h"
@@ -44,11 +47,12 @@
 
 #define MAX_SYSLOG_FIELDS	21
 
-
 static llist rules;
 static unsigned long allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
+
+volatile atomic_bool reload_rules = 0;
 
 static const nv_t table[] = {
 {       NO_OPINION, "no-opinion" },
@@ -63,6 +67,9 @@ static const nv_t table[] = {
 {       ALLOW_LOG, "allow_log" },
 {       DENY_LOG, "deny_log" }
 };
+
+extern unsigned int debug_mode;
+extern unsigned int permissive;
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
 
@@ -165,7 +172,6 @@ static int parse_syslog_format(const char *syslog_format)
 	return rc;
 }
 
-
 int dec_name_to_val(const char *name)
 {
         unsigned int i = 0;
@@ -176,7 +182,6 @@ int dec_name_to_val(const char *name)
         }
         return -1;
 }
-
 
 static const char *dec_val_to_name(unsigned int v)
 {
@@ -189,17 +194,10 @@ static const char *dec_val_to_name(unsigned int v)
         return NULL;
 }
 
-// Returns 0 on success and 1 on error
-int load_rules(const conf_t *config)
+static FILE *open_file(void)
 {
-	int fd, rc, lineno = 1;
+	int fd;
 	FILE *f;
-	char *line = NULL;
-	size_t len = 0;
-
-	if (rules_create(&rules))
-		return 1;
-
 	// Now open the file and load them one by one. We default to
 	// opening the old file first in case there are both
 	fd = open(OLD_RULES_FILE, O_NOFOLLOW|O_RDONLY);
@@ -209,7 +207,7 @@ int load_rules(const conf_t *config)
 		if (fd < 0) {
 			msg(LOG_ERR, "Error opening rules file (%s)",
 				strerror(errno));
-			return 1;
+			return NULL;
 		}
 	}
 
@@ -217,8 +215,21 @@ int load_rules(const conf_t *config)
 	if (f == NULL) {
 		msg(LOG_ERR, "Error - fdopen failed (%s)",
 			strerror(errno));
-		return 1;
 	}
+
+	return f;
+}
+
+// Returns 0 on success and 1 on error
+static int _load_rules(const conf_t *_config, FILE *f)
+{
+	int rc, lineno = 1;
+	char *line = NULL;
+	size_t len = 0;
+
+	if (rules_create(&rules))
+		return 1;
+
 
 	msg(LOG_DEBUG, "Loading rule file:");
 
@@ -230,13 +241,11 @@ int load_rules(const conf_t *config)
 		rc = rules_append(&rules, line, lineno);
 		if (rc) {
 			free(line);
-			fclose(f);
 			return 1;
 		}
 		lineno++;
 	}
 	free(line);
-	fclose(f);
 
 	rules_regen_sets(&rules);
 
@@ -247,18 +256,73 @@ int load_rules(const conf_t *config)
 		msg(LOG_DEBUG, "Loaded %u rules", rules.cnt);
 	}
 
-	rc = parse_syslog_format(config->syslog_format);
+	rc = parse_syslog_format(_config->syslog_format);
 	if (!rc || num_fields == 0)
 		return 1;
 
 	return 0;
 }
 
+int load_rules(const conf_t *_config)
+{
+	if (init_attr_sets())
+		return 1;
 
-int reload_rules(const conf_t *config)
+	FILE * f = open_file();
+	if (f == NULL)
+		return 1;
+
+	int res = _load_rules(_config, f);
+	fclose(f);
+	return res;
+}
+
+void destroy_rules(void)
+{
+	unsigned int i = 0;
+
+	rules_clear(&rules);
+
+	while (i < num_fields) {
+		free((void *)fields[i].name);
+		i++;
+	}
+
+	destroy_attr_sets();
+}
+
+void set_reload_rules(void)
+{
+	reload_rules = true;
+}
+
+static FILE * ff = NULL;
+int load_rule_file(void)
+{
+	if (ff) {
+		fclose(ff);
+		ff = NULL;
+	}
+
+	ff = open_file();
+	if (ff == NULL)
+		return 1;
+
+	return 0;
+}
+
+int do_reload_rules(const conf_t *_config)
 {
 	destroy_rules();
-	return load_rules(config);
+
+	if (init_attr_sets())
+		return 1;
+
+	_load_rules(_config, ff);
+
+	fclose(ff);
+	ff = NULL;
+	return 0;
 }
 
 static char *format_value(int item, unsigned int num, decision_t results,
@@ -418,7 +482,7 @@ decision_t process_event(event_t *e)
 	lnode *r = rules_get_cur(&rules);
 	int cnt = 0;
 	while (r) {
-	  //msg(LOG_INFO, "process_event: rule %d", cnt);
+		//msg(LOG_INFO, "process_event: rule %d", cnt);
 		results = rule_evaluate(r, e);
 		// If a rule has an opinion, stop and use it
 		if (results != NO_OPINION)
@@ -525,8 +589,11 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 	if (new_event(metadata, &e))
 		decision = FAN_DENY;
-	else
+	else {
+		lock_rule();
 		decision = process_event(&e);
+		unlock_rule();
+	}
 
 	if ((decision & DENY) == DENY)
 		denied++;
@@ -566,18 +633,3 @@ void policy_no_audit(void)
 {
 	rules_unsupport_audit(&rules);
 }
-
-
-void destroy_rules(void)
-{
-	unsigned int i = 0;
-
-	free(working_buffer);
-	rules_clear(&rules);
-
-	while (i < num_fields) {
-		free((void *)fields[i].name);
-		i++;
-	}
-}
-

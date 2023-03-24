@@ -56,12 +56,11 @@ typedef enum {
 	DENY_LOG = FAN_DENY | AUDIT | SYSLOG
 } decision_t;
 
-extern unsigned int debug_mode;
-extern unsigned int permissive;
-
 int dec_name_to_val(const char *name);
 int load_rules(const conf_t *config);
-int reload_rules(const conf_t *config);
+int load_rule_file(void);
+int do_reload_rules(const conf_t *config);
+void set_reload_rules(void);
 decision_t process_event(event_t *e);
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e);

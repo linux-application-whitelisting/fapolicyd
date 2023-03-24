@@ -50,10 +50,11 @@
 #include "backend-manager.h"
 #include "gcc-attributes.h"
 #include "paths.h"
+#include "policy.h"
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
-typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE } db_ops_t;
+typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops_t;
 #define BUFFER_SIZE 4096
 #define MEGABYTE	(1024*1024)
 
@@ -71,6 +72,7 @@ static atomic_int reload_db = 0;
 
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
+static pthread_mutex_t rule_lock;
 
 // Local functions
 static void *update_thread_main(void *arg);
@@ -79,6 +81,7 @@ static int update_database(conf_t *config);
 // External variables
 extern volatile atomic_bool stop;
 extern volatile atomic_bool needs_flush;
+extern volatile atomic_bool reload_rules;
 
 
 static int is_link(const char *path)
@@ -848,6 +851,7 @@ int init_database(conf_t *config)
 
 	// update_lock is used in update_database()
 	pthread_mutex_init(&update_lock, NULL);
+	pthread_mutex_init(&rule_lock, NULL);
 
 	if (migrate_database())
 		return 1;
@@ -1078,6 +1082,7 @@ void close_database(void)
 	// we can close db when we are really sure update_thread does not exist
 	close_db(1);
 	pthread_mutex_destroy(&update_lock);
+	pthread_mutex_destroy(&rule_lock);
 
 	backend_close();
 	unlink_fifo();
@@ -1098,7 +1103,6 @@ void lock_update_thread(void) {
 	//msg(LOG_DEBUG, "lock_update_thread()");
 }
 
-
 /*
  * Unlock wrapper for update mutex
  */
@@ -1107,6 +1111,21 @@ void unlock_update_thread(void) {
 	//msg(LOG_DEBUG, "unlock_update_thread()");
 }
 
+/*
+ * Lock wrapper for rule mutex
+ */
+void lock_rule(void) {
+	pthread_mutex_lock(&rule_lock);
+	//msg(LOG_DEBUG, "lock_rule()");
+}
+
+/*
+ * Unlock wrapper for rule mutex
+ */
+void unlock_rule(void) {
+	pthread_mutex_unlock(&rule_lock);
+	//msg(LOG_DEBUG, "unlock_rule()");
+}
 
 /*
  * This function reloads updated backend db into our internal database.
@@ -1183,7 +1202,7 @@ static int handle_record(const char * buffer)
 	return 0;
 }
 
-void update_trust_database(void)
+void set_reload_trust_database(void)
 {
 	reload_db = 1;
 }
@@ -1246,6 +1265,14 @@ static void *update_thread_main(void *arg)
 
 		rc = poll(ffd, 1, 1000);
 
+		if (reload_rules) {
+			reload_rules = 0;
+			load_rule_file();
+
+			lock_rule();
+			do_reload_rules(config);
+			unlock_rule();
+		}
 		// got SIGHUP
 		if (reload_db) {
 			reload_db = 0;
@@ -1302,13 +1329,18 @@ static void *update_thread_main(void *arg)
 								break;
 							}
 
-							if (buff[i] == '1') {
+							if (buff[i] == RELOAD_TRUSTDB_COMMAND) {
 								do_operation = RELOAD_DB;
 								break;
 							}
 
-							if (buff[i] == '2') {
+							if (buff[i] == FLUSH_CACHE_COMMAND) {
 								do_operation = FLUSH_CACHE;
+								break;
+							}
+
+							if (buff[i] == RELOAD_RULES_COMMAND) {
+								do_operation = RELOAD_RULES;
 								break;
 							}
 
@@ -1325,6 +1357,14 @@ static void *update_thread_main(void *arg)
 						if (do_operation == RELOAD_DB) {
 							do_operation = DB_NO_OP;
 							do_reload_db(config);
+						} else if (do_operation == RELOAD_RULES) {
+							do_operation = DB_NO_OP;
+
+							load_rule_file();
+
+							lock_rule();
+							do_reload_rules(config);
+							unlock_rule();
 
 							// got "2" -> flush cache
 						} else if (do_operation == FLUSH_CACHE) {
