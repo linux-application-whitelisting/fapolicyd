@@ -449,7 +449,6 @@ int main(int argc, const char *argv[])
 	struct pollfd pfd[2];
 	struct sigaction sa;
 	struct rlimit limit;
-	int rc, i;
 
 	if (argc > 1 && strcmp(argv[1], "--help") == 0)
 		usage();
@@ -460,7 +459,7 @@ int main(int argc, const char *argv[])
 		return 1;
 	}
 	permissive = config.permissive;
-	for (i=1; i < argc; i++) {
+	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--debug") == 0) {
 			debug = 1;
 			set_message_mode(MSG_STDERR, DBG_YES);
@@ -517,11 +516,12 @@ int main(int argc, const char *argv[])
 	limit.rlim_cur = RLIM_INFINITY;
 	limit.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_FSIZE, &limit);
-	setrlimit(RLIMIT_NOFILE, &limit);
+	if (setrlimit(RLIMIT_NOFILE, &limit))
+		msg(LOG_WARNING, "Can't increase file number rlimit - %s",
+		    strerror(errno));
 
 	// get more time slices because everything is waiting on us
-	rc = nice(-config.nice_val);
-	if (rc == -1)
+	if (nice(-config.nice_val))
 		msg(LOG_WARNING, "Couldn't adjust priority (%s)",
 				strerror(errno));
 
@@ -600,6 +600,7 @@ int main(int argc, const char *argv[])
 
 	msg(LOG_INFO, "Starting to listen for events");
 	while (!stop) {
+		int rc;
 		if (hup) {
 			hup = 0;
 			msg(LOG_DEBUG, "Got SIGHUP");
