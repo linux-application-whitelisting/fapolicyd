@@ -123,14 +123,14 @@ static void clear_daemon_config(conf_t *config)
 {
 	config->permissive = 0;
 	config->nice_val = 10;
-	config->q_size = 1024;
+	config->q_size = 800;
 	config->uid = 0;
 	config->gid = 0;
 	config->do_stat_report = 1;
 	config->detailed_report = 1;
 	config->db_max_size = 50;
-	config->subj_cache_size = 1024;
-	config->obj_cache_size = 4096;
+	config->subj_cache_size = 1549;
+	config->obj_cache_size = 8191;
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
 #ifdef USE_RPM
 	config->trust = strdup("rpmdb,file");

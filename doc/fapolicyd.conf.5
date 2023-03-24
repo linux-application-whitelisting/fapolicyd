@@ -16,7 +16,7 @@ This option gives fapolicyd a scheduler boost. The number can be from 0 to 20. T
 
 .TP
 .B q_size
-This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 1024. Also note, this value means that fapolicyd gets a file descriptor for that entry. There is an rlimit cap controlled by systemd's LimitNOFILE setting for the service. You may also need to adjust it if the q_size exceeds it's value.
+This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 800. Also note, this value means that fapolicyd gets a file descriptor for that entry. There is an rlimit cap controlled by systemd's LimitNOFILE setting for the service. You may also need to adjust it if the q_size exceeds it's value.
 
 .TP
 .B uid
@@ -40,11 +40,11 @@ This option controls how many megabytes to allow the trust database to grow to. 
 
 .TP
 .B subj_cache_size
-This option controls how many entries the subject cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. There are only 64k processes allowed at any time, so this would be the upper limit. The default value is 1024.
+This option controls how many entries the subject cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. There are only 64k processes allowed at any time, so this would be the upper limit. The default value is 1549.
 
 .TP
 .B obj_cache_size
-This option controls how many entries the object cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. The default value is 4096.
+This option controls how many entries the object cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. The default value is 8191.
 
 .TP
 .B watch_fs
