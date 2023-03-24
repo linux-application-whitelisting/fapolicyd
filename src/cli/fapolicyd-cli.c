@@ -67,6 +67,7 @@ static const char *usage =
 "-t, --ftype file-path Prints out the mime type of a file\n"
 "-l, --list            Prints a list of the daemon's rules with numbers\n"
 "-u, --update          Notifies fapolicyd to perform update of database\n"
+"-r, --reload-rules    Notifies fapolicyd to perform reload of rules\n"
 ;
 
 static struct option long_opts[] =
@@ -83,11 +84,15 @@ static struct option long_opts[] =
 	{"ftype",	1, NULL, 't'},
 	{"list",	0, NULL, 'l'},
 	{"update",	0, NULL, 'u'},
+	{"reload-rules",	0, NULL, 'r'},
 	{ NULL,		0, NULL, 0 }
 };
 
 volatile atomic_bool stop = 0;  // Library needs this
 unsigned int debug_mode = 0;			// Library needs this
+unsigned int permissive = 0;			// Library needs this
+
+typedef enum _reload_code { DB, RULES} reload_code;
 
 static char *get_line(FILE *f, unsigned *lineno)
 {
@@ -452,7 +457,7 @@ next_iteration:
 }
 
 
-static int do_update(void)
+static int do_reload(int code)
 {
 	int fd = -1;
 	struct stat s;
@@ -487,7 +492,16 @@ static int do_update(void)
 		}
 	}
 
-	ssize_t ret = write(fd, "1\n", 2);
+	ssize_t ret;
+	char str[32] = {0};
+
+	if (code == DB) {
+		snprintf(str, 32, "%c\n", RELOAD_TRUSTDB_COMMAND);
+		ret = write(fd, "1\n", strlen(str));
+	} else if (code == RULES) {
+		snprintf(str, 32, "%c\n", RELOAD_RULES_COMMAND);
+		ret = write(fd, "3\n", strlen(str));
+	}
 
 	if (ret == -1) {
 		fprintf(stderr,"Write: %s -> %s\n", fifo_path, strerror(errno));
@@ -874,7 +888,7 @@ int main(int argc, char * const argv[])
 		return rc;
 	}
 
-	opt = getopt_long(argc, argv, "Ddf:ht:lu",
+	opt = getopt_long(argc, argv, "Ddf:ht:lur",
 				 long_opts, &option_index);
 	switch (opt) {
 	case 'd':
@@ -911,7 +925,12 @@ int main(int argc, char * const argv[])
 	case 'u':
 		if (argc > 2)
 			goto args_err;
-		rc = do_update();
+		rc = do_reload(DB);
+		break;
+	case 'r':
+		if (argc > 2)
+			goto args_err;
+		rc = do_reload(RULES);
 		break;
 
 	// Now the pure long options

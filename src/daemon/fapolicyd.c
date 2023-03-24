@@ -228,9 +228,9 @@ static void usr1_handler(int sig __attribute__((unused)))
  */
 static void reconfigure(void)
 {
-	update_trust_database();
+	set_reload_rules();
 
-	// TODO: Update rules
+	set_reload_trust_database();
 
 	// TODO: Update configuration
 }

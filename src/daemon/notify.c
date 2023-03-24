@@ -46,6 +46,7 @@
 
 // External variables
 extern volatile atomic_bool stop, run_stats;
+extern unsigned int permissive;
 
 // Local variables
 static pid_t our_pid;

@@ -1497,7 +1497,4 @@ void rules_clear(llist *l)
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
-
-	destroy_attr_sets();
 }
-

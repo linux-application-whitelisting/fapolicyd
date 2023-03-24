@@ -38,6 +38,7 @@
 #include "file.h"
 #include "lru.h"
 #include "message.h"
+#include "policy.h"
 
 #define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
 	FAN_OPEN_EXEC_PERM)
