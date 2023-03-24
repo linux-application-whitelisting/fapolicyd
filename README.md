@@ -291,7 +291,7 @@ an option if performance is problematic.
 
 MEMORY USAGE
 ------------
-Fapolicyd uses lmdb as its trust database. The database has very fast
+fapolicyd uses lmdb as its trust database. The database has very fast
 performance because it uses the kernel virtual memory system to put the
 whole database in memory. If the database is sized wrongly, then fapolicyd
 will reserve too much memory. Don't worry too much about this. The kernel is
@@ -433,7 +433,7 @@ Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 
 MANAGING TRUST
 --------------
-Fapolicyd use lmdb as a backend database for its trusted software list. You
+fapolicyd use lmdb as a backend database for its trusted software list. You
 can find this database in /var/lib/fapolicyd/. This list gets updated
 whenever packages are installed by dnf by a dnf plugin. If packages are
 installed by rpm instead of dnf, fapolicyd does not get a notification. In
@@ -506,7 +506,7 @@ file. Just add the places where libraries and applications are stored.
 SE Linux is modeling how an application behaves. It is not concerned about
 where the application came from or whether it's known to the system. Basically,
 anything in /bin gets bin_t type by default which is not a very restrictive
-label. MAC systems serve a different purpose. Fapolicyd by design cares solely
+label. MAC systems serve a different purpose. fapolicyd by design cares solely
 about if this is a known application/library. These are complimentary security
 subsystems. There is more information about application whitelisting use cases
 at the following NIST website:

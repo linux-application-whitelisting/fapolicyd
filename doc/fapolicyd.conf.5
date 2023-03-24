@@ -16,7 +16,7 @@ This option gives fapolicyd a scheduler boost. The number can be from 0 to 20. T
 
 .TP
 .B q_size
-This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 1024.
+This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shuts down it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 1024.
 
 .TP
 .B uid
@@ -52,7 +52,7 @@ This is a comma separated list of file systems that should be watched for access
 
 .TP
 .B trust
-This is a comma separated list of trust back-ends. If this is not configured, 'rpmdb,file' is default. Fapolicyd supports \fBfile\fP back-end that reads content of /etc/fapolicyd/fapolicyd.trust and use it as a list of trusted files. The second option is \fBrpmdb\fP backend that generates list of trusted files from rpmdb.
+This is a comma separated list of trust back-ends. If this is not configured, 'rpmdb,file' is default. fapolicyd supports \fBfile\fP back-end that reads content of /etc/fapolicyd/fapolicyd.trust and use it as a list of trusted files. The second option is \fBrpmdb\fP backend that generates list of trusted files from rpmdb.
 
 .TP
 .B integrity

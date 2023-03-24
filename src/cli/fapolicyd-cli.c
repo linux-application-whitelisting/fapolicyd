@@ -53,7 +53,7 @@
 #include "paths.h"
 
 static const char *usage =
-"Fapolicyd CLI Tool\n\n"
+"fapolicyd CLI Tool\n\n"
 "--check-config        Check the daemon config for syntax errors\n"
 "--check-path          Check files in $PATH against the trustdb for problems\n"
 "--check-status        Dump the deamon's internal performance statistics\n"
@@ -500,7 +500,7 @@ static int do_update(void)
 		return 1;
 	}
 
-	printf("Fapolicyd was notified\n");
+	printf("fapolicyd was notified\n");
 	return 0;
 }
 
