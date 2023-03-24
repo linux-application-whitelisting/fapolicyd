@@ -1,6 +1,6 @@
 /*
  * escape.c - Source file for escaping capability
- * Copyright (c) 2021 Red Hat Inc.
+ * Copyright (c) 2021,23 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -32,7 +32,7 @@
 
 static const char sh_set[] = "\"'`$\\!()| ";
 /*
- * this function checks whether esxaping is needed and if yes
+ * this function checks whether escaping is needed and if yes
  * it returns positive value and this value represents the size
  * of the string after escaping
  */

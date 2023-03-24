@@ -1,5 +1,7 @@
 1.2.1
 - Be consistent in updating and removing file system marks
+- Add escaping to /proc/mount entries
+- Revise escaping of trust files
 
 1.2
 - On shutdown when running reports, if trust db empty warn (Nobuhiro Iwamatsu)

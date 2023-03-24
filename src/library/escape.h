@@ -1,6 +1,6 @@
 /*
  * escape.h - Header file for escaping capability
- * Copyright (c) 2021 Red Hat Inc.
+ * Copyright (c) 2021,23 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -27,9 +27,9 @@
 
 #include "gcc-attributes.h"
 
-char *escape_shell(const char*, const size_t) MALLOCLIKE;
-size_t check_escape_shell(const char*);
-void unescape_shell(char *s, const size_t len);
+char *escape_shell(const char *, const size_t) __attr_access ((__read_only__, 1, 2)) MALLOCLIKE;
+size_t check_escape_shell(const char *);
+void unescape_shell(char *s, const size_t len) __attr_access ((__read_write__, 1, 2));
 
 char *unescape(const char *input) MALLOCLIKE;
 
