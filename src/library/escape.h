@@ -29,6 +29,7 @@
 
 char *escape_shell(const char*, const size_t) MALLOCLIKE;
 size_t check_escape_shell(const char*);
+void unescape_shell(char *s, const size_t len);
 
 char *unescape(const char *input) MALLOCLIKE;
 

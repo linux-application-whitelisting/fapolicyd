@@ -91,6 +91,31 @@ char *escape_shell(const char *input, const size_t expected_size)
 	return escape_buffer;
 }
 
+#define isoctal(a) (((a) & ~7) == '0')
+void unescape_shell(char *s, const size_t len)
+{
+	size_t sz = 0;
+	char *buf = s;
+
+	while (*s) {
+		if (*s == '\\' && sz + 3 < len && isoctal(s[1]) &&
+		    isoctal(s[2]) && isoctal(s[3])) {
+
+			*buf++ = 64*(s[1] & 7) + 8*(s[2] & 7) + (s[3] & 7);
+			s += 4;
+			sz += 4;
+		} else if (*s == '\\' && sz + 2 < len) {
+			*buf++ = s[1];
+			s += 2;
+			sz += 2;
+		} else {
+			*buf++ = *s++;
+			sz++;
+		}
+	}
+	*buf = '\0';
+}
+
 #define IS_HEX(X) (isxdigit(X) > 0 && !(islower(X) > 0))
 
 static char asciiHex2Bits(char X)
