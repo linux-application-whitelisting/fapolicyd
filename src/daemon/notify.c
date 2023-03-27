@@ -348,11 +348,15 @@ out:
 static void enqueue_event(const struct fanotify_event_metadata *metadata)
 {
 	if (q_append(q, metadata)) {
+		msg(LOG_ERR, "Failed to enqueue event for PID %d: "
+			"queue is full, please consider tuning q_size if issue happens often", metadata->pid);
 		// We have to deny. This allows the kernel to free it's
 		// memory related to this request. reply_event also closes
 		// the descriptor, so we don't need to do it here.
-		reply_event(fd, metadata, FAN_DENY, NULL);
-		msg(LOG_DEBUG, "enqueue error");
+		int decision = FAN_DENY;
+		if (permissive)
+			decision = FAN_ALLOW;
+		reply_event(fd, metadata, decision, NULL);
 	} else
 		set_ready();
 }
