@@ -238,23 +238,25 @@ it will output some performance statistic like this into
 
 ```
 Permissive: false
-Inter-thread max queue depth 7
-Allowed accesses: 116103
-Denied accesses: 17
-Database max pages: 40960
-Database pages in use: 27954 (68%)
+q_size: 640
+Inter-thread max queue depth 0
+Allowed accesses: 70397
+Denied accesses: 4
+Trust database max pages: 14848
+Trust database pages in use: 10792 (72%)
 
-Object cache size: 6151
-Object slots in use: 6086
-Object hits: 110034
-Object misses: 34984
-Object evictions: 28898
+Subject cache size: 1549
+Subject slots in use: 369 (23%)
+Subject hits: 70032
+Subject misses: 455
+Subject evictions: 86 (0%)
 
-Subject cache size: 1031
-Subject slots in use: 1023
-Subject hits: 115097
-Subject misses: 6770
-Subject evictions: 5747
+Object cache size: 8191
+Object slots in use: 6936 (84%)
+Object hits: 63465
+Object misses: 17964
+Object evictions: 11028 (17%)
+
 ```
 
 In this report, you can see that the internal request queue maxed out at 7.
