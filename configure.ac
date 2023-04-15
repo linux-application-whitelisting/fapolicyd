@@ -1,19 +1,18 @@
 AC_REVISION($Revision: 1.3 $)dnl
 AC_INIT([fapolicyd],[1.2.1])
 AC_PREREQ([2.50])dnl
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE(foreign subdir-objects)
-AM_PROG_LIBTOOL
+LT_INIT
 AC_SUBST(LIBTOOL_DEPS)
 
 echo .
 echo Checking for programs
 AC_PROG_CC
 AM_PROG_CC_C_O
-AC_PROG_CC_C99
 AC_PROG_INSTALL
 AC_PROG_AWK
 PKG_PROG_PKG_CONFIG
@@ -81,7 +80,6 @@ AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
 
 echo .
 echo Checking for required header files
-AC_HEADER_STDC
 AC_CHECK_HEADER(sys/fanotify.h, , [AC_MSG_ERROR(
 ["Couldn't find sys/fanotify.h...your kernel might not be new enough"] )])
 AC_CHECK_FUNCS(fexecve, [], [])
@@ -101,7 +99,8 @@ AC_CHECK_LIB(lmdb, mdb_env_create, , [AC_MSG_ERROR([liblmdb not found])], -llmdb
 
 LD_SO_PATH
 
-AC_OUTPUT(Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile rules.d/Makefile)
+AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile rules.d/Makefile])
+AC_OUTPUT
 
 echo .
 echo "
