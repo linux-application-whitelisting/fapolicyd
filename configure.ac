@@ -1,7 +1,7 @@
 AC_REVISION($Revision: 1.3 $)dnl
-AC_INIT(fapolicyd,1.2.1)
-AC_PREREQ(2.12)dnl
-AM_CONFIG_HEADER(config.h)
+AC_INIT([fapolicyd],[1.2.1])
+AC_PREREQ([2.50])dnl
+AC_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
 AC_CANONICAL_TARGET
