@@ -239,7 +239,7 @@ it will output some performance statistic like this into
 ```
 Permissive: false
 q_size: 640
-Inter-thread max queue depth 0
+Inter-thread max queue depth 7
 Allowed accesses: 70397
 Denied accesses: 4
 Trust database max pages: 14848
@@ -262,8 +262,10 @@ Object evictions: 11028 (17%)
 In this report, you can see that the internal request queue maxed out at 7.
 This means that the daemon had at most 7 threads/processes waiting. This
 shows that it got a little backed up but was handling requests pretty quick.
-If this number were big, like more than 200, then some action might need to
-be taken.
+If this number were big, like more than 200, then increasing the q_size may
+be necessary. Note that if you go above 1015, then systemd might need to be
+told to allow more than 1024 descriptors. In the fapolicyd.service file, you
+will need to add LimitNOFILE=16384 or some number bigger than your queue.
 
 Another statistic worth looking at is the hits to evictions ratio. When a
 request has nowhere to put information, it has to evict something to make
