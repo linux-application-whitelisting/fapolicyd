@@ -24,6 +24,7 @@ Requires(preun): systemd-units
 Requires(postun): systemd-units
 
 Patch1: fapolicyd-selinux.patch
+Patch2: fapolicyd-selinux-el8.patch
 
 %description
 Fapolicyd (File Access Policy Daemon) implements application whitelisting
@@ -50,6 +51,9 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 %setup -q -D -T -a 1
 
 %patch1 -p1 -b .selinux
+%if 0%{?rhel} == 8
+%patch2 -p1 -b .selinux-el8
+%endif
 
 # generate rules for python
 sed -i "s|%python2_path%|`readlink -f %{__python2}`|g" rules.d/*.rules

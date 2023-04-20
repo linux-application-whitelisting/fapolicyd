@@ -1,0 +1,42 @@
+--- a/fapolicyd-selinux-0.5/fapolicyd.te	2022-11-28 10:42:04.000000000 +0100
++++ b/fapolicyd-selinux-0.5/fapolicyd.te	2023-04-20 20:11:53.650302885 +0200
+@@ -41,11 +41,6 @@
+     attribute filesystem_type;
+     attribute mountpoint;
+ ')
+-allow fapolicyd_t file_type:dir { watch_mount watch_with_perm };
+-allow fapolicyd_t file_type:file { watch_mount watch_with_perm };
+-
+-allow fapolicyd_t filesystem_type : filesystem { watch };
+-allow fapolicyd_t mountpoint : dir { watch_sb };
+
+ manage_files_pattern(fapolicyd_t, fapolicyd_log_t, fapolicyd_log_t)
+ logging_log_filetrans(fapolicyd_t, fapolicyd_log_t, file)
+@@ -74,27 +69,12 @@
+
+ files_mmap_all_files(fapolicyd_t)
+ files_read_all_files(fapolicyd_t)
+-files_watch_mount_boot_dirs(fapolicyd_t)
+-files_watch_with_perm_boot_dirs(fapolicyd_t)
+-files_watch_mount_generic_tmp_dirs(fapolicyd_t)
+-files_watch_with_perm_generic_tmp_dirs(fapolicyd_t)
+-files_watch_mount_home(fapolicyd_t)
+-files_watch_with_perm_home(fapolicyd_t)
+-files_watch_mount_root_dirs(fapolicyd_t)
+-files_watch_with_perm_root_dirs(fapolicyd_t)
+
+ fs_getattr_xattr_fs(fapolicyd_t)
+-fs_watch_mount_tmpfs_dirs(fapolicyd_t)
+-fs_watch_with_perm_tmpfs_dirs(fapolicyd_t)
+-fs_watch_mount_dos_dirs(fapolicyd_t)
+-fs_watch_with_perm_dos_dirs(fapolicyd_t)
+
+ logging_send_syslog_msg(fapolicyd_t)
+ dbus_system_bus_client(fapolicyd_t)
+
+-userdom_watch_mount_tmp_dirs(fapolicyd_t)
+-userdom_watch_with_perm_tmp_dirs(fapolicyd_t)
+-
+ optional_policy(`
+         rpm_read_db(fapolicyd_t)
+         rpm_manage_db(fapolicyd_t)
