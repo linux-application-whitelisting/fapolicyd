@@ -41,6 +41,7 @@ interpret=`readelf -e /usr/bin/bash \
 sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
 
 %build
+./autogen.sh
 %configure \
     --with-audit \
     --disable-shared
