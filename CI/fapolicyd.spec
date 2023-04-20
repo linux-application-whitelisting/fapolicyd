@@ -44,6 +44,7 @@ sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
 ./autogen.sh
 %configure \
     --with-audit \
+    --with-rpm \
     --disable-shared
 
 make CFLAGS="%{optflags}" %{?_smp_mflags}
