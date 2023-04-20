@@ -51,8 +51,6 @@ make CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
 %make_install
-mkdir -p %{buildroot}/%{python3_sitelib}/dnf-plugins/
-install -p -m 644 dnf/%{name}-dnf-plugin.py %{buildroot}/%{python3_sitelib}/dnf-plugins/
 install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
@@ -178,8 +176,6 @@ fi
 %ghost %attr(660,root,%{name}) /run/%{name}/%{name}.fifo
 %ghost %attr(660,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/lib/%{name}/data.mdb
 %ghost %attr(660,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/lib/%{name}/lock.mdb
-%{python3_sitelib}/dnf-plugins/%{name}-dnf-plugin.py
-%{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
 * Thu Feb 09 2023 Steve Grubb <sgrubb@redhat.com> 1.2.1-1
