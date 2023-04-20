@@ -157,12 +157,12 @@ fi
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/trust.d
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/rules.d
-%attr(644,root,root) %{_sysconfdir}/bash_completion.d/*
-%ghost %{_sysconfdir}/%{name}/rules.d/*
+%attr(644,root,%{name}) %{_sysconfdir}/bash_completion.d/fapolicyd.bash_completion
+%ghost %verify(not md5 size mtime) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/rules.d/*
+%ghost %verify(not md5 size mtime) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.rules
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}-filter.conf
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
-%ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/fapolicyd.rules
 %ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/compiled.rules
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
@@ -171,7 +171,6 @@ fi
 %attr(755,root,root) %{_sbindir}/fagenrules
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*
-%attr(644,root,root) %{_datadir}/%{name}/*
 %ghost %attr(440,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/log/%{name}-access.log
 %attr(770,root,%{name}) %dir %{_localstatedir}/lib/%{name}
 %attr(770,root,%{name}) %dir /run/%{name}
