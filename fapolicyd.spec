@@ -57,6 +57,12 @@ mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/rules.d
+# get list of file names between known-libs and restrictive from sample-rules/README-rules
+cat %{buildroot}/%{_datadir}/%{name}/sample-rules/README-rules \
+  | grep -A 100 'known-libs' \
+  | grep -B 100 'restrictive' \
+  | grep '^[0-9]' > %{buildroot}/%{_datadir}/%{name}/default-ruleset.known-libs
+chmod 644 %{buildroot}/%{_datadir}/%{name}/default-ruleset.known-libs
 
 #cleanup
 find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
@@ -70,28 +76,20 @@ getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{nam
 %post
 # if no pre-existing rule file
 if [ ! -e %{_sysconfdir}/%{name}/%{name}.rules ] ; then
-	files=`ls %{_sysconfdir}/%{name}/rules.d/ 2>/dev/null | wc -w`
-	# Only if no pre-existing component rules
-	if [ "$files" -eq 0 ] ; then
-		## Install the known libs policy
-cp %{_datadir}/%{name}/sample-rules/10-languages.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/20-dracut.rules %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/21-updaters.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/30-patterns.rules %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/40-bad-elf.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/41-shared-obj.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/42-trusted-elf.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/70-trusted-lang.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/72-shell.rules  %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/90-deny-execute.rules %{_sysconfdir}/%{name}/rules.d/
-cp %{_datadir}/%{name}/sample-rules/95-allow-open.rules  %{_sysconfdir}/%{name}/rules.d/
-		chgrp %{name} %{_sysconfdir}/%{name}/rules.d/*
-		if [ -x /usr/sbin/restorecon ] ; then
-			# restore correct label
-			/usr/sbin/restorecon -F %{_sysconfdir}/%{name}/rules.d/*
-		fi
-		fagenrules --load
-	fi
+  files=`ls %{_sysconfdir}/%{name}/rules.d/ 2>/dev/null | wc -w`
+  # Only if no pre-existing component rules
+  if [ "$files" -eq 0 ] ; then
+    ## Install the known libs policy
+    for rulesfile in `cat %{_datadir}/%{name}/default-ruleset.known-libs`; do
+      cp %{_datadir}/%{name}/sample-rules/$rulesfile  %{_sysconfdir}/%{name}/rules.d/
+    done
+    chgrp %{name} %{_sysconfdir}/%{name}/rules.d/*
+    if [ -x /usr/sbin/restorecon ] ; then
+      # restore correct label
+      /usr/sbin/restorecon -F %{_sysconfdir}/%{name}/rules.d/*
+    fi
+    fagenrules >/dev/null
+  fi
 fi
 %systemd_post %{name}.service
 
@@ -107,6 +105,7 @@ fi
 %license COPYING
 %attr(755,root,%{name}) %dir %{_datadir}/%{name}
 %attr(755,root,%{name}) %dir %{_datadir}/%{name}/sample-rules
+%attr(644,root,%{name}) %{_datadir}/%{name}/default-ruleset.known-libs
 %attr(644,root,%{name}) %{_datadir}/%{name}/sample-rules/*
 %attr(644,root,%{name}) %{_datadir}/%{name}/fapolicyd-magic.mgc
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
