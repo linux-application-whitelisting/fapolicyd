@@ -1,0 +1,139 @@
+--- a/fapolicyd-selinux-0.5/fapolicyd.if	2022-11-28 10:42:04.000000000 +0100
++++ b/fapolicyd-selinux-0.5/fapolicyd.if	2023-04-20 16:50:38.787154909 +0200
+@@ -2,6 +2,136 @@
+
+ ########################################
+ ## <summary>
++##	Watch_mount directories in /boot.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++
++ifndef(`files_watch_mount_boot_dirs',`
++    interface(`files_watch_mount_boot_dirs',`
++        gen_require(`
++            type boot_t;
++	    ')
++
++	        allow $1 boot_t:dir watch_mount_dir_perms;
++    ')
++')
++
++
++########################################
++## <summary>
++##	Watch_mount home directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++
++ifndef(`files_watch_mount_home',`
++    interface(`files_watch_mount_home',`
++        gen_require(`
++            type home_root_t;
++	    ')
++
++	    allow $1 home_root_t:dir watch_mount_dir_perms;
++    ')
++')
++
++
++########################################
++## <summary>
++##	Watch_with_perm home directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++
++ifndef(`files_watch_with_perm_home',`
++interface(`files_watch_with_perm_home',`
++	gen_require(`
++		type home_root_t;
++	')
++
++	allow $1 home_root_t:dir watch_with_perm_dir_perms;
++')
++')
++
++
++########################################
++## <summary>
++##	Watch_mount dirs on a DOS filesystem.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++
++ifndef(`fs_watch_mount_dos_dirs',`
++interface(`fs_watch_mount_dos_dirs',`
++	gen_require(`
++		type dosfs_t;
++	')
++
++	watch_mount_dirs_pattern($1, dosfs_t, dosfs_t)
++')
++')
++
++
++
++########################################
++## <summary>
++##	Watch_with_perm dirs on a DOS filesystem.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++
++ifndef(`fs_watch_with_perm_dos_dirs',`
++interface(`fs_watch_with_perm_dos_dirs',`
++	gen_require(`
++		type dosfs_t;
++	')
++
++	watch_with_perm_dirs_pattern($1, dosfs_t, dosfs_t)
++')
++')
++
++
++########################################
++#
++
++ifndef(`files_watch_mount_boot_dirs',`
++interface(`files_watch_mount_boot_dirs',`
++	gen_require(`
++		type boot_t;
++	')
++
++       allow $1 boot_t:dir { getattr watch_mount };
++')
++')
++
++
++###################################################################################################
++
++
++
++
++########################################
++## <summary>
+ ##	Execute fapolicyd_exec_t in the fapolicyd domain.
+ ## </summary>
+ ## <param name="domain">
