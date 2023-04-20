@@ -28,8 +28,8 @@ makes use of the kernel's fanotify interface to determine file access rights.
 %setup -q
 
 # generate rules for python
-sed -i "s/%python2_path%/`readlink -f %{__python2} | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
-sed -i "s/%python3_path%/`readlink -f %{__python3} | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
+sed -i "s|%python2_path%|`readlink -f %{__python2}`|g" rules.d/*.rules
+sed -i "s|%python3_path%|`readlink -f %{__python3}`|g" rules.d/*.rules
 
 # Detect run time linker directly from bash
 interpret=`readelf -e /usr/bin/bash \
