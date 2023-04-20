@@ -67,11 +67,51 @@ chmod 644 %{buildroot}/%{_datadir}/%{name}/default-ruleset.known-libs
 #cleanup
 find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
 
+%define manage_default_rules   default_changed=0 \
+  # check changed fapolicyd.rules \
+  if [ -e %{_sysconfdir}/%{name}/%{name}.rules ]; then \
+    diff %{_sysconfdir}/%{name}/%{name}.rules %{_datadir}/%{name}/%{name}.rules.known-libs >/dev/null 2>&1 || { \
+      default_changed=1; \
+      #echo "change detected in fapolicyd.rules"; \
+    } \
+  fi \
+  if [ -e %{_sysconfdir}/%{name}/rules.d ]; then \
+    default_ruleset=''; \
+    # get listing of default rule files in known-libs \
+    [ -e %{_datadir}/%{name}/default-ruleset.known-libs ] && default_ruleset=`cat %{_datadir}/%{name}/default-ruleset.known-libs`; \
+    # check for removed or added files \
+    default_count=`echo "$default_ruleset" | wc -l`; \
+    current_count=`ls -1 %{_sysconfdir}/%{name}/rules.d/*.rules | wc -l`; \
+    [ $default_count -eq $current_count ] || { \
+      default_changed=1; \
+      # echo "change detected in number of rule files d:$default_count vs c:$current_count"; \
+    }; \
+    for file in %{_sysconfdir}/%{name}/rules.d/*.rules; do \
+      if echo "$default_ruleset" | grep -q "`basename $file`"; then \
+        # compare content of the rule files \
+        diff $file %{_datadir}/%{name}/sample-rules/`basename $file` >/dev/null 2>&1 || { \
+          default_changed=1; \
+          # echo "change detected in `basename $file`"; \
+        }; \
+      else \
+        # added file detected \
+        default_changed=1; \
+        # echo "change detected in added rules file `basename $file`"; \
+      fi; \
+    done; \
+  fi; \
+  # remove files if no change against default rules detected \
+  [ $default_changed -eq 0 ] && rm -rf %{_sysconfdir}/%{name}/%{name}.rules %{_sysconfdir}/%{name}/rules.d/* || : \
+
 %check
 make check
 
 %pre
 getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{name} -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}
+if [ $1 -eq 2 ]; then
+# detect changed default rules in case of upgrade
+%manage_default_rules
+fi
 
 %post
 # if no pre-existing rule file
@@ -95,6 +135,12 @@ fi
 
 %preun
 %systemd_preun %{name}.service
+if [ $1 -eq 0 ]; then
+# detect changed default rules in case of uninstall
+%manage_default_rules
+else
+  [ -e %{_sysconfdir}/%{name}/%{name}.rules ] && rm -rf %{_sysconfdir}/%{name}/rules.d/* || :
+fi
 
 %postun
 %systemd_postun_with_restart %{name}.service
