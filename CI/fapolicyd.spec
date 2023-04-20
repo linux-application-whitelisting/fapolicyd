@@ -10,13 +10,17 @@ License: GPL-3.0-or-later
 URL: http://people.redhat.com/sgrubb/fapolicyd
 Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
 Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/tags/v%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
+# we bundle uthash for rhel9
+Source2: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz#/uthash-2.3.0.tar.gz
 BuildRequires: gcc
 BuildRequires: kernel-headers
 BuildRequires: autoconf automake make gcc libtool
 BuildRequires: systemd systemd-devel openssl-devel rpm-devel file-devel file
 BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
 BuildRequires: python3-devel
+%if 0%{?rhel} == 0
 BuildRequires: uthash-devel
+%endif
 Recommends: %{name}-selinux
 Requires(pre): shadow-utils
 Requires(post): systemd-units
@@ -25,6 +29,7 @@ Requires(postun): systemd-units
 
 Patch1: fapolicyd-selinux.patch
 Patch2: fapolicyd-selinux-el8.patch
+Patch3: fapolicyd-uthash-bundle.patch
 
 %description
 Fapolicyd (File Access Policy Daemon) implements application whitelisting
@@ -53,6 +58,12 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 %patch1 -p1 -b .selinux
 %if 0%{?rhel} == 8
 %patch2 -p1 -b .selinux-el8
+%endif
+
+%if 0%{?rhel} != 0
+# uthash
+%setup -q -D -T -a 2
+%patch3 -p1 -b .uthash
 %endif
 
 # generate rules for python
