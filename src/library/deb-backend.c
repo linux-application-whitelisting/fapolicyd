@@ -17,8 +17,8 @@
 #include "message.h"
 
 static const char kDebBackend[] = "debdb";
-const int kMaxKeyLength = 4096;
-const int kMd5HexSize = 32;
+static const int kMaxKeyLength = 4096;
+static const int kMd5HexSize = 32;
 
 static int deb_init_backend(void);
 static int deb_load_list(const conf_t *);
@@ -63,44 +63,43 @@ static int add_file_to_backend(const char *path,
 
   // If its not a regular file, skip.
   if (!S_ISREG(path_stat.st_mode)) {
-    msg(LOG_DEBUG, "\nNot regular file %s", path);
+    msg(LOG_DEBUG, "Not regular file %s", path);
     return 1;
   }
 
-  // Open the file and calculate sha256 and size.
+  // Open the file and check the md5 hash first.
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
-    msg(LOG_WARNING, "\nCould not open %s", path);
-    return 1;
-  }
-  size_t file_size = lseek(fd, 0, SEEK_END);
-  lseek(fd, 0, SEEK_SET);
-  char *sha_digest = get_hash_from_fd2(fd, file_size, 1);
-
-  if (sha_digest == NULL) {
-    msg(LOG_ERR, "\nSha digest returned NULL");
+    msg(LOG_WARNING, "Could not open %s", path);
     return 1;
   }
 
-  lseek(fd, 0, SEEK_SET);
   char *md5_digest = get_hash_from_fd2(fd, file_size, 0);
-
   if (md5_digest == NULL) {
-    free(sha_digest);
-    msg(LOG_ERR, "\nMD5 digest returned NULL");
+    close(fd);
+    msg(LOG_ERR, "MD5 digest returned NULL");
     return 1;
   }
-
-  close(fd);
 
   if (strcmp(md5_digest, expected_md5) != 0) {
-    msg(LOG_WARNING, "\nSkipping %s as hash mismatched. Should be %s, got %s",
+    msg(LOG_WARNING, "Skipping %s as hash mismatched. Should be %s, got %s",
         path, expected_md5, md5_digest);
-    free(sha_digest);
+    close(fd);
     free(md5_digest);
     return 1;
   }
   free(md5_digest);
+
+  // It's OK so create a sha256 of the file
+  size_t file_size = lseek(fd, 0, SEEK_END);
+  lseek(fd, 0, SEEK_SET);
+  char *sha_digest = get_hash_from_fd2(fd, file_size, 1);
+  close(fd);
+
+  if (sha_digest == NULL) {
+    msg(LOG_ERR, "Sha digest returned NULL");
+    return 1;
+  }
 
   char *data;
   if (asprintf(&data, DATA_FORMAT, SRC_DEB, file_size, sha_digest) == -1) {
