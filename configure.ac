@@ -74,6 +74,17 @@ if test x$use_rpm = xyes ; then
 fi
 AM_CONDITIONAL(WITH_RPM, test x$use_rpm = xyes)
 
+withval=""
+AC_ARG_WITH(deb,
+AS_HELP_STRING([--with-deb],[Use the deb database as a trust source]),
+use_deb=$withval,use_deb=no)
+
+if test x$use_deb = xyes ; then
+    AC_CHECK_LIB(dpkg, pkg_array_init_from_hash, , [AC_MSG_ERROR([libdpkg not found])], -ldpkg)
+    AC_DEFINE(USE_DEB,1,[Define if you want to use the deb database as trust source.])
+fi
+AM_CONDITIONAL(WITH_DEB, test x$use_deb = xyes)
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])

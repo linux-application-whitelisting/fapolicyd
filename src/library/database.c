@@ -995,7 +995,7 @@ retry_res:
 
 			// Calculate a hash only one time
 			if (retry == 1) {
-				hash = get_hash_from_fd2(fd, info->size);
+				hash = get_hash_from_fd2(fd, info->size, 1);
 				if (hash) {
 					strncpy(sha_xattr, hash, 64);
 					sha_xattr[64] = 0;

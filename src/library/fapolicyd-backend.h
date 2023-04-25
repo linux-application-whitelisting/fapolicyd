@@ -28,7 +28,7 @@
 #include "conf.h"
 #include "llist.h"
 
-typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB } trust_src_t;
+typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_DEB, SRC_FILE_DB } trust_src_t;
 
 // source, size, sha
 #define DATA_FORMAT "%u %lu %64s"

@@ -11,9 +11,6 @@ lib_LTLIBRARIES= libfapolicyd.la
 fapolicyd_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
 fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now
 
-fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
-fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
-
 libfapolicyd_la_SOURCES = \
 	library/avl.c \
 	library/avl.h \
@@ -76,6 +73,15 @@ libfapolicyd_la_SOURCES += \
 	library/rpm-filter.h
 
 endif
+
+if WITH_DEB
+libfapolicyd_la_SOURCES += library/deb-backend.c
+fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
+fapolicyd_LDFLAGS += -ldpkg
+endif
+
+fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
+fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 
 libfapolicyd_la_CFLAGS = $(fapolicyd_CFLAGS)
 libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread
