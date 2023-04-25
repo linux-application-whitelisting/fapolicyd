@@ -36,7 +36,8 @@
 extern backend file_backend;
 #ifdef USE_RPM
 extern backend rpm_backend;
-#elif USE_DEB
+#endif
+#ifdef USE_DEB
 extern backend deb_backend;
 #endif
 
@@ -45,7 +46,8 @@ static backend* compiled[] =
 	&file_backend,
 #ifdef USE_RPM
 	&rpm_backend,
-#elif USE_DEB
+#endif
+#ifdef USE_DEB
 	&deb_backend,
 #endif
 	NULL,
