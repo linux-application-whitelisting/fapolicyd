@@ -4,6 +4,7 @@
 #include <dpkg/program.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <openssl/md5.h>
 #include <openssl/sha.h>
 #include <sys/stat.h>
@@ -74,6 +75,8 @@ static int add_file_to_backend(const char *path,
     return 1;
   }
 
+  size_t file_size = lseek(fd, 0, SEEK_END);
+  lseek(fd, 0, SEEK_SET);
   char *md5_digest = get_hash_from_fd2(fd, file_size, 0);
   if (md5_digest == NULL) {
     close(fd);
@@ -91,8 +94,6 @@ static int add_file_to_backend(const char *path,
   free(md5_digest);
 
   // It's OK so create a sha256 of the file
-  size_t file_size = lseek(fd, 0, SEEK_END);
-  lseek(fd, 0, SEEK_SET);
   char *sha_digest = get_hash_from_fd2(fd, file_size, 1);
   close(fd);
 
@@ -132,7 +133,7 @@ static int add_file_to_backend(const char *path,
 // These functions are copied from dpkg source v1.21.1
 // For some reason they segfault when i call :/
 
-parse_filehash_buffer(struct varbuf *buf, struct pkginfo *pkg,
+int parse_filehash_buffer(struct varbuf *buf, struct pkginfo *pkg,
                       struct pkgbin *pkgbin) {
   char *thisline, *nextline;
   const char *pkgname = pkg_name(pkg, pnaw_nonambig);
@@ -190,6 +191,7 @@ parse_filehash_buffer(struct varbuf *buf, struct pkginfo *pkg,
     namenode = fsys_hash_find_node(filename, 0);
     namenode->newhash = nfstrsave(thisline);
   }
+  return 0;
 }
 
 void parse_filehash2(struct pkginfo *pkg, struct pkgbin *pkgbin) {
