@@ -82,6 +82,7 @@ use_deb=$withval,use_deb=no)
 if test x$use_deb = xyes ; then
     AC_CHECK_LIB(dpkg, pkg_array_init_from_hash, , [AC_MSG_ERROR([libdpkg not found])], -ldpkg)
     AC_DEFINE(USE_DEB,1,[Define if you want to use the deb database as trust source.])
+    AC_CHECK_LIB(md, MD5Final, , [AC_MSG_ERROR([libmd is missing])], -lmd)
 fi
 AM_CONDITIONAL(WITH_DEB, test x$use_deb = xyes)
 

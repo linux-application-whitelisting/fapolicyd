@@ -183,7 +183,7 @@ struct _hash_record {
 	UT_hash_handle hh;
 };
 
-extern int debug;
+extern unsigned int debug;
 static int rpm_load_list(const conf_t *conf)
 {
 	int rc;
