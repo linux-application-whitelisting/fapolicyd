@@ -40,7 +40,7 @@
 #include "fapolicyd-backend.h"
 #include "llist.h"
 
-#include "rpm-filter.h"
+#include "filter.h"
 
 static int rpm_init_backend(void);
 static int rpm_load_list(const conf_t *);

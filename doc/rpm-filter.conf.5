@@ -1,56 +1,15 @@
-.TH RPM_FILTER.CONF: "5" "January 2023" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD.FILTER: "26" "April 2023" "Red Hat" "System Administration Utilities"
 .SH NAME
-rpm-filter.conf \- fapolicyd filter configuration file
+fapolicyd.filter \- fapolicyd filter configuration file
 .SH DESCRIPTION
 The file
-.I /etc/fapolicyd/rpm-filter.conf
-contains configuration of the filter for the application allowlisting daemon. This filter specifies an allow or exclude list of files from rpm. Valid line starts with character '+', '-' or '#' for comments. The rest of the line contains a path specification. Space can be used as indentation to add more specific filters to the previous one. Note, that only one space is required for one level of an indent. If  there are multiple specifications on the same indentation level they extend the previous line with lower indentation, usually a directory.  The path may be specified using the glob pattern. A directory specification has to end with a slash ‘/’.
-
-The filters are processed as follows: Starting from the up the to bottom while in case of a match the result (+/-) is set unless there is an indented block which describes more detailed specification of the parent level match. The same processing logic is applied to the inner filters definitions. If there is no match, the parent’s result is set. If there is no match at all, the default result is minus (-).
-
-If the result was a plus (+), the respective file from the rpmdb is imported to the TrustDB. Vice versa, if the result was a minus (-), the respective file is not imported.
-
-From a performance point of view it is better to design an indented filter because in the ideal situation each component of the path is compared only once. In contrast to it, a filter without any indentation has to contain a full path which makes the pattern more complicated and thus slower to process. The motivation behind this is to have a flexible configuration and keep the TrustDB as small as possible to make the look-ups faster.
+.I /etc/fapolicyd/rpm-filter.filter.conf
+was migrated to
+.I /etc/fapolicyd/fapolicyd-filter.conf
+or see
+.BR fapolicyd.filter(5).
 
 
-
-.nf
-.B # this is simple allow list
-.B - /usr/bin/some_binary1
-.B - /usr/bin/some_binary2
-.B + /
-.fi
-
-.nf
-.B # this is the same
-.B + /
-.B \ + usr/bin/
-.B \ \ - some_binary1
-.B \ \ - some_binary2
-.fi
-
-.nf
-.B # this is similar allow list with a wildcard
-.B - /usr/bin/some_binary?
-.B + /
-.fi
-
-.nf
-.B # this is similar with another wildcard
-.B + /
-.B \ - usr/bin/some_binary*
-.fi
-
-.nf
-.B # keeps everything except usr/share except python and perl files
-.B # /usr/bin/ls - result is '+'
-.B # /usr/share/something - result is '-'
-.B # /usr/share/abcd.py - result is '+'
-.B + /
-.B \ - usr/share/
-.B \ \ + *.py
-.B \ \ + *.pl
-.fi
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),

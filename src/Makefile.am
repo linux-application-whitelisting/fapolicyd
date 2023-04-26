@@ -69,8 +69,8 @@ libfapolicyd_la_SOURCES = \
 if WITH_RPM
 libfapolicyd_la_SOURCES += \
 	library/rpm-backend.c \
-	library/rpm-filter.c \
-	library/rpm-filter.h
+	library/filter.c \
+	library/filter.h
 
 endif
 

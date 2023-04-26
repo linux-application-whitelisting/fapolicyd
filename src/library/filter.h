@@ -1,5 +1,5 @@
 /*
-* rpm-filter.h - Header for rpm filter implementation
+* filter.h - Header for a filter implementation
 * Copyright (c) 2023 Red Hat Inc., Durham, North Carolina.
 * All Rights Reserved.
 *
@@ -30,31 +30,31 @@
 
 #include "llist.h"
 
-typedef enum rpm_filter_type
+typedef enum filter_type
 {
 	NONE,
 	ADD,
 	SUB,
 	COMMENT,
 	BAD,
-} rpm_filter_type_t;
+} filter_type_t;
 
-typedef struct _rpm_filter
+typedef struct _filter
 {
-	rpm_filter_type_t type;
+	filter_type_t type;
 	char * path;
 	size_t len;
 	int processed;
 	int matched;
 	list_t list;
-} rpm_filter_t;
+} filter_t;
 
 
 typedef struct _stack_item
 {
 	int level;
 	int offset;
-	rpm_filter_t *filter;
+	filter_t *filter;
 } stack_item_t;
 
 

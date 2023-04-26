@@ -1,7 +1,7 @@
 EXTRA_DIST = \
 	fapolicyd.service \
 	fapolicyd.conf \
-	rpm-filter.conf \
+	fapolicyd.filter \
 	fapolicyd.trust \
 	fapolicyd-tmpfiles.conf \
 	fapolicyd-magic \
@@ -12,7 +12,7 @@ fapolicyddir = $(sysconfdir)/fapolicyd
 
 dist_fapolicyd_DATA = \
 	fapolicyd.conf \
-	rpm-filter.conf \
+	fapolicyd.filter \
 	fapolicyd.trust
 
 systemdservicedir = $(systemdsystemunitdir)

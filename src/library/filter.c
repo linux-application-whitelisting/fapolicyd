@@ -1,5 +1,5 @@
 /*
-* rpm-filter.c - filter for rpm trust source
+* filter.c - filter for a trust source
 * Copyright (c) 2023 Red Hat Inc., Durham, North Carolina.
 * All Rights Reserved.
 *
@@ -22,7 +22,7 @@
 *   Radovan Sroka <rsroka@redhat.com>
 */
 
-#include "rpm-filter.h"
+#include "filter.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -34,13 +34,13 @@
 #include "message.h"
 #include "string-util.h"
 
+#define OLD_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"
+#define FILTER_FILE "/etc/fapolicyd/fapolicyd-filter.conf"
 
-#define RPM_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"
+filter_t *global_filter = NULL;
 
-rpm_filter_t *global_filter = NULL;
-
-static rpm_filter_t *filter_create_obj(void);
-static void filter_destroy_obj(rpm_filter_t *_filter);
+static filter_t *filter_create_obj(void);
+static void filter_destroy_obj(filter_t *_filter);
 
 // init fuction of this module
 int filter_init(void)
@@ -60,9 +60,9 @@ void filter_destroy(void)
 }
 
 // alocate new filter object and fill with the defaults
-static rpm_filter_t *filter_create_obj(void)
+static filter_t *filter_create_obj(void)
 {
-	rpm_filter_t *filter = malloc(sizeof(rpm_filter_t));
+	filter_t *filter = malloc(sizeof(filter_t));
 	if (filter) {
 		filter->type = NONE;
 		filter->path = NULL;
@@ -75,19 +75,19 @@ static rpm_filter_t *filter_create_obj(void)
 }
 
 // free all nested filters
-static void filter_destroy_obj(rpm_filter_t *_filter)
+static void filter_destroy_obj(filter_t *_filter)
 {
 	if (_filter == NULL)
 		return;
 
-	rpm_filter_t *filter = _filter;
+	filter_t *filter = _filter;
 	stack_t stack;
 	stack_init(&stack);
 
 	stack_push(&stack, filter);
 
 	while (!stack_is_empty(&stack)) {
-		filter = (rpm_filter_t*)stack_top(&stack);
+		filter = (filter_t*)stack_top(&stack);
 		if (filter->processed) {
 			(void)free(filter->path);
 			// asume that item->data is NULL
@@ -99,7 +99,7 @@ static void filter_destroy_obj(rpm_filter_t *_filter)
 
 		list_item_t *item = list_get_first(&filter->list);
 		for (; item != NULL ; item = item->next) {
-				rpm_filter_t *next_filter = (rpm_filter_t*)item->data;
+				filter_t *next_filter = (filter_t*)item->data;
 				// we can use list_empty() later
 				// we dont want to free filter right now
 				// it will freed after popping
@@ -112,7 +112,7 @@ static void filter_destroy_obj(rpm_filter_t *_filter)
 }
 
 // create struct and push it to the top of stack
-static void stack_push_vars(stack_t *_stack, int _level, int _offset, rpm_filter_t *_filter)
+static void stack_push_vars(stack_t *_stack, int _level, int _offset, filter_t *_filter)
 {
 	if (_stack == NULL)
 		return;
@@ -183,7 +183,7 @@ int filter_check(const char *_path)
 		return 0;
 	}
 
-	rpm_filter_t *filter = global_filter;
+	filter_t *filter = global_filter;
 	char *path = strdup(_path);
 	size_t path_len = strlen(_path);
 	size_t offset = 0;
@@ -206,7 +206,7 @@ int filter_check(const char *_path)
 			list_item_t *item = list_get_first(&filter->list);
 			// push all the descendants to the stack
 			for (; item != NULL ; item = item->next) {
-				rpm_filter_t *next_filter = (rpm_filter_t*)item->data;
+				filter_t *next_filter = (filter_t*)item->data;
 				stack_push_vars(&stack, level+1, offset, next_filter);
 			}
 
@@ -289,7 +289,7 @@ int filter_check(const char *_path)
 
 				// push descendants to the stack
 				for (; item != NULL ; item = item->next) {
-					rpm_filter_t *next_filter = (rpm_filter_t*)item->data;
+					filter_t *next_filter = (filter_t*)item->data;
 					stack_push_vars(&stack, level, offset, next_filter);
 				}
 
@@ -334,15 +334,22 @@ end:
 	return res;
 }
 
-// load rpm filter configuration file and fill the filter structure
+// load filter configuration file and fill the filter structure
 int filter_load_file(void)
 {
 	int res = 0;
-	FILE *stream = fopen(RPM_FILTER_FILE, "r");
+	FILE *stream = fopen(OLD_FILTER_FILE, "r");
 
 	if (stream == NULL) {
-		msg(LOG_ERR, "Cannot open filter file %s", RPM_FILTER_FILE);
-		return 1;
+
+		stream = fopen(FILTER_FILE, "r");
+		if (stream == NULL) {
+			msg(LOG_ERR, "Cannot open filter file %s", FILTER_FILE);
+			return 1;
+		}
+	} else {
+		msg(LOG_INFO, "Using old filter file: %s, use the new one: %s", OLD_FILTER_FILE, FILTER_FILE);
+		msg(LOG_INFO, "Consider 'mv %s %s'", OLD_FILTER_FILE, FILTER_FILE);
 	}
 
 	ssize_t nread;
@@ -373,7 +380,7 @@ int filter_load_file(void)
 
 		int level = 1;
 		char * rest = line;
-		rpm_filter_type_t type = NONE;
+		filter_type_t type = NONE;
 
 		for (size_t i = 0 ; i < len ; i++) {
 			switch (line[i]) {
@@ -415,7 +422,7 @@ int filter_load_file(void)
 			goto bad;
 		}
 
-		rpm_filter_t * filter = filter_create_obj();
+		filter_t * filter = filter_create_obj();
 
 		if (filter) {
 			filter->path = strdup(rest);
@@ -481,7 +488,7 @@ good:
 	stack_pop_all_vars(&stack);
 	stack_destroy(&stack);
 	if (global_filter->list.count == 0) {
-		msg(LOG_ERR, "filter_load_file: no valid filter provided in %s", RPM_FILTER_FILE);
+		msg(LOG_ERR, "filter_load_file: no valid filter provided in %s", FILTER_FILE);
 	}
 	return res;
 }
