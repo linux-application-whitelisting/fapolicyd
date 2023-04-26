@@ -29,4 +29,4 @@ man_MANS = \
 	fapolicyd.rules.5 \
 	fapolicyd.trust.5 \
 	fapolicyd.conf.5 \
-	rpm-filter.conf.5
+	fapolicyd.filter.5
