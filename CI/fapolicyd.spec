@@ -1,6 +1,6 @@
 %global selinuxtype targeted
 %global moduletype contrib
-%define semodule_version 0.5
+%define semodule_version 0.6
 
 Summary: Application Whitelisting Daemon
 Name: fapolicyd
@@ -9,7 +9,8 @@ Release: 1
 License: GPL-3.0-or-later
 URL: http://people.redhat.com/sgrubb/fapolicyd
 Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
-Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/tags/v%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
+#S#ource1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/tags/v%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
+Source1: https://github.com/sopos/%{name}-selinux/archive/refs/tags/v%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
 # we bundle uthash for rhel9
 Source2: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz#/uthash-2.3.0.tar.gz
 BuildRequires: gcc
@@ -27,8 +28,6 @@ Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units
 
-Patch1: fapolicyd-selinux.patch
-Patch2: fapolicyd-selinux-el8.patch
 Patch3: fapolicyd-uthash-bundle.patch
 
 %description
@@ -54,11 +53,6 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 
 # selinux
 %setup -q -D -T -a 1
-
-%patch1 -p1 -b .selinux
-%if 0%{?rhel} == 8
-%patch2 -p1 -b .selinux-el8
-%endif
 
 %if 0%{?rhel} != 0
 # uthash
