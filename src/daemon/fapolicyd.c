@@ -58,7 +58,7 @@
 
 
 // Global program variables
-unsigned int debug = 0, permissive = 0;
+unsigned int debug_mode = 0, permissive = 0;
 
 // Signal handler notifications
 volatile atomic_bool stop = 0, hup = 0, run_stats = 0;
@@ -452,7 +452,7 @@ int main(int argc, const char *argv[])
 
 	if (argc > 1 && strcmp(argv[1], "--help") == 0)
 		usage();
-	set_message_mode(MSG_STDERR, debug);
+	set_message_mode(MSG_STDERR, debug_mode);
 	if (load_daemon_config(&config)) {
 		free_daemon_config(&config);
 		msg(LOG_ERR, "Exiting due to bad configuration");
@@ -461,10 +461,10 @@ int main(int argc, const char *argv[])
 	permissive = config.permissive;
 	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--debug") == 0) {
-			debug = 1;
+			debug_mode = 1;
 			set_message_mode(MSG_STDERR, DBG_YES);
 		} else if (strcmp(argv[i], "--debug-deny") == 0) {
-			debug = 2;
+			debug_mode = 2;
 			set_message_mode(MSG_STDERR, DBG_YES);
 		} else if (strcmp(argv[i], "--permissive") == 0) {
 			permissive = 1;
@@ -528,7 +528,7 @@ int main(int argc, const char *argv[])
 	// Load the rule configuration
 	if (load_rules(&config))
 		exit(1);
-	if (!debug) {
+	if (!debug_mode) {
 		if (become_daemon() < 0) {
 			msg(LOG_ERR, "Exiting due to failure daemonizing");
 			exit(1);

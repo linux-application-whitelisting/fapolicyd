@@ -87,7 +87,7 @@ static struct option long_opts[] =
 };
 
 volatile atomic_bool stop = 0;  // Library needs this
-unsigned int debug = 0;			// Library needs this
+unsigned int debug_mode = 0;			// Library needs this
 
 static char *get_line(FILE *f, unsigned *lineno)
 {

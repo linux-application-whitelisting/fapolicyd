@@ -428,8 +428,8 @@ decision_t process_event(event_t *e)
 	}
 
 	// Output some information if debugging on or syslogging requested
-	if ( (results & SYSLOG) || (debug == 1) ||
-	     (debug > 1 && (results & DENY)) )
+	if ( (results & SYSLOG) || (debug_mode == 1) ||
+	     (debug_mode > 1 && (results & DENY)) )
 		log_it2(r ? r->num : 0xFFFFFFFF, results, e);
 
 	// Record which rule (rules are 1 based when listed by the cli tool)
@@ -535,7 +535,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 	if (metadata->mask & mask) {
 		// if in debug mode, do not allow audit events
-		if (debug)
+		if (debug_mode)
 			decision &= ~AUDIT;
 
 		// If permissive, always allow and honor the audit bit

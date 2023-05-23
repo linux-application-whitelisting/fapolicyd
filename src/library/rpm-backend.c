@@ -183,7 +183,7 @@ struct _hash_record {
 	UT_hash_handle hh;
 };
 
-extern unsigned int debug;
+extern unsigned int debug_mode;
 static int rpm_load_list(const conf_t *conf)
 {
 	int rc;
@@ -238,7 +238,7 @@ static int rpm_load_list(const conf_t *conf)
 
 			if (strlen(sha) != 64) {
 				// Limit this to 5 if production
-				if (debug || msg_count++ < 5) {
+				if (debug_mode || msg_count++ < 5) {
 					msg(LOG_WARNING, "No SHA256 for %s",
 							    file_name);
 				}
