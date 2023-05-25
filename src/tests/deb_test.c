@@ -6,6 +6,10 @@
 #include "config.h"
 #include "message.h"
 
+#ifdef USE_RPM
+unsigned int debug_mode;
+#endif
+
 int main(int argc, char* const argv[]) {
   set_message_mode(MSG_STDERR, DBG_YES);
 
