@@ -221,6 +221,9 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	char procfd_path[32];
 	ssize_t path_len;
 
+	if (blen == 0)
+		return NULL;
+
 	snprintf(procfd_path, sizeof(procfd_path)-1,
 		"/proc/self/fd/%d", fd);
 	path_len = readlink(procfd_path, buf, blen - 1);
