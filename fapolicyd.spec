@@ -9,13 +9,17 @@ Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
 #ELN %global moduletype contrib
 #ELN %define semodule_version 0.6
 #ELN Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/tags/v%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
+#ELN # we bundle uthash for rhel9
+#ELN Source2: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz#/uthash-2.3.0.tar.gz
 BuildRequires: gcc
 BuildRequires: kernel-headers
 BuildRequires: autoconf automake make gcc libtool
 BuildRequires: systemd systemd-devel openssl-devel rpm-devel file-devel file
 BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
 BuildRequires: python3-devel
+#ELN %if 0%{?rhel} == 0
 BuildRequires: uthash-devel
+#ELN %endif
 #ELN Recommends: %{name}-selinux
 Requires(pre): shadow-utils
 Requires(post): systemd-units
@@ -55,6 +59,12 @@ makes use of the kernel's fanotify interface to determine file access rights.
 
 #ELN # selinux
 #ELN %setup -q -D -T -a 1
+
+#ELN %if 0%{?rhel} != 0
+#ELN # uthash
+#ELN %setup -q -D -T -a 2
+#ELN %patch1 -p1 -b .uthash
+#ELN %endif
 
 # generate rules for python
 sed -i "s|%python2_path%|`readlink -f %{__python2}`|g" rules.d/*.rules
