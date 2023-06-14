@@ -3,7 +3,7 @@ Userspace
 * Allow rules to express paths using globbing (fnmatch)
 * add db_max_size = auto
 
-Improve reconfigure via SIGHUP to update configuration and rules
+Improve reconfigure via SIGHUP to update configuration
 Consider adding rule testing to cli (uid, pgm, file)
 Support other packaging manifests
 
