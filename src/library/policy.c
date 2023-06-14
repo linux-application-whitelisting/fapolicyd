@@ -555,18 +555,12 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 
 		// Subj trust is rare. See if we have it.
 		if (e && (sn = subject_access(e->s, SUBJ_TRUST))) {
-			if (sn)
-				f.a.subj_trust = sn->val;
-			else
-				f.a.subj_trust = 2;
+			f.a.subj_trust = sn->val;
 		} else
-				f.a.subj_trust = 2;
+			f.a.subj_trust = 2;
 		// All objects have a trust value
 		if (e && (obj = get_obj_attr(e, OBJ_TRUST))) {
-			if (obj)
-				f.a.obj_trust = obj->val;
-			else  // Only serious errors cause this
-				f.a.obj_trust = 2;
+			f.a.obj_trust = obj->val;
 		} else
 			f.a.obj_trust = 2;
 		write(fd, &f, sizeof(struct fan_audit_response));
