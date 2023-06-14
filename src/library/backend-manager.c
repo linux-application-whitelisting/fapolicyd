@@ -65,15 +65,15 @@ static int backend_push(const char *name)
 	}
 
 	if (index == -1) {
-		msg(LOG_INFO, "%s backend not supported, skipping!", name);
-		return 0;
+		msg(LOG_ERR, "%s backend not supported, aborting!", name);
+		return 1;
 	} else {
 		backend_entry *tmp = (backend_entry *)
 				malloc(sizeof(backend_entry));
 
 		if (!tmp) {
 			msg(LOG_ERR, "cannot allocate %s backend", name);
-			return 1;
+			return 2;
 		}
 
 		tmp->backend = compiled[index];
