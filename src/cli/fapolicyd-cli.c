@@ -492,7 +492,7 @@ static int do_reload(int code)
 		}
 	}
 
-	ssize_t ret;
+	ssize_t ret = 0;
 	char str[32] = {0};
 
 	if (code == DB) {
