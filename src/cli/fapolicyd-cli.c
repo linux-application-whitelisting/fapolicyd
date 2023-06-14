@@ -843,7 +843,8 @@ static int do_status_report(void)
 
 			// Access a file to provoke a response
 			int fd = open(CONFIG_FILE, O_RDONLY);
-			close(fd);
+			if (fd >= 0)
+				close(fd);
 
 retry:
 			// wait for it
