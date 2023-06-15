@@ -136,5 +136,5 @@ fi
 %{python3_sitelib}/dnf-plugins/__pycache__/%{name}-dnf-plugin.*.pyc
 
 %changelog
-* Wed Jun 14 Steve Grubb <sgrubb@redhat.com> 1.3.1-1
+* Wed Jun 15 Steve Grubb <sgrubb@redhat.com> 1.3.1-1
 - New release
