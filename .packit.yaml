@@ -14,12 +14,12 @@ jobs:
   - job: copr_build
     trigger: pull_request
     targets:
-      - fedora-rawhide
+      - fedora-all
       - epel-9
       - epel-8
   - job: tests
     trigger: pull_request
     targets:
-      - fedora-rawhide
+      - fedora-all
       - epel-9
       - epel-8
