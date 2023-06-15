@@ -1,9 +1,9 @@
-.TH FAPOLICYD.FILTER: "26" "April 2023" "Red Hat" "System Administration Utilities"
+.TH FAPOLICYD_FILTER.CONF: "15" "June 2023" "Red Hat" "System Administration Utilities"
 .SH NAME
-fapolicyd.filter \- fapolicyd filter configuration file
+fapolicyd-filter.conf \- fapolicyd filter configuration file
 .SH DESCRIPTION
 The file
-.I /etc/fapolicyd/fapolicyd.filter
+.I /etc/fapolicyd/fapolicyd-filter.conf
 contains configuration of the filter for the application allowlisting daemon. This filter specifies an allow or exclude list of files from a trust source. Valid line starts with character '+', '-' or '#' for comments. The rest of the line contains a path specification. Space can be used as indentation to add more specific filters to the previous one. Note, that only one space is required for one level of an indent. If  there are multiple specifications on the same indentation level they extend the previous line with lower indentation, usually a directory.  The path may be specified using the glob pattern. A directory specification has to end with a slash ‘/’.
 
 The filters are processed as follows: Starting from the up the to bottom while in case of a match the result (+/-) is set unless there is an indented block which describes more detailed specification of the parent level match. The same processing logic is applied to the inner filters definitions. If there is no match, the parent’s result is set. If there is no match at all, the default result is minus (-).
