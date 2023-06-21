@@ -516,12 +516,21 @@ int main(int argc, const char *argv[])
 	limit.rlim_cur = RLIM_INFINITY;
 	limit.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_FSIZE, &limit);
+	getrlimit(RLIMIT_NOFILE, &limit);
+	if (limit.rlim_max >= 16384)
+		limit.rlim_cur = limit.rlim_max;
+	else
+		limit.rlim_cur = 16834;
 	if (setrlimit(RLIMIT_NOFILE, &limit))
 		msg(LOG_WARNING, "Can't increase file number rlimit - %s",
 		    strerror(errno));
+	else
+		msg(LOG_INFO, "Can handle %u file descriptors", limit.rlim_cur);
 
 	// get more time slices because everything is waiting on us
-	if (nice(-config.nice_val))
+	errno = 0;
+	nice(-config.nice_val);
+	if (errno)
 		msg(LOG_WARNING, "Couldn't adjust priority (%s)",
 				strerror(errno));
 
