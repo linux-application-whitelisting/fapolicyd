@@ -944,7 +944,10 @@ retry_res:
 	// pass some kind of trust check to even be started and we do not
 	// have an open fd to the file.
 	if (!do_integrity) {
-		return res ? 1 : 0;
+		if (res == NULL)
+			return 0;
+		free(res);
+		return 1;
 	} else {
 		unsigned int tsource;
 		off_t size;

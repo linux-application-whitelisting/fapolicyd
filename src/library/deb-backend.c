@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
 #include <openssl/md5.h>
 #include <openssl/sha.h>
 #include <sys/stat.h>
@@ -58,24 +59,36 @@ struct _hash_record {
  */
 static int add_file_to_backend(const char *path,
                                struct _hash_record **hashtable,
-                               const char *expected_md5) {
+                               const char *expected_md5)
+{
   struct stat path_stat;
-  stat(path, &path_stat);
+  // Open the file and check the md5 hash first.
+  int fd = open(path, O_RDONLY|O_NOFOLLOW);
+  if (fd < 0) {
+    if (errno != ELOOP) // Don't report symlinks as a warning
+      msg(LOG_WARNING, "Could not open %si, %s", path, strerror(errno));
+    return 1;
+  }
+
+  if (fstat(fd, &path_stat)) {
+    close(fd);
+    msg(LOG_WARNING, "fstat file %s failed %s", path, strerror(errno));
+    return 1;
+  }
 
   // If its not a regular file, skip.
   if (!S_ISREG(path_stat.st_mode)) {
+    close(fd);
     msg(LOG_DEBUG, "Not regular file %s", path);
     return 1;
   }
 
-  // Open the file and check the md5 hash first.
-  int fd = open(path, O_RDONLY);
-  if (fd < 0) {
-    msg(LOG_WARNING, "Could not open %s", path);
+  size_t file_size = lseek(fd, 0, SEEK_END);
+  if (file_size == (size_t)-1) {
+    close(fd);
+    msg(LOG_ERR, "Error seeking the end");
     return 1;
   }
-
-  size_t file_size = lseek(fd, 0, SEEK_END);
   lseek(fd, 0, SEEK_SET);
   char *md5_digest = get_hash_from_fd2(fd, file_size, 0);
   if (md5_digest == NULL) {

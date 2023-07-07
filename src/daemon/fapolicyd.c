@@ -520,12 +520,13 @@ int main(int argc, const char *argv[])
 	if (limit.rlim_max >= 16384)
 		limit.rlim_cur = limit.rlim_max;
 	else
-		limit.rlim_cur = 16834;
+		limit.rlim_max = limit.rlim_cur = 16834;
+
 	if (setrlimit(RLIMIT_NOFILE, &limit))
 		msg(LOG_WARNING, "Can't increase file number rlimit - %s",
 		    strerror(errno));
 	else
-		msg(LOG_INFO, "Can handle %u file descriptors", limit.rlim_cur);
+		msg(LOG_INFO,"Can handle %lu file descriptors", limit.rlim_cur);
 
 	// get more time slices because everything is waiting on us
 	errno = 0;
