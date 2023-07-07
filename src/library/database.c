@@ -1,6 +1,6 @@
 /*
  * database.c - Trust database
- * Copyright (c) 2016,2018-22 Red Hat Inc.
+ * Copyright (c) 2016,2018-23 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -103,6 +103,8 @@ const char *lookup_tsource(unsigned int tsource)
 	{
 	case SRC_RPM:
 		return "rpmdb";
+	case SRC_DEB:
+		return "debdb";
 	case SRC_FILE_DB:
 		return "filedb";
 	}

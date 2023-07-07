@@ -1,6 +1,6 @@
 /*
  * fapolicyd-backend.h - Header file for database backend interface
- * Copyright (c) 2020 Red Hat Inc.
+ * Copyright (c) 2020-23 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -28,6 +28,7 @@
 #include "conf.h"
 #include "llist.h"
 
+// If this gets extended, please put the new items at the end.
 typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
 
 // source, size, sha
