@@ -637,6 +637,7 @@ static int check_watch_fs(void)
 
 	free_daemon_config(&config);
 	list_empty(&fs);
+	list_empty(&mnt);
 	if (found == 0)
 		printf("Nothing appears missing\n");
 
