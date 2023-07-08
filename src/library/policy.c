@@ -52,6 +52,7 @@ static unsigned long allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
 
+extern volatile atomic_bool stop;
 volatile atomic_bool reload_rules = 0;
 
 static const nv_t table[] = {
@@ -86,6 +87,9 @@ struct fan_audit_response
 	struct fanotify_response_info_audit_rule a;
 };
 #endif
+
+#define WB_SIZE 512
+static char *working_buffer = NULL;
 
 // This function returns 1 on success and 0 on failure
 static int parsing_obj;
@@ -289,6 +293,8 @@ void destroy_rules(void)
 	}
 
 	destroy_attr_sets();
+	if (stop)
+		free(working_buffer);
 }
 
 void set_reload_rules(void)
@@ -431,8 +437,6 @@ static void *fmemccpy(void* restrict dst, const void* restrict src, ssize_t n)
 }
 
 
-#define WB_SIZE 512
-static char *working_buffer = NULL;
 static void log_it2(unsigned int num, decision_t results, event_t *e)
 {
 	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
