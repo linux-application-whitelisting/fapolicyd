@@ -249,5 +249,5 @@ fi
 #ELN %selinux_relabel_post -s %{selinuxtype}
 
 %changelog
-* Thu Jun 15 Steve Grubb <sgrubb@redhat.com> 1.3.2-1
+* Thu Jul 10 Steve Grubb <sgrubb@redhat.com> 1.3.2-1
 - New release
