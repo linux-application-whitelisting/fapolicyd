@@ -1,4 +1,4 @@
-name: almalinux-build
+name: rockylinux8-build
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: almalinux
+    container: rockylinux/rockylinux:8
 
     steps:
     - uses: actions/checkout@v2
