@@ -1,0 +1,42 @@
+name: rockylinux9-build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: rockylinux/rockylinux:9
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: getting envinronment info
+      run: uname -a
+
+    - name: print version
+      run: cat /etc/*release
+
+    - name: installing dependecies 1
+      run: dnf -y install epel-release dnf-plugins-core python3-dnf-plugins-core util-linux --nogpgcheck
+
+    - name: installing dependecies 2
+      run:  dnf -y builddep ./fapolicyd.spec --enablerepo='crb' --nogpgcheck
+
+    - name: generate config files
+      run: ./autogen.sh
+
+    - name: configure
+      run: ./configure --with-rpm --with-audit --disable-shared --disable-dependency-tracking
+
+    - name: build
+      run: make
+
+    - name: check
+      run: make check
+
+    - name: dist
+      run: make dist
