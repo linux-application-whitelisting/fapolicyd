@@ -23,6 +23,7 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
+#include "attr-sets.h"
 #include "config.h"
 #include <stdbool.h>
 #include <stdio.h>
@@ -273,12 +274,20 @@ int load_rules(const conf_t *_config)
 		return 1;
 
 	FILE * f = open_file();
-	if (f == NULL)
+	if (f == NULL) {
+		destroy_attr_sets();
 		return 1;
+	}
 
 	int res = _load_rules(_config, f);
 	fclose(f);
-	return res;
+
+	if (res) {
+		destroy_attr_sets();
+		return 1;
+	}
+
+	return 0;
 }
 
 void destroy_rules(void)

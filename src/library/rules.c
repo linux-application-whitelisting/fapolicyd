@@ -65,9 +65,6 @@ int rules_create(llist *l)
 	l->cur = NULL;
 	l->cnt = 0;
 
-	if (init_attr_sets())
-		return 1;
-
 	return  0;
 }
 

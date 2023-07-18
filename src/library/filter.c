@@ -472,9 +472,12 @@ int filter_load_file(void)
 			msg(LOG_ERR, "filter_load_file: paring error line: %ld, \"%s\"", line_number, line);
 			filter_destroy_obj(filter);
 			free(line);
+			line = NULL;
 			goto bad;
 		}
+	}
 
+	if (line) {
 		free(line);
 		line = NULL;
 	}
