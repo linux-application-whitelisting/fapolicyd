@@ -503,6 +503,15 @@ and destroy function. So, someone who knows the debian package database,
 for example, could implement a new backend and send a pull request. We are
 looking for collaborators.
 
+An initial implementation for Debian distributions has been added.
+Run:
+```
+cd deb
+./build_deb.sh
+```
+
+To build the debian version that uses the `debdb` backend.
+
 Also, if the distribution is very small, you can use the file trust database
 file. Just add the places where libraries and applications are stored.
 

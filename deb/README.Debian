@@ -1,0 +1,11 @@
+fapolicyd for Debian
+
+This is a simple application whitelisting daemon for Linux.
+
+RUNTIME DEPENDENCIES
+--------------------
+* kernel >= 4.20 (Must support FANOTIFY_OPEN_EXEC_PERM. See [1] below.)
+
+After configuring fapolicyd with /etc/fapolicyd/fapolicyd.conf and adding
+the desired set of rules to /etc/fapolicyd/rules.d/ start the
+fapolicyd service.
