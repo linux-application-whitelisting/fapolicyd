@@ -27,7 +27,7 @@ jobs:
       run: apt install -y autoconf automake libtool gcc libdpkg-dev libmd-dev uthash-dev liblmdb-dev libudev-dev 
 
     - name: installing dependencies 2
-      run: apt install -y libgcrypt-dev libssl-dev libmagic-dev libcap-ng-dev  libseccomp-dev make
+      run: apt install -y libgcrypt-dev libssl-dev libmagic-dev libcap-ng-dev  libseccomp-dev make debmake
 
     - name: generate config files
       run: ./autogen.sh
