@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --with autoreconf 
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+	--with-audit \
+	--disable-shared \
+	--without-rpm \
+	--with-deb \
+	--prefix=/usr
+override_dh_autoreconf:
+	dh_autoreconf -- ./autogen.sh
