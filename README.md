@@ -510,7 +510,9 @@ cd deb
 ./build_deb.sh
 ```
 
-To build the debian version that uses the `debdb` backend.
+To build the `.deb` package that uses the `debdb` backend.
+You must add rules to `/etc/fapolicyd/rules.d/` and change configuration
+in `/etc/fapolicyd/fapolicyd.conf` to use `trust=debdb` after installation.
 
 Also, if the distribution is very small, you can use the file trust database
 file. Just add the places where libraries and applications are stored.
