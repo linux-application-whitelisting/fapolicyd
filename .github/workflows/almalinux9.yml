@@ -20,10 +20,10 @@ jobs:
     - name: print version
       run: cat /etc/*release
 
-    - name: installing dependecies 1
+    - name: installing dependencies 1
       run: dnf -y install epel-release dnf-plugins-core python3-dnf-plugins-core util-linux --nogpgcheck
 
-    - name: installing dependecies 2
+    - name: installing dependencies 2
       run:  dnf -y builddep ./fapolicyd.spec --enablerepo='crb' --nogpgcheck
 
     - name: generate config files
