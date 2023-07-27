@@ -20,7 +20,7 @@ jobs:
     - name: print fedora version
       run: cat /etc/fedora-release
 
-    - name: installing dependecies
+    - name: installing dependencies
       run: dnf -y install dnf-plugins-core python3-dnf-plugins-core util-linux; dnf -y builddep ./fapolicyd.spec
 
     - name: generate config files
