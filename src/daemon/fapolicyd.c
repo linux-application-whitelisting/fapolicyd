@@ -348,8 +348,9 @@ static void handle_mounts(int fd)
 	fd_fgets_rewind();
 	mlist_mark_all_deleted(m);
 	do {
+		int rc = fd_fgets(buf, sizeof(buf), fd);
 		// Get a line
-		if (fd_fgets(buf, sizeof(buf), fd)) {
+		if (rc > 0) {
 			// Parse it
 			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
 			    device, point, type, mntops, &fs_req, &fs_passno);
@@ -364,7 +365,8 @@ static void handle_mounts(int fd)
 				} else
 					mlist_append(m, point);
 			}
-		}
+		} else if (rc < 0) // Some kind of error - stop
+			break;
 	} while (!fd_fgets_eof());
 
 	// update marks
