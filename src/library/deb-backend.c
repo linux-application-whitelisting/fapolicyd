@@ -237,6 +237,7 @@ static int deb_load_list(const conf_t *conf) {
   pkg_array_init_from_hash(&array);
 
   msg(LOG_INFO, "Computing hashes for %d packages.", array.n_pkgs);
+  fsys_hash_reset();
 
   for (int i = 0; i < array.n_pkgs; i++) {
     struct pkginfo *package = array.pkgs[i];
