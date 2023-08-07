@@ -1,0 +1,14 @@
+#! /bin/sh
+
+adduser --system --group fapolicyd
+mkdir -p /etc/fapolicyd/rules.d
+mkdir -p /etc/fapolicyd/trust.d
+mkdir -p /var/lib/fapolicyd
+mkdir -p /usr/share/fapolicyd/
+mkdir -p /run/fapolicyd/
+
+chown -R fapolicyd:fapolicyd /etc/fapolicyd/
+chown fapolicyd:fapolicyd /var/lib/fapolicyd/
+chown fapolicyd:fapolicyd /run/fapolicyd/
+
+

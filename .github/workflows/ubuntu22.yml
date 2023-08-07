@@ -1,4 +1,4 @@
-name: rockylinux9-build
+name: ubuntu22-build
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: rockylinux/rockylinux:9
+    container: ubuntu:jammy
 
     steps:
     - uses: actions/checkout@v2
@@ -20,17 +20,20 @@ jobs:
     - name: print version
       run: cat /etc/*release
 
+    - name: Ensure up to date package list
+      run: apt update
+
     - name: installing dependencies 1
-      run: dnf -y install epel-release dnf-plugins-core python3-dnf-plugins-core util-linux --nogpgcheck
+      run: apt install -y autoconf automake libtool gcc libdpkg-dev libmd-dev uthash-dev liblmdb-dev libudev-dev 
 
     - name: installing dependencies 2
-      run:  dnf -y builddep ./fapolicyd.spec --enablerepo='crb' --nogpgcheck
+      run: apt install -y libgcrypt-dev libssl-dev libmagic-dev libcap-ng-dev  libseccomp-dev make debmake debhelper
 
     - name: generate config files
       run: ./autogen.sh
 
     - name: configure
-      run: ./configure --with-rpm --with-audit --disable-shared --disable-dependency-tracking
+      run: ./configure --without-rpm --with-audit --disable-shared --disable-dependency-tracking --with-deb
 
     - name: build
       run: make
@@ -40,3 +43,6 @@ jobs:
 
     - name: dist
       run: make dist
+
+    - name: build deb
+      run: cd deb && ./build_deb.sh
