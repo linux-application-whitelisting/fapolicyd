@@ -143,3 +143,36 @@ void mlist_clear(mlist *m)
 	m->cnt = 0;
 }
 
+void mlist_delete_cur(mlist *m)
+{
+	register mnode* current;
+
+	current = m->cur;
+	if (m->head == m->cur)
+	{
+		m->cur  = m->cur->next;
+		m->head = m->cur;
+	}
+	else
+	{
+		register mnode* previous;
+
+		previous = m->head;
+		while (previous) {
+			if (previous->next == current)
+			{
+				previous->next = current->next;
+				m->cur         = current->next;
+				break;
+			}
+			previous = previous->next;
+		}
+	}
+	if (current)
+	{
+		free((void *)current->path);
+		free((void *)current);
+		m->cnt--;
+	}
+}
+
