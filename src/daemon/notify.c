@@ -120,21 +120,20 @@ int init_fanotify(const conf_t *conf, mlist *m)
 			deadmans_switch_thread_main, NULL);
 
 	mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
-
+#if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
+	if (conf->allow_filesystem_mark)
+	    mark_flag = FAN_MARK_FILESYSTEM;
+	else
+	    mark_flag = FAN_MARK_MOUNT;
+#else
+	if (conf->allow_filesystem_mark)
+		msg(LOG_ERR,
+	    "allow_filesystem_mark is unsupported for this kernel - ignoring");
+	mark_flag = FAN_MARK_MOUNT;
+#endif
 	// Iterate through the mount points and add a mark
 	path = mlist_first(m);
 	while (path) {
-#if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
-		if (conf->allow_filesystem_mark)
-		    mark_flag = FAN_MARK_FILESYSTEM;
-		else
-		    mark_flag = FAN_MARK_MOUNT;
-#else
-		if (conf->allow_filesystem_mark)
-			msg(LOG_ERR,
-	    "allow_filesystem_mark is unsupported for this kernel - ignoring");
-		mark_flag = FAN_MARK_MOUNT;
-#endif
 retry_mark:
 		if (fanotify_mark(fd, FAN_MARK_ADD | mark_flag,
 				  mask, -1, path) == -1) {
