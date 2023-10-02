@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <grp.h>
+#include <limits.h>
 #include <error.h>
 #include "attr-sets.h"
 #include "process.h"
@@ -9,7 +10,7 @@
 int main(void)
 {
 	int res, num, i, check_intersect = 0;
-	gid_t gid, gids[16];
+	gid_t gid, gids[NGROUPS_MAX];
 	attr_sets_entry_t *groups = get_gid_set_from_pid(getpid());
 
 	gid = getgid();
@@ -17,7 +18,7 @@ int main(void)
 	if (!res)
 		error(1, 0, "Group %d not found", gid);
 
-	num = getgroups(16, gids);
+	num = getgroups(NGROUPS_MAX, gids);
 	if (num < 0)
 		error(1, 0, "Too many groups");
 
