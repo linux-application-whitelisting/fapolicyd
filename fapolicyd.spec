@@ -7,8 +7,8 @@ URL: http://people.redhat.com/sgrubb/fapolicyd
 Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
 #ELN %global selinuxtype targeted
 #ELN %global moduletype contrib
-#ELN %define semodule_version 0.6
-#ELN Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/tags/v%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
+#ELN %define semodule_version master
+#ELN Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/heads/%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
 #ELN # we bundle uthash for rhel9
 #ELN Source2: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz#/uthash-2.3.0.tar.gz
 BuildRequires: gcc
