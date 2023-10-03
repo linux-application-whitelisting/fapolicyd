@@ -120,12 +120,11 @@ int init_fanotify(const conf_t *conf, mlist *m)
 			deadmans_switch_thread_main, NULL);
 
 	mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
-
 #if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
 	if (conf->allow_filesystem_mark)
-		mark_flag = FAN_MARK_FILESYSTEM;
+	    mark_flag = FAN_MARK_FILESYSTEM;
 	else
-		mark_flag = FAN_MARK_MOUNT;
+	    mark_flag = FAN_MARK_MOUNT;
 #else
 	if (conf->allow_filesystem_mark)
 		msg(LOG_ERR,
@@ -167,7 +166,6 @@ void fanotify_update(mlist *m)
 	if (fd < 0)
 		return;
 
-	mnode *prev = m->head;
 	mlist_first(m);
 	while (m->cur) {
 		if (m->cur->status == ADD) {
@@ -186,12 +184,8 @@ void fanotify_update(mlist *m)
 		// Now remove the deleted mount point
 		if (m->cur->status == DELETE) {
 			msg(LOG_DEBUG, "Deleted %s mount point", m->cur->path);
-			prev->next = m->cur->next;
-			free((void *)m->cur->path);
-			free((void *)m->cur);
-			m->cur = prev->next;
+			mlist_delete_cur(m);
 		} else {
-			prev = m->cur;
 			mlist_next(m);
 		}
 	}
