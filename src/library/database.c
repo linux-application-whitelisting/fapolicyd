@@ -116,8 +116,15 @@ int preconstruct_fifo(const conf_t *config)
 	int rc;
 	char err_buff[BUFFER_SIZE];
 
-	/* Make sure that there is no such file/fifo */
-	unlink_fifo();
+	/* Ensure that the RUN_DIR exists */
+	if (mkdir(RUN_DIR, 0770) && errno != EEXIST) {
+		msg(LOG_ERR, "Failed to create a directory %s (%s)", RUN_DIR,
+		    strerror_r(errno, err_buff, BUFFER_SIZE));
+		return 1;
+	} else {
+		/* Make sure that there is no such file/fifo */
+		unlink_fifo();
+	}
 
 	rc = mkfifo(fifo_path, 0660);
 
@@ -1477,4 +1484,3 @@ void walk_database_finish(void)
 	abort_transaction(lt_txn);
 	close_db(0);
 }
-

@@ -33,6 +33,7 @@
 #define DB_DIR          "/var/lib/fapolicyd"
 #define DB_NAME         "trust.db"
 #define REPORT          "/var/log/fapolicyd-access.log"
+#define RUN_DIR         "/run/fapolicyd/"
 #define STAT_REPORT     "/run/fapolicyd.state"
 #define fifo_path       "/run/fapolicyd/fapolicyd.fifo"
 #define pidfile         "/run/fapolicyd.pid"
