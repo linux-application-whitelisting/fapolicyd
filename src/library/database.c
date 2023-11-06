@@ -1256,6 +1256,15 @@ static void *update_thread_main(void *arg)
 	sigaddset(&sigs, SIGHUP);
 	sigaddset(&sigs, SIGINT);
 	sigaddset(&sigs, SIGSEGV);
+	sigaddset(&sigs, SIGABRT);
+	sigaddset(&sigs, SIGBUS);
+	sigaddset(&sigs, SIGFPE);
+	sigaddset(&sigs, SIGILL);
+	sigaddset(&sigs, SIGSYS);
+	sigaddset(&sigs, SIGTRAP);
+	sigaddset(&sigs, SIGXCPU);
+	sigaddset(&sigs, SIGXFSZ);
+	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	if (ffd[0].fd == 0) {

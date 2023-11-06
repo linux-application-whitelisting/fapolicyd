@@ -31,6 +31,7 @@
 
 int init_fanotify(const conf_t *config, mlist *m);
 void fanotify_update(mlist *m);
+void unmark_fanotify_and_close_fd(mlist *m);
 void shutdown_fanotify(mlist *m);
 void decision_report(FILE *f);
 void handle_events(void);
