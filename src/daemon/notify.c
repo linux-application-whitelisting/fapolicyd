@@ -167,34 +167,45 @@ void fanotify_update(mlist *m)
 	if (fd < 0)
 		return;
 
-	mnode *prev = m->head;
-	mlist_first(m);
-	while (m->cur) {
-		if (m->cur->status == ADD) {
+	if (m->head == NULL)
+		return;
+
+	mnode *cur = m->head, *prev = NULL, *temp;
+
+	while (cur) {
+		if (cur->status == ADD) {
 			// We will trust that the mask was set correctly
 			if (fanotify_mark(fd, FAN_MARK_ADD | mark_flag,
-					mask, -1, m->cur->path) == -1) {
+					mask, -1, cur->path) == -1) {
 				msg(LOG_ERR,
 				    "Error (%s) adding fanotify mark for %s",
-					strerror(errno), m->cur->path);
+					strerror(errno), cur->path);
 			} else {
 				msg(LOG_DEBUG, "Added %s mount point",
-					m->cur->path);
+					cur->path);
 			}
 		}
 
 		// Now remove the deleted mount point
-		if (m->cur->status == DELETE) {
-			msg(LOG_DEBUG, "Deleted %s mount point", m->cur->path);
-			prev->next = m->cur->next;
-			free((void *)m->cur->path);
-			free((void *)m->cur);
-			m->cur = prev->next;
+		if (cur->status == DELETE) {
+			msg(LOG_DEBUG, "Deleted %s mount point", cur->path);
+			temp = cur->next;
+
+			if (cur == m->head)
+				m->head = temp;
+			else
+				prev->next = temp;
+
+			free((void *)cur->path);
+			free((void *)cur);
+
+			cur = temp;
 		} else {
-			prev = m->cur;
-			mlist_next(m);
+			prev = cur;
+			cur = cur->next;
 		}
 	}
+	m->cur = m->head;  // Leave cur pointing to something valid
 }
 
 void shutdown_fanotify(mlist *m)
