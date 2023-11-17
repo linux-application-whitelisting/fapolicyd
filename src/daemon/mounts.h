@@ -36,7 +36,6 @@ typedef struct _mnode{
 typedef struct {
 	mnode *head;          // List head
 	mnode *cur;           // Pointer to current node
-	unsigned int cnt;     // How many items in this list
 } mlist;
 
 void mlist_create(mlist *m);

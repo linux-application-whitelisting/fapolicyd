@@ -37,7 +37,6 @@ void mlist_create(mlist *m)
 {
         m->head = NULL;
         m->cur = NULL;
-        m->cnt = 0;
 }
 
 static void mlist_last(mlist *m)
@@ -79,7 +78,6 @@ int mlist_append(mlist *m, const char *p)
 
 	// make newnode current
 	m->cur = newnode;
-	m->cnt++;
 
 	return 0;
 }
@@ -140,6 +138,5 @@ void mlist_clear(mlist *m)
 	}
 	m->head = NULL;
 	m->cur = NULL;
-	m->cnt = 0;
 }
 
