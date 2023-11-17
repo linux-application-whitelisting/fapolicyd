@@ -31,7 +31,6 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include "mounts.h"
-#include "message.h"
 
 void mlist_create(mlist *m)
 {
