@@ -2,7 +2,7 @@
 Improve dpkg support (Stephen Tridgell)
 Fix issue when no initial mount points (wjhunter3)
 Add RuntimeDirectory to the systemd service file
-Update code to support NGROUPS_MAX group id's
+Update code to limit the number group id's logged
 Improve mount point detection code
 
 1.3.2
