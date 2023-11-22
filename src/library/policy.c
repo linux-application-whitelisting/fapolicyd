@@ -47,6 +47,7 @@
 #include "paths.h"
 
 #define MAX_SYSLOG_FIELDS	21
+#define NGID_LIMIT		32
 
 static llist rules;
 static unsigned long allowed = 0, denied = 0;
@@ -401,17 +402,18 @@ static char *format_value(int item, unsigned int num, decision_t results,
 			if (asprintf(&out, "%s", str ? str : "??") < 0)
 				out = NULL;
 
-		} else { // GID
-			out = malloc(16*12); // gid's are limited to 16
+		} else { // GID only log first 32
+			out = malloc(NGID_LIMIT*12);
 			if (out && subj->set) {
 				char buf[12];
 				char *ptr = out;
+				int cnt = 0;
 				avl_iterator i;
 				avl_int_data_t *grp;
-				for (grp =
-					     (avl_int_data_t *)avl_first(&i,
-							 &(subj->set->tree));
-				     grp; grp=(avl_int_data_t *)avl_next(&i)) {
+				for (grp = (avl_int_data_t *)
+				           avl_first(&i, &(subj->set->tree));
+				           grp && cnt < NGID_LIMIT;
+					   grp=(avl_int_data_t *)avl_next(&i)) {
 					if (ptr == out)
 						snprintf(buf, sizeof(buf),
 							 "%d", grp->num);
@@ -419,6 +421,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 						snprintf(buf, sizeof(buf),
 							 ",%d", grp->num);
 					ptr = stpcpy(ptr, buf);
+					cnt++;
 				}
 			} else if (out)
 				strcpy(out, "?");
