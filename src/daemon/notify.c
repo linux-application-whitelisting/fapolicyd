@@ -208,7 +208,7 @@ void fanotify_update(mlist *m)
 	m->cur = m->head;  // Leave cur pointing to something valid
 }
 
-void shutdown_fanotify(mlist *m)
+void unmark_fanotify_and_close_fd(mlist *m)
 {
 	const char *path = mlist_first(m);
 
@@ -221,6 +221,13 @@ void shutdown_fanotify(mlist *m)
 		path = mlist_next(m);
 	}
 
+	close(fd);
+}
+
+void shutdown_fanotify(mlist *m)
+{
+	unmark_fanotify_and_close_fd(m);
+
 	// End the thread
 	pthread_cond_signal(&do_decision);
 	pthread_join(decision_thread, NULL);
@@ -231,7 +238,6 @@ void shutdown_fanotify(mlist *m)
 
 	// Clean up
 	q_close(q);
-	close(fd);
 
 	// Report results
 	msg(LOG_DEBUG, "Allowed accesses: %lu", getAllowed());
@@ -274,6 +280,15 @@ static void *deadmans_switch_thread_main(void *arg)
 	sigaddset(&sigs, SIGUSR1);
 	sigaddset(&sigs, SIGINT);
 	sigaddset(&sigs, SIGSEGV);
+	sigaddset(&sigs, SIGABRT);
+	sigaddset(&sigs, SIGBUS);
+	sigaddset(&sigs, SIGFPE);
+	sigaddset(&sigs, SIGILL);
+	sigaddset(&sigs, SIGSYS);
+	sigaddset(&sigs, SIGTRAP);
+	sigaddset(&sigs, SIGXCPU);
+	sigaddset(&sigs, SIGXFSZ);
+	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	do {
@@ -302,6 +317,15 @@ static void *decision_thread_main(void *arg)
 	sigaddset(&sigs, SIGUSR1);
 	sigaddset(&sigs, SIGINT);
 	sigaddset(&sigs, SIGSEGV);
+	sigaddset(&sigs, SIGABRT);
+	sigaddset(&sigs, SIGBUS);
+	sigaddset(&sigs, SIGFPE);
+	sigaddset(&sigs, SIGILL);
+	sigaddset(&sigs, SIGSYS);
+	sigaddset(&sigs, SIGTRAP);
+	sigaddset(&sigs, SIGXCPU);
+	sigaddset(&sigs, SIGXFSZ);
+	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	while (!stop) {

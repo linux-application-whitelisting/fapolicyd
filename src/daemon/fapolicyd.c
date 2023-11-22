@@ -76,6 +76,9 @@ typedef struct fs_data {
 } fs_data_t;
 static struct fs_avl filesystems;
 
+// List of mounts being watched
+static mlist *m = NULL;
+
 static void usage(void) NORETURN;
 
 
@@ -204,11 +207,12 @@ static void term_handler(int sig)
 }
 
 
-static void segv_handler(int signum)
+static void coredump_handler(int sig)
 {
+	unmark_fanotify_and_close_fd(m);
 	unlink_fifo();
-	signal(signum, SIG_DFL);
-	kill(getpid(), signum);
+	signal(sig, SIG_DFL);
+	kill(getpid(), sig);
 }
 
 
@@ -331,7 +335,6 @@ static int check_mount_entry(const char *point, const char *type)
 }
 
 
-static mlist *m = NULL;
 static void handle_mounts(int fd)
 {
 	char buf[PATH_MAX * 2], device[1025], point[4097];
@@ -505,8 +508,18 @@ int main(int argc, const char *argv[])
 	sigemptyset(&sa.sa_mask);
 	sa.sa_handler = hup_handler;
 	sigaction(SIGHUP, &sa, NULL);
-	sa.sa_handler = segv_handler;
+	sa.sa_handler = coredump_handler;
 	sigaction(SIGSEGV, &sa, NULL);
+	sigaction(SIGABRT, &sa, NULL);
+	sigaction(SIGBUS, &sa, NULL);
+	sigaction(SIGFPE, &sa, NULL);
+	sigaction(SIGILL, &sa, NULL);
+	sigaction(SIGSYS, &sa, NULL);
+	sigaction(SIGTRAP, &sa, NULL);
+	sigaction(SIGXCPU, &sa, NULL);
+	sigaction(SIGXFSZ, &sa, NULL);
+	sigaction(SIGQUIT, &sa, NULL);
+
 	sa.sa_handler = usr1_handler;
 	sigaction(SIGUSR1, &sa, NULL);
 	/* These need to be last since they are used later */
