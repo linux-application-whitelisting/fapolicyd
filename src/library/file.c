@@ -1,6 +1,6 @@
 /*
  * file.c - functions for accessing attributes of files
- * Copyright (c) 2016,2018-22 Red Hat Inc.
+ * Copyright (c) 2016,2018-23 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -52,6 +52,14 @@ static struct udev *udev;
 magic_t magic_cookie;
 struct cache { dev_t device; const char *devname; };
 static struct cache c = { 0, NULL };
+
+// Local declarations
+static ssize_t safe_read(int fd, char *buf, size_t size)
+				__attr_access ((__write_only__, 2, 3));
+static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
+				__attr_access ((__write_only__, 3, 2));
+static void resolve_path(const char *pcwd, char *path, size_t len)
+				__attr_access ((__write_only__, 2, 3));
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
