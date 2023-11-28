@@ -513,36 +513,24 @@ static int read_preliminary_header(int fd)
 }
 
 
-static Elf32_Ehdr *read_header32(int fd) MALLOCLIKE;
-static Elf32_Ehdr *read_header32(int fd)
+static Elf32_Ehdr *read_header32(int fd, Elf32_Ehdr *ptr)
 {
-	Elf32_Ehdr *ptr = malloc(sizeof(Elf32_Ehdr));
-	if (ptr == NULL)
-		return NULL;
-
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
 	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
 				sizeof(Elf32_Ehdr) - EI_NIDENT);
 	if (rc == (sizeof(Elf32_Ehdr) - EI_NIDENT))
 		return ptr;
-	free(ptr);
 	return NULL;
 }
 
 
-static Elf64_Ehdr *read_header64(int fd) MALLOCLIKE;
-static Elf64_Ehdr *read_header64(int fd)
+static Elf64_Ehdr *read_header64(int fd, Elf64_Ehdr *ptr)
 {
-	Elf64_Ehdr *ptr = malloc(sizeof(Elf64_Ehdr));
-	if (ptr == NULL)
-		return NULL;
-
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
 	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
 				sizeof(Elf64_Ehdr) - EI_NIDENT);
 	if (rc == (sizeof(Elf64_Ehdr) - EI_NIDENT))
 		return ptr;
-	free(ptr);
 	return NULL;
 }
 
@@ -579,8 +567,9 @@ uint32_t gather_elf(int fd, off_t size)
 	if (e_ident[EI_CLASS] == ELFCLASS32) {
 		unsigned i, type;
 		Elf32_Phdr *ph_tbl = NULL;
+		Elf32_Ehdr hdr_buf;
 
-		Elf32_Ehdr *hdr = read_header32(fd);
+		Elf32_Ehdr *hdr = read_header32(fd, &hdr_buf);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
 			goto rewind_out;
@@ -607,12 +596,10 @@ uint32_t gather_elf(int fd, off_t size)
 		if ((unsigned)hdr->e_phentsize != sizeof(Elf32_Phdr) ||
 		    (unsigned)hdr->e_phnum == 0) {
 			info |= HAS_ERROR;
-			free(hdr);
 			goto rewind_out;
 		}
 		if (sz > ((unsigned long)size - sizeof(Elf32_Ehdr))) {
 			info |= HAS_ERROR;
-			free(hdr);
 			goto rewind_out;
 		}
 		ph_tbl = malloc(sz);
@@ -731,12 +718,12 @@ err_out32:
 done32:
 		free(ph_tbl);
 done32_obj:
-		free(hdr);
 	} else if (e_ident[EI_CLASS] == ELFCLASS64) {
 		unsigned i, type;
 		Elf64_Phdr *ph_tbl;
+		Elf64_Ehdr hdr_buf;
 
-		Elf64_Ehdr *hdr = read_header64(fd);
+		Elf64_Ehdr *hdr = read_header64(fd, &hdr_buf);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
 			goto rewind_out;
@@ -763,12 +750,10 @@ done32_obj:
 		if ((unsigned)hdr->e_phentsize != sizeof(Elf64_Phdr) ||
 		    (unsigned)hdr->e_phnum == 0) {
 			info |= HAS_ERROR;
-			free(hdr);
 			goto rewind_out;
 		}
 		if (sz > ((unsigned long)size - sizeof(Elf64_Ehdr))) {
 			info |= HAS_ERROR;
-			free(hdr);
 			goto rewind_out;
 		}
 		ph_tbl = malloc(sz);
@@ -884,7 +869,6 @@ err_out64:
 done64:
 		free(ph_tbl);
 done64_obj:
-		free(hdr);
 	} else // Invalid ELF class
 		info |= HAS_ERROR;
 rewind_out:
