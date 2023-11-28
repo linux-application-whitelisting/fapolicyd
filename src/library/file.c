@@ -387,7 +387,6 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 
 	// Do the normal classification
 	ptr = magic_descriptor(magic_cookie, fd);
-	rewind_fd(fd);
 	if (ptr) {
 		char *str;
 		strncpy(buf, ptr, blen-1);
