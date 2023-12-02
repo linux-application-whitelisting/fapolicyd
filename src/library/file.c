@@ -462,11 +462,7 @@ char *get_hash_from_fd2(int fd, size_t size, const int is_sha)
 		if (is_sha) {
 			SHA256(mapped, size, (unsigned char *)&hptr);
 		} else {
-#ifdef USE_DEB
 			MD5(mapped, size, (unsigned char *)&hptr);
-#else
-			;
-#endif
 		}
 		munmap(mapped, size);
 		digest = malloc((SHA256_LEN * 2) + 1);
@@ -877,4 +873,3 @@ rewind_out:
 	rewind_fd(fd);
 	return info;
 }
-
