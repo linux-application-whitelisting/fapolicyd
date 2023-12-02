@@ -40,6 +40,9 @@ extern backend rpm_backend;
 #ifdef USE_DEB
 extern backend deb_backend;
 #endif
+#ifdef USE_EBUILD
+extern backend ebuild_backend;
+#endif
 
 static backend* compiled[] =
 {
@@ -49,6 +52,9 @@ static backend* compiled[] =
 #endif
 #ifdef USE_DEB
 	&deb_backend,
+#endif
+#ifdef USE_EBUILD
+	&ebuild_backend,
 #endif
 	NULL,
 };
@@ -167,4 +173,3 @@ backend_entry* backend_get_first(void)
 {
 	return backends;
 }
-

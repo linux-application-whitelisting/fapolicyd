@@ -29,7 +29,7 @@
 #include "llist.h"
 
 // If this gets extended, please put the new items at the end.
-typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
+typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB, SRC_EBUILD } trust_src_t;
 
 // source, size, sha
 #define DATA_FORMAT "%u %lu %64s"
