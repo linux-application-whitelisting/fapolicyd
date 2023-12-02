@@ -68,16 +68,25 @@ libfapolicyd_la_SOURCES = \
 
 if WITH_RPM
 libfapolicyd_la_SOURCES += \
-	library/rpm-backend.c \
-	library/filter.c \
-	library/filter.h
-
+	library/rpm-backend.c
 endif
 
 if WITH_DEB
-libfapolicyd_la_SOURCES += library/deb-backend.c
+libfapolicyd_la_SOURCES += \
+	library/deb-backend.c
 fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
 fapolicyd_LDFLAGS += -ldpkg
+endif
+
+if WITH_EBUILD
+libfapolicyd_la_SOURCES += \
+	library/ebuild-backend.c
+endif
+
+if NEED_FILTER
+libfapolicyd_la_SOURCES += \
+	library/filter.c \
+	library/filter.h
 endif
 
 if NEED_MD5
