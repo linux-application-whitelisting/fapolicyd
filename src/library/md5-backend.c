@@ -19,22 +19,23 @@
  *
  * Authors:
  *   Stephen Tridgell
- *   Matt Jolly <Matt.Jolly@footclan.ninja>
+ *   Matt Jolly <Kangie@gentoo.org>
  */
-#include "config.h"
-#include <errno.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <openssl/md5.h>
-#include <openssl/sha.h>
-#include <sys/stat.h>
-#include <sys/syslog.h>
-#include <sys/types.h>
+#include "config.h"             // for DEBUG
+#include <errno.h>              // for errno, ELOOP
+#include <fcntl.h>              // for open, O_NOFOLLOW, O_RDONLY
+#include <stdio.h>              // for NULL, asprintf, dprintf, snprintf
+#include <stdlib.h>             // for free, malloc
+#include <string.h>             // for strerror, strlen, strcmp, strdup
+#include <unistd.h>             // for close
+#include <openssl/md5.h>        // for MD5
+#include <openssl/sha.h>        // for SHA256
+#include <sys/stat.h>           // for stat, fstat, S_ISREG
+#include <syslog.h>             // for LOG_DEBUG, LOG_ERR, LOG_WARNING
 
-#include "file.h"
-#include "fapolicyd-backend.h"
-#include "message.h"
+#include "file.h"               // for bytes2hex, MD5_LEN, SHA256_LEN
+#include "fapolicyd-backend.h"  // for DATA_FORMAT, backend, trust_src_t
+#include "message.h"            // for msg
 #include "md5-backend.h"
 
 /*
@@ -153,4 +154,3 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 	}
 	return 1;
 }
-

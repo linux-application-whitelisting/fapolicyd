@@ -524,4 +524,3 @@ void handle_events(void)
 		metadata = FAN_EVENT_NEXT(metadata, len);
 	}
 }
-

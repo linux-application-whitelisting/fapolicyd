@@ -800,7 +800,7 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 			computed = 1;
 			break;
 		case FILE_HASH_ALG_MD5:
-#ifdef USE_DEB
+#ifdef NEED_MD5
 			MD5(mapped, size, hptr);
 			computed = 1;
 #endif
@@ -1270,4 +1270,3 @@ rewind_out:
 	rewind_fd(fd);
 	return info;
 }
-

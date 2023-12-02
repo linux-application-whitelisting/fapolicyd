@@ -133,6 +133,8 @@ const char *lookup_tsource(unsigned int tsource)
 		return "rpmdb";
 	case SRC_DEB:
 		return "debdb";
+	case SRC_EBUILD:
+		return "ebuilddb";
 	case SRC_FILE_DB:
 		return "filedb";
 	}
