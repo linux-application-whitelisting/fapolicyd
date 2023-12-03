@@ -95,7 +95,6 @@ use_ebuild=$withval,use_ebuild=no)
 
 if test x$use_ebuild = xyes ; then
     AC_DEFINE(USE_EBUILD,1,[Define if you want to use the ebuild database as trust source.])
-    AC_CHECK_LIB(md, MD5Final, , [AC_MSG_ERROR([libmd is missing])], -lmd)
 fi
 AM_CONDITIONAL(WITH_EBUILD, test x$use_ebuild = xyes)
 
@@ -127,7 +126,7 @@ AC_CHECK_LIB(lmdb, mdb_env_create, , [AC_MSG_ERROR([liblmdb not found])], -llmdb
 
 LD_SO_PATH
 
-AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile rules.d/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile extra/Makefile doc/Makefile rules.d/Makefile])
 AC_OUTPUT
 
 echo .
