@@ -192,7 +192,7 @@ if test x$use_rpm = xyes ; then
 RPMDB_PATH
 fi
 
-AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile rules.d/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile extra/Makefile doc/Makefile rules.d/Makefile])
 AC_OUTPUT
 
 echo .
