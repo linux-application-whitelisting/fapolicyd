@@ -271,26 +271,6 @@ static void clear_ready(void)
 
 static void *deadmans_switch_thread_main(void *arg)
 {
-	sigset_t sigs;
-
-	/* This is a worker thread. Don't handle signals. */
-	sigemptyset(&sigs);
-	sigaddset(&sigs, SIGTERM);
-	sigaddset(&sigs, SIGHUP);
-	sigaddset(&sigs, SIGUSR1);
-	sigaddset(&sigs, SIGINT);
-	sigaddset(&sigs, SIGSEGV);
-	sigaddset(&sigs, SIGABRT);
-	sigaddset(&sigs, SIGBUS);
-	sigaddset(&sigs, SIGFPE);
-	sigaddset(&sigs, SIGILL);
-	sigaddset(&sigs, SIGSYS);
-	sigaddset(&sigs, SIGTRAP);
-	sigaddset(&sigs, SIGXCPU);
-	sigaddset(&sigs, SIGXFSZ);
-	sigaddset(&sigs, SIGQUIT);
-	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
-
 	do {
 		// Are you alive decision thread?
 		if (alive == 0 && get_ready() && !stop &&
@@ -308,26 +288,6 @@ static void *deadmans_switch_thread_main(void *arg)
 
 static void *decision_thread_main(void *arg)
 {
-	sigset_t sigs;
-
-	/* This is a worker thread. Don't handle signals. */
-	sigemptyset(&sigs);
-	sigaddset(&sigs, SIGTERM);
-	sigaddset(&sigs, SIGHUP);
-	sigaddset(&sigs, SIGUSR1);
-	sigaddset(&sigs, SIGINT);
-	sigaddset(&sigs, SIGSEGV);
-	sigaddset(&sigs, SIGABRT);
-	sigaddset(&sigs, SIGBUS);
-	sigaddset(&sigs, SIGFPE);
-	sigaddset(&sigs, SIGILL);
-	sigaddset(&sigs, SIGSYS);
-	sigaddset(&sigs, SIGTRAP);
-	sigaddset(&sigs, SIGXCPU);
-	sigaddset(&sigs, SIGXFSZ);
-	sigaddset(&sigs, SIGQUIT);
-	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
-
 	while (!stop) {
 		int len;
 		struct fanotify_event_metadata metadata[MAX_EVENTS];

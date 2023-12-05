@@ -41,6 +41,7 @@
 #include <seccomp.h>
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
+#include <sys/syscall.h>   /* gettid */
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -209,10 +210,15 @@ static void term_handler(int sig)
 
 static void coredump_handler(int sig)
 {
-	unmark_fanotify_and_close_fd(m);
-	unlink_fifo();
-	signal(sig, SIG_DFL);
-	kill(getpid(), sig);
+	if (getpid() == syscall(SYS_gettid)) {
+		unmark_fanotify_and_close_fd(m);
+		unlink_fifo();
+		signal(sig, SIG_DFL);
+		kill(getpid(), sig);
+	} else {
+		kill(getpid(), sig);
+		pause();
+	}
 }
 
 
