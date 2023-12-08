@@ -21,26 +21,19 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 
-#include <dirent.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <uthash.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-
-#include "conf.h"
-#include "config.h"
-#include "fapolicyd-backend.h"
-#include "file.h"
-#include "llist.h"
-#include "md5-backend.h"
-#include "message.h"
-
-#include "filter.h"
+#include <dirent.h>				// for dirent, closedir, opendir, DIR, readdir
+#include <errno.h>				// for errno
+#include <stdio.h>				// for NULL, perror, asprintf, getline, fopen
+#include <stdlib.h>				// for free, malloc, abort, reallocarray
+#include <string.h>				// for strcmp, strdup, strlen, strtok_r, strcat
+#include <syslog.h>				// for LOG_ERR, LOG_DEBUG, LOG_INFO
+#include "conf.h"				// for conf_t
+#include "config.h"				// for DEBUG
+#include "fapolicyd-backend.h"	// for SRC_EBUILD, backend
+#include "filter.h"				// for filter_destroy, filter_init, filter_l...
+#include "llist.h"				// for list_empty, list_init
+#include "md5-backend.h"		// for add_file_to_backend_by_md5
+#include "message.h"			// for msg
 
 static const char kEbuildBackend[] = "ebuilddb";
 
