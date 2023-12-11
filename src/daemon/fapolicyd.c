@@ -43,6 +43,7 @@
 #include <seccomp.h>
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
+#include <locale.h>
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -467,6 +468,8 @@ int main(int argc, const char *argv[])
 	struct sigaction sa;
 	struct rlimit limit;
 
+	char *locale = setlocale(LC_TIME, "");
+
 	if (argc > 1 && strcmp(argv[1], "--help") == 0)
 		usage();
 	set_message_mode(MSG_STDERR, debug_mode);
@@ -703,4 +706,3 @@ int main(int argc, const char *argv[])
 
 	return 0;
 }
-

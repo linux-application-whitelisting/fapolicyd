@@ -23,24 +23,26 @@
  */
 
 #include "config.h"
-#include <stdio.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include "message.h"
 
 /* The message mode refers to where informational messages go
-   0 - stderr, 1 - syslog, 2 - quiet. The default is quiet. */
+	0 - stderr, 1 - syslog, 2 - quiet. The default is quiet. */
 static message_t message_mode = MSG_QUIET;
 static debug_message_t debug_message = DBG_NO;
 
 void set_message_mode(message_t mode, debug_message_t debug)
 {
-        message_mode = mode;
+	message_mode = mode;
 	debug_message = debug;
 }
 
 void msg(int priority, const char *fmt, ...)
 {
-        va_list   ap;
+	va_list ap;
 
 	if (message_mode == MSG_QUIET)
 		return;
@@ -48,13 +50,59 @@ void msg(int priority, const char *fmt, ...)
 	if (priority == LOG_DEBUG && debug_message == DBG_NO)
 		return;
 
-        va_start(ap, fmt);
-        if (message_mode == MSG_SYSLOG)
-                vsyslog(priority, fmt, ap);
-        else {
-                vfprintf(stderr, fmt, ap);
+	va_start(ap, fmt);
+	if (message_mode == MSG_SYSLOG)
+		vsyslog(priority, fmt, ap);
+	else
+	{
+		/* For stderr we'll include the log level, use ANSI escape codes to colourise the it,
+		 * and prefix lines with the time and date.
+		 */
+		const char *color;
+		const char *level;
+		switch (priority) {
+		case LOG_EMERG:		color = "\x1b[31m"; level = "EMERGENCY"; break; /* Red */
+		case LOG_ALERT:		color = "\x1b[35m"; level = "ALERT"; break; /* Magenta */
+		case LOG_CRIT:		color = "\x1b[33m"; level = "CRITICAL"; break; /* Yellow */
+		case LOG_ERR:		color = "\x1b[31m"; level = "ERROR"; break; /* Red */
+		case LOG_WARNING:	color = "\x1b[33m"; level = "WARNING"; break; /* Yellow */
+		case LOG_NOTICE:	color = "\x1b[32m"; level = "NOTICE"; break; /* Green */
+		case LOG_INFO:		color = "\x1b[36m"; level = "INFO"; break; /* Cyan */
+		case LOG_DEBUG:		color = "\x1b[34m"; level = "DEBUG"; break; /* Blue */
+		default:			color = "\x1b[0m";  level = "UNKNOWN"; break; /* Reset */
+		}
+
+		time_t rawtime;
+		struct tm * timeinfo;
+		char buffer[80];
+
+		time (&rawtime);
+		timeinfo = localtime(&rawtime);
+
+		if (timeinfo == NULL) {
+			fputs("Could not get localtime\n", stderr);
+			exit(EXIT_FAILURE);
+		}
+
+		strftime(buffer, sizeof(buffer), "%x %T", timeinfo);
+		for (int i = 0; buffer[i] != '\0'; i++) {
+			fputc(buffer[i], stderr);
+		}
+
+		fputs(" [ ", stderr);
+
+		for (int i = 0; color[i] != '\0'; i++) {
+			fputc(color[i], stderr);
+		}
+		for (int i = 0; level[i] != '\0'; i++) {
+			fputc(level[i], stderr);
+		}
+		fputs("\x1b[0m ]: ", stderr);
+
+		vfprintf(stderr, fmt, ap);
 		fputc('\n', stderr);
+
 		fflush(stderr);
 	}
-        va_end( ap );
+	va_end(ap);
 }
