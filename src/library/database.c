@@ -1257,20 +1257,12 @@ static void *update_thread_main(void *arg)
 	msg(LOG_DEBUG, "Update thread main started");
 #endif
 
-	/* This is a worker thread. Don't handle signals. */
+	/* This is a worker thread. Don't handle external signals. */
 	sigemptyset(&sigs);
 	sigaddset(&sigs, SIGTERM);
 	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGUSR1);
 	sigaddset(&sigs, SIGINT);
-	sigaddset(&sigs, SIGSEGV);
-	sigaddset(&sigs, SIGABRT);
-	sigaddset(&sigs, SIGBUS);
-	sigaddset(&sigs, SIGFPE);
-	sigaddset(&sigs, SIGILL);
-	sigaddset(&sigs, SIGSYS);
-	sigaddset(&sigs, SIGTRAP);
-	sigaddset(&sigs, SIGXCPU);
-	sigaddset(&sigs, SIGXFSZ);
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
