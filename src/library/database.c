@@ -1246,6 +1246,7 @@ static void do_reload_db(conf_t* config)
 static void *update_thread_main(void *arg)
 {
 	int rc;
+	sigset_t sigs;
 	char buff[BUFFER_SIZE];
 	char err_buff[BUFFER_SIZE];
 	conf_t *config = (conf_t *)arg;
@@ -1255,6 +1256,15 @@ static void *update_thread_main(void *arg)
 #ifdef DEBUG
 	msg(LOG_DEBUG, "Update thread main started");
 #endif
+
+	/* This is a worker thread. Don't handle external signals. */
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGTERM);
+	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGUSR1);
+	sigaddset(&sigs, SIGINT);
+	sigaddset(&sigs, SIGQUIT);
+	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	if (ffd[0].fd == 0) {
 		if (preconstruct_fifo(config))

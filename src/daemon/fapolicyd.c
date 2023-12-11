@@ -23,6 +23,8 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
+#define _GNU_SOURCE	   /* gettid() in unistd.h */
+
 #include "config.h"
 #include <stdio.h>
 #include <poll.h>
@@ -41,7 +43,6 @@
 #include <seccomp.h>
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
-#include <sys/syscall.h>   /* gettid */
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -210,14 +211,19 @@ static void term_handler(int sig)
 
 static void coredump_handler(int sig)
 {
-	if (getpid() == syscall(SYS_gettid)) {
+	if (getpid() == gettid()) {
 		unmark_fanotify_and_close_fd(m);
 		unlink_fifo();
 		signal(sig, SIG_DFL);
 		kill(getpid(), sig);
 	} else {
+		/*
+		 * Fatal signals are usually delivered to the thread generating
+		 * them, if this is not main thread, raised the signal again to
+		 * handle it there, then wait forever to die.
+		 */
 		kill(getpid(), sig);
-		pause();
+		for (;;) pause();
 	}
 }
 
