@@ -88,6 +88,8 @@ if test x$use_deb = xyes ; then
 fi
 AM_CONDITIONAL(WITH_DEB, test x$use_deb = xyes)
 
+AM_CONDITIONAL(NEED_MD5, test x$use_deb = xyes)
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
