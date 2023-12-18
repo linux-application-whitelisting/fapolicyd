@@ -1,8 +1,10 @@
 AC_REVISION($Revision: 1.3 $)dnl
 AC_INIT([fapolicyd],[1.3.3])
-AC_PREREQ([2.50])dnl
+AC_PREREQ([2.60])dnl
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
+
+AC_USE_SYSTEM_EXTENSIONS
 
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE(foreign subdir-objects)
@@ -85,6 +87,8 @@ if test x$use_deb = xyes ; then
     AC_CHECK_LIB(md, MD5Final, , [AC_MSG_ERROR([libmd is missing])], -lmd)
 fi
 AM_CONDITIONAL(WITH_DEB, test x$use_deb = xyes)
+
+AM_CONDITIONAL(NEED_MD5, test x$use_deb = xyes)
 
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system

@@ -80,6 +80,12 @@ fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
 fapolicyd_LDFLAGS += -ldpkg
 endif
 
+if NEED_MD5
+libfapolicyd_la_SOURCES += \
+	library/md5-backend.c \
+	library/md5-backend.h
+endif
+
 fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
 fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 
