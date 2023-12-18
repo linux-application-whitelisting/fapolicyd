@@ -41,4 +41,16 @@ deb_test_SOURCES = \
   ${top_srcdir}/src/library/deb-backend.c
 endif
 
+if WITH_EBUILD
+check_PROGRAMS += ebuild_test
+
+ebuild_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+ebuild_test_SOURCES = \
+  ebuild_test.c \
+  ${top_srcdir}/src/library/file.c \
+  ${top_srcdir}/src/library/backend-manager.c \
+  ${top_srcdir}/src/library/ebuild-backend.c
+endif
+
+
 TESTS = $(check_PROGRAMS)
