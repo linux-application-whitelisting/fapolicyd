@@ -1,6 +1,6 @@
 /*
  * policy.c - functions that encapsulate the notion of a policy
- * Copyright (c) 2016,2019-23 Red Hat
+ * Copyright (c) 2016,2019-24 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -342,7 +342,7 @@ int do_reload_rules(const conf_t *_config)
 }
 
 static char *format_value(int item, unsigned int num, decision_t results,
-	event_t *e) MALLOCLIKE;
+	event_t *e) __attr_dealloc_free;
 static char *format_value(int item, unsigned int num, decision_t results,
 	event_t *e)
 {

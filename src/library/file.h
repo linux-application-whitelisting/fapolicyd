@@ -45,7 +45,7 @@ struct file_info
 
 void file_init(void);
 void file_close(void);
-struct file_info *stat_file_entry(int fd) MALLOCLIKE;
+struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	__attr_access ((__write_only__, 4, 3));
@@ -58,7 +58,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	__attr_access ((__write_only__, 5, 4));
 char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
 	__attr_access ((__read_only__, 2, 3));
-char *get_hash_from_fd2(int fd, size_t size, int is_sha) MALLOCLIKE;
+char *get_hash_from_fd2(int fd, size_t size, int is_sha) __attr_dealloc_free;
 int get_ima_hash(int fd, char *sha);
 uint32_t gather_elf(int fd, off_t size);
 

@@ -1,6 +1,6 @@
 /*
  * rpm-backend.c - rpm backend
- * Copyright (c) 2020 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -107,7 +107,7 @@ static int get_next_file_rpm(void)
 }
 
 // Like strdup, but sets a minimum size for safety
-static inline char *strmdup(const char *s, size_t min) MALLOCLIKE;
+static inline char *strmdup(const char *s, size_t min) __attr_dealloc_free;
 static inline char *strmdup(const char *s, size_t min)
 {
 	char *new;

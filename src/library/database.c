@@ -1,6 +1,6 @@
 /*
  * database.c - Trust database
- * Copyright (c) 2016,2018-23 Red Hat Inc.
+ * Copyright (c) 2016,2018-24 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -278,7 +278,7 @@ static void abort_transaction(MDB_txn *txn)
  * Convert path to a hash value. Used when the path exceeds the LMDB key
  * limit(511).  Note: Returned value must be deallocated.
  */
-static char *path_to_hash(const char *path, const size_t path_len) MALLOCLIKE;
+static char *path_to_hash(const char *path, const size_t path_len) __attr_dealloc_free __attr_access ((__read_only__, 1, 2));
 static char *path_to_hash(const char *path, const size_t path_len)
 {
 	unsigned char hptr[80];
@@ -434,7 +434,7 @@ static long get_number_of_entries(void)
  * search for the data. It returns NULL on error or if no data found.
  * The returned string must be freed by the caller.
  */
-static char *lt_read_db(const char *index, int operation, int *error) MALLOCLIKE;
+static char *lt_read_db(const char *index, int operation, int *error) __attr_dealloc_free;
 static char *lt_read_db(const char *index, int operation, int *error)
 {
 	int rc;

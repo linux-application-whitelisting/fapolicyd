@@ -75,7 +75,7 @@ struct proc_info
 	uint32_t elf_info;
 };
 
-struct proc_info *stat_proc_entry(pid_t pid) MALLOCLIKE;
+struct proc_info *stat_proc_entry(pid_t pid) __attr_dealloc_free;
 void clear_proc_info(struct proc_info *info);
 int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2);
 char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)

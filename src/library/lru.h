@@ -24,6 +24,7 @@
 
 #ifndef LRU_HEADER
 #define LRU_HEADER
+#include "gcc-attributes.h"
 
 // Queue is implemented using double linked list
 typedef struct QNode
@@ -56,9 +57,10 @@ typedef struct Queue
 	void (*cleanup)(void *); // Function to call when releasing memory
 } Queue;
 
-Queue *init_lru(unsigned int qsize, void (*cleanup)(void *),
-		const char *name);
 void destroy_lru(Queue *queue);
+Queue *init_lru(unsigned int qsize, void (*cleanup)(void *),
+		const char *name) __attribute_malloc__
+		__attr_dealloc (destroy_lru, 1);
 void lru_evict(Queue *queue, unsigned int key);
 QNode *check_lru_cache(Queue *q, unsigned int key);
 unsigned int compute_subject_key(const Queue *queue, unsigned int pid);

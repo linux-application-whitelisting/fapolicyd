@@ -35,7 +35,7 @@
 static void dequeue(Queue *queue);
 
 // The Queue Node will store the 'item' being cached
-static QNode *new_QNode(void) MALLOCLIKE;
+static QNode *new_QNode(void) __attr_dealloc_free;
 static QNode *new_QNode(void)
 {
 	QNode *temp = malloc(sizeof(QNode));

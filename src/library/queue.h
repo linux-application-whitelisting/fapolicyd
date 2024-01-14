@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>
+#include "gcc-attributes.h"
 
 struct queue
 {
@@ -42,11 +43,12 @@ struct queue
 	unsigned char buffer[]; /* Used only locally within q_peek() */
 };
 
-/* Open a queue for use */
-struct queue *q_open(size_t num_entries);
-
 /* Close Q. */
 void q_close(struct queue *q);
+
+/* Open a queue for use */
+struct queue *q_open(size_t num_entries) __attribute_malloc__
+		     __attr_dealloc (q_close, 1);
 
 /* Write out q_depth */
 void q_report(FILE *f);
