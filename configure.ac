@@ -53,6 +53,18 @@ AC_COMPILE_IFELSE(
 )
 AC_MSG_RESULT($ACCESS)
 
+AC_MSG_CHECKING(__attr_dealloc_free support)
+AC_COMPILE_IFELSE(
+  [AC_LANG_SOURCE(
+    [[
+      #include <stdlib.h>
+      const char *strdup(const char *buf) __attr_dealloc_free;
+      int main(void) { return 0; }]])],
+  [DEALLOC="yes"],
+  [DEALLOC="no"]
+)
+AC_MSG_RESULT($DEALLOC)
+
 AC_ARG_WITH(audit,
 AS_HELP_STRING([--with-audit],[turn on decision auditing (default=no)]),
 AC_DEFINE(USE_AUDIT,1,[Define if you want to enable decision auditing.]),
@@ -128,5 +140,6 @@ echo "
   Compiler flags:
 `echo $CFLAGS | fmt -w 50 | sed 's,^,                          ,'`
   __attr_access support:  $ACCESS
+  __attr_dealloc_free support: $DEALLOC
 "
  
