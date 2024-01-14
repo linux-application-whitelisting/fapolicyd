@@ -37,7 +37,8 @@ backend deb_backend = {
 // For some reason they segfault when i call :/
 
 int parse_filehash_buffer(struct varbuf *buf, struct pkginfo *pkg,
-                      struct pkgbin *pkgbin) {
+                      struct pkgbin *pkgbin)
+{
   char *thisline, *nextline;
   const char *pkgname = pkg_name(pkg, pnaw_nonambig);
   const char *buf_end = buf->buf + buf->used;
@@ -97,7 +98,8 @@ int parse_filehash_buffer(struct varbuf *buf, struct pkginfo *pkg,
   return 0;
 }
 
-void parse_filehash2(struct pkginfo *pkg, struct pkgbin *pkgbin) {
+void parse_filehash2(struct pkginfo *pkg, struct pkgbin *pkgbin)
+{
   const char *hashfile;
   struct varbuf buf = VARBUF_INIT;
   struct dpkg_error err = DPKG_ERROR_INIT;
@@ -116,7 +118,8 @@ void parse_filehash2(struct pkginfo *pkg, struct pkgbin *pkgbin) {
 // End of functions copied from dpkg.
 // =======================================================================
 
-static int deb_load_list(const conf_t *conf) {
+static int deb_load_list(const conf_t *conf)
+{
   const char *control_file = "md5sums";
 
   list_empty(&deb_backend.list);
@@ -162,7 +165,8 @@ static int deb_load_list(const conf_t *conf) {
                              ? namenode->divert->useinstead->name
                              : namenode->name;
       if (hash != NULL) {
-        add_file_to_backend_by_md5(path, hash, hashtable_ptr, SRC_DEB, &deb_backend);
+        add_file_to_backend_by_md5(path, hash, hashtable_ptr, SRC_DEB,
+				   &deb_backend);
       }
       file = file->next;
     }
@@ -179,7 +183,8 @@ static int deb_load_list(const conf_t *conf) {
   return 0;
 }
 
-static int deb_init_backend() {
+static int deb_init_backend(void)
+{
   dpkg_program_init(kDebBackend);
   list_init(&deb_backend.list);
 
@@ -195,9 +200,11 @@ static int deb_init_backend() {
   return 0;
 }
 
-static int deb_destroy_backend() {
+static int deb_destroy_backend(void)
+{
   dpkg_program_done();
   list_empty(&deb_backend.list);
   modstatdb_shutdown();
   return 0;
 }
+

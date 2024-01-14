@@ -20,6 +20,9 @@
  *   Stephen Tridgell
  *   Matt Jolly <Matt.Jolly@footclan.ninja>
  */
+#ifndef MD5_BACKEND_HEADER
+#define MD5_BACKEND_HEADER
+
 #include <uthash.h>
 
 #include "fapolicyd-backend.h"
@@ -32,8 +35,7 @@ struct _hash_record {
 static const int kMaxKeyLength = 4096;
 static const int kMd5HexSize = 32;
 
-int add_file_to_backend_by_md5(const char *path,
-							const char *expected_md5,
-							struct _hash_record **hashtable,
-							trust_src_t trust_src,
-							backend *dstbackend);
+int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
+			       struct _hash_record **hashtable,
+			       trust_src_t trust_src, backend *dstbackend);
+#endif

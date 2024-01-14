@@ -54,11 +54,9 @@
  * This function would compute a sha256 and file size on the attackers
  * crafted file so they do not secure this backend.
  */
-int add_file_to_backend_by_md5(const char *path,
-							const char *expected_md5,
-							struct _hash_record **hashtable,
-							trust_src_t trust_src,
-							backend *dstbackend)
+int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
+			       struct _hash_record **hashtable,
+			       trust_src_t trust_src, backend *dstbackend)
 {
 
 	#ifdef DEBUG
@@ -70,13 +68,15 @@ int add_file_to_backend_by_md5(const char *path,
 	struct stat path_stat;
 	if (fd < 0) {
 		if (errno != ELOOP) // Don't report symlinks as a warning
-			msg(LOG_WARNING, "Could not open %si, %s", path, strerror(errno));
+			msg(LOG_WARNING, "Could not open %si, %s", path,
+			    strerror(errno));
 		return 1;
 	}
 
 	if (fstat(fd, &path_stat)) {
 		close(fd);
-		msg(LOG_WARNING, "fstat file %s failed %s", path, strerror(errno));
+		msg(LOG_WARNING, "fstat file %s failed %s", path,
+		    strerror(errno));
 		return 1;
 	}
 
@@ -134,7 +134,8 @@ int add_file_to_backend_by_md5(const char *path,
 		if (!rcd) {
 			rcd = (struct _hash_record *)malloc(sizeof(struct _hash_record));
 			rcd->key = strdup(key);
-			HASH_ADD_KEYPTR(hh, *hashtable, rcd->key, strlen(rcd->key), rcd);
+			HASH_ADD_KEYPTR(hh, *hashtable, rcd->key,
+					strlen(rcd->key), rcd);
 			list_append(&dstbackend->list, strdup(path), data);
 		} else {
 			free((void *)data);
@@ -143,3 +144,4 @@ int add_file_to_backend_by_md5(const char *path,
 	}
 	return 1;
 }
+
