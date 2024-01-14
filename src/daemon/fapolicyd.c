@@ -468,7 +468,7 @@ int main(int argc, const char *argv[])
 	struct sigaction sa;
 	struct rlimit limit;
 
-	char *locale = setlocale(LC_TIME, "");
+	setlocale(LC_TIME, "");
 
 	if (argc > 1 && strcmp(argv[1], "--help") == 0)
 		usage();
