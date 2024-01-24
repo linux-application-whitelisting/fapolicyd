@@ -263,9 +263,7 @@ In this report, you can see that the internal request queue maxed out at 7.
 This means that the daemon had at most 7 threads/processes waiting. This
 shows that it got a little backed up but was handling requests pretty quick.
 If this number were big, like more than 200, then increasing the q_size may
-be necessary. Note that if you go above 1015, then systemd might need to be
-told to allow more than 1024 descriptors. In the fapolicyd.service file, you
-will need to add LimitNOFILE=16384 or some number bigger than your queue.
+be necessary.
 
 Another statistic worth looking at is the hits to evictions ratio. When a
 request has nowhere to put information, it has to evict something to make
