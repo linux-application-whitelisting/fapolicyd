@@ -8,7 +8,7 @@ _fapolicydcli()
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
 	opts="--check-config --check-path --check-status --check-trustdb \
                 --check-watch_fs --delete-db --dump-db \
-                --file --ftype --help --list --update"
+                --file --ftype --help --list --update --reload-rules"
 
 	case $prev in
 		--ftype)
