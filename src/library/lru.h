@@ -65,5 +65,6 @@ void lru_evict(Queue *queue, unsigned int key);
 QNode *check_lru_cache(Queue *q, unsigned int key);
 unsigned int compute_subject_key(const Queue *queue, unsigned int pid);
 unsigned long compute_object_key(const Queue *queue, unsigned long num);
+void dump_queue_stats(int priority, const Queue *q);
 
 #endif

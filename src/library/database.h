@@ -60,5 +60,6 @@ void walk_database_finish(void);
 #define RELOAD_TRUSTDB_COMMAND '1'
 #define FLUSH_CACHE_COMMAND '2'
 #define RELOAD_RULES_COMMAND '3'
+#define SHOW_STATS_COMMAND '4'
 
 #endif

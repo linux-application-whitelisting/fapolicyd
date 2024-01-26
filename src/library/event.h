@@ -49,5 +49,6 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);
 object_attr_t *get_obj_attr(event_t *e, object_type_t t);
 void run_usage_report(const conf_t *config, FILE *f);
 void do_cache_reports(FILE *f);
+void log_cache_reports(void);
 
 #endif
