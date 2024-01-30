@@ -33,6 +33,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/syscall.h>
+#include <sys/timerfd.h>
 #include <stdatomic.h>
 #include "policy.h"
 #include "event.h"
@@ -310,6 +311,24 @@ static void *decision_thread_main(void *arg)
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
+    int tfd;
+    struct itimerspec deadline;
+
+    // todo;; mocking a config entry; running at a five second interval
+    int config_report_interval = 5;
+
+    clock_gettime(CLOCK_MONOTONIC, &deadline.it_value);
+    deadline.it_value.tv_sec += config_report_interval;
+    deadline.it_interval.tv_sec = config_report_interval;
+    deadline.it_interval.tv_nsec = 0;
+
+    tfd = timerfd_create(CLOCK_REALTIME, 0);
+    if (tfd == -1) {
+        msg(LOG_ERR, "Timer create failed; Exiting decision thread");
+        return NULL;
+    }
+    timerfd_settime(fd, TFD_TIMER_ABSTIME, &deadline, NULL);
+
 	while (!stop) {
 		int len;
 		struct fanotify_event_metadata metadata[MAX_EVENTS];
@@ -360,7 +379,17 @@ out:
 			alive = 1;
 			make_policy_decision(&metadata[i], fd, mask);
 		}
-	}
+
+        // check log timer, write log if expired
+        timerfd_gettime(tfd, &deadline);
+        if(deadline.it_value.tv_sec == 0) {
+            FILE *f = fopen(STAT_REPORT, "w");
+            if (f) {
+                do_stat_report(f, 0);
+                fclose(f);
+            }
+        }
+    }
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
 }
