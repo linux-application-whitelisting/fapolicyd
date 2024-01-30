@@ -51,11 +51,10 @@
 #include "gcc-attributes.h"
 #include "paths.h"
 #include "policy.h"
-#include "event.h"
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
-typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES, SHOW_STATS } db_ops_t;
+typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops_t;
 #define BUFFER_SIZE 4096
 #define MEGABYTE	(1024*1024)
 
@@ -1358,11 +1357,6 @@ static void *update_thread_main(void *arg)
 								break;
 							}
 
-                            if (buff[i] == SHOW_STATS_COMMAND) {
-                                do_operation = SHOW_STATS;
-                                break;
-                            }
-
 							if (isspace(buff[i]))
 								continue;
 
@@ -1389,10 +1383,7 @@ static void *update_thread_main(void *arg)
 						} else if (do_operation == FLUSH_CACHE) {
 							do_operation = DB_NO_OP;
 							needs_flush = true;
-						} else if (do_operation == SHOW_STATS) {
-                            do_operation = DB_NO_OP;
-                            log_cache_reports();
-                        } else if (do_operation == ONE_FILE) {
+						} else if (do_operation == ONE_FILE) {
 							do_operation = DB_NO_OP;
 							if (handle_record(buff))
 								continue;

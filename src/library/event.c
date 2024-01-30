@@ -605,8 +605,3 @@ void do_cache_reports(FILE *f)
 	print_queue_stats(f, obj_cache);
 }
 
-void log_cache_reports(void)
-{
-    dump_queue_stats(LOG_INFO, subj_cache);
-    dump_queue_stats(LOG_INFO, obj_cache);
-}

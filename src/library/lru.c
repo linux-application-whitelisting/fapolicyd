@@ -77,14 +77,14 @@ static void destroy_hash(Hash *hash)
 	free(hash);
 }
 
-void dump_queue_stats(int priority, const Queue *q)
+static void dump_queue_stats(const Queue *q)
 {
-	msg(priority, "%s cache size: %u", q->name, q->total);
-	msg(priority, "%s slots in use: %u (%u%%)", q->name, q->count,
+	msg(LOG_DEBUG, "%s cache size: %u", q->name, q->total);
+	msg(LOG_DEBUG, "%s slots in use: %u (%u%%)", q->name, q->count,
 				q->total ? (100*q->count)/q->total : 0);
-	msg(priority, "%s hits: %lu", q->name, q->hits);
-	msg(priority, "%s misses: %lu", q->name, q->misses);
-	msg(priority, "%s evictions: %lu (%lu%%)", q->name, q->evictions,
+	msg(LOG_DEBUG, "%s hits: %lu", q->name, q->hits);
+	msg(LOG_DEBUG, "%s misses: %lu", q->name, q->misses);
+	msg(LOG_DEBUG, "%s evictions: %lu (%lu%%)", q->name, q->evictions,
 				q->hits ? (100*q->evictions)/q->hits : 0);
 }
 
@@ -111,7 +111,7 @@ static Queue *create_queue(unsigned int qsize, const char *name)
 
 static void destroy_queue(Queue *queue)
 {
-    dump_queue_stats(LOG_DEBUG, queue);
+	dump_queue_stats(queue);
 
 	while (queue->count)
 		dequeue(queue);
