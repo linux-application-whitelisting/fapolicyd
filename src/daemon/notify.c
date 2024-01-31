@@ -327,7 +327,7 @@ static void *decision_thread_main(void *arg)
         msg(LOG_ERR, "Timer create failed; Exiting decision thread");
         return NULL;
     }
-    timerfd_settime(fd, TFD_TIMER_ABSTIME, &deadline, NULL);
+    timerfd_settime(tfd, TFD_TIMER_ABSTIME, &deadline, NULL);
 
 	while (!stop) {
 		int len;
