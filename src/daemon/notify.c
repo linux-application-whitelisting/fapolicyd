@@ -319,8 +319,11 @@ static void *decision_thread_main(void *arg)
     struct itimerspec deadline;
     struct timespec report_pthread_to;
 
+    // the report timer may fire, but has there been events to write?
+    int report_is_stale = 0;
+
     // todo;; move this to a config entry
-    int config_report_interval = 2;
+    int config_report_interval = 10;
 
     clock_gettime(CLOCK_MONOTONIC, &deadline.it_value);
     deadline.it_value.tv_sec += config_report_interval;
@@ -341,18 +344,22 @@ static void *decision_thread_main(void *arg)
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
             read(report_timer_fd, &report_timer_exp, sizeof(uint64_t));
-            if(report_timer_exp > 0 || run_stats) {
-                // if the report timer has expired
-                printf("=== logging: %lu %i\n", report_timer_exp, run_stats);
-                FILE *f = fopen(STAT_REPORT, "w");
-                if (f) {
-                    do_stat_report(f, 0);
-                    fclose(f);
+            if (report_timer_exp > 0 || run_stats) {
+                if (report_is_stale || run_stats) {
+                    // if the report timer has expired
+                    printf("=== logging: %lu %i\n", report_timer_exp, run_stats);
+                    FILE *f = fopen(STAT_REPORT, "w");
+                    if (f) {
+                        do_stat_report(f, 0);
+                        fclose(f);
+                    }
+                    run_stats = 0;
+                    report_is_stale = 0;
                 }
-                report_timer_exp = 0;
+                // reset the report timer
                 clock_gettime(CLOCK_MONOTONIC, &report_pthread_to);
                 report_pthread_to.tv_sec += config_report_interval;
-                run_stats = 0;
+                report_timer_exp = 0;
             } else {
                 // timeout the fa event wait with the remaining report time
                 timerfd_gettime(report_timer_fd, &deadline);
@@ -368,6 +375,7 @@ static void *decision_thread_main(void *arg)
 			}
 		}
 		alive = 1;
+        report_is_stale = 1;
 
 		// Grab up to MAX_EVENTS events while locked
 		unsigned i = 0;
