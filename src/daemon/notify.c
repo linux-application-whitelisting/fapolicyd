@@ -57,7 +57,7 @@ static pthread_t deadmans_switch_thread;
 static pthread_mutexattr_t decision_lock_attr;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
-static pthread_condattr_t attr;
+static pthread_condattr_t report_timeout_attr;
 static volatile atomic_bool events_ready;
 static volatile atomic_int alive = 1;
 static int fd = -1;
@@ -115,9 +115,9 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	pthread_mutexattr_settype(&decision_lock_attr,
 						PTHREAD_MUTEX_ERRORCHECK);
 	pthread_mutex_init(&decision_lock, &decision_lock_attr);
-    pthread_condattr_init( &attr);
-    pthread_condattr_setclock( &attr, CLOCK_MONOTONIC);
-	pthread_cond_init(&do_decision, &attr);
+    pthread_condattr_init(&report_timeout_attr);
+    pthread_condattr_setclock(&report_timeout_attr, CLOCK_MONOTONIC);
+	pthread_cond_init(&do_decision, &report_timeout_attr);
 	events_ready = 0;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 	pthread_create(&deadmans_switch_thread, NULL,
