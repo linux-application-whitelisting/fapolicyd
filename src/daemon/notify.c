@@ -340,34 +340,31 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
-            // check log timer, write log if expired
             read(tfd, &exp, sizeof(uint64_t));
-            timerfd_gettime(tfd, &deadline);
-            if(exp > 0) {
-                printf("=== logging: %lu\n", exp);
+            if(exp > 0 || run_stats) {
+                // if the report timer has expired
+                printf("=== logging: %lu %i\n", exp, run_stats);
                 FILE *f = fopen(STAT_REPORT, "w");
                 if (f) {
                     do_stat_report(f, 0);
                     fclose(f);
                 }
+                exp = 0;
+                clock_gettime(CLOCK_MONOTONIC, &to);
+                to.tv_sec += config_report_interval;
+                run_stats = 0;
+            } else {
+                // timeout the fa event wait with the remaining report time
+                timerfd_gettime(tfd, &deadline);
+                clock_gettime(CLOCK_MONOTONIC, &to);
+                to.tv_sec += deadline.it_value.tv_sec;
             }
-            exp = 0;
 
-            clock_gettime(CLOCK_MONOTONIC, &to);
-            to.tv_sec += config_report_interval;
-
+            // wait on an event, timing out when a report is due
 			pthread_cond_timedwait(&do_decision, &decision_lock, &to);
 			if (stop) {
 				pthread_mutex_unlock(&decision_lock);
 				return NULL;
-			}
-			if (run_stats) {
-				FILE *f = fopen(STAT_REPORT, "w");
-				if (f) {
-					do_stat_report(f, 0);
-					fclose(f);
-				}
-				run_stats = 0;
 			}
 		}
 		alive = 1;
