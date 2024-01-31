@@ -1,5 +1,5 @@
 # Makefile.am --
-# Copyright 2022 Red Hat Inc.
+# Copyright 2022-24 Red Hat Inc.
 # All Rights Reserved.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -24,7 +24,7 @@
 CONFIG_CLEAN_FILES = *.rej *.orig
 
 EXTRA_DIST = README-rules 10-languages.rules 20-dracut.rules \
-	21-updaters.rules 30-patterns.rules \
+	21-updaters.rules 22-buildroot.rules 30-patterns.rules \
 	40-bad-elf.rules 41-shared-obj.rules 42-trusted-elf.rules \
 	43-known-elf.rules \
 	70-trusted-lang.rules 71-known-python.rules 72-shell.rules \

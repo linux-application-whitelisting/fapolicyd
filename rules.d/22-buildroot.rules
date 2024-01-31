@@ -1,0 +1,19 @@
+# Exception for software builders.
+#
+# Software builders create lots of files. Since they were all just created,
+# fapolicyd has never seen them before and expensive integrity checking has
+# to be done which will fail because they are all untrusted. Since it's single
+# purpose is building applications, we need to carve out a permissive domain
+# for it to operate in.
+#
+# The buildroot is protected by file permissions. Noone except root and the
+# mock account can write to the buildroot. The buildroot is wiped clean after
+# a build so that nothing can persist. What the following rules say is that we
+# are trusting the mock account to create and access anything in it's buildroot.
+# Otherwise, the mock account can use anything that is trusted for any purpose
+# anywhere else. It is still restricted by user id permissions.
+#
+# The following uid and dir should be adjusted to fit your configuration.
+
+allow perm=any uid=mock : dir=/home/mock/rpmbuild
+allow perm=any uid=mock trust=1 : all
