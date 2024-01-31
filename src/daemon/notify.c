@@ -63,6 +63,7 @@ static volatile atomic_int alive = 1;
 static int fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
+static unsigned int config_report_interval;
 
 // External functions
 void do_stat_report(FILE *f, int shutdown);
@@ -119,6 +120,8 @@ int init_fanotify(const conf_t *conf, mlist *m)
     pthread_condattr_setclock(&report_timeout_attr, CLOCK_MONOTONIC);
 	pthread_cond_init(&do_decision, &report_timeout_attr);
 	events_ready = 0;
+    // todo;; should this pass into the decision thread, or be static as is now?
+    config_report_interval = conf->report_interval;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 	pthread_create(&deadmans_switch_thread, NULL,
 			deadmans_switch_thread_main, NULL);
@@ -322,9 +325,6 @@ static void *decision_thread_main(void *arg)
     // the report timer may fire, but has there been events to write?
     int report_is_stale = 0;
 
-    // todo;; move this to a config entry
-    int config_report_interval = 10;
-
     clock_gettime(CLOCK_MONOTONIC, &deadline.it_value);
     deadline.it_value.tv_sec += config_report_interval;
     deadline.it_interval.tv_sec = config_report_interval;
@@ -347,7 +347,7 @@ static void *decision_thread_main(void *arg)
             if (report_timer_exp > 0 || run_stats) {
                 if (report_is_stale || run_stats) {
                     // if the report timer has expired
-                    printf("=== logging: %lu %i\n", report_timer_exp, run_stats);
+                    printf("=== logging: exp: %lu sig: %i i: %u\n", report_timer_exp, run_stats, config_report_interval);
                     FILE *f = fopen(STAT_REPORT, "w");
                     if (f) {
                         do_stat_report(f, 0);
