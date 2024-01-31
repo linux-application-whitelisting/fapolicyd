@@ -335,6 +335,16 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
+            // check log timer, write log if expired
+            timerfd_gettime(tfd, &deadline);
+            if(deadline.it_value.tv_sec == 0) {
+                FILE *f = fopen(STAT_REPORT, "w");
+                if (f) {
+                    do_stat_report(f, 0);
+                    fclose(f);
+                }
+            }
+
 			pthread_cond_wait(&do_decision, &decision_lock);
 			if (stop) {
 				pthread_mutex_unlock(&decision_lock);
@@ -379,16 +389,6 @@ out:
 			alive = 1;
 			make_policy_decision(&metadata[i], fd, mask);
 		}
-
-        // check log timer, write log if expired
-        timerfd_gettime(tfd, &deadline);
-        if(deadline.it_value.tv_sec == 0) {
-            FILE *f = fopen(STAT_REPORT, "w");
-            if (f) {
-                do_stat_report(f, 0);
-                fclose(f);
-            }
-        }
     }
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
