@@ -57,6 +57,7 @@ static pthread_t deadmans_switch_thread;
 static pthread_mutexattr_t decision_lock_attr;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
+static pthread_condattr_t attr;
 static volatile atomic_bool events_ready;
 static volatile atomic_int alive = 1;
 static int fd = -1;
@@ -114,7 +115,9 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	pthread_mutexattr_settype(&decision_lock_attr,
 						PTHREAD_MUTEX_ERRORCHECK);
 	pthread_mutex_init(&decision_lock, &decision_lock_attr);
-	pthread_cond_init(&do_decision, NULL);
+    pthread_condattr_init( &attr);
+    pthread_condattr_setclock( &attr, CLOCK_MONOTONIC);
+	pthread_cond_init(&do_decision, &attr);
 	events_ready = 0;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 	pthread_create(&deadmans_switch_thread, NULL,
@@ -312,17 +315,19 @@ static void *decision_thread_main(void *arg)
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
     int tfd;
+    uint64_t exp;
     struct itimerspec deadline;
+    struct timespec to;
 
     // todo;; mocking a config entry; running at a five second interval
-    int config_report_interval = 5;
+    int config_report_interval = 2;
 
     clock_gettime(CLOCK_MONOTONIC, &deadline.it_value);
     deadline.it_value.tv_sec += config_report_interval;
     deadline.it_interval.tv_sec = config_report_interval;
     deadline.it_interval.tv_nsec = 0;
 
-    tfd = timerfd_create(CLOCK_REALTIME, 0);
+    tfd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
     if (tfd == -1) {
         msg(LOG_ERR, "Timer create failed; Exiting decision thread");
         return NULL;
@@ -336,16 +341,22 @@ static void *decision_thread_main(void *arg)
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
             // check log timer, write log if expired
+            read(tfd, &exp, sizeof(uint64_t));
             timerfd_gettime(tfd, &deadline);
-            if(deadline.it_value.tv_sec == 0) {
+            if(exp > 0) {
+                printf("=== logging: %lu\n", exp);
                 FILE *f = fopen(STAT_REPORT, "w");
                 if (f) {
                     do_stat_report(f, 0);
                     fclose(f);
                 }
             }
+            exp = 0;
 
-			pthread_cond_wait(&do_decision, &decision_lock);
+            clock_gettime(CLOCK_MONOTONIC, &to);
+            to.tv_sec += config_report_interval;
+
+			pthread_cond_timedwait(&do_decision, &decision_lock, &to);
 			if (stop) {
 				pthread_mutex_unlock(&decision_lock);
 				return NULL;
