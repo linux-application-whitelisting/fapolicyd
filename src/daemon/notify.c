@@ -120,7 +120,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
     pthread_condattr_setclock(&report_timeout_attr, CLOCK_MONOTONIC);
 	pthread_cond_init(&do_decision, &report_timeout_attr);
 	events_ready = 0;
-    // todo;; should this pass into the decision thread, or be static as is now?
+    // todo;; should this pass into the decision thread as `arg`, or be accessed as static?
     config_report_interval = conf->report_interval;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 	pthread_create(&deadmans_switch_thread, NULL,
@@ -322,7 +322,7 @@ static void *decision_thread_main(void *arg)
     struct itimerspec deadline;
     struct timespec report_pthread_to;
 
-    // the report timer may fire, but has there been events to write?
+    // indicates updates have occurred since last report
     int report_is_stale = 0;
 
     clock_gettime(CLOCK_MONOTONIC, &deadline.it_value);
