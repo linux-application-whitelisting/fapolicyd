@@ -353,13 +353,14 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
-            if(report_interval) { // using interval reports
+            if(report_interval) {
+                // a reporting interval has been specified, check for timer expirations
                 read(report_timer_fd, &report_timer_exp, sizeof(uint64_t));
                 if(clock_gettime(CLOCK_MONOTONIC, &report_pthread_to)) {
                     stop_interval_reports(&deadline, "clock failure");
                     continue;
                 }
-                // if report timer fired or stats were requested via signal
+                // report timer expired or stats were explicitly requested
                 if (report_timer_exp || run_stats) {
                     if (report_is_stale || run_stats) {
                         FILE *f = fopen(STAT_REPORT, "w");
