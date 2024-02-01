@@ -317,25 +317,24 @@ static void *decision_thread_main(void *arg)
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
-    int report_timer_fd;
+    int report_timer_fd = -1;
+    int report_is_stale = 0;
     uint64_t report_timer_exp;
-    struct itimerspec deadline;
     struct timespec report_pthread_to;
 
-    // indicates updates have occurred since last report
-    int report_is_stale = 0;
+    // deadline config: log immediately and then every interval after
+    struct itimerspec deadline = { {config_report_interval, 0}, {1,0}};
 
-    clock_gettime(CLOCK_MONOTONIC, &deadline.it_value);
-    deadline.it_value.tv_sec += config_report_interval;
-    deadline.it_interval.tv_sec = config_report_interval;
-    deadline.it_interval.tv_nsec = 0;
-
-    report_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
-    if (report_timer_fd == -1) {
-        msg(LOG_ERR, "Timer create failed; Exiting decision thread");
-        return NULL;
+    // if interval reporting is enabled
+    if(config_report_interval > 0) {
+        // create a non-blocking timer
+        report_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
+        if (report_timer_fd == -1) {
+            msg(LOG_ERR, "Timer create failed; Exiting decision thread");
+            return NULL;
+        }
+        timerfd_settime(report_timer_fd, TFD_TIMER_ABSTIME, &deadline, NULL);
     }
-    timerfd_settime(report_timer_fd, TFD_TIMER_ABSTIME, &deadline, NULL);
 
 	while (!stop) {
 		int len;
@@ -343,32 +342,49 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
-            read(report_timer_fd, &report_timer_exp, sizeof(uint64_t));
-            if (report_timer_exp > 0 || run_stats) {
-                if (report_is_stale || run_stats) {
-                    // if the report timer has expired
-                    printf("=== logging: exp: %lu sig: %i i: %u\n", report_timer_exp, run_stats, config_report_interval);
+            // if a reporting interval was specified
+            if(config_report_interval > 0) {
+                read(report_timer_fd, &report_timer_exp, sizeof(uint64_t));
+                clock_gettime(CLOCK_MONOTONIC, &report_pthread_to);
+                // if the report timer has expired
+                if (report_timer_exp > 0 || run_stats) {
+                    if (report_is_stale || run_stats) {
+                        // todo;; remove debug
+                        printf("=> writing report: exp: %lu sig: %i i: %u\n", report_timer_exp, run_stats,
+                               config_report_interval);
+                        FILE *f = fopen(STAT_REPORT, "w");
+                        if (f) {
+                            do_stat_report(f, 0);
+                            fclose(f);
+                        }
+                        run_stats = 0;
+                        report_is_stale = 0;
+                    }
+                    // reset the report timer interval
+                    report_pthread_to.tv_sec += config_report_interval;
+                    report_timer_exp = 0;
+                } else {
+                    // we get here when a fan event triggered the cond wait
+                    // in this case we will use the remaining report interval
+                    // to adjust the cond wait timeout for the next report
+                    timerfd_gettime(report_timer_fd, &deadline);
+                    report_pthread_to.tv_sec += deadline.it_value.tv_sec;
+                }
+                // cond wait an event, timing out when the next report is due
+                pthread_cond_timedwait(&do_decision, &decision_lock, &report_pthread_to);
+            } else { // not using interval reporting
+                pthread_cond_wait(&do_decision, &decision_lock);
+                if (run_stats) {
                     FILE *f = fopen(STAT_REPORT, "w");
                     if (f) {
                         do_stat_report(f, 0);
                         fclose(f);
                     }
                     run_stats = 0;
-                    report_is_stale = 0;
                 }
-                // reset the report timer
-                clock_gettime(CLOCK_MONOTONIC, &report_pthread_to);
-                report_pthread_to.tv_sec += config_report_interval;
-                report_timer_exp = 0;
-            } else {
-                // timeout the fa event wait with the remaining report time
-                timerfd_gettime(report_timer_fd, &deadline);
-                clock_gettime(CLOCK_MONOTONIC, &report_pthread_to);
-                report_pthread_to.tv_sec += deadline.it_value.tv_sec;
             }
 
-            // wait on an event, timing out when a report is due
-			pthread_cond_timedwait(&do_decision, &decision_lock, &report_pthread_to);
+
 			if (stop) {
 				pthread_mutex_unlock(&decision_lock);
 				return NULL;
