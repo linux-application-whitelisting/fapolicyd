@@ -63,7 +63,7 @@ static volatile atomic_int alive = 1;
 static int fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
-static unsigned int config_report_interval;
+static unsigned int report_interval;
 
 // External functions
 void do_stat_report(FILE *f, int shutdown);
@@ -120,8 +120,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
     pthread_condattr_setclock(&report_timeout_attr, CLOCK_MONOTONIC);
 	pthread_cond_init(&do_decision, &report_timeout_attr);
 	events_ready = 0;
-    // todo;; should this pass into the decision thread as `arg`, or be accessed as static?
-    config_report_interval = conf->report_interval;
+    report_interval = conf->report_interval;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 	pthread_create(&deadmans_switch_thread, NULL,
 			deadmans_switch_thread_main, NULL);
@@ -306,7 +305,7 @@ static void *deadmans_switch_thread_main(void *arg)
 
 // disable interval reports, used on non-recoverable errors
 static void stop_interval_reports(struct itimerspec* d, const char* why) {
-    config_report_interval = 0;
+    report_interval = 0;
     d->it_interval.tv_sec = 0;
     d->it_interval.tv_sec = 0;
     d->it_value.tv_sec = 0;
@@ -331,20 +330,17 @@ static void *decision_thread_main(void *arg)
     int report_is_stale = 0;
     uint64_t report_timer_exp;
     struct timespec report_pthread_to;
-    struct itimerspec deadline = {
-            {config_report_interval, 0},
-            {1,0}
-    };
+    struct itimerspec deadline = { {report_interval, 0}, {1, 0} };
 
     // if interval reports are enabled
-    if(config_report_interval) {
+    if(report_interval) {
         // uses a non-blocking timer
         report_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
         if (report_timer_fd == -1) {
             stop_interval_reports(&deadline, "timer create failure");
         } else {
             timerfd_settime(report_timer_fd, TFD_TIMER_ABSTIME, &deadline, NULL);
-            msg(LOG_INFO, "interval reports configured; %us", config_report_interval);
+            msg(LOG_INFO, "interval reports configured; %us", report_interval);
         }
     }
 
@@ -357,7 +353,7 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
-            if(config_report_interval) { // using interval reports
+            if(report_interval) { // using interval reports
                 read(report_timer_fd, &report_timer_exp, sizeof(uint64_t));
                 if(clock_gettime(CLOCK_MONOTONIC, &report_pthread_to)) {
                     stop_interval_reports(&deadline, "clock failure");
@@ -374,11 +370,12 @@ static void *decision_thread_main(void *arg)
                         run_stats = 0;
                         report_is_stale = 0;
                     }
+                    // control reaches here when a reporting interval has expired
                     // adjust the cond wait timeout to a full reporting interval
-                    report_pthread_to.tv_sec += config_report_interval;
+                    report_pthread_to.tv_sec += report_interval;
                     report_timer_exp = 0;
                 } else {
-                    // control reaches here when a fan event triggers the cond wait
+                    // control reaches here without a reporting interval expiration
                     // in which case we will use the remaining report interval to
                     // adjust the cond wait timeout for the next report interval
                     timerfd_gettime(report_timer_fd, &deadline);
