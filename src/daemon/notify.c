@@ -304,6 +304,16 @@ static void *deadmans_switch_thread_main(void *arg)
 	return NULL;
 }
 
+// disable interval reports, used on non-recoverable errors
+static void stop_interval_reports(struct itimerspec* d, const char* why) {
+    config_report_interval = 0;
+    d->it_interval.tv_sec = 0;
+    d->it_interval.tv_sec = 0;
+    d->it_value.tv_sec = 0;
+    d->it_value.tv_sec = 0;
+    msg(LOG_WARNING, "interval reports disabled; %s", why);
+}
+
 static void *decision_thread_main(void *arg)
 {
 	sigset_t sigs;
@@ -317,24 +327,29 @@ static void *decision_thread_main(void *arg)
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
-    int report_timer_fd = -1;
+    int report_timer_fd;
     int report_is_stale = 0;
     uint64_t report_timer_exp;
     struct timespec report_pthread_to;
+    struct itimerspec deadline = {
+            {config_report_interval, 0},
+            {1,0}
+    };
 
-    // deadline config: log immediately and then every interval after
-    struct itimerspec deadline = { {config_report_interval, 0}, {1,0}};
-
-    // if interval reporting is enabled
-    if(config_report_interval > 0) {
-        // create a non-blocking timer
+    // if interval reports are enabled
+    if(config_report_interval) {
+        // uses a non-blocking timer
         report_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
         if (report_timer_fd == -1) {
-            msg(LOG_ERR, "Timer create failed; Exiting decision thread");
-            return NULL;
+            stop_interval_reports(&deadline, "timer create failure");
+        } else {
+            timerfd_settime(report_timer_fd, TFD_TIMER_ABSTIME, &deadline, NULL);
+            msg(LOG_INFO, "interval reports configured; %us", config_report_interval);
         }
-        timerfd_settime(report_timer_fd, TFD_TIMER_ABSTIME, &deadline, NULL);
     }
+
+    // start with a fresh report
+    run_stats = 1;
 
 	while (!stop) {
 		int len;
@@ -342,16 +357,15 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
-            // if a reporting interval was specified
-            if(config_report_interval > 0) {
+            if(config_report_interval) { // using interval reports
                 read(report_timer_fd, &report_timer_exp, sizeof(uint64_t));
-                clock_gettime(CLOCK_MONOTONIC, &report_pthread_to);
-                // if the report timer has expired
-                if (report_timer_exp > 0 || run_stats) {
+                if(clock_gettime(CLOCK_MONOTONIC, &report_pthread_to)) {
+                    stop_interval_reports(&deadline, "clock failure");
+                    continue;
+                }
+                // if report timer fired or stats were requested via signal
+                if (report_timer_exp || run_stats) {
                     if (report_is_stale || run_stats) {
-                        // todo;; remove debug
-                        printf("=> writing report: exp: %lu sig: %i i: %u\n", report_timer_exp, run_stats,
-                               config_report_interval);
                         FILE *f = fopen(STAT_REPORT, "w");
                         if (f) {
                             do_stat_report(f, 0);
@@ -360,20 +374,20 @@ static void *decision_thread_main(void *arg)
                         run_stats = 0;
                         report_is_stale = 0;
                     }
-                    // reset the report timer interval
+                    // adjust the cond wait timeout to a full reporting interval
                     report_pthread_to.tv_sec += config_report_interval;
                     report_timer_exp = 0;
                 } else {
-                    // we get here when a fan event triggered the cond wait
-                    // in this case we will use the remaining report interval
-                    // to adjust the cond wait timeout for the next report
+                    // control reaches here when a fan event triggers the cond wait
+                    // in which case we will use the remaining report interval to
+                    // adjust the cond wait timeout for the next report interval
                     timerfd_gettime(report_timer_fd, &deadline);
                     report_pthread_to.tv_sec += deadline.it_value.tv_sec;
                 }
-                // cond wait an event, timing out when the next report is due
+                // control reaches here when a reporting interval has been configured
+                // await a fan event, times out at the next reporting interval
                 pthread_cond_timedwait(&do_decision, &decision_lock, &report_pthread_to);
-            } else { // not using interval reporting
-                pthread_cond_wait(&do_decision, &decision_lock);
+            } else {
                 if (run_stats) {
                     FILE *f = fopen(STAT_REPORT, "w");
                     if (f) {
@@ -382,6 +396,9 @@ static void *decision_thread_main(void *arg)
                     }
                     run_stats = 0;
                 }
+                // control reaches here when no reporting interval was specified
+                // await an event, no interval timeout is used
+                pthread_cond_wait(&do_decision, &decision_lock);
             }
 
 
