@@ -365,24 +365,38 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
+            // if an interval has been specified
             if (rpt_interval) {
-                // an interval has been specified, check for timer expirations
-                read(rpt_timer_fd, &rpt_timer_exp, sizeof(uint64_t));
+                // check for timer expirations
+                ssize_t rec = read(rpt_timer_fd, &rpt_timer_exp, sizeof(uint64_t));
+                if (rec == -1 && errno == EAGAIN) {
+                    // allow recoverable read failures
+                    // goto checking the queue condition
+                    goto await;
+                }
+
+                if (rec == -1) {
+                    // any other read failures are nonrecoverable
+                    rpt_disable(&rpt_deadline, strerror(errno));
+                    continue;
+                }
+
                 if (clock_gettime(CLOCK_MONOTONIC, &rpt_pthread_to)) {
+                    // gettime failures are nonrecoverable
                     rpt_disable(&rpt_deadline, "clock failure");
                     continue;
                 }
-                // timer expired or stats were explicitly requested
+
+                // if timer expired or stats were explicitly requested
                 if (rpt_timer_exp || run_stats) {
-                    // write a new report if
-                    // 1. new events since last report
-                    // 2. explicitly requested
+                    // write a new report when one of
+                    // 1. new events observed since last report
+                    // 2. explicitly requested with run_stats
                     if (rpt_is_stale || run_stats) {
                         rpt_write();
                         run_stats = 0;
                         rpt_is_stale = 0;
                     }
-                    // control reaches here when an interval has expired
                     // adjust the cond wait timeout to a full interval
                     rpt_pthread_to.tv_sec += rpt_interval;
                     rpt_timer_exp = 0;
@@ -390,9 +404,13 @@ static void *decision_thread_main(void *arg)
                     // control reaches here without an interval expiration
                     // in which case we will use the remaining interval to
                     // adjust the cond wait timeout for the next report
-                    timerfd_gettime(rpt_timer_fd, &rpt_deadline);
+                    if (timerfd_gettime(rpt_timer_fd, &rpt_deadline)) {
+                        rpt_disable(&rpt_deadline, "gettime failure");
+                        continue;
+                    }
                     rpt_pthread_to.tv_sec += rpt_deadline.it_value.tv_sec;
                 }
+        await:
                 // control reaches here when an interval has been configured
                 // here we await a fan event, times out at the next report interval
                 pthread_cond_timedwait(&do_decision, &decision_lock, &rpt_pthread_to);
