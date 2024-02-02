@@ -337,14 +337,15 @@ static void *decision_thread_main(void *arg)
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
+    // interval reporting state
     int rpt_timer_fd;
     int rpt_is_stale = 0;
     uint64_t rpt_timer_exp;
     struct timespec rpt_pthread_to;
     struct itimerspec rpt_deadline = { {rpt_interval, 0}, {1, 0} };
 
-    // if interval reports are enabled
-    if(rpt_interval) {
+    // if an interval is set, reports are enabled
+    if (rpt_interval) {
         // uses a non-blocking timer
         rpt_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
         if (rpt_timer_fd == -1) {
@@ -364,10 +365,10 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
-            if(rpt_interval) {
+            if (rpt_interval) {
                 // an interval has been specified, check for timer expirations
                 read(rpt_timer_fd, &rpt_timer_exp, sizeof(uint64_t));
-                if(clock_gettime(CLOCK_MONOTONIC, &rpt_pthread_to)) {
+                if (clock_gettime(CLOCK_MONOTONIC, &rpt_pthread_to)) {
                     rpt_disable(&rpt_deadline, "clock failure");
                     continue;
                 }

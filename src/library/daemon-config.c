@@ -145,7 +145,7 @@ static void clear_daemon_config(conf_t *config)
 		strdup("rule,dec,perm,auid,pid,exe,:,path,ftype");
 	config->rpm_sha256_only = 0;
 	config->allow_filesystem_mark = 0;
-    config->report_interval=0;
+    config->report_interval = 0;
 }
 
 int load_daemon_config(conf_t *config)
