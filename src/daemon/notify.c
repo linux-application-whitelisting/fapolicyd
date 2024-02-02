@@ -307,10 +307,10 @@ static void *deadmans_switch_thread_main(void *arg)
 static void rpt_disable(struct itimerspec* d, const char* why)
 {
     rpt_interval = 0;
-    d->it_interval.tv_sec = 0;
-    d->it_interval.tv_sec = 0;
     d->it_value.tv_sec = 0;
     d->it_value.tv_sec = 0;
+    d->it_interval.tv_sec = 0;
+    d->it_interval.tv_sec = 0;
     msg(LOG_WARNING, "interval reports disabled; %s", why);
 }
 
@@ -393,15 +393,15 @@ static void *decision_thread_main(void *arg)
                     rpt_pthread_to.tv_sec += rpt_deadline.it_value.tv_sec;
                 }
                 // control reaches here when an interval has been configured
-                // await a fan event, times out at the next reporting interval
+                // here we await a fan event, times out at the next report interval
                 pthread_cond_timedwait(&do_decision, &decision_lock, &rpt_pthread_to);
             } else {
                 if (run_stats) {
                     rpt_write();
                     run_stats = 0;
                 }
-                // control reaches here when no interval was specified
-                // await an event, no interval timeout is used
+                // control reaches here when no report interval was specified
+                // here we await a fan event, no timeout is used
                 pthread_cond_wait(&do_decision, &decision_lock);
             }
 
