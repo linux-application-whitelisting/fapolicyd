@@ -369,21 +369,12 @@ static void *decision_thread_main(void *arg)
             if (rpt_interval) {
                 // check for timer expirations
                 if (read(rpt_timer_fd, &rpt_timer_exp, sizeof(uint64_t)) == -1) {
-                    // allow recoverable read failures
-                    if (errno == EAGAIN) {
-                        goto await;
+                    if (errno != EAGAIN) {
+                        // failures other than EAGAIN are nonrecoverable
+                        rpt_disable(&rpt_deadline, strerror(errno));
+                        continue;
                     }
-                    // any other read failures are nonrecoverable
-                    rpt_disable(&rpt_deadline, strerror(errno));
-                    continue;
                 }
-
-                if (clock_gettime(CLOCK_MONOTONIC, &rpt_pthread_to)) {
-                    // gettime failures are nonrecoverable
-                    rpt_disable(&rpt_deadline, "clock failure");
-                    continue;
-                }
-
                 // if timer expired or stats were explicitly requested
                 if (rpt_timer_exp || run_stats) {
                     // write a new report when one of
@@ -394,20 +385,15 @@ static void *decision_thread_main(void *arg)
                         run_stats = 0;
                         rpt_is_stale = 0;
                     }
-                    // adjust the pthread cond timeout to a full interval
-                    rpt_pthread_to.tv_sec += rpt_interval;
-                    rpt_timer_exp = 0;
-                } else {
-                    // control reaches here without an interval expiration
-                    // in which case we will use the remaining interval to
-                    // adjust the pthread cond timeout for the next report
-                    if (timerfd_gettime(rpt_timer_fd, &rpt_deadline)) {
-                        rpt_disable(&rpt_deadline, "gettime failure");
+                    // adjust the pthread cond timeout to a full interval from now
+                    if (clock_gettime(CLOCK_MONOTONIC, &rpt_pthread_to)) {
+                        // gettime failures are nonrecoverable
+                        rpt_disable(&rpt_deadline, "clock failure");
                         continue;
                     }
-                    rpt_pthread_to.tv_sec += rpt_deadline.it_value.tv_sec;
+                    rpt_pthread_to.tv_sec += rpt_interval;
+                    rpt_timer_exp = 0;
                 }
-        await:
                 // control reaches here when an interval has been configured
                 // await a fan event, timing out at the next report interval
                 pthread_cond_timedwait(&do_decision, &decision_lock, &rpt_pthread_to);
