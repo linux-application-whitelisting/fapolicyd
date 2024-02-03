@@ -443,7 +443,7 @@ out:
 			alive = 1;
 			make_policy_decision(&metadata[i], fd, mask);
 		}
-    }
+	}
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
 }
