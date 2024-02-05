@@ -305,25 +305,29 @@ static void *deadmans_switch_thread_main(void *arg)
 	return NULL;
 }
 
-// disable interval reports, used on non-recoverable errors
-static void rpt_disable(const char* why)
+// disable interval reports, used on unrecoverable errors
+static void rpt_disable(const char *why)
 {
-    close(rpt_timer_fd);
     rpt_interval = 0;
+    close(rpt_timer_fd);
     msg(LOG_WARNING, "interval reports disabled; %s", why);
 }
 
-// initialize the interval reports timer
-static void rpt_init(void)
+// initialize interval reporting
+static void rpt_init(struct timespec *t)
 {
-    // create a non-blocking timer
     rpt_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
     if (rpt_timer_fd == -1) {
         rpt_disable("timer create failure");
     } else {
+        t->tv_nsec = t->tv_sec = 0;
         struct itimerspec rpt_deadline = { {rpt_interval, 0}, {rpt_interval, 0} };
-        timerfd_settime(rpt_timer_fd, TFD_TIMER_ABSTIME, &rpt_deadline, NULL);
-        msg(LOG_INFO, "interval reports configured; %us", rpt_interval);
+        if (timerfd_settime(rpt_timer_fd, TFD_TIMER_ABSTIME, &rpt_deadline, NULL) == -1) {
+            // settime errors are unrecoverable
+            rpt_disable(strerror(errno));
+        } else {
+            msg(LOG_INFO, "interval reports configured; %us", rpt_interval);
+        }
     }
 }
 
@@ -356,7 +360,7 @@ static void *decision_thread_main(void *arg)
 
     // if an interval was configured, reports are enabled
     if (rpt_interval) {
-        rpt_init();
+        rpt_init(&rpt_timeout);
     }
 
     // start with a fresh report
@@ -373,8 +377,9 @@ static void *decision_thread_main(void *arg)
                 // check for timer expirations
                 uint64_t expired = 0;
                 if (read(rpt_timer_fd, &expired, sizeof(uint64_t)) == -1) {
+                    // EAGAIN expected with nonblocking timer
+                    // any other error is unrecoverable
                     if (errno != EAGAIN) {
-                        // errors other than EAGAIN are nonrecoverable
                         rpt_disable(strerror(errno));
                         continue;
                     }
@@ -389,15 +394,14 @@ static void *decision_thread_main(void *arg)
                         run_stats = 0;
                         rpt_is_stale = 0;
                     }
-                    // adjust the pthread cond timeout to a full interval from now
+                    // adjust the pthread timeout to a full interval from now
                     if (clock_gettime(CLOCK_MONOTONIC, &rpt_timeout)) {
-                        // gettime failures are nonrecoverable
+                        // gettime errors are unrecoverable
                         rpt_disable("clock failure");
                         continue;
                     }
                     rpt_timeout.tv_sec += rpt_interval;
                 }
-                // control reaches here when an interval has been configured
                 // await a fan event, timing out at the next report interval
                 pthread_cond_timedwait(&do_decision, &decision_lock, &rpt_timeout);
             } else {
@@ -405,8 +409,7 @@ static void *decision_thread_main(void *arg)
                     rpt_write();
                     run_stats = 0;
                 }
-                // control reaches here when an interval was _not_ specified
-                // await a fan event indefinitely
+                // no interval reports, so await a fan event indefinitely
                 pthread_cond_wait(&do_decision, &decision_lock);
             }
 
