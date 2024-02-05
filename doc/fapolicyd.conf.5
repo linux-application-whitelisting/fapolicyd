@@ -93,7 +93,7 @@ When this option is set to 1, it allows fapolicyd to monitor file access events 
 
 .TP
 .B report_interval
-This option specifies a time interval in seconds, which fapolicyd uses to schedule a dump of internal performance statistics to file (/var/run/fapolicyd/fapolicyd.state). Setting this to 0 will disable interval reporting, which is the default value.
+This option specifies a reporting interval, measured in seconds, which fapolicyd uses to schedule a recurring dump of internal performance statistics to the \fBfapolicyd.state\fP file. The default value of 0 disables interval reporting.
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),

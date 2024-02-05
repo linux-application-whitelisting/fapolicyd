@@ -61,6 +61,7 @@ static pthread_condattr_t rpt_timer_attr;
 static volatile atomic_bool events_ready;
 static volatile atomic_int alive = 1;
 static int fd = -1;
+static int rpt_timer_fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
 static unsigned int rpt_interval;
@@ -244,6 +245,7 @@ void shutdown_fanotify(mlist *m)
 
 	// Clean up
 	q_close(q);
+    close(rpt_timer_fd);
 
 	// Report results
 	msg(LOG_DEBUG, "Allowed accesses: %lu", getAllowed());
@@ -304,14 +306,25 @@ static void *deadmans_switch_thread_main(void *arg)
 }
 
 // disable interval reports, used on non-recoverable errors
-static void rpt_disable(struct itimerspec* d, const char* why)
+static void rpt_disable(const char* why)
 {
+    close(rpt_timer_fd);
     rpt_interval = 0;
-    d->it_value.tv_sec = 0;
-    d->it_value.tv_sec = 0;
-    d->it_interval.tv_sec = 0;
-    d->it_interval.tv_sec = 0;
     msg(LOG_WARNING, "interval reports disabled; %s", why);
+}
+
+// initialize the interval reports timer
+static void rpt_init(void)
+{
+    // create a non-blocking timer
+    rpt_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
+    if (rpt_timer_fd == -1) {
+        rpt_disable("timer create failure");
+    } else {
+        struct itimerspec rpt_deadline = { {rpt_interval, 0}, {rpt_interval, 0} };
+        timerfd_settime(rpt_timer_fd, TFD_TIMER_ABSTIME, &rpt_deadline, NULL);
+        msg(LOG_INFO, "interval reports configured; %us", rpt_interval);
+    }
 }
 
 // write a stat report to file at the standard location
@@ -338,22 +351,12 @@ static void *decision_thread_main(void *arg)
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
     // interval reporting state
-    int rpt_timer_fd;
     int rpt_is_stale = 0;
-    uint64_t rpt_timer_exp;
-    struct timespec rpt_pthread_to;
-    struct itimerspec rpt_deadline = { {rpt_interval, 0}, {1, 0} };
+    struct timespec rpt_timeout;
 
-    // if an interval is set, reports are enabled
+    // if an interval was configured, reports are enabled
     if (rpt_interval) {
-        // uses a non-blocking timer
-        rpt_timer_fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
-        if (rpt_timer_fd == -1) {
-            rpt_disable(&rpt_deadline, "timer create failure");
-        } else {
-            timerfd_settime(rpt_timer_fd, TFD_TIMER_ABSTIME, &rpt_deadline, NULL);
-            msg(LOG_INFO, "interval reports configured; %us", rpt_interval);
-        }
+        rpt_init();
     }
 
     // start with a fresh report
@@ -365,19 +368,20 @@ static void *decision_thread_main(void *arg)
 
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
-            // if an interval has been specified
+            // if an interval has been configured
             if (rpt_interval) {
                 // check for timer expirations
-                if (read(rpt_timer_fd, &rpt_timer_exp, sizeof(uint64_t)) == -1) {
+                uint64_t expired = 0;
+                if (read(rpt_timer_fd, &expired, sizeof(uint64_t)) == -1) {
                     if (errno != EAGAIN) {
-                        // failures other than EAGAIN are nonrecoverable
-                        rpt_disable(&rpt_deadline, strerror(errno));
+                        // errors other than EAGAIN are nonrecoverable
+                        rpt_disable(strerror(errno));
                         continue;
                     }
                 }
-                // if timer expired or stats were explicitly requested
-                if (rpt_timer_exp || run_stats) {
-                    // write a new report when one of
+                // if the timer expired or stats were explicitly requested
+                if (expired || run_stats) {
+                    // write a new report only when one of
                     // 1. new events observed since last report
                     // 2. explicitly requested with run_stats
                     if (rpt_is_stale || run_stats) {
@@ -386,17 +390,16 @@ static void *decision_thread_main(void *arg)
                         rpt_is_stale = 0;
                     }
                     // adjust the pthread cond timeout to a full interval from now
-                    if (clock_gettime(CLOCK_MONOTONIC, &rpt_pthread_to)) {
+                    if (clock_gettime(CLOCK_MONOTONIC, &rpt_timeout)) {
                         // gettime failures are nonrecoverable
-                        rpt_disable(&rpt_deadline, "clock failure");
+                        rpt_disable("clock failure");
                         continue;
                     }
-                    rpt_pthread_to.tv_sec += rpt_interval;
-                    rpt_timer_exp = 0;
+                    rpt_timeout.tv_sec += rpt_interval;
                 }
                 // control reaches here when an interval has been configured
                 // await a fan event, timing out at the next report interval
-                pthread_cond_timedwait(&do_decision, &decision_lock, &rpt_pthread_to);
+                pthread_cond_timedwait(&do_decision, &decision_lock, &rpt_timeout);
             } else {
                 if (run_stats) {
                     rpt_write();
