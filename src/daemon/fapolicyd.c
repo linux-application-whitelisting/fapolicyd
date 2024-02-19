@@ -23,8 +23,6 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
-#define _GNU_SOURCE	   /* gettid() in unistd.h */
-
 #include "config.h"
 #include <stdio.h>
 #include <poll.h>
