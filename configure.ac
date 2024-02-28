@@ -111,7 +111,7 @@ echo Checking for required header files
 AC_CHECK_HEADER(sys/fanotify.h, , [AC_MSG_ERROR(
 ["Couldn't find sys/fanotify.h...your kernel might not be new enough"] )])
 AC_CHECK_FUNCS(fexecve, [], [])
-
+AC_CHECK_FUNCS([gettid])
 AC_CHECK_HEADER(uthash.h, , [AC_MSG_ERROR(
 ["Couldn't find uthash.h...uthash-devel is missing"] )])
 

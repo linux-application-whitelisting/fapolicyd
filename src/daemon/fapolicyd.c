@@ -42,6 +42,9 @@
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
 #include <locale.h>
+#ifndef HAVE_GETTID
+#include <sys/syscall.h>
+#endif
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -82,6 +85,12 @@ static mlist *m = NULL;
 
 static void usage(void) NORETURN;
 
+#ifndef HAVE_GETTID
+pid_t gettid(void)
+{
+	return syscall(SYS_gettid);
+}
+#endif
 
 static void install_syscall_filter(void)
 {
