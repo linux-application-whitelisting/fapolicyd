@@ -718,6 +718,7 @@ err_out32:
 done32:
 		free(ph_tbl);
 done32_obj:
+		; // fix an 'error label at end of compound statement'
 	} else if (e_ident[EI_CLASS] == ELFCLASS64) {
 		unsigned i, type;
 		Elf64_Phdr *ph_tbl;
@@ -869,6 +870,7 @@ err_out64:
 done64:
 		free(ph_tbl);
 done64_obj:
+		; // fix an 'error label at end of compound statement'
 	} else // Invalid ELF class
 		info |= HAS_ERROR;
 rewind_out:
