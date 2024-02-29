@@ -1,38 +1,41 @@
-diff --color -ru a/configure.ac b/configure.ac
---- a/configure.ac	2021-11-12 20:21:54.000000000 +0100
-+++ b/configure.ac	2021-12-14 13:47:11.890649552 +0100
-@@ -67,10 +67,6 @@
+diff --git a/configure.ac b/configure.ac
+index 8188d13..6430e1e 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -112,9 +112,6 @@ AC_CHECK_HEADER(sys/fanotify.h, , [AC_MSG_ERROR(
  ["Couldn't find sys/fanotify.h...your kernel might not be new enough"] )])
  AC_CHECK_FUNCS(fexecve, [], [])
-
+ AC_CHECK_FUNCS([gettid])
 -AC_CHECK_HEADER(uthash.h, , [AC_MSG_ERROR(
 -["Couldn't find uthash.h...uthash-devel is missing"] )])
 -
--
+ 
  echo .
  echo Checking for required libraries
- AC_CHECK_LIB(udev, udev_device_get_devnode, , [AC_MSG_ERROR([libudev not found])], -ludev)
-diff --color -ru a/src/library/rpm-backend.c b/src/library/rpm-backend.c
---- a/src/library/rpm-backend.c	2021-11-12 20:21:54.000000000 +0100
-+++ b/src/library/rpm-backend.c	2021-12-14 13:47:26.833926203 +0100
-@@ -32,7 +32,7 @@
- #include <rpm/rpmpgp.h>
- #include <fnmatch.h>
-
--#include <uthash.h>
-+#include "uthash.h"
-
- #include "message.h"
- #include "gcc-attributes.h"
-diff --color -ru a/src/Makefile.am b/src/Makefile.am
---- a/src/Makefile.am	2021-11-12 20:21:54.000000000 +0100
-+++ b/src/Makefile.am	2021-12-14 13:48:03.218599808 +0100
-@@ -5,6 +5,9 @@
-	-I${top_srcdir} \
-	-I${top_srcdir}/src/library
-
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 25afbcd..dc308ec 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -5,6 +5,9 @@ AM_CPPFLAGS = \
+ 	-I${top_srcdir} \
+ 	-I${top_srcdir}/src/library
+ 
 +AM_CPPFLAGS += \
 +	-I${top_srcdir}/uthash-2.3.0/include
 +
  sbin_PROGRAMS = fapolicyd fapolicyd-cli
  lib_LTLIBRARIES= libfapolicyd.la
+ 
+diff --git a/src/library/rpm-backend.c b/src/library/rpm-backend.c
+index 8d5aa20..6e92f10 100644
+--- a/src/library/rpm-backend.c
++++ b/src/library/rpm-backend.c
+@@ -33,7 +33,7 @@
+ #include <rpm/rpmpgp.h>
+ #include <fnmatch.h>
+ 
+-#include <uthash.h>
++#include "uthash.h"
+ 
+ #include "message.h"
+ #include "gcc-attributes.h"
