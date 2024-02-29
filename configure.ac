@@ -65,6 +65,56 @@ AC_COMPILE_IFELSE(
 )
 AC_MSG_RESULT($DEALLOC)
 
+
+withval=""
+AC_ARG_WITH(asan,
+AS_HELP_STRING([--with-asan],[build with asan sanitizer (default=no)]),
+use_asan=yes,use_asan=$withval)
+
+if test x$use_asan = xyes ; then
+  AC_LANG_PUSH([C])
+
+  CCFLAGS="-fno-omit-frame-pointer"
+  ASAN_CFLAGS=""
+
+  for CFLAG in $CCFLAGS; do
+      echo -n "checking for $CFLAG... "
+      TMPFLAGS="$CFLAGS"
+      CFLAGS="$CFLAGS $CFLAG"
+      AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[ASAN_CFLAGS="$ASAN_CFLAGS $CFLAG"
+      AC_MSG_RESULT(yes)],
+      [AC_MSG_RESULT(no)])
+      CFLAGS="$TMPFLAGS"
+  done
+
+  LLDFLAGS="-faddress-sanitizer -fsanitize=address"
+  ASAN_LDFLAGS=""
+
+  for LDFLAG in $LLDFLAGS; do
+      echo -n "checking for $LDFLAG... "
+      TMPLDFLAGS="$LDFLAGS"
+      LDFLAGS="$LDFLAGS $LDFLAG"
+      AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[ASAN_LDFLAGS="$ASAN_LDFLAGS $LDFLAG"
+      AC_MSG_RESULT(yes)],
+      [AC_MSG_RESULT(no)])
+      LDFLAGS="$TMPLDFLAGS"
+  done
+
+ # how many flags should pass? just one "-fno-omit-frame-pointer"
+  if [[ -z "$ASAN_CFLAGS" ]] || [[ "`echo "$ASAN_CFLAGS" | wc -w`" -ne 1 ]]; then
+     AC_MSG_ERROR([ Compiler does not support asan sanitizer cflags ])
+  fi
+
+  # how many flags should pass? just one of "-faddress-sanitizer -fsanitize=address"
+  if [[ -z "$ASAN_LDFLAGS" ]] || [[ "`echo "$ASAN_LDFLAGS" | wc -w`" -ne 1 ]]; then
+     AC_MSG_ERROR([ Compiler does not support asan sanitizer ldflags])
+  fi
+
+  CFLAGS="$CFLAGS $ASAN_CFLAGS -O0"
+  LDFLAGS="$LDFLAGS $ASAN_LDFLAGS"
+  AC_DEFINE([USE_ASAN], [1], [Address Sanitizer is enabled])
+fi
+
 AC_ARG_WITH(audit,
 AS_HELP_STRING([--with-audit],[turn on decision auditing (default=no)]),
 AC_DEFINE(USE_AUDIT,1,[Define if you want to enable decision auditing.]),
@@ -139,6 +189,8 @@ echo "
   Compiler:               $CC
   Compiler flags:
 `echo $CFLAGS | fmt -w 50 | sed 's,^,                          ,'`
+  Linker flags:
+`echo $LDFLAGS | fmt -w 50 | sed 's,^,                          ,'`
   __attr_access support:  $ACCESS
   __attr_dealloc_free support: $DEALLOC
 "
