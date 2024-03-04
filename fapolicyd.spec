@@ -27,6 +27,7 @@ Requires(preun): systemd-units
 Requires(postun): systemd-units
 
 #ELN Patch1: fapolicyd-uthash-bundle.patch
+#ELN Patch2: fapolicyd-selinux-var-run.patch
 
 %description
 Fapolicyd (File Access Policy Daemon) implements application whitelisting
@@ -63,7 +64,19 @@ makes use of the kernel's fanotify interface to determine file access rights.
 #ELN %if 0%{?rhel} != 0
 #ELN # uthash
 #ELN %setup -q -D -T -a 2
-#ELN %patch1 -p1 -b .uthash
+#ELN %patch -P1 -p1 -b .uthash
+#ELN %endif
+
+#ELN %if 0%{?fedora} < 40
+#ELN %define selinux_var_run 1
+#ELN %endif
+
+#ELN %if 0%{?rhel} < 10
+#ELN %define selinux_var_run 1
+#ELN %endif
+
+#ELN %if %{defined selinux_var_run}
+#ELN %patch -P2 -R -p1 -b .selinux
 #ELN %endif
 
 # generate rules for python
