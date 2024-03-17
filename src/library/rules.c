@@ -348,7 +348,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 
 		ptr = strtok_r(tmp, ",", &saved);
 		while (ptr) {
-			if (isdigit(*ptr)) {
+            // starts with a digit or minus sign
+			if (isdigit(*ptr) || *ptr == '-') {
 				errno = 0;
 				long val = strtol(ptr, NULL, 10);
 				if (errno) {
