@@ -51,6 +51,8 @@ int main(void)
 		res = avl_intersection(&(g->tree), &(groups->tree));
 		if (!res)
 			error(1, 0, "Positive AVL intersection failed");
+		destroy_attr_set(g);
+		free(g);
 	}
 
 	destroy_attr_set(groups);
