@@ -1,3 +1,12 @@
+#ASAN %%global asan_build 1
+#ELN %%global eln_build 1
+
+%if %{defined eln_build}
+%global selinuxtype targeted
+%global moduletype contrib
+%define semodule_version master
+%endif
+
 Summary: Application Whitelisting Daemon
 Name: fapolicyd
 Version: 1.3.3
@@ -5,29 +14,39 @@ Release: 1%{?dist}
 License: GPL-3.0-or-later
 URL: http://people.redhat.com/sgrubb/fapolicyd
 Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
-#ELN %global selinuxtype targeted
-#ELN %global moduletype contrib
-#ELN %define semodule_version master
-#ELN Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/heads/%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
-#ELN # we bundle uthash for rhel9
-#ELN Source2: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz#/uthash-2.3.0.tar.gz
+
+#ELN %Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/heads/%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
+
+# we bundle uthash for rhel9
+#ELN %Source2: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz#/uthash-2.3.0.tar.gz
+
 BuildRequires: gcc
 BuildRequires: kernel-headers
 BuildRequires: autoconf automake make gcc libtool
 BuildRequires: systemd systemd-devel openssl-devel rpm-devel file-devel file
 BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
 BuildRequires: python3-devel
-#ELN %if 0%{?rhel} == 0
+
+#ELN %%if 0%{?fedora} > 0
 BuildRequires: uthash-devel
-#ELN %endif
-#ELN Recommends: %{name}-selinux
+#ELN %%endif
+
+%if %{defined asan_build}
+BuildRequires: libasan
+%endif
+
+%if %{defined eln_build}
+Recommends: %{name}-selinux
+%endif
+
 Requires(pre): shadow-utils
 Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units
 
-#ELN Patch1: fapolicyd-uthash-bundle.patch
-#ELN Patch2: fapolicyd-selinux-var-run.patch
+# applied in CI only
+Patch1: fapolicyd-uthash-bundle.patch
+Patch2: fapolicyd-selinux-var-run.patch
 
 %description
 Fapolicyd (File Access Policy Daemon) implements application whitelisting
@@ -35,49 +54,57 @@ to decide file access rights. Applications that are known via a reputation
 source are allowed access while unknown applications are not. The daemon
 makes use of the kernel's fanotify interface to determine file access rights.
 
-#ELN %package        selinux
-#ELN Summary:        Fapolicyd selinux
-#ELN Group:          Applications/System
-#ELN Requires:       %{name} = %{version}-%{release}
-#ELN BuildRequires:  selinux-policy
-#ELN %if 0%{?rhel} < 9
-#ELN BuildRequires:  selinux-policy-devel >= 3.14.3-108
-#ELN %else
-#ELN %if 0%{?rhel} == 9
-#ELN BuildRequires:  selinux-policy-devel >= 38.1.2
-#ELN %else
-#ELN BuildRequires:  selinux-policy-devel >= 38.2
-#ELN %endif
-#ELN %endif
-#ELN BuildArch: noarch
-#ELN %{?selinux_requires}
-#ELN 
-#ELN %description    selinux
-#ELN The %{name}-selinux package contains selinux policy for the %{name} daemon.
+%if %{defined eln_build}
+%package        selinux
+Summary:        Fapolicyd selinux
+Group:          Applications/System
+Requires:       %{name} = %{version}-%{release}
+BuildRequires:  selinux-policy
+%if 0%{?rhel} < 9
+BuildRequires:  selinux-policy-devel >= 3.14.3-108
+%else
+%if 0%{?rhel} == 9
+BuildRequires:  selinux-policy-devel >= 38.1.2
+%else
+BuildRequires:  selinux-policy-devel >= 38.2
+%endif
+%endif
+BuildArch: noarch
+%{?selinux_requires}
+
+%description    selinux
+The %{name}-selinux package contains selinux policy for the %{name} daemon.
+
+%endif
 
 %prep
 %setup -q
 
-#ELN # selinux
-#ELN %setup -q -D -T -a 1
+%if %{defined eln_build}
+# selinux
+%setup -q -D -T -a 1
+%endif
 
-#ELN %if 0%{?rhel} != 0
-#ELN # uthash
-#ELN %setup -q -D -T -a 2
-#ELN %patch -P1 -p1 -b .uthash
-#ELN %endif
+%if 0%{?fedora} == 0
+# uthash
+%setup -q -D -T -a 2
+%patch -P1 -p1 -b .uthash
+%endif
 
-#ELN %if 0%{?fedora} < 40
-#ELN %define selinux_var_run 1
-#ELN %endif
 
-#ELN %if 0%{?rhel} < 10
-#ELN %define selinux_var_run 1
-#ELN %endif
+%if %{defined eln_build}
+%if 0%{?fedora} < 40
+%define selinux_var_run 1
+%endif
 
-#ELN %if %{defined selinux_var_run}
-#ELN %patch -P2 -R -p1 -b .selinux
-#ELN %endif
+%if 0%{?rhel} < 10
+%define selinux_var_run 1
+%endif
+
+%if %{defined selinux_var_run}
+%patch -P2 -R -p1 -b .selinux
+%endif
+%endif
 
 # generate rules for python
 sed -i "s|%python2_path%|`readlink -f %{__python2}`|g" rules.d/*.rules
@@ -94,21 +121,26 @@ sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
 
 %build
 ./autogen.sh
-%configure \
-    --with-audit \
-#ELN    --with-rpm \
-    --disable-shared
+configure_flags="--with-audit --with-rpm --disable-shared"
+
+%if %{defined asan_build}
+configure_flags="$configure_flags --with-asan"
+%endif
+
+%configure $configure_flags
 
 %make_build
 
-#ELN # selinux
-#ELN pushd %{name}-selinux-%{semodule_version}
-#ELN make
-#ELN popd
-#ELN 
-#ELN # selinux
-#ELN %pre selinux
-#ELN %selinux_relabel_pre -s %{selinuxtype}
+%if %{defined eln_build}
+# selinux
+pushd %{name}-selinux-%{semodule_version}
+make
+popd
+
+# selinux
+%pre selinux
+%selinux_relabel_pre -s %{selinuxtype}
+%endif
 
 %install
 %make_install
@@ -124,11 +156,13 @@ cat %{buildroot}/%{_datadir}/%{name}/sample-rules/README-rules \
   | grep '^[0-9]' > %{buildroot}/%{_datadir}/%{name}/default-ruleset.known-libs
 chmod 644 %{buildroot}/%{_datadir}/%{name}/default-ruleset.known-libs
 
-#ELN # selinux
-#ELN install -d %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}
-#ELN install -m 0644 %{name}-selinux-%{semodule_version}/%{name}.pp.bz2 %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}
-#ELN install -d -p %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}
-#ELN install -p -m 644 %{name}-selinux-%{semodule_version}/%{name}.if %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}/ipp-%{name}.if
+%if %{defined eln_build}
+# selinux
+install -d %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}
+install -m 0644 %{name}-selinux-%{semodule_version}/%{name}.pp.bz2 %{buildroot}%{_datadir}/selinux/packages/%{selinuxtype}
+install -d -p %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}
+install -p -m 644 %{name}-selinux-%{semodule_version}/%{name}.if %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}/ipp-%{name}.if
+%endif
 
 #cleanup
 find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
@@ -244,22 +278,25 @@ fi
 %ghost %attr(660,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/lib/%{name}/data.mdb
 %ghost %attr(660,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/lib/%{name}/lock.mdb
 
-#ELN %files selinux
-#ELN %{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp.bz2
-#ELN %ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{name}
-#ELN %{_datadir}/selinux/devel/include/%{moduletype}/ipp-%{name}.if
-#ELN 
-#ELN %post selinux
-#ELN %selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp.bz2
-#ELN %selinux_relabel_post -s %{selinuxtype}
-#ELN 
-#ELN %postun selinux
-#ELN if [ $1 -eq 0 ]; then
-#ELN     %selinux_modules_uninstall -s %{selinuxtype} %{name}
-#ELN fi
-#ELN 
-#ELN %posttrans selinux
-#ELN %selinux_relabel_post -s %{selinuxtype}
+%if %{defined eln_build}
+%files selinux
+%{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp.bz2
+%ghost %verify(not md5 size mode mtime) %{_sharedstatedir}/selinux/%{selinuxtype}/active/modules/200/%{name}
+%{_datadir}/selinux/devel/include/%{moduletype}/ipp-%{name}.if
+
+%post selinux
+%selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{selinuxtype}/%{name}.pp.bz2
+%selinux_relabel_post -s %{selinuxtype}
+
+%postun selinux
+if [ $1 -eq 0 ]; then
+     %selinux_modules_uninstall -s %{selinuxtype} %{name}
+fi
+
+%posttrans selinux
+%selinux_relabel_post -s %{selinuxtype}
+
+%endif
 
 %changelog
 * Mon Jul 10 2023 Steve Grubb <sgrubb@redhat.com> 1.3.3-1
