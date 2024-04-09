@@ -4,9 +4,9 @@ _fapolicydcli()
 {
 	local cur prev opts
 	COMPREPLY=()
-	cur="${COMP_WORDS[COMP_CWORD]}"
-	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--check-config --check-path --check-status --check-trustdb \
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local prev="${COMP_WORDS[COMP_CWORD-1]}"
+	local opts="--check-config --check-path --check-status --check-trustdb \
                 --check-watch_fs --delete-db --dump-db \
                 --file --ftype --help --list --update --reload-rules"
 
