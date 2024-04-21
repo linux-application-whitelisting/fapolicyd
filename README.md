@@ -541,7 +541,7 @@ The second mode is based on using IMA to calculate sha256 hashes and make them
 available through extended attributes. This incurs only the overhead of calling
 fgetxattr which is fast since there is no path name resolution. The file system
 must support i_version. For XFS, this is enabled by default. For other file
-systems, this means you need to add the i_version mount option. In either
+systems, this means you need to add the iversion mount option. In either
 case, IMA must be setup appropriately.
 
 The third mode is where fapolicyd calculates a SHA256 hash of the file itself
@@ -564,9 +564,9 @@ daemon. So, this is not designed to prevent root from doing things. None of
 the integrity subsystems on Linux are designed to prevent root from doing
 things. There has to be a way of doing updates or disabling something for
 troubleshooting. For example, you can change IMA to ima_appraise=fix in
-/etc/default/grub. You can run setenforce=0 to turn off selinux. You can also
-set selinux=0 for the boot prompt. The IPE integrity subsystem can be turned
-off via 
+/etc/default/grub. You can run setenforce 0 to turn off SELinux. You can also
+set selinux=0 or enforcing=0 for the boot prompt. The IPE integrity subsystem
+can be turned off via 
 
 ```
 echo -n 0 > "/sys/kernel/security/ipe/Ex Policy/active"
