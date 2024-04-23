@@ -33,6 +33,7 @@
 #include <string.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdatomic.h>
 
 #include "database.h"
@@ -55,7 +56,7 @@ static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
 
 extern volatile atomic_bool stop;
-volatile atomic_bool reload_rules = 0;
+volatile atomic_bool reload_rules = false;
 
 static const nv_t table[] = {
 {       NO_OPINION, "no-opinion" },

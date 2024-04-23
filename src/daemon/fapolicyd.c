@@ -39,6 +39,7 @@
 #include <linux/unistd.h>  /* syscall numbers */
 #include <sys/stat.h>	   /* umask */
 #include <seccomp.h>
+#include <stdbool.h>
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
 #include <locale.h>
@@ -65,7 +66,7 @@
 unsigned int debug_mode = 0, permissive = 0;
 
 // Signal handler notifications
-volatile atomic_bool stop = 0, hup = 0, run_stats = 0;
+volatile atomic_bool stop = false, hup = false, run_stats = false;
 
 // Local variables
 static conf_t config;
@@ -211,9 +212,9 @@ static void init_fs_list(const char *watch_fs)
 }
 
 
-static void term_handler(int sig)
+static void term_handler(int sig __attribute__((unused)))
 {
-	stop = 1 + sig; // Just so its used...
+	stop = true;
 }
 
 
@@ -236,14 +237,14 @@ static void coredump_handler(int sig)
 }
 
 
-static void hup_handler(int sig)
+static void hup_handler(int sig __attribute__((unused)))
 {
-	hup = 1 + sig; // Just so its used...
+	hup = true;
 }
 
 static void usr1_handler(int sig __attribute__((unused)))
 {
-	run_stats = 1;
+	run_stats = true;
 }
 
 /*
@@ -649,7 +650,7 @@ int main(int argc, const char *argv[])
 	while (!stop) {
 		int rc;
 		if (hup) {
-			hup = 0;
+			hup = false;
 			msg(LOG_DEBUG, "Got SIGHUP");
 			reconfigure();
 		}

@@ -1279,7 +1279,7 @@ static void *update_thread_main(void *arg)
 		rc = poll(ffd, 1, 1000);
 
 		if (reload_rules) {
-			reload_rules = 0;
+			reload_rules = false;
 			load_rule_file();
 
 			lock_rule();

@@ -33,6 +33,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/syscall.h>
+#include <stdbool.h>
 #include <stdatomic.h>
 #include "policy.h"
 #include "event.h"
@@ -114,7 +115,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 						PTHREAD_MUTEX_ERRORCHECK);
 	pthread_mutex_init(&decision_lock, &decision_lock_attr);
 	pthread_cond_init(&do_decision, NULL);
-	events_ready = 0;
+	events_ready = false;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 	pthread_create(&deadmans_switch_thread, NULL,
 			deadmans_switch_thread_main, NULL);
@@ -254,19 +255,19 @@ void decision_report(FILE *f)
 	fprintf(f, "Denied accesses: %lu\n", getDenied());
 }
 
-static int get_ready(void)
+static bool get_ready(void)
 {
 	return events_ready;
 }
 
 static void set_ready(void)
 {
-	events_ready = 1;
+	events_ready = true;
 }
 
 static void clear_ready(void)
 {
-	events_ready = 0;
+	events_ready = false;
 }
 
 static void *deadmans_switch_thread_main(void *arg)
@@ -326,7 +327,7 @@ static void *decision_thread_main(void *arg)
 					do_stat_report(f, 0);
 					fclose(f);
 				}
-				run_stats = 0;
+				run_stats = false;
 			}
 		}
 		alive = 1;
@@ -389,7 +390,7 @@ void handle_events(void)
 	while (len < 0) {
 		do {
 			len = read(fd, (void *) buf, sizeof(buf));
-		} while (len == -1 && errno == EINTR && stop == 0);
+		} while (len == -1 && errno == EINTR && stop == false);
 		if (len == -1 && errno != EAGAIN) {
 			// If we get this, we have no access to the file. We
 			// cannot formulate a reply either to deny it because
