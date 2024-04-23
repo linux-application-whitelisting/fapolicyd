@@ -279,6 +279,11 @@ had a common denominator. Some primes you might consider for cache size are:
 1021, 1549, 2039, 4099, 6143, 8191, 10243, 12281, 16381, 20483, 24571,
 28669, 32687, 40961, 49157, 57347, 65353, etc.
 
+This report can be scheduled to be written periodically by setting the
+configuration option `report_interval`. This option is set to `0` by default
+which disables the reporting interval. A positive value for this option
+specifies the number of seconds to wait between reports.
+
 Also, it should be mentioned that the more rules in the policy, the more
 rules it will have to iterate over to make a decision. As for the system
 performance impact, this is very workload dependent. For a typical desktop
