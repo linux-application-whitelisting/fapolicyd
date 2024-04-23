@@ -1,6 +1,6 @@
 /*
  * message.c - function to syslog or write to stderr
- * Copyright (c) 2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -53,30 +53,29 @@ void msg(int priority, const char *fmt, ...)
 	va_start(ap, fmt);
 	if (message_mode == MSG_SYSLOG)
 		vsyslog(priority, fmt, ap);
-	else
-	{
-		/* For stderr we'll include the log level, use ANSI escape codes to colourise the it,
-		 * and prefix lines with the time and date.
-		 */
+	else {
+		// For stderr we'll include the log level, use ANSI escape
+		// codes to colourise the it, and prefix lines with the time
+		// and date.
 		const char *color;
 		const char *level;
 		switch (priority) {
-		case LOG_EMERG:		color = "\x1b[31m"; level = "EMERGENCY"; break; /* Red */
-		case LOG_ALERT:		color = "\x1b[35m"; level = "ALERT"; break; /* Magenta */
-		case LOG_CRIT:		color = "\x1b[33m"; level = "CRITICAL"; break; /* Yellow */
-		case LOG_ERR:		color = "\x1b[31m"; level = "ERROR"; break; /* Red */
-		case LOG_WARNING:	color = "\x1b[33m"; level = "WARNING"; break; /* Yellow */
-		case LOG_NOTICE:	color = "\x1b[32m"; level = "NOTICE"; break; /* Green */
-		case LOG_INFO:		color = "\x1b[36m"; level = "INFO"; break; /* Cyan */
-		case LOG_DEBUG:		color = "\x1b[34m"; level = "DEBUG"; break; /* Blue */
-		default:			color = "\x1b[0m";  level = "UNKNOWN"; break; /* Reset */
+		case LOG_EMERG:	   color = "\x1b[31m"; level = "EMERGENCY"; break; /* Red */
+		case LOG_ALERT:	   color = "\x1b[35m"; level = "ALERT"; break; /* Magenta */
+		case LOG_CRIT:	   color = "\x1b[33m"; level = "CRITICAL"; break; /* Yellow */
+		case LOG_ERR:	   color = "\x1b[31m"; level = "ERROR"; break; /* Red */
+		case LOG_WARNING:  color = "\x1b[33m"; level = "WARNING"; break; /* Yellow */
+		case LOG_NOTICE:   color = "\x1b[32m"; level = "NOTICE"; break; /* Green */
+		case LOG_INFO:	   color = "\x1b[36m"; level = "INFO"; break; /* Cyan */
+		case LOG_DEBUG:	   color = "\x1b[34m"; level = "DEBUG"; break; /* Blue */
+		default:	   color = "\x1b[0m";  level = "UNKNOWN"; break; /* Reset */
 		}
 
 		time_t rawtime;
-		struct tm * timeinfo;
+		struct tm *timeinfo;
 		char buffer[80];
 
-		time (&rawtime);
+		time(&rawtime);
 		timeinfo = localtime(&rawtime);
 
 		if (timeinfo == NULL) {
@@ -84,17 +83,11 @@ void msg(int priority, const char *fmt, ...)
 			exit(EXIT_FAILURE);
 		}
 
-		strftime(buffer, sizeof(buffer), "%x %T", timeinfo);
+		strftime(buffer, sizeof(buffer), "%x %T [ ", timeinfo);
 		fputs(buffer, stderr);
 
-		fputs(" [ ", stderr);
-
-		for (int i = 0; color[i] != '\0'; i++) {
-			fputc(color[i], stderr);
-		}
-		for (int i = 0; level[i] != '\0'; i++) {
-			fputc(level[i], stderr);
-		}
+		fputs(color, stderr);
+		fputs(level, stderr);
 		fputs("\x1b[0m ]: ", stderr);
 
 		vfprintf(stderr, fmt, ap);
