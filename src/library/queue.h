@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>
+#include <stdatomic.h>
 #include "gcc-attributes.h"
 
 struct queue
@@ -38,7 +39,7 @@ struct queue
 	size_t num_entries;
 	size_t entry_size;
 	size_t queue_head;
-	size_t queue_length;
+	atomic_size_t queue_length;
 	unsigned int max_depth;
 	unsigned char buffer[]; /* Used only locally within q_peek() */
 };
