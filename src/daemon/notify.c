@@ -317,10 +317,9 @@ static void *decision_thread_main(void *arg)
 		pthread_mutex_lock(&decision_lock);
 		while (get_ready() == 0) {
 			pthread_cond_wait(&do_decision, &decision_lock);
-			if (stop) {
-				pthread_mutex_unlock(&decision_lock);
-				return NULL;
-			}
+			if (stop)
+				return NULL; // decision_lock is released
+
 			if (run_stats) {
 				FILE *f = fopen(STAT_REPORT, "w");
 				if (f) {
