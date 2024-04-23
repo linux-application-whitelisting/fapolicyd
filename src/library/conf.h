@@ -46,6 +46,7 @@ typedef struct conf
 	const char *syslog_format;
 	unsigned int rpm_sha256_only;
 	unsigned int allow_filesystem_mark;
+    unsigned int report_interval;
 } conf_t;
 
 #endif
