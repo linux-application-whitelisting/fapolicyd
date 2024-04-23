@@ -85,9 +85,7 @@ void msg(int priority, const char *fmt, ...)
 		}
 
 		strftime(buffer, sizeof(buffer), "%x %T", timeinfo);
-		for (int i = 0; buffer[i] != '\0'; i++) {
-			fputc(buffer[i], stderr);
-		}
+		fputs(buffer, stderr);
 
 		fputs(" [ ", stderr);
 
