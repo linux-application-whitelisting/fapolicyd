@@ -1343,18 +1343,23 @@ static void *update_thread_main(void *arg)
 							}
 
 							if (buff[i] == RELOAD_TRUSTDB_COMMAND) {
-								do_operation = RELOAD_DB;
-								break;
+								do_reload_db(config);
+								continue;
 							}
 
 							if (buff[i] == FLUSH_CACHE_COMMAND) {
-								do_operation = FLUSH_CACHE;
-								break;
+								needs_flush = true;
+								continue;
 							}
 
 							if (buff[i] == RELOAD_RULES_COMMAND) {
-								do_operation = RELOAD_RULES;
-								break;
+
+								load_rule_file();
+
+								lock_rule();
+								do_reload_rules(config);
+								unlock_rule();
+								continue;
 							}
 
 							if (isspace(buff[i]))
@@ -1366,24 +1371,7 @@ static void *update_thread_main(void *arg)
 
 						*end = '\n';
 
-						// got "1" -> reload db
-						if (do_operation == RELOAD_DB) {
-							do_operation = DB_NO_OP;
-							do_reload_db(config);
-						} else if (do_operation == RELOAD_RULES) {
-							do_operation = DB_NO_OP;
-
-							load_rule_file();
-
-							lock_rule();
-							do_reload_rules(config);
-							unlock_rule();
-
-							// got "2" -> flush cache
-						} else if (do_operation == FLUSH_CACHE) {
-							do_operation = DB_NO_OP;
-							needs_flush = true;
-						} else if (do_operation == ONE_FILE) {
+						if (do_operation == ONE_FILE) {
 							do_operation = DB_NO_OP;
 							if (handle_record(buff))
 								continue;
