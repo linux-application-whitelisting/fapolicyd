@@ -65,7 +65,7 @@ static const char *usage =
 "--trust-file file         Use after --file to specify trust file\n"
 "-h, --help                Prints this help message\n"
 "-t, --ftype file-path     Prints out the mime type of a file\n"
-"-T, --ftype_ext file-path Prints out the file name along with its mime type\n"
+"-T, --ftype-ext file-path Prints out the file name along with its mime type\n"
 "-l, --list                Prints a list of the daemon's rules with numbers\n"
 "-u, --update              Notifies fapolicyd to perform update of database\n"
 "-r, --reload-rules        Notifies fapolicyd to perform reload of rules\n"
@@ -83,7 +83,7 @@ static struct option long_opts[] =
 	{"file",	1, NULL, 'f'},
 	{"help",	0, NULL, 'h'},
 	{"ftype",	1, NULL, 't'},
-	{"ftype_ext",	1, NULL, 'T'},
+	{"ftype-ext",	1, NULL, 'T'},
 	{"list",	0, NULL, 'l'},
 	{"update",	0, NULL, 'u'},
 	{"reload-rules",	0, NULL, 'r'},
