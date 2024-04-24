@@ -603,10 +603,14 @@ static int check_watch_fs(void)
 		return 1;
 	}
 
+	fd_fgets_context_t *fd_fgets_context = fd_fgets_init();
+	if (!fd_fgets_context)
+		return 1;
+
 	// Build the list of mount point types
 	list_init(&mnt);
 	do {
-		if (fd_fgets(buf, sizeof(buf), fd)) {
+		if (fd_fgets(fd_fgets_context, buf, sizeof(buf), fd)) {
 			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
 			       device,point, type, mntops, &fs_req, &fs_passno);
 			// Some file systems are not watchable
@@ -614,8 +618,10 @@ static int check_watch_fs(void)
 				continue;
 			list_append(&mnt, strdup(type), strdup("0"));
 		}
-	} while (!fd_fgets_eof());
+	} while (!fd_fgets_eof(fd_fgets_context));
+	fd_fgets_destroy(fd_fgets_context);
 	close(fd);
+
 
 	// Now search the list we just built
 	for (list_item_t *lptr = mnt.first; lptr; lptr = lptr->next) {
@@ -806,13 +812,18 @@ next:
 static int do_status_report(void)
 {
 	const char *reason = "no pid file";
+
+	fd_fgets_context_t *fd_fgets_context = fd_fgets_init();
+	if (!fd_fgets_context)
+		return 1;
+
 	// open pid file
 	int pidfd = open(pidfile, O_RDONLY);
 	if (pidfd >= 0) {
 		char pid_buf[16];
 
 		// read contents
-		if (fd_fgets(pid_buf, sizeof(pid_buf), pidfd)) {
+		if (fd_fgets(fd_fgets_context, pid_buf, sizeof(pid_buf), pidfd)) {
 			int rpt_fd;
 			unsigned int pid, tries = 0;
 			char exe_buf[64];
@@ -862,11 +873,12 @@ retry:
 					goto err_out;
 				}
 			}
+			fd_fgets_rewind(fd_fgets_context);
 			do {
 				char buf[80];
-				if (fd_fgets(buf, sizeof(buf), rpt_fd))
+				if (fd_fgets(fd_fgets_context, buf, sizeof(buf), rpt_fd))
 					write(1, buf, strlen(buf));
-			} while (!fd_fgets_eof());
+			} while (!fd_fgets_eof(fd_fgets_context));
 			close(rpt_fd);
 		} else
 			reason = "can't read pid file";
@@ -874,10 +886,11 @@ retry:
 		return 0;
 	}
 err_out:
-		if (pidfd >= 0)
-			close(pidfd);
-		printf("Can't find fapolicyd: %s\n", reason);
-		return 1;
+	fd_fgets_destroy(fd_fgets_context);
+	if (pidfd >= 0)
+		close(pidfd);
+	printf("Can't find fapolicyd: %s\n", reason);
+	return 1;
 }
 
 int main(int argc, char * const argv[])

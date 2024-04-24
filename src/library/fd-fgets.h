@@ -24,15 +24,31 @@
 #define FD_FGETS_HEADER
 
 #include <sys/types.h>
+#include "gcc-attributes.h"
 
 #ifndef __attr_access
 #  define __attr_access(x)
 #endif
 
-int fd_fgets_eof(void);
-void fd_fgets_rewind(void);
-int fd_fgets(char *buf, size_t blen, int fd)
-	__attr_access ((__write_only__, 1, 2));
+#ifndef FD_FGETS_BUF_SIZE
+#  define FD_FGETS_BUF_SIZE 8192
+#endif
+
+typedef struct fd_fgets_context {
+    char buffer[2*FD_FGETS_BUF_SIZE+1];
+    char *current;
+    char *eptr;
+    int eof;
+} fd_fgets_context_t;
+
+void fd_fgets_destroy(fd_fgets_context_t *ctx);
+fd_fgets_context_t * fd_fgets_init(void) __attribute_malloc__
+     __attr_dealloc (fd_fgets_destroy, 1);
+
+int fd_fgets_eof(fd_fgets_context_t *ctx);
+void fd_fgets_rewind(fd_fgets_context_t *ctx);
+int fd_fgets(fd_fgets_context_t *ctx, char *buf, size_t blen, int fd)
+	__attr_access ((__write_only__, 2, 3));
 
 #endif
 
