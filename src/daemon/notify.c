@@ -230,6 +230,7 @@ void unmark_fanotify_and_close_fd(mlist *m)
 	}
 
 	close(fd);
+	fd = -1; // make invalid in case decision thread is not shutdown
 }
 
 void shutdown_fanotify(mlist *m)
