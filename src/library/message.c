@@ -72,18 +72,14 @@ void msg(int priority, const char *fmt, ...)
 		}
 
 		time_t rawtime;
-		struct tm *timeinfo;
+		struct tm timeinfo;
 		char buffer[80];
 
 		time(&rawtime);
-		timeinfo = localtime(&rawtime);
+		// localtime is not threadsafe, use _r version for safety
+		(void) localtime_r(&rawtime, &timeinfo);
 
-		if (timeinfo == NULL) {
-			fputs("Could not get localtime\n", stderr);
-			exit(EXIT_FAILURE);
-		}
-
-		strftime(buffer, sizeof(buffer), "%x %T [ ", timeinfo);
+		strftime(buffer, sizeof(buffer), "%x %T [ ", &timeinfo);
 		fputs(buffer, stderr);
 
 		fputs(color, stderr);
