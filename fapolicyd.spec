@@ -299,5 +299,5 @@ fi
 %endif
 
 %changelog
-* Mon Jul 10 2023 Steve Grubb <sgrubb@redhat.com> 1.3.3-1
+* Mon Apr 29 2024 Steve Grubb <sgrubb@redhat.com> 1.3.4-1
 - New release
