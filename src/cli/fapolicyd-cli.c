@@ -604,8 +604,13 @@ static int check_watch_fs(void)
 	}
 
 	fd_fgets_context_t *fd_fgets_context = fd_fgets_init();
-	if (!fd_fgets_context)
+	if (!fd_fgets_context) {
+		fprintf(stderr, "Failed fd_fgets_init\n");
+		free_daemon_config(&config);
+		list_empty(&fs);
+		close(fd);
 		return 1;
+	}
 
 	// Build the list of mount point types
 	list_init(&mnt);
@@ -883,6 +888,7 @@ retry:
 		} else
 			reason = "can't read pid file";
 		close(pidfd);
+		fd_fgets_destroy(fd_fgets_context);
 		return 0;
 	}
 err_out:

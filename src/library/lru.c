@@ -246,11 +246,10 @@ out:
 // Remove from the end of the queue
 static void dequeue(Queue *queue)
 {
-	QNode *temp = queue->end;
-
 	if (queue_is_empty(queue))
 		return;
 
+	QNode *temp = queue->end;
 	remove_node(queue, queue->end);
 
 	queue->cleanup(temp->item);
@@ -264,12 +263,11 @@ static void dequeue(Queue *queue)
 // Remove front of the queue because its a mismatch
 void lru_evict(Queue *queue, unsigned int key)
 {
-	Hash *hash = queue->hash;
-	QNode *temp = queue->front;
-
 	if (queue_is_empty(queue))
 		return;
 
+	Hash *hash = queue->hash;
+	QNode *temp = queue->front;
 	hash->array[key] = NULL;
 	remove_node(queue, queue->front);
 
