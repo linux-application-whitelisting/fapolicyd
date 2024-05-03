@@ -64,6 +64,7 @@
 
 // Global program variables
 unsigned int debug_mode = 0, permissive = 0;
+const char* mounts = "/proc/mounts";
 
 // Signal handler notifications
 volatile atomic_bool stop = false, hup = false, run_stats = false;
@@ -500,6 +501,8 @@ int main(int argc, const char *argv[])
 		return 1;
 	}
 	permissive = config.permissive;
+
+	// set the debug flags
 	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--debug") == 0) {
 			debug_mode = 1;
@@ -507,7 +510,11 @@ int main(int argc, const char *argv[])
 		} else if (strcmp(argv[i], "--debug-deny") == 0) {
 			debug_mode = 2;
 			set_message_mode(MSG_STDERR, DBG_YES);
-		} else if (strcmp(argv[i], "--permissive") == 0) {
+		}
+	}
+	// process remaining flags
+	for (int i=1; i < argc; i++) {
+		if (strcmp(argv[i], "--permissive") == 0) {
 			permissive = 1;
 		} else if (strcmp(argv[i], "--boost") == 0) {
 			i++;
@@ -527,6 +534,34 @@ int main(int argc, const char *argv[])
 				" deprecated - ignoring");
 		} else if (strcmp(argv[i], "--no-details") == 0) {
 			config.detailed_report = 0;
+		} else if (strncmp(argv[i], "--mounts", 8) == 0) {
+			if (!debug_mode) {
+				msg(LOG_ERR, "the mounts flag can only be"
+							 " used in debug mode");
+				return 1;
+			}
+			// require an equals and at least one char long path
+			if (strlen(argv[i]) < 10 || argv[i][8] != '=') {
+				msg(LOG_ERR, "the mounts flag requires a file"
+							 " path: --mounts=/tmp/mounts.txt");
+				return 1;
+			}
+			// ensure we have specified a regular file
+			struct stat sb;
+			const char *tmp = argv[i] + 9;
+			if (stat(tmp, &sb) != 0) {
+				msg(LOG_ERR, "cannot stat mounts file %s, %s",
+					tmp, strerror(errno));
+				return 1;
+			}
+			if (!S_ISREG(sb.st_mode)) {
+				msg(LOG_ERR, "mounts path %s is not a regular file", tmp);
+				return 1;
+			}
+			msg(LOG_INFO, "Overriding mounts file: %s", tmp);
+			mounts = tmp;
+		} else if (strcmp(argv[i], "--debug") == 0 || strcmp(argv[i], "--debug-deny") == 0) {
+			// nop; debug flags already set
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
 			free_daemon_config(&config);
@@ -653,7 +688,7 @@ int main(int argc, const char *argv[])
 	file_init();
 
 	// Initialize the file watch system
-	pfd[0].fd = open("/proc/mounts", O_RDONLY);
+	pfd[0].fd = open(mounts, O_RDONLY);
 	pfd[0].events = POLLPRI;
 	handle_mounts(pfd[0].fd);
 	pfd[1].fd = init_fanotify(&config, m);
