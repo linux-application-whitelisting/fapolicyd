@@ -113,6 +113,11 @@ static void destroy_queue(Queue *queue)
 {
 	dump_queue_stats(queue);
 
+	// Some static analysis scanners try to flag this as a use after
+	// free accessing queue->end. This is a false positive. It is freed.
+	// However, static analysis apps are incapable of seeing that in
+	// remove_node, end is updated to a prior node as part of detaching
+	// the current end node.
 	while (queue->count)
 		dequeue(queue);
 
