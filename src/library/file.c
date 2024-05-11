@@ -39,6 +39,7 @@
 #include <sys/xattr.h>
 #include <linux/hash_info.h>
 #include <sys/mman.h>
+#include <regex.h>
 
 #include "file.h"
 #include "message.h"
@@ -60,6 +61,9 @@ static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 				__attr_access ((__write_only__, 3, 2));
 static void resolve_path(const char *pcwd, char *path, size_t len)
 				__attr_access ((__write_only__, 2, 3));
+
+// External variables
+extern regex_t path_trimmer_compiled;
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
@@ -878,3 +882,22 @@ rewind_out:
 	return info;
 }
 
+// This function changes original path and returns the last regex capturing
+// group and the rest of the string, uses the compiled regex expression as
+// a global variable. Conversion is necessary to truncate the path to avoid
+// trusted files duplication. If no expression is found, the original path
+// is returned.
+const char *get_last_regex_group(const char *path)
+{
+    size_t max_groups = 8;
+    regmatch_t group_array[max_groups];
+
+    if (regexec(&path_trimmer_compiled, path, max_groups, group_array, 0) == 0)
+        for (size_t i = 0; i < max_groups; i++)
+			if ((long unsigned int) group_array[i].rm_so == (size_t)-1) {
+				memcpy((void *) path, (void *) path + group_array[i-1].rm_so,
+					strlen(path + group_array[i-1].rm_so));
+				return path;
+			}
+    return path;
+}

@@ -96,6 +96,8 @@ static int fs_mark_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int report_interval_parser(const struct nv_pair *nv, int line,
         conf_t *config);
+static int path_trimmer_parser(const struct nv_pair *nv, int line,
+        conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -116,6 +118,7 @@ static const struct kw_pair keywords[] =
   {"rpm_sha256_only", rpm_sha256_only_parser},
   {"allow_filesystem_mark",	fs_mark_parser },
   {"report_interval",	report_interval_parser },
+  {"path_trimmer",     path_trimmer_parser },
   { NULL,		NULL }
 };
 
@@ -146,6 +149,7 @@ static void clear_daemon_config(conf_t *config)
 	config->rpm_sha256_only = 0;
 	config->allow_filesystem_mark = 0;
     config->report_interval = 0;
+	config->path_trimmer = strdup("");
 }
 
 int load_daemon_config(conf_t *config)
@@ -351,6 +355,7 @@ void free_daemon_config(conf_t *config)
 	free((void*)config->watch_fs);
 	free((void*)config->trust);
 	free((void*)config->syslog_format);
+	free((void*)config->path_trimmer);
 }
 
 static int unsigned_int_parser(unsigned *i, const char *str, int line)
@@ -644,4 +649,15 @@ static int fs_mark_parser(const struct nv_pair *nv, int line,
 #endif
 
 	return rc;
+}
+
+static int path_trimmer_parser(const struct nv_pair *nv, int line,
+        conf_t *config)
+{
+	free((void *)config->path_trimmer);
+	config->path_trimmer = strdup(nv->value);
+	if (config->path_trimmer)
+		return 0;
+	msg(LOG_ERR, "Could not store value line %d", line);
+return 1;
 }

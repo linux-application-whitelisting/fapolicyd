@@ -51,6 +51,11 @@
 #include "llist.h"
 #include "fd-fgets.h"
 #include "paths.h"
+#include "regex.h"
+
+// Global program variables
+char *path_trimmer = NULL;
+regex_t path_trimmer_compiled;
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"

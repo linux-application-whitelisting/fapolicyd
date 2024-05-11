@@ -39,6 +39,8 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <regex.h>
+#include <limits.h>
 
 #include "database.h"
 #include "message.h"
@@ -82,7 +84,8 @@ static int update_database(conf_t *config);
 extern volatile atomic_bool stop;
 extern volatile atomic_bool needs_flush;
 extern volatile atomic_bool reload_rules;
-
+extern char *path_trimmer;
+extern regex_t path_trimmer_compiled;
 
 static int is_link(const char *path)
 {
@@ -615,6 +618,8 @@ static int create_database(int with_sync)
 
 		list_item_t *item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
+			if (path_trimmer[0] != '\0')
+				item->index = get_last_regex_group(item->index);
 			if ((rc = write_db(item->index, item->data)))
 				msg(LOG_ERR,
 				    "Error (%d) writing key=\"%s\" data=\"%s\"",
@@ -1051,6 +1056,9 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 		return -1;
 	}
 
+	if (path_trimmer[0] != '\0')
+		path = get_last_regex_group(path);
+
 	res = read_trust_db(path, &error, info, fd);
 	if (error)
 		retval = -1;
@@ -1208,6 +1216,11 @@ static int handle_record(const char * buffer)
 
 	msg(LOG_DEBUG, "update_thread: Saving %s %s", path, data);
 	lock_update_thread();
+
+	const char *path_ptr = &path[0];
+	if (path_trimmer[0] != '\0')
+		path_ptr = get_last_regex_group(path_ptr);
+
 	write_db(path, data);
 	unlock_update_thread();
 

@@ -60,10 +60,13 @@
 #include "gcc-attributes.h"
 #include "avl.h"
 #include "paths.h"
+#include "regex.h"
 
 
 // Global program variables
 unsigned int debug_mode = 0, permissive = 0;
+char *path_trimmer = NULL;
+regex_t path_trimmer_compiled;
 
 // Signal handler notifications
 volatile atomic_bool stop = false, hup = false, run_stats = false;
@@ -500,6 +503,19 @@ int main(int argc, const char *argv[])
 		return 1;
 	}
 	permissive = config.permissive;
+
+    path_trimmer = strdup(config.path_trimmer);
+    if (path_trimmer[0] == '\0' || path_trimmer[0] == '\"' || path_trimmer[0] == '\'' || path_trimmer[0] == '$') {
+        path_trimmer[0] = '\0';
+    }
+    else {
+		if (regcomp(&path_trimmer_compiled, path_trimmer, REG_EXTENDED)) {
+			msg(LOG_ERR, "could not compile regular path_trimmer expression");
+			exit(1);
+		}
+		msg(LOG_INFO, "Path trimmer has been compiled %s", path_trimmer);
+    }
+
 	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--debug") == 0) {
 			debug_mode = 1;
