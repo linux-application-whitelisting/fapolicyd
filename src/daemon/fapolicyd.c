@@ -66,7 +66,7 @@
 // Global program variables
 unsigned int debug_mode = 0, permissive = 0;
 char *path_trimmer = NULL;
-regex_t path_trimmer_compiled;
+extern regex_t path_trimmer_compiled;
 
 // Signal handler notifications
 volatile atomic_bool stop = false, hup = false, run_stats = false;

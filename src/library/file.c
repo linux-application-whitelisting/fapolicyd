@@ -62,8 +62,8 @@ static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 static void resolve_path(const char *pcwd, char *path, size_t len)
 				__attr_access ((__write_only__, 2, 3));
 
-// External variables
-extern regex_t path_trimmer_compiled;
+// Global variables
+regex_t path_trimmer_compiled;
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {

@@ -85,7 +85,6 @@ extern volatile atomic_bool stop;
 extern volatile atomic_bool needs_flush;
 extern volatile atomic_bool reload_rules;
 extern char *path_trimmer;
-extern regex_t path_trimmer_compiled;
 
 static int is_link(const char *path)
 {
