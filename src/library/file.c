@@ -896,7 +896,7 @@ const char *get_last_regex_group(const char *path)
         for (size_t i = 0; i < max_groups; i++)
 			if ((long unsigned int) group_array[i].rm_so == (size_t)-1) {
 				memcpy((void *) path, (void *) path + group_array[i-1].rm_so,
-					strlen(path + group_array[i-1].rm_so));
+					strlen(path + group_array[i-1].rm_so) + 1);
 				return path;
 			}
     return path;
