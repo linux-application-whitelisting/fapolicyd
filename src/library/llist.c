@@ -32,7 +32,6 @@
 #include "llist.h"
 
 #pragma GCC optimize("O3")
-#pragma GCC optimize("-funroll-loops")
 
 void list_init(list_t *list)
 {
@@ -40,7 +39,6 @@ void list_init(list_t *list)
 	list->first = NULL;
 	list->last = NULL;
 }
-
 
 list_item_t *list_get_first(const list_t *list)
 {

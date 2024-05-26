@@ -34,6 +34,8 @@
 #include "message.h"
 #include "string-util.h"
 
+#pragma GCC optimize("O3")
+
 #define OLD_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"
 #define FILTER_FILE "/etc/fapolicyd/fapolicyd-filter.conf"
 
@@ -156,10 +158,6 @@ static void stack_pop_reset(stack_t *_stack)
 		return;
 
 	stack_item_t *stack_item = (stack_item_t*)stack_top(_stack);
-	if (stack_item) {
-		stack_item->filter->matched = 0;
-		stack_item->filter->processed = 0;
-	}
 	free(stack_item);
 	stack_pop(_stack);
 }
