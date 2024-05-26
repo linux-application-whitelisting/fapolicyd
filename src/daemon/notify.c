@@ -228,9 +228,6 @@ void unmark_fanotify_and_close_fd(mlist *m)
 				path, strerror(errno));
 		path = mlist_next(m);
 	}
-
-	close(fd);
-	fd = -1; // make invalid in case decision thread is not shutdown
 }
 
 void shutdown_fanotify(mlist *m)
@@ -248,6 +245,7 @@ void shutdown_fanotify(mlist *m)
 	// Clean up
 	q_close(q);
 	close(rpt_timer_fd);
+	close(fd);
 
 	// Report results
 	msg(LOG_DEBUG, "Allowed accesses: %lu", getAllowed());
