@@ -188,6 +188,7 @@ static int rpm_load_list(const conf_t *conf)
 {
 	int rc;
 	unsigned int msg_count = 0;
+	unsigned int tsource = SRC_RPM;
 
 	// empty list before loading
 	list_empty(&rpm_backend.list);
@@ -224,7 +225,6 @@ static int rpm_load_list(const conf_t *conf)
 			rpm_loff_t sz = get_file_size_rpm();
 			const char *sha = get_sha256_rpm();
 			char *data;
-			unsigned int tsource = SRC_RPM;
 
 			if (file_name == NULL)
 				continue;

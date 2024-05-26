@@ -1,6 +1,6 @@
 /*
 * filter.c - filter for a trust source
-* Copyright (c) 2023 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2023 Red Hat Inc.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -176,16 +176,15 @@ static void stack_pop_all_reset(stack_t *_stack)
 
 // this funtion gets full path and checks it against filter
 // returns 1 for keeping the file and 0 for dropping it
-int filter_check(const char *_path)
+int filter_check(const char *path)
 {
-	if (_path == NULL) {
+	if (path == NULL) {
 		msg(LOG_ERR, "filter_check: path is NULL, something is wrong!");
 		return 0;
 	}
 
 	filter_t *filter = global_filter;
-	char *path = strdup(_path);
-	size_t path_len = strlen(_path);
+	size_t path_len = strlen(path);
 	size_t offset = 0;
 	// Create a stack to store the filters that need to be checked
 	stack_t stack;
@@ -330,7 +329,6 @@ end:
 	// Clean up the stack
 	stack_pop_all_reset(&stack);
 	stack_destroy(&stack);
-	free(path);
 	return res;
 }
 

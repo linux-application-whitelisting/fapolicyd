@@ -1,6 +1,6 @@
 /*
 * filter.h - Header for a filter implementation
-* Copyright (c) 2023 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2023 Red Hat Inc.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -60,7 +60,7 @@ typedef struct _stack_item
 
 int filter_init(void);
 void filter_destroy(void);
-int filter_check(const char *_path);
+int filter_check(const char *path);
 int filter_load_file(void);
 
 
