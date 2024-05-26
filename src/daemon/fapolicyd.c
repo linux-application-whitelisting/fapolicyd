@@ -221,7 +221,7 @@ static void term_handler(int sig __attribute__((unused)))
 static void coredump_handler(int sig)
 {
 	if (getpid() == gettid()) {
-		unmark_fanotify_and_close_fd(m);
+		unmark_fanotify(m);
 		unlink_fifo();
 		signal(sig, SIG_DFL);
 		kill(getpid(), sig);

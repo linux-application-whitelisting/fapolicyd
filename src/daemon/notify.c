@@ -216,7 +216,7 @@ void fanotify_update(mlist *m)
 	m->cur = m->head;  // Leave cur pointing to something valid
 }
 
-void unmark_fanotify_and_close_fd(mlist *m)
+void unmark_fanotify(mlist *m)
 {
 	const char *path = mlist_first(m);
 
@@ -232,7 +232,7 @@ void unmark_fanotify_and_close_fd(mlist *m)
 
 void shutdown_fanotify(mlist *m)
 {
-	unmark_fanotify_and_close_fd(m);
+	unmark_fanotify(m);
 
 	// End the thread
 	pthread_cond_signal(&do_decision);
