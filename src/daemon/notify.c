@@ -362,9 +362,8 @@ static void *decision_thread_main(void *arg)
 	struct timespec rpt_timeout;
 
 	// if an interval was configured, reports are enabled
-	if (rpt_interval) {
+	if (rpt_interval)
 		rpt_init(&rpt_timeout);
-	}
 
 	// start with a fresh report
 	run_stats = 1;
@@ -410,6 +409,8 @@ static void *decision_thread_main(void *arg)
 				}
 				// await a fan event, timing out at the
 				// next report interval
+				if (stop)
+					break;
 				pthread_cond_timedwait(&do_decision,
 						       &decision_lock,
 						       &rpt_timeout);
@@ -418,11 +419,16 @@ static void *decision_thread_main(void *arg)
 				run_stats = 0;
 			}
 			// no interval reports, await a fan event indefinitely
+			if (stop)
+				break;
 			pthread_cond_wait(&do_decision, &decision_lock);
 		}
 
-		if (stop)
+		if (stop) {
+			msg(LOG_DEBUG, "Exiting decision thread");
+			pthread_mutex_unlock(&decision_lock);
 			return NULL;
+		}
 
 		alive = 1;
 		rpt_is_stale = 1;
