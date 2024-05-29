@@ -1,6 +1,6 @@
 /*
 * filter.c - filter for a trust source
-* Copyright (c) 2023 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2023 Red Hat Inc.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -33,6 +33,8 @@
 #include "stack.h"
 #include "message.h"
 #include "string-util.h"
+
+#pragma GCC optimize("O3")
 
 #define OLD_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"
 #define FILTER_FILE "/etc/fapolicyd/fapolicyd-filter.conf"
@@ -156,10 +158,6 @@ static void stack_pop_reset(stack_t *_stack)
 		return;
 
 	stack_item_t *stack_item = (stack_item_t*)stack_top(_stack);
-	if (stack_item) {
-		stack_item->filter->matched = 0;
-		stack_item->filter->processed = 0;
-	}
 	free(stack_item);
 	stack_pop(_stack);
 }
@@ -176,16 +174,15 @@ static void stack_pop_all_reset(stack_t *_stack)
 
 // this funtion gets full path and checks it against filter
 // returns 1 for keeping the file and 0 for dropping it
-int filter_check(const char *_path)
+int filter_check(const char *path)
 {
-	if (_path == NULL) {
+	if (path == NULL) {
 		msg(LOG_ERR, "filter_check: path is NULL, something is wrong!");
 		return 0;
 	}
 
 	filter_t *filter = global_filter;
-	char *path = strdup(_path);
-	size_t path_len = strlen(_path);
+	size_t path_len = strlen(path);
 	size_t offset = 0;
 	// Create a stack to store the filters that need to be checked
 	stack_t stack;
@@ -330,7 +327,6 @@ end:
 	// Clean up the stack
 	stack_pop_all_reset(&stack);
 	stack_destroy(&stack);
-	free(path);
 	return res;
 }
 

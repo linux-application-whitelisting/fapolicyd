@@ -40,7 +40,6 @@ struct queue
 	size_t entry_size;
 	size_t queue_head;
 	atomic_size_t queue_length;
-	unsigned int max_depth;
 	unsigned char buffer[]; /* Used only locally within q_peek() */
 };
 

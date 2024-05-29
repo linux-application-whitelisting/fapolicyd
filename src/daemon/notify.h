@@ -1,6 +1,6 @@
 /*
  * notify.h - Header file for notify.c
- * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -31,7 +31,7 @@
 
 int init_fanotify(const conf_t *config, mlist *m);
 void fanotify_update(mlist *m);
-void unmark_fanotify_and_close_fd(mlist *m);
+void unmark_fanotify(mlist *m);
 void shutdown_fanotify(mlist *m);
 void decision_report(FILE *f);
 void handle_events(void);

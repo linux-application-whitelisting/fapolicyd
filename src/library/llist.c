@@ -1,7 +1,7 @@
 /*
  * llist.c - Linked list as a temporary memory storage
  * for trust database data
- * Copyright (c) 2016,2018 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2016,2018 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -31,6 +31,7 @@
 #include "message.h"
 #include "llist.h"
 
+#pragma GCC optimize("O3")
 
 void list_init(list_t *list)
 {
@@ -38,7 +39,6 @@ void list_init(list_t *list)
 	list->first = NULL;
 	list->last = NULL;
 }
-
 
 list_item_t *list_get_first(const list_t *list)
 {
@@ -101,7 +101,7 @@ void list_empty(list_t *list)
 {
 	if (!list->first)
 		return;
-		
+
 	list_item_t *actual = list->first;
 	list_item_t *next = NULL;
 	for (; actual; actual = next) {
