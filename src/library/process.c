@@ -339,8 +339,7 @@ uid_t get_program_uid_from_pid(pid_t pid)
 
 attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 {
-	const int buf_size = 8192;
-    char buf[buf_size];
+	char buf[128];
 	int gid = -1;
 	FILE *f;
 	attr_sets_entry_t *set = init_standalone_set(INT);
@@ -350,7 +349,7 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 		f = fopen(path, "rt");
 		if (f) {
 			__fsetlocking(f, FSETLOCKING_BYCALLER);
-			while (fgets(buf, buf_size, f)) {
+			while (fgets(buf, 128, f)) {
 				if (memcmp(buf, "Gid:", 4) == 0) {
 					sscanf(buf, "Gid: %d ", &gid);
 					append_int_attr_set(set, gid);
@@ -360,7 +359,7 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 
 			char *data;
 			int offset;
-			while (fgets(buf, buf_size, f)) {
+			while (fgets(buf, 128, f)) {
 				if (memcmp(buf, "Groups:", 7) == 0) {
 					data = buf + 7;
 					while (sscanf(data," %d%n", &gid,
