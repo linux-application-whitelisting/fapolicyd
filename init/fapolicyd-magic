@@ -95,6 +95,3 @@
 
 0	string/wt	#!\ /usr/sbin/nft	Netfilter tables script text executable
 !:mime	text/x-nftables
-
-0	belong		0x4d5a9000	Portable executable
-!:mime application/vnd.microsoft.portable-executable
