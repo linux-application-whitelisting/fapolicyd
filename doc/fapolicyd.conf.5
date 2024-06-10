@@ -95,6 +95,10 @@ When this option is set to 1, it allows fapolicyd to monitor file access events 
 .B report_interval
 This option specifies a reporting interval, measured in seconds, which fapolicyd uses to schedule a recurring dump of internal performance statistics to the \fBfapolicyd.state\fP file. The default value of 0 disables interval reporting.
 
+.TP
+.B path_trimmer
+This option specifies the path transformation before adding to the database and before file checking. For example, if all users on the host use certain software, e.g. flatpak, from their home directories, you might want to exclude /home/<user> or may be /mnt/nfs/home from the file path checking. POSIX-compatible regex mode is used, the resulting value is the last capturing regex group. For example, expression /(home|mnt/nfs/home)/[^/]+/(.*) returns the same relative paths to applications for all users. Note that there is no need to enclose the expression in quotation marks, a single $ sign will be interpreted as an match nothing expression. The default value is the match nothing.
+
 .SH "SEE ALSO"
 .BR fapolicyd (8),
 .BR fapolicyd-cli (8)

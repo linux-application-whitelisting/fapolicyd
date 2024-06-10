@@ -61,5 +61,6 @@ char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
 char *get_hash_from_fd2(int fd, size_t size, int is_sha) __attr_dealloc_free;
 int get_ima_hash(int fd, char *sha);
 uint32_t gather_elf(int fd, off_t size);
+const char *get_last_regex_group(const char *path);
 
 #endif
