@@ -1,0 +1,4 @@
+# Only allow system wine files
+
+allow perm=any all : ftype=application/vnd.microsoft.portable-executable trust=1
+deny_audit perm=any all : ftype=application/vnd.microsoft.portable-executable
