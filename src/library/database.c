@@ -51,6 +51,7 @@
 #include "gcc-attributes.h"
 #include "paths.h"
 #include "policy.h"
+#include "llist.h"
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
@@ -83,6 +84,8 @@ extern volatile atomic_bool stop;
 extern volatile atomic_bool needs_flush;
 extern volatile atomic_bool reload_rules;
 
+// Global variables
+extern list_t wildcards;
 
 static int is_link(const char *path)
 {
@@ -615,6 +618,7 @@ static int create_database(int with_sync)
 
 		list_item_t *item = list_get_first(&be->backend->list);
 		for (; item != NULL; item = item->next) {
+			item->index = path_globalization(item->index, 1);
 			if ((rc = write_db(item->index, item->data)))
 				msg(LOG_ERR,
 				    "Error (%d) writing key=\"%s\" data=\"%s\"",
@@ -1051,7 +1055,11 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 		return -1;
 	}
 
+	// Wildcards support
+	path = path_globalization(path, 1);
+
 	res = read_trust_db(path, &error, info, fd);
+
 	if (error)
 		retval = -1;
 	else if (res)

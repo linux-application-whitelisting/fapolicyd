@@ -153,3 +153,20 @@ void list_merge(list_t *dest, list_t *src)
 	}
 	list_init(src);
 }
+
+void list_bubble_sort(list_t *list, int (*compare)(const void*, const void*)) {
+    list_item_t *lptr, *surface = NULL;
+	while(surface != list->first) {
+		surface = NULL;
+		for (lptr = list->first; lptr->next && lptr != surface; lptr = lptr->next) {
+			if(compare(lptr->data, lptr->next->data) > 0) {
+				const void *data = lptr->data;
+				lptr->data = lptr->next->data;
+				lptr->next->data = data;
+				surface = NULL;
+			}
+			if(surface == NULL) surface = lptr;
+		}
+		if(surface == NULL) surface = list->first;
+    }
+}

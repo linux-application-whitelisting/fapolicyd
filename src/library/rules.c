@@ -39,11 +39,15 @@
 #include "message.h"
 #include "file.h" // This seems wrong
 #include "database.h"
+#include "llist.h"
 
 #include "subject-attr.h"
 #include "object-attr.h"
 
 #include "string-util.h"
+
+// Global variables
+extern list_t wildcards;
 
 //#define DEBUG
 #define UNUSED 0xFF
@@ -1321,8 +1325,20 @@ static decision_t check_object(lnode *r, event_t *e)
 				break;
 			}
 
+			// Backup and change path
+			char *backup_path;
+			if (type == PATH && obj->o != NULL) {
+				backup_path = strdup(obj->o);
+				path_globalization((const char *) obj->o, 0);
+			}
+
 			if (!check_str_attr_set(r->o[cnt].set, obj->o))
 				return 0;
+
+			// Restore path
+			if (type == PATH && obj->o != NULL) {
+				memcpy(obj->o, backup_path, strlen(backup_path) + 1);
+			}
 
 			break;
 		} // case
@@ -1496,3 +1512,4 @@ void rules_clear(llist *l)
 	l->cur = NULL;
 	l->cnt = 0;
 }
+
