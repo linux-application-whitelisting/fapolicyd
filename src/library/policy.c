@@ -46,6 +46,7 @@
 #include "gcc-attributes.h"
 #include "string-util.h"
 #include "paths.h"
+#include "llist.h"
 
 #define MAX_SYSLOG_FIELDS	21
 #define NGID_LIMIT		32
@@ -54,6 +55,9 @@ static llist rules;
 static unsigned long allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
+
+// List of path wildcards
+list_t wildcards;
 
 extern volatile atomic_bool stop;
 volatile atomic_bool reload_rules = false;
@@ -252,7 +256,6 @@ static int _load_rules(const conf_t *_config, FILE *f)
 	if (rules_create(&rules))
 		return 1;
 
-
 	msg(LOG_DEBUG, "Loading rule file:");
 
 	while (getline(&line, &len, f) != -1) {
@@ -260,6 +263,21 @@ static int _load_rules(const conf_t *_config, FILE *f)
 		if (ptr)
 			*ptr = 0;
 		msg(LOG_DEBUG, "%s", line);
+
+		// Get wildcards from the rule and add to the list
+		char wc_key[16] = "path=";
+		char *wc_data = strstr(line, wc_key);
+		if (wc_data) {
+			if (strpbrk(wc_data, "?*[" ) != NULL) {
+				char *wildcard = malloc(strlen(wc_data));
+				sscanf(wc_data, strcat(wc_key,"%s"), wildcard);
+				if (!list_contains(&wildcards, wildcard)) {
+					msg(LOG_DEBUG, "Add to the list discovered wildcard %s", wildcard);
+					list_append(&wildcards, wildcard, wildcard);
+				}
+			}
+		}
+
 		rc = rules_append(&rules, line, lineno);
 		if (rc) {
 			free(line);
