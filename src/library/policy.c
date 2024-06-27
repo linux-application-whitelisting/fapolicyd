@@ -56,9 +56,6 @@ static unsigned long allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
 
-// List of wildcards
-list_t wildcards;
-
 extern volatile atomic_bool stop;
 volatile atomic_bool reload_rules = false;
 
@@ -78,6 +75,9 @@ static const nv_t table[] = {
 
 extern unsigned int debug_mode;
 extern unsigned int permissive;
+
+// List of wildcards
+extern list_t wildcards;
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
 

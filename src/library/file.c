@@ -49,8 +49,8 @@
 // Local defines
 #define IMA_XATTR_DIGEST_NG 0x04	// security/integrity/integrity.h
 
-// Extern variables
-extern list_t wildcards;
+// Global variables
+list_t wildcards;
 
 // Local variables
 static struct udev *udev;
