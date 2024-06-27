@@ -76,7 +76,6 @@ static const nv_t table[] = {
 extern unsigned int debug_mode;
 extern unsigned int permissive;
 
-// List of wildcards
 extern list_t wildcards;
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
