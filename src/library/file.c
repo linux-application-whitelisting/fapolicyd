@@ -39,13 +39,18 @@
 #include <sys/xattr.h>
 #include <linux/hash_info.h>
 #include <sys/mman.h>
+#include <fnmatch.h>
 
 #include "file.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
+#include "llist.h"
 
 // Local defines
 #define IMA_XATTR_DIGEST_NG 0x04	// security/integrity/integrity.h
+
+// Extern variables
+extern list_t wildcards;
 
 // Local variables
 static struct udev *udev;
@@ -251,6 +256,18 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 		get_program_cwd_from_pid(pid, sizeof(pcwd), pcwd);
 		resolve_path(pcwd, buf, blen);
 	}
+
+	// Go through the list of wildcards and replace the path with the first matching wildcard
+	list_item_t *wc = list_get_first(&wildcards);
+	while (wc != NULL) {
+		if (fnmatch(wc->data, buf, 0) == 0) {
+			strncpy(buf, wc->data, PATH_MAX);
+			msg(LOG_DEBUG, "Replace the path with the first matching wildcard: %s", buf);
+			break;
+		}
+		wc = wc->next;
+	}
+
 	return buf;
 }
 

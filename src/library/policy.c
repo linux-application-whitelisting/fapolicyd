@@ -56,7 +56,7 @@ static unsigned long allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
 
-// List of path wildcards
+// List of wildcards
 list_t wildcards;
 
 extern volatile atomic_bool stop;
@@ -264,7 +264,7 @@ static int _load_rules(const conf_t *_config, FILE *f)
 			*ptr = 0;
 		msg(LOG_DEBUG, "%s", line);
 
-		// Get wildcards from the rule and add to the list
+		// Get wildcards by keyword from the rule and add to the list
 		char wc_key[16] = "path=";
 		char *wc_data = strstr(line, wc_key);
 		if (wc_data) {
