@@ -46,6 +46,7 @@
 #include "gcc-attributes.h"
 #include "string-util.h"
 #include "paths.h"
+#include "llist.h"
 
 #define MAX_SYSLOG_FIELDS	21
 #define NGID_LIMIT		32
@@ -74,6 +75,8 @@ static const nv_t table[] = {
 
 extern unsigned int debug_mode;
 extern unsigned int permissive;
+
+extern list_t wildcards;
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
 
@@ -252,7 +255,6 @@ static int _load_rules(const conf_t *_config, FILE *f)
 	if (rules_create(&rules))
 		return 1;
 
-
 	msg(LOG_DEBUG, "Loading rule file:");
 
 	while (getline(&line, &len, f) != -1) {
@@ -260,6 +262,21 @@ static int _load_rules(const conf_t *_config, FILE *f)
 		if (ptr)
 			*ptr = 0;
 		msg(LOG_DEBUG, "%s", line);
+
+		// Get wildcards by keyword from the rule and add to the list
+		char wc_key[16] = "path=";
+		char *wc_data = strstr(line, wc_key);
+		if (wc_data) {
+			if (strpbrk(wc_data, "?*[" ) != NULL) {
+				char *wildcard = malloc(strlen(wc_data));
+				sscanf(wc_data, strcat(wc_key,"%s"), wildcard);
+				if (!list_contains(&wildcards, wildcard)) {
+					msg(LOG_DEBUG, "Add to the list discovered wildcard %s", wildcard);
+					list_append(&wildcards, wildcard, wildcard);
+				}
+			}
+		}
+
 		rc = rules_append(&rules, line, lineno);
 		if (rc) {
 			free(line);
@@ -312,6 +329,9 @@ void destroy_rules(void)
 	unsigned int i = 0;
 
 	rules_clear(&rules);
+
+	// Remove wildcards as well
+	list_empty(&wildcards);
 
 	while (i < num_fields) {
 		free((void *)fields[i].name);
