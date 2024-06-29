@@ -330,6 +330,9 @@ void destroy_rules(void)
 
 	rules_clear(&rules);
 
+	// Remove wildcards as well
+	list_empty(&wildcards);
+
 	while (i < num_fields) {
 		free((void *)fields[i].name);
 		i++;
