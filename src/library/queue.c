@@ -100,7 +100,7 @@ void q_close(struct queue *q)
 
 void q_report(FILE *f)
 {
-	fprintf(f, "Inter-thread max queue depth %u\n", max_depth);
+	fprintf(f, "Inter-thread max queue depth: %u\n", max_depth);
 }
 
 /* add DATA to Q */
