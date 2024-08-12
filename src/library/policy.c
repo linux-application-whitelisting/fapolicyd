@@ -251,6 +251,7 @@ static int _load_rules(const conf_t *_config, FILE *f)
 	int rc, lineno = 1;
 	char *line = NULL;
 	size_t len = 0;
+	list_init(&wildcards);
 
 	if (rules_create(&rules))
 		return 1;
