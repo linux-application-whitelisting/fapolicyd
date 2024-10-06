@@ -38,6 +38,8 @@
 #include "process.h"
 #include "file.h"
 
+#define BUF_SIZE 8192 // Buffer for reading pid status, mainly for group list
+
 #define BUFSZ 12  // Largest unsigned int is 10 characters long
 /*
  * This is an optimized integer to string conversion. It only
@@ -339,7 +341,7 @@ uid_t get_program_uid_from_pid(pid_t pid)
 
 attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 {
-	char buf[128];
+    char buf[BUF_SIZE];
 	int gid = -1;
 	FILE *f;
 	attr_sets_entry_t *set = init_standalone_set(INT);
@@ -349,7 +351,7 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 		f = fopen(path, "rt");
 		if (f) {
 			__fsetlocking(f, FSETLOCKING_BYCALLER);
-			while (fgets(buf, 128, f)) {
+			while (fgets(buf, BUF_SIZE, f)) {
 				if (memcmp(buf, "Gid:", 4) == 0) {
 					sscanf(buf, "Gid: %d ", &gid);
 					append_int_attr_set(set, gid);
@@ -359,7 +361,7 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 
 			char *data;
 			int offset;
-			while (fgets(buf, 128, f)) {
+			while (fgets(buf, BUF_SIZE, f)) {
 				if (memcmp(buf, "Groups:", 7) == 0) {
 					data = buf + 7;
 					while (sscanf(data," %d%n", &gid,
