@@ -35,6 +35,9 @@ leave the daemon in the foreground for debugging. Event information is written t
 .B \-\-permissive
 the daemon will allow file access regardless of the policy decision. This is useful for debugging rules before making them permanent.
 .TP
+.B \-\-mounts=PATH
+only in debug mode will the daemon use this flag to override the source of fanotify mounts with the contents of the file at the specified path. This file must be the same format as /proc/mounts, which allows one to head, tail, or grep a sublist from /proc/mounts into a file passed with this arg.
+.TP
 .B \-\-no-details
 when fapolicyd ends, it dumps a usage report with various statistics that may be useful for tuning performance. It can also detail which processes it knew about and files being accessed by them. This can be useful for forensics investigations. In some settings, this may not be desirable as the file names may be sensitive. Using this option removes process and file names leaving only the statistics. The default without giving this option is to generate a full report.
 .SH SIGNALS
