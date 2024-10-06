@@ -87,7 +87,7 @@ in favor of using obj_trust with execute permission when writing rules.
 .RE
 .TP
 .B ftype
-This option takes the mime type of a file as an argument. If you wish to check the mime type of a file while writing rules, run the following command:
+This option takes the mime type of a file as an argument. Mime is determined based on magic patterns files. Fapolicyd uses two precompiled magic files /usr/share/fapolicyd/fapolicyd-magic.mgc and /usr/share/misc/magic.mgc. To compile a magic file run the command \fBfile -C -m <magic file>\fP. If you wish to check the mime type of a file while writing rules, run the following command:
 
 .nf
 .B fapolicyd-cli \-\-ftype /path-to-file
@@ -169,7 +169,7 @@ will run and compile all these component files into one master file, compiled.ru
 .B fagenrules
 man page for more information.
 
-When you are writing a rule for the execute permission, remember that the file to be executed is an 
+When you are writing a rule for the execute permission, remember that the file to be executed is an
 .B object.
 For example, you type ssh into the shell. The shell calls execve on /usr/bin/ssh. At that instant in time, ssh is the object that bash is working on. However, if you are blocking execution
 .I from
