@@ -21,7 +21,7 @@ that are designed to work together. They are copied into /etc/fapolicyd/rules.d/
 When the service starts, the systemd service file runs fagenrules which
 assembles the units of rules into a comprehensive policy. The policy is
 evaluated from top to bottom with the first match winning. You can see the
-assembled policy by running 
+assembled policy by running
 
 ```
 fapolicyd-cli --list
@@ -161,7 +161,7 @@ Policy. But you can do that. It is not recommended to do this except when
 necessary. Every rule that is added has to potentially be evaluated - which
 delays the decision.
 
-If you needed to allow admins access to ping, but deny it to everyone 
+If you needed to allow admins access to ping, but deny it to everyone
 else, you could do that with the following rules:
 
 ```
@@ -224,10 +224,10 @@ The report gives some basic forensic information about what was being accessed.
 
 PERFORMANCE
 -----------
-When a program opens a file or calls execve, that thread has to wait for 
+When a program opens a file or calls execve, that thread has to wait for
 fapolicyd to make a decision. To make a decision, fapolicyd has to lookup
 information about the process and the file being accessed. Each system call
-fapolicyd has to make slows down the system.  
+fapolicyd has to make slows down the system.
 
 To speed things up, fapolicyd caches everything it looks up so that
 subsequent access uses the cache rather than looking things up from
@@ -327,7 +327,7 @@ in the lmdb database is 512 bytes. So, for each 4k page, we can have data on
 8 trusted files.
 
 An ideal size for the database is for the statistics to come up around 75% in
-case you decide to install new software some day. The formula is 
+case you decide to install new software some day. The formula is
 
 ```
  (db_max_size x percentage in use) / desired percentage = new db_max_size
@@ -422,22 +422,22 @@ to debug the policy is:
 
 Look at the rule that triggered and see if it makes sense that it triggered. If
 the rule is a catch all denial, then check if the file is in the trust db. To see the rule that is being triggered, either reproduce the problem with the daemon running in debug-deny mode or change the rules from deny_audit to deny_syslog. If you choose this method, the denials will go into syslog. To see them run:
+
 ```
 journalctl -b -u fapolicyd.service
 ```
+
 to list out any events since boot by the fapolicyd service.
 
 Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 
-|         Option         |              What it does                  |
-|------------------------|--------------------------------------------|
-| --check-config         | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                     |
-| --check-path           | Check that every file in $PATH is in the trustdb. (New in 1.1.5)                                          |
-| --check-status         | Output internal metrics kept by the daemon. (New in 1.1.4)                                                |
-| --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
-| --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
-
-
+|       Option       |                                                                  What it does                                                                   |
+| :----------------: | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+|  `--check-config`  | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                                                           |
+|   `--check-path`   | Check that every file in `$PATH` is in the trustdb. (New in 1.1.5)                                                                              |
+|  `--check-status`  | Output internal metrics kept by the daemon. (New in 1.1.4)                                                                                      |
+| `--check-trustdb`  | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.                                        |
+| `--check-watch_fs` | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration. |
 
 MANAGING TRUST
 --------------
@@ -500,113 +500,129 @@ FAQ
 ---
 1) Can this work with other distributions?
 
-Absolutely! There is a backend API that any trust source has to implement.
-This API is located in fapolicyd-backend.h. A new backend needs an init, load,
-and destroy function. So, someone who knows the debian package database,
-for example, could implement a new backend and send a pull request. We are
-looking for collaborators.
+   Absolutely! There is a backend API that any trust source has to implement.
+   This API is located in `fapolicyd-backend.h`. A new backend needs an init, load,
+   and destroy function.
 
-An initial implementation for Debian distributions has been added.
-Run:
-```
-cd deb
-./build_deb.sh
-```
+   An initial implementation for Debian distributions has been added, run:
 
-To build the `.deb` package that uses the `debdb` backend.
-You must add rules to `/etc/fapolicyd/rules.d/` and change configuration
-in `/etc/fapolicyd/fapolicyd.conf` to use `trust=debdb` after installation.
+   ```
+   cd deb
+   ./build_deb.sh
+   ```
 
-Also, if the distribution is very small, you can use the file trust database
-file. Just add the places where libraries and applications are stored.
+   To build the `.deb` package that uses the `debdb` backend.
+   You must add rules to `/etc/fapolicyd/rules.d/` and change configuration
+   in `/etc/fapolicyd/fapolicyd.conf` to use `trust=debdb` after installation.
+
+   Gentoo-based distributions can try using the ebuild backend:
+
+   ```
+   ./configure --with-ebuild --with-audit
+   make -j
+   make install
+   ```
+
+   To use the ebuild backend:
+
+    1. Enable the ebuild backend by adding `trust = ebuilddb` to `/etc/fapolicyd/fapolicyd.conf`
+    2. Increase `db_max_size` to 100 or more in `/etc/fapolicyd/fapolicyd.conf`
+    3. Copy the example rules to `/etc/fapolicyd/rules.d/` and run `fagenrules` to compile them.
+
+   There is also an ebuild in the Gentoo Repository to simplify installation which
+   does these things automatically.
+
+   Finally, if the distribution is very small (or in an embedded context), consider using
+   the trust file database - Just whitelist applications or libraries and their hashes.
 
 2) Can SE Linux or AppArmor do this instead?
 
-SE Linux is modeling how an application behaves. It is not concerned about
-where the application came from or whether it's known to the system. Basically,
-anything in /bin gets bin_t type by default which is not a very restrictive
-label. MAC systems serve a different purpose. Fapolicyd by design cares solely
-about if this is a known application/library. These are complimentary security
-subsystems. There is more information about application whitelisting use cases
-at the following NIST website:
+   SE Linux is modeling how an application behaves. It is not concerned about
+   where the application came from or whether it's known to the system. Basically,
+   anything in /bin gets bin_t type by default which is not a very restrictive
+   label. MAC systems serve a different purpose. Fapolicyd by design cares solely
+   about if this is a known application/library. These are complimentary security
+   subsystems. There is more information about application whitelisting use cases
+   at the following NIST website:
 
-https://www.nist.gov/publications/guide-application-whitelisting
+   https://www.nist.gov/publications/guide-application-whitelisting
 
 3) Does the daemon check file integrity?
 
-Version 0.9.5 and later supports 3 modes of integrity checking. The first is
-based on file size. In this mode, fapolicyd will take the size information
-from the trust db and compare it with the measured file size. This test
-incurs no overhead since the file size is collected when establishing
-uniqueness for caching purposes. It is intended to detect accidental overwrites
-as opposed to malicious activity where the attacker can make the file size
-match.
+   Version 0.9.5 and later supports 3 modes of integrity checking. The first is
+   based on file size. In this mode, fapolicyd will take the size information
+   from the trust db and compare it with the measured file size. This test
+   incurs no overhead since the file size is collected when establishing
+   uniqueness for caching purposes. It is intended to detect accidental overwrites
+   as opposed to malicious activity where the attacker can make the file size
+   match.
 
-The second mode is based on using IMA to calculate sha256 hashes and make them
-available through extended attributes. This incurs only the overhead of calling
-fgetxattr which is fast since there is no path name resolution. The file system
-must support i_version. For XFS, this is enabled by default. For other file
-systems, this means you need to add the iversion mount option. In either
-case, IMA must be setup appropriately.
+   The second mode is based on using IMA to calculate sha256 hashes and make them
+   available through extended attributes. This incurs only the overhead of calling
+   fgetxattr which is fast since there is no path name resolution. The file system
+   must support i_version. For XFS, this is enabled by default. For other file
+   systems, this means you need to add the iversion mount option. In either
+   case, IMA must be setup appropriately.
 
-The third mode is where fapolicyd calculates a SHA256 hash of the file itself
-and compares that with what is stored in the trust db.
+   The third mode is where fapolicyd calculates a SHA256 hash of the file itself
+   and compares that with what is stored in the trust db.
 
 4) This is only looking at location. Can't this be defeated by simply moving
 the files to another location?
 
-Yes, this is checking to see if this is a known file. Known files have a known
-location. The shipped policy prevents execution from /tmp, /var/tmp, and $HOME
-based on the fact that no rpm package puts anything there. Also, moving a file
-means it's no longer "known" and will be blocked from executing. And if
-something were moved to overwrite it, then the hash is no longer the same and
-that will make it no longer trusted.
+   Yes, this is checking to see if this is a known file. Known files have a known
+   location. The shipped policy prevents execution from /tmp, /var/tmp, and $HOME
+   based on the fact that no rpm package puts anything there. Also, moving a file
+   means it's no longer "known" and will be blocked from executing. And if
+   something were moved to overwrite it, then the hash is no longer the same and
+   that will make it no longer trusted.
 
 5) Does this protect against root modifications?
 
-If you are root, you can change the fapolicyd rules or simply turn off the
-daemon. So, this is not designed to prevent root from doing things. None of
-the integrity subsystems on Linux are designed to prevent root from doing
-things. There has to be a way of doing updates or disabling something for
-troubleshooting. For example, you can change IMA to ima_appraise=fix in
-/etc/default/grub. You can run setenforce 0 to turn off SELinux. You can also
-set selinux=0 or enforcing=0 for the boot prompt. The IPE integrity subsystem
-can be turned off via 
+   If you are root, you can change the fapolicyd rules or simply turn off the
+   daemon. So, this is not designed to prevent root from doing things. None of
+   the integrity subsystems on Linux are designed to prevent root from doing
+   things. There has to be a way of doing updates or disabling something for
+   troubleshooting. For example, you can change IMA to ima_appraise=fix in
+   /etc/default/grub. You can run setenforce 0 to turn off SELinux. You can also
+   set selinux=0 or enforcing=0 for the boot prompt. The IPE integrity subsystem
+   can be turned off via
 
-```
-echo -n 0 > "/sys/kernel/security/ipe/Ex Policy/active"
-```
+   ```
+   echo -n 0 > "/sys/kernel/security/ipe/Ex Policy/active"
+   ```
 
-and so on. Since they can all be disabled, the fact that an admin can issue a
-service stop command is not a unique weakness.
+   and so on. Since they can all be disabled, the fact that an admin can issue a
+   service stop command is not a unique weakness.
 
 6) How do you prevent race conditions on startup? Can something execute before
 the daemon takes control?
 
-One of the design goals is to take control before users can login. Users are
-the main problem being addressed. They can pip install apps to the home dir
-or do other things an admin may wish to prevent. Only root can install things
-that run before login. And again, root can change the rules or turn off the
-daemon.
+   One of the design goals is to take control before users can login. Users are
+   the main problem being addressed. They can pip install apps to the home dir
+   or do other things an admin may wish to prevent. Only root can install things
+   that run before login. And again, root can change the rules or turn off the
+   daemon.
 
-Another design goal is to prevent malicious apps from running. Suppose someone
-guesses your password and they login to your account. Perhaps they wish to
-ransomware your home dir. The app they try to run is not known to the system
-and will be stopped. Or suppose there is an exploitable service on your system.
-The attacker is lucky enough to pop a shell. Now they want to download
-privilege escalation tools or perhaps an LD_PRELOAD key logger. Since neither
-of these are in the trust database, they won't be allowed to run.
+   Another design goal is to prevent malicious apps from running. Suppose someone
+   guesses your password and they login to your account. Perhaps they wish to
+   ransomware your home dir. The app they try to run is not known to the system
+   and will be stopped. Or suppose there is an exploitable service on your system.
+   The attacker is lucky enough to pop a shell. Now they want to download
+   privilege escalation tools or perhaps an LD_PRELOAD key logger. Since neither
+   of these are in the trust database, they won't be allowed to run.
 
-This is really about stopping escalation or exploitation before the attacker
-can gain any advantage to install root kits. If we can do that, UEFI secure
-boot can make sure no other problems exist during boot.
+   This is really about stopping escalation or exploitation before the attacker
+   can gain any advantage to install root kits. If we can do that, UEFI secure
+   boot can make sure no other problems exist during boot.
 
-Wrt to the second question being asked, fapolicyd starts very early in the
-boot process and startup is very fast. It's running well before other login
-daemons.
+   Wrt to the second question being asked, fapolicyd starts very early in the
+   boot process and startup is very fast. It's running well before other login
+   daemons.
 
 NOTES
 -----
+
 * It's highly recommended to run in permissive mode while you are testing the
 daemon's policy.
 
@@ -627,12 +643,11 @@ file content modifications can occur.
 * If for some reason rpm database errors are detected, you may need to do
 the following:
 
-```
-1. db_verify /var/lib/rpm/Packages
-if OK, then
-2. rm -f /var/lib/rpm/__db*
-3. rpm --rebuilddb
-```
+   ```
+   1. db_verify /var/lib/rpm/Packages
+   if OK, then
+   2. rm -f /var/lib/rpm/__db*
+   3. rpm --rebuilddb
+   ```
 
 [1] - https://git.kernel.org/pub/scm/linux/kernel/git/jack/linux-fs.git/commit/?id=66917a3130f218dcef9eeab4fd11a71cd00cd7c9
-

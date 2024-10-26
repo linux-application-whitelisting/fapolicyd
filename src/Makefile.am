@@ -74,16 +74,26 @@ libfapolicyd_la_SOURCES += \
 
 endif
 
-if WITH_DEB
-libfapolicyd_la_SOURCES += library/deb-backend.c
-fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
-fapolicyd_LDFLAGS += -ldpkg
-endif
-
 if NEED_MD5
 libfapolicyd_la_SOURCES += \
 	library/md5-backend.c \
 	library/md5-backend.h
+endif
+
+if WITH_DEB
+libfapolicyd_la_SOURCES += library/deb-backend.c \
+	library/md5-backend.c \
+	library/md5-backend.h
+fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
+fapolicyd_LDFLAGS += -ldpkg
+endif
+
+if WITH_EBUILD
+libfapolicyd_la_SOURCES += library/ebuild-backend.c \
+	library/md5-backend.c \
+	library/md5-backend.h \
+	library/filter.c \
+	library/filter.h
 endif
 
 fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
