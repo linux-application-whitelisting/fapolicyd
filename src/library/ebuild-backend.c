@@ -363,25 +363,6 @@ struct epkg** process_vdb_category(struct dirent *vdbdp, int *packages, struct e
 }
 
 /*
- * Exclude a known list of paths that shouldn't contain binaries
- * (installed by a package manager, anyway).
- */
-int exclude_path(const char *path) {
-	const char *excluded_paths[] = {
-		"/usr/share/",
-		"/usr/src/",
-	};
-	const int num_excluded_paths = sizeof(excluded_paths) / sizeof(excluded_paths[0]);
-	for (int i = 0; i < num_excluded_paths; i++) {
-		if (strncmp(path, excluded_paths[i], strlen(excluded_paths[i])) == 0) {
-			return 1;
-		}
-	}
-	return 0;
-}
-
-
-/*
  * Portage stores data about installed packages in the VDB (/var/db/pkg/).
  * We care about /var/db/pkg/category/package-version/CONTENTS
  * which lists files and directories that are installed as part of a package 'merge'
@@ -435,7 +416,11 @@ static int ebuild_load_list(const conf_t *conf) {
 		}
 		for (int k = 0; k < package->files; k++) {
 			ebuildfiles *file = &package->content[k];
-			if (exclude_path(file->path)) {
+			// Is this file in the filter list?
+			if (!filter_check(file->path)) {
+				#ifdef DEBUG
+				msg(LOG_DEBUG, "File %s is in the filter list; ignoring", file->path);
+				#endif
 				continue;
 			}
 			add_file_to_backend_by_md5(file->path, file->md5, hashtable_ptr, SRC_EBUILD, &ebuild_backend);
