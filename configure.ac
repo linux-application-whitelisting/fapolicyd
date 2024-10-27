@@ -1,5 +1,5 @@
 AC_REVISION($Revision: 1.3 $)dnl
-AC_INIT([fapolicyd],[1.3.4])
+AC_INIT([fapolicyd],[1.3.5])
 AC_PREREQ([2.60])dnl
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
