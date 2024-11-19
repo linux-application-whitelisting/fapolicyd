@@ -378,23 +378,26 @@ static int rpm_load_list(const conf_t *conf)
 
 static int rpm_init_backend(void)
 {
+	// first time initialization
+	// we need to be sure following is not called when reloading backend
 	if (rpm_dir_path_len == -1) {
 		rpm_dir_path_len = strlen(rpm_dir_path);
 
 		if(init_fd_buffer()) {
+			return 1;
+		}
 
+		if (filter_init()) {
+			destroy_fd_buffer();
+			return 1;
+		}
+
+		if (filter_load_file()) {
+			filter_destroy();
+			destroy_fd_buffer();
 			return 1;
 		}
 	}
-
-	if (filter_init())
-		return 1;
-
-	if (filter_load_file()) {
-		filter_destroy();
-		return 1;
-	}
-
 
 	list_init(&rpm_backend.list);
 
@@ -405,11 +408,14 @@ static int rpm_init_backend(void)
 extern volatile atomic_bool stop;
 static int rpm_destroy_backend(void)
 {
-	filter_destroy();
 	list_empty(&rpm_backend.list);
 	// for sure
 	close_fds_in_buffer();
-	if (stop)
+
+	// just in case fapolicyd is going down
+	if (stop) {
+		filter_destroy();
 		destroy_fd_buffer();
+	}
 	return 0;
 }
