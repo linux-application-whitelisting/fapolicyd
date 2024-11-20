@@ -87,8 +87,8 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 
 %if 0%{?fedora} == 0
 # uthash
-%setup -q -D -T -a 2
-%patch -P1 -p1 -b .uthash
+#ELN %%setup -q -D -T -a 2
+#ELN %%patch -P1 -p1 -b .uthash
 %endif
 
 
@@ -299,5 +299,5 @@ fi
 %endif
 
 %changelog
-* Mon 10 28 2024 Steve Grubb <sgrubb@redhat.com> 1.3.5-1
+* Mon Oct 28 2024 Steve Grubb <sgrubb@redhat.com> 1.3.5-1
 - New release
