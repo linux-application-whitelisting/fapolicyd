@@ -136,6 +136,7 @@ static rpmdbMatchIterator mi = NULL;
 
 static int init_rpm(void)
 {
+	ongoing_rpm_operation = 1;
 	return rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);
 }
 
@@ -261,7 +262,7 @@ struct _hash_record {
 extern unsigned int debug_mode;
 static int rpm_load_list(const conf_t *conf)
 {
-	int rc;
+	int rc = 0;
 	unsigned int msg_count = 0;
 	unsigned int tsource = SRC_RPM;
 
@@ -271,12 +272,10 @@ static int rpm_load_list(const conf_t *conf)
 	// hash table
 	struct _hash_record *hashtable = NULL;
 
-	ongoing_rpm_operation = 1;
-
 	msg(LOG_INFO, "Loading rpmdb backend");
 	if ((rc = init_rpm())) {
 		msg(LOG_ERR, "init_rpm() failed (%d)", rc);
-		return rc;
+		goto error;
 	}
 
 	// Loop across the rpm database
@@ -362,6 +361,7 @@ static int rpm_load_list(const conf_t *conf)
 
 	close_rpm();
 
+error:
 	ongoing_rpm_operation = 0;
 	close_fds_in_buffer();
 
@@ -373,7 +373,7 @@ static int rpm_load_list(const conf_t *conf)
 		free((void*)item);
 	}
 
-	return 0;
+	return rc;
 }
 
 static int rpm_init_backend(void)
