@@ -39,6 +39,10 @@
 #include "lru.h"
 #include "message.h"
 #include "policy.h"
+#include "llist.h"
+
+// Global variables
+extern list_t wildcards;
 
 #define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
 	FAN_OPEN_EXEC_PERM)
@@ -288,7 +292,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				subject_reset(e->s, EXE_TYPE);
 				subject_reset(e->s, SUBJ_TRUST);
 			}
-		} 
+		}
 	}
 	return 0;
 }
@@ -461,7 +465,12 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			object_attr_t *path =  get_obj_attr(e, PATH);
 
 			if (path && path->o) {
-				int res = check_trust_database(path->o, o->info, e->fd);
+				// int res = check_trust_database(path->o, o->info, e->fd);
+				char check_path[PATH_MAX+1];
+				strncpy(check_path, path->o, PATH_MAX);
+				path_globalization(check_path, 1);
+				int res = check_trust_database(check_path, o->info, e->fd);
+				// msg(LOG_DEBUG, "Change object path before check from %s to %s", path->o, check_path);
 
 				// ignore -1
 				if (res == 1)
