@@ -1256,6 +1256,7 @@ static void do_reload_db(conf_t* config)
 	backend_close();
 }
 
+#define RELOAD_TIMEOUT 5 * 60
 static void *update_thread_main(void *arg)
 {
 	int rc;
@@ -1264,7 +1265,10 @@ static void *update_thread_main(void *arg)
 	char err_buff[BUFFER_SIZE];
 	conf_t *config = (conf_t *)arg;
 
-	int do_operation = DB_NO_OP;;
+	int do_operation_now = DB_NO_OP;
+	int reload_db_later = 0;
+	int flush_cache_later = 0;
+	time_t last_update_time = 0;
 
 #ifdef DEBUG
 	msg(LOG_DEBUG, "Update thread main started");
@@ -1290,6 +1294,19 @@ static void *update_thread_main(void *arg)
 	while (!stop) {
 
 		rc = poll(ffd, 1, 1000);
+
+		if ((time(0) - last_update_time) > RELOAD_TIMEOUT) {
+			if (reload_db_later) {
+				reload_db = 1;
+				reload_db_later = 0;
+			}
+
+			if (flush_cache_later) {
+				needs_flush = 1;
+				flush_cache_later = 0;
+			}
+
+		}
 
 		if (reload_rules) {
 			reload_rules = false;
@@ -1352,22 +1369,34 @@ static void *update_thread_main(void *arg)
 							// assume file name
 							// operation = 0
 							if (buff[i] == '/') {
-								do_operation = ONE_FILE;
+								do_operation_now = ONE_FILE;
 								break;
 							}
 
-							if (buff[i] == RELOAD_TRUSTDB_COMMAND) {
-								do_operation = RELOAD_DB;
+							if (buff[i] == RELOAD_TRUSTDB_COMMAND_NOW) {
+								do_operation_now = RELOAD_DB;
 								break;
 							}
 
-							if (buff[i] == FLUSH_CACHE_COMMAND) {
-								do_operation = FLUSH_CACHE;
+							if (buff[i] == FLUSH_CACHE_COMMAND_NOW) {
+								do_operation_now = FLUSH_CACHE;
 								break;
 							}
 
-							if (buff[i] == RELOAD_RULES_COMMAND) {
-								do_operation = RELOAD_RULES;
+							if (buff[i] == RELOAD_RULES_COMMAND_NOW) {
+								do_operation_now = RELOAD_RULES;
+								break;
+							}
+
+							if (buff[i] == RELOAD_TRUSTDB_COMMAND_LATER) {
+								reload_db_later = 1;
+								last_update_time = time(0);
+								break;
+							}
+
+							if (buff[i] == FLUSH_CACHE_COMMAND_LATER) {
+								flush_cache_later = 1;
+								last_update_time = time(0);
 								break;
 							}
 
@@ -1381,11 +1410,11 @@ static void *update_thread_main(void *arg)
 						*end = '\n';
 
 						// got "1" -> reload db
-						if (do_operation == RELOAD_DB) {
-							do_operation = DB_NO_OP;
+						if (do_operation_now == RELOAD_DB) {
+							do_operation_now = DB_NO_OP;
 							do_reload_db(config);
-						} else if (do_operation == RELOAD_RULES) {
-							do_operation = DB_NO_OP;
+						} else if (do_operation_now == RELOAD_RULES) {
+							do_operation_now = DB_NO_OP;
 
 							load_rule_file();
 
@@ -1394,11 +1423,11 @@ static void *update_thread_main(void *arg)
 							unlock_rule();
 
 							// got "2" -> flush cache
-						} else if (do_operation == FLUSH_CACHE) {
-							do_operation = DB_NO_OP;
+						} else if (do_operation_now == FLUSH_CACHE) {
+							do_operation_now = DB_NO_OP;
 							needs_flush = true;
-						} else if (do_operation == ONE_FILE) {
-							do_operation = DB_NO_OP;
+						} else if (do_operation_now == ONE_FILE) {
+							do_operation_now = DB_NO_OP;
 							if (handle_record(buff))
 								continue;
 						}

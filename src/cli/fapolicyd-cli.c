@@ -496,10 +496,10 @@ static int do_reload(int code)
 	char str[32] = {0};
 
 	if (code == DB) {
-		snprintf(str, 32, "%c\n", RELOAD_TRUSTDB_COMMAND);
-		ret = write(fd, "1\n", strlen(str));
+		snprintf(str, 32, "%c\n", RELOAD_TRUSTDB_COMMAND_NOW);
+		ret = write(fd, "4\n", strlen(str));
 	} else if (code == RULES) {
-		snprintf(str, 32, "%c\n", RELOAD_RULES_COMMAND);
+		snprintf(str, 32, "%c\n", RELOAD_RULES_COMMAND_NOW);
 		ret = write(fd, "3\n", strlen(str));
 	}
 

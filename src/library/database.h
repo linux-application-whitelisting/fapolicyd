@@ -57,8 +57,10 @@ walkdb_entry_t *walk_database_get_entry(void);
 int walk_database_next(void);
 void walk_database_finish(void);
 
-#define RELOAD_TRUSTDB_COMMAND '1'
-#define FLUSH_CACHE_COMMAND '2'
-#define RELOAD_RULES_COMMAND '3'
+#define RELOAD_TRUSTDB_COMMAND_LATER '1'
+#define FLUSH_CACHE_COMMAND_LATER '2'
+#define RELOAD_RULES_COMMAND_NOW '3'
+#define RELOAD_TRUSTDB_COMMAND_NOW '4'
+#define FLUSH_CACHE_COMMAND_NOW '5'
 
 #endif
