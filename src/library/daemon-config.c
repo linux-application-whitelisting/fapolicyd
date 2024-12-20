@@ -96,6 +96,8 @@ static int fs_mark_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int report_interval_parser(const struct nv_pair *nv, int line,
         conf_t *config);
+static int ignore_mounts_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -116,6 +118,7 @@ static const struct kw_pair keywords[] =
   {"rpm_sha256_only", rpm_sha256_only_parser},
   {"allow_filesystem_mark",	fs_mark_parser },
   {"report_interval",	report_interval_parser },
+  {"ignore_mounts",	ignore_mounts_parser },
   { NULL,		NULL }
 };
 
@@ -146,6 +149,7 @@ static void clear_daemon_config(conf_t *config)
 	config->rpm_sha256_only = 0;
 	config->allow_filesystem_mark = 0;
     config->report_interval = 0;
+	config->ignore_mounts = strdup("/run,/sys");
 }
 
 int load_daemon_config(conf_t *config)
@@ -644,4 +648,15 @@ static int fs_mark_parser(const struct nv_pair *nv, int line,
 #endif
 
 	return rc;
+}
+
+static int ignore_mounts_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	free((void *)config->ignore_mounts);
+	config->ignore_mounts = strdup(nv->value);
+	if (config->ignore_mounts)
+		return 0;
+	msg(LOG_ERR, "Could not store value line %d", line);
+	return 1;
 }
