@@ -72,15 +72,16 @@ volatile atomic_bool stop = false, hup = false, run_stats = false;
 // Local variables
 static conf_t config;
 // This holds info about all file systems to watch
-struct fs_avl {
+typedef struct fs_avl {
 	avl_tree_t index;
-};
+} fs_avl;
 // This is the data about a specific file system to watch
 typedef struct fs_data {
         avl_t avl;        // This has to be first
         const char *fs_name;
 } fs_data_t;
-static struct fs_avl filesystems;
+static fs_avl filesystems;
+static fs_avl ignored_mounts;
 
 // List of mounts being watched
 static mlist *m = NULL;
@@ -141,27 +142,27 @@ static void free_filesystem(fs_data_t *s)
 }
 
 
-static void destroy_filesystem(void)
+static void destroy_filesystem(fs_avl* fs)
 {
-	avl_t *cur = filesystems.index.root;
+	avl_t *cur = fs->index.root;
 
-	fs_data_t *tmp =(fs_data_t *)avl_remove(&filesystems.index, cur);
+	fs_data_t *tmp =(fs_data_t *)avl_remove(&fs->index, cur);
 	if ((avl_t *)tmp != cur)
 		msg(LOG_DEBUG, "filesystem: removal of invalid node");
 	free_filesystem(tmp);
 }
 
 
-static void destroy_fs_list(void)
+static void destroy_fs_list(fs_avl* fs)
 {
-	while (filesystems.index.root)
-		destroy_filesystem();
+	while (fs->index.root)
+		destroy_filesystem(fs);
 }
 
 
-static int add_filesystem(fs_data_t *f)
+static int add_filesystem(fs_avl* fs, fs_data_t *f)
 {
-	fs_data_t *tmp=(fs_data_t *)avl_insert(&filesystems.index,(avl_t *)(f));
+	fs_data_t *tmp=(fs_data_t *)avl_insert(&fs->index,(avl_t *)(f));
 	if (tmp) {
 		if (tmp != f) {
 			msg(LOG_DEBUG, "fs_list: duplicate filesystem found");
@@ -173,40 +174,40 @@ static int add_filesystem(fs_data_t *f)
 }
 
 
-static fs_data_t *new_filesystem(const char *fs)
+static fs_data_t *new_filesystem(fs_avl* fs, const char * f)
 {
 	fs_data_t *tmp = malloc(sizeof(fs_data_t));
 	if (tmp) {
-		tmp->fs_name = fs ? strdup(fs) : strdup("");
-		if (add_filesystem(tmp) != 0)
+		tmp->fs_name = fs ? strdup(f) : strdup("");
+		if (add_filesystem(fs,tmp) != 0)
 			return NULL;
 	}
 	return tmp;
 }
 
 
-static fs_data_t *find_filesystem(const char *f)
+static fs_data_t *find_filesystem(fs_avl* fs, const char *f)
 {
 	fs_data_t tmp;
 
 	tmp.fs_name = f;
-	return (fs_data_t *)avl_search(&filesystems.index, (avl_t *) &tmp);
+	return (fs_data_t *)avl_search(&fs->index, (avl_t *) &tmp);
 }
 
 
-static void init_fs_list(const char *watch_fs)
+static void init_fs_list(fs_avl* fs, const char *watch_fs)
 {
 	if (watch_fs == NULL) {
 		msg(LOG_ERR, "File systems to watch is empty");
 		exit(1);
 	}
-	avl_init(&filesystems.index, cmp_fs);
+	avl_init(&fs->index, cmp_fs);
 
 	// Now parse up list and push into avl
 	char *ptr, *saved, *tmp = strdup(watch_fs);
 	ptr = strtok_r(tmp, ",", &saved);
 	while (ptr) {
-		new_filesystem(ptr);
+		new_filesystem(fs, ptr);
 		ptr = strtok_r(NULL, ",", &saved);
 	}
 	free(tmp);
@@ -344,13 +345,12 @@ static int become_daemon(void)
 // Returns 1 if we care about the entry and 0 if we do not
 static int check_mount_entry(const char *point, const char *type)
 {
-	// Some we know we don't want
-	if (strcmp(point, "/run") == 0)
-		return 0;
-	if (strncmp(point, "/sys", 4) == 0)
+	// ignored mount points
+	if (find_filesystem(&ignored_mounts, point))
 		return 0;
 
-	if (find_filesystem(type))
+	// wanted filesystems
+	if (find_filesystem(&filesystems, type))
 		return 1;
 	else
 		return 0;
@@ -640,7 +640,8 @@ int main(int argc, const char *argv[])
 	}
 
 	// Setup filesystem to watch list
-	init_fs_list(config.watch_fs);
+	init_fs_list(&filesystems, config.watch_fs);
+	init_fs_list(&ignored_mounts, config.ignore_mounts);
 
 	// Write the pid file for the init system
 	write_pid_file();
@@ -678,7 +679,7 @@ int main(int argc, const char *argv[])
 	if (init_database(&config)) {
 		destroy_event_system();
 		destroy_rules();
-		destroy_fs_list();
+		destroy_fs_list(&filesystems);
 		free_daemon_config(&config);
 		unlink(pidfile);
 		exit(1);
@@ -757,7 +758,8 @@ int main(int argc, const char *argv[])
 	}
 	destroy_event_system();
 	destroy_rules();
-	destroy_fs_list();
+	destroy_fs_list(&filesystems);
+	destroy_fs_list(&ignored_mounts);
 	free_daemon_config(&config);
 
 	return 0;
