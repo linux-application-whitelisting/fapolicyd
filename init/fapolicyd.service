@@ -1,6 +1,12 @@
+# You should manage this file with systemctl edit utility and not manually
+
 [Unit]
 Description=File Access Policy Daemon
 DefaultDependencies=no
+# If rules need user/group lookup, create a drop-in to delay the startup after NSS lookup is available:
+#   # mkdir -p /etc/systemd/system/fapolicyd.service.d
+#   # echo -e "[Unit]\nAfter=nss-user-lookup.target local-fs.target systemd-tmpfiles-setup.service" > /etc/systemd/system/fapolicyd.service.d/nss-lookup.conf
+#   # systemctl daemon-reload
 After=local-fs.target systemd-tmpfiles-setup.service
 Documentation=man:fapolicyd(8)
 
@@ -12,8 +18,6 @@ PIDFile=/run/fapolicyd.pid
 ExecStartPre=/usr/sbin/fagenrules
 ExecStart=/usr/sbin/fapolicyd
 Restart=on-abnormal
-# Uncomment the following line if rules need user/group name lookup
-#After=nss-user-lookup.target
 
 [Install]
 WantedBy=multi-user.target
