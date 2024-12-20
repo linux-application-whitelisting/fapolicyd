@@ -1,6 +1,9 @@
+# You should manage this file with systemctl edit utility and not manually
+
 [Unit]
 Description=File Access Policy Daemon
 DefaultDependencies=no
+# Append nss-user-lookup.target to the following line if rules need user/group lookup
 After=local-fs.target systemd-tmpfiles-setup.service
 Documentation=man:fapolicyd(8)
 
@@ -12,8 +15,6 @@ PIDFile=/run/fapolicyd.pid
 ExecStartPre=/usr/sbin/fagenrules
 ExecStart=/usr/sbin/fapolicyd
 Restart=on-abnormal
-# Uncomment the following line if rules need user/group name lookup
-#After=nss-user-lookup.target
 
 [Install]
 WantedBy=multi-user.target
