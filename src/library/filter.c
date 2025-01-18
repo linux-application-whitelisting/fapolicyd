@@ -182,8 +182,9 @@ int filter_check(const char *_path)
 	}
 
 	filter_t *filter = global_filter;
-	char *path = strdupa(_path);
-	size_t path_len = strlen(path);
+	size_t path_len = strlen(_path);
+	char *path = alloca(path_len + 1);
+	strcpy(path, _path);
 	size_t offset = 0;
 	// Create a stack to store the filters that need to be checked
 	stack_t stack;
