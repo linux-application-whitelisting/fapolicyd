@@ -39,13 +39,19 @@
 #include <sys/xattr.h>
 #include <linux/hash_info.h>
 #include <sys/mman.h>
+#include <fnmatch.h>
+#include <libgen.h>
 
 #include "file.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
+#include "llist.h"
 
 // Local defines
 #define IMA_XATTR_DIGEST_NG 0x04	// security/integrity/integrity.h
+
+// Global variables
+list_t wildcards;
 
 // Local variables
 static struct udev *udev;
@@ -876,5 +882,40 @@ done64_obj:
 rewind_out:
 	rewind_fd(fd);
 	return info;
+}
+
+// Go through the list of wildcards and replace the path with the first matching wildcard
+// To check trusted files use keep_uniq = 1 or keep_uniq = 0 for rules checking
+const char *path_globalization(const char *path, int keep_uniq) {
+	char buf[PATH_MAX];
+	list_item_t *wc = list_get_first(&wildcards);
+	while (wc != NULL) {
+		if (fnmatch(wc->data, path, 0) == 0) {
+			if (keep_uniq) {
+				int slashes = 0;
+				int i;
+				for (i = 0; ((char *)wc->data)[i] != 0; i++) {
+					if (((char *)wc->data)[i] == '/') slashes++;
+				}
+				for (i = 0; path[i]; i++) {
+					if (path[i] == '/') {
+						slashes--;
+						if (slashes == 0) break;
+					}
+				}
+				strncpy(buf, (char *) wc->data, PATH_MAX-1);
+				dirname(buf);
+				strncat(buf, &path[i], PATH_MAX-1);
+				memcpy((void *)path, buf, strlen(buf) + 1);
+			}
+			else {
+				memcpy((void *)path, wc->data, strlen(wc->data) + 1);
+			}
+			// msg(LOG_DEBUG, "Replace the path with the first matching wildcard %s", path);
+			break;
+		}
+		wc = wc->next;
+	}
+    return path;
 }
 
