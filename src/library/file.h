@@ -19,6 +19,7 @@
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
+ *   Radovan Sroka <rsroka@redhat.com>
  *   Steve Grubb <sgrubb@redhat.com>
  */
 
@@ -42,6 +43,9 @@ struct file_info
 
 #define SHA256_LEN	32
 #define SHA512_LEN	64
+
+#define DEGENERATE_HASH_SHA "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+#define DEGENERATE_HASH_MD5 "d41d8cd98f00b204e9800998ecf8427e"
 
 void file_init(void);
 void file_close(void);
