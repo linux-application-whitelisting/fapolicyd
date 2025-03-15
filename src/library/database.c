@@ -890,29 +890,33 @@ int init_database(conf_t *config)
 		return rc;
 	}
 
+	int no_reload = 0;
+	// if it fails just works with old db
 	if ((rc = backend_load(config))) {
-		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
-		close_db(0);
-		return rc;
+		no_reload =  1;
+		rc = 0;
 	}
 
-	rc = database_empty();
-	if (rc > 0) {
-		if ((rc = create_database(/*with_sync*/1))) {
-			msg(LOG_ERR,
-			"Failed to create trust database, create_database() (%d)",
-			   rc);
-			close_db(0);
-			return rc;
-		}
-	} else {
-		// check if our internal database is synced
-		rc = check_database_copy();
+	if (!no_reload) {
+		rc = database_empty();
+
 		if (rc > 0) {
-			rc = update_database(config);
-			if (rc)
+			if ((rc = create_database(/*with_sync*/1))) {
 				msg(LOG_ERR,
-				    "Failed updating the trust database");
+					"Failed to create trust database, create_database() (%d)",
+					rc);
+				close_db(0);
+				return rc;
+			}
+		} else {
+			// check if our internal database is synced
+			rc = check_database_copy();
+			if (rc > 0) {
+				rc = update_database(config);
+				if (rc)
+					msg(LOG_ERR,
+						"Failed updating the trust database");
+			}
 		}
 	}
 
@@ -1238,8 +1242,13 @@ static void do_reload_db(conf_t* config)
 
 	int rc;
 	backend_close();
-	backend_init(config);
-	backend_load(config);
+	if (backend_init(config))
+		return;
+	// if it fails, skip update part and stay with an old db
+	if (backend_load(config)) {
+		backend_close();
+		return;
+	}
 
 	if ((rc = update_database(config))) {
 		msg(LOG_ERR,
