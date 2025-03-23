@@ -1,5 +1,5 @@
 AC_REVISION($Revision: 1.3 $)dnl
-AC_INIT([fapolicyd],[1.3.4])
+AC_INIT([fapolicyd],[1.3.5])
 AC_PREREQ([2.60])dnl
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
@@ -176,6 +176,10 @@ AC_CHECK_LIB(seccomp, seccomp_rule_add, , [AC_MSG_ERROR([libseccomp not found])]
 AC_CHECK_LIB(lmdb, mdb_env_create, , [AC_MSG_ERROR([liblmdb not found])], -llmdb)
 
 LD_SO_PATH
+
+if test x$use_rpm = xyes ; then
+RPMDB_PATH
+fi
 
 AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile rules.d/Makefile])
 AC_OUTPUT

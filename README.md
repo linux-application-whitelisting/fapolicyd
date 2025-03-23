@@ -131,6 +131,28 @@ information for the file being accessed, you can add it. You can also enable
 this information to go to syslog by changing the rules to not say audit, but
 instead have syslog or log appended to the allow or deny decision.
 
+OVERRIDE MOUNTS WHILE DEBUGGING
+-------------------------------
+When debugging you can specify an alternative mounts file to the deamon
+to watch for event notifications. This allows for finer level of control
+than is achievable by filtering by filesystem type.
+
+The alternative mounts file will expect the same format as `/proc/mounts`,
+which allows us to select entries from `/proc/mounts` into a new file which
+fapolicyd will use as the mount source.
+
+For example, use grep to select a single mount point:
+```
+mount -t tmpfs tmpfs /tmp/my-test-dir 
+grep my-test-dir /proc/mounts > /tmp/my-test-mounts
+fapolicyd --debug --mounts=/tmp/my-test-mounts
+```
+
+Here we mount a tmpfs for testing in `/tmp`, and grep it from `/proc/mounts`
+into the overriding mounts file, then run fapolicyd in debug mode while
+specifying the override file. The result is fapolicyd only receives events
+that occur in `/tmp/my-test-dir`.
+
 WRITING RULES
 -------------
 The authoritative source is the fapolicyd.rules man page.

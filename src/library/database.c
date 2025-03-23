@@ -125,6 +125,19 @@ int preconstruct_fifo(const conf_t *config)
 		    strerror_r(errno, err_buff, BUFFER_SIZE));
 		return 1;
 	} else {
+
+		if ((chmod(RUN_DIR, 0770))) {
+			msg(LOG_ERR, "Failed to fix mode of dir %s (%s)",
+			    RUN_DIR, strerror_r(errno, err_buff, BUFFER_SIZE));
+			return 1;
+		}
+
+		if ((chown(RUN_DIR, 0, config->gid))) {
+			msg(LOG_ERR, "Failed to fix ownership of dir %s (%s)",
+			    RUN_DIR, strerror_r(errno, err_buff, BUFFER_SIZE));
+			return 1;
+		}
+
 		/* Make sure that there is no such file/fifo */
 		unlink_fifo();
 	}

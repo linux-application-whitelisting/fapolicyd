@@ -174,15 +174,17 @@ static void stack_pop_all_reset(stack_t *_stack)
 
 // this funtion gets full path and checks it against filter
 // returns 1 for keeping the file and 0 for dropping it
-int filter_check(const char *path)
+int filter_check(const char *_path)
 {
-	if (path == NULL) {
+	if (_path == NULL) {
 		msg(LOG_ERR, "filter_check: path is NULL, something is wrong!");
 		return 0;
 	}
 
 	filter_t *filter = global_filter;
-	size_t path_len = strlen(path);
+	size_t path_len = strlen(_path);
+	char *path = alloca(path_len + 1);
+	strcpy(path, _path);
 	size_t offset = 0;
 	// Create a stack to store the filters that need to be checked
 	stack_t stack;

@@ -87,7 +87,7 @@ in favor of using obj_trust with execute permission when writing rules.
 .RE
 .TP
 .B ftype
-This option takes the mime type of a file as an argument. If you wish to check the mime type of a file while writing rules, run the following command:
+This option takes the mime type of a file as an argument. Mime is determined based on magic patterns files. Fapolicyd uses two precompiled magic files /usr/share/fapolicyd/fapolicyd-magic.mgc and /usr/share/misc/magic.mgc. To compile a magic file run the command \fBfile -C -m <magic file>\fP. If you wish to check the mime type of a file while writing rules, run the following command:
 
 .nf
 .B fapolicyd-cli \-\-ftype /path-to-file

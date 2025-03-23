@@ -124,6 +124,7 @@ mkdir --mode=0755 -p /run/fapolicyd/
 cd init
 cp fapolicyd.bash_completion /etc/bash_completion.d/
 cp fapolicyd.conf /etc/fapolicyd/
+cp fapolicyd-magic /usr/share/fapolicyd/
 cp fapolicyd-magic.mgc /usr/share/fapolicyd/
 cp fapolicyd.service /usr/lib/systemd/system/
 cp fapolicyd-tmpfiles.conf /usr/lib/tmpfiles.d/fapolicyd.conf

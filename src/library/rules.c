@@ -410,9 +410,10 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			goto free_and_error;
 		}
 
-		if (strcmp(tmp,
-			PATTERN_LD_SO_STR) == 0) {
+		if (strcmp(tmp,	PATTERN_LD_SO_STR) == 0) {
 			n->s[i].val = PATTERN_LD_SO_VAL;
+		} else if (strcmp(tmp, PATTERN_NORMAL_STR) == 0) {
+			n->s[i].val = PATTERN_NORMAL_VAL;
 		} else if (strcmp(tmp, PATTERN_STATIC_STR) == 0) {
 			n->s[i].val = PATTERN_STATIC_VAL;
 		} else if (strcmp(tmp, PATTERN_LD_PRELOAD_STR) == 0) {

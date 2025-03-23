@@ -414,14 +414,17 @@ static void *decision_thread_main(void *arg)
 				pthread_cond_timedwait(&do_decision,
 						       &decision_lock,
 						       &rpt_timeout);
-			} else if (run_stats) {
-				rpt_write();
-				run_stats = 0;
+			} else {
+				if (run_stats) {
+					rpt_write();
+					run_stats = 0;
+				}
+				if (stop)
+					break;
+
+				// no interval reports, await a fan event indefinitely
+				pthread_cond_wait(&do_decision, &decision_lock);
 			}
-			// no interval reports, await a fan event indefinitely
-			if (stop)
-				break;
-			pthread_cond_wait(&do_decision, &decision_lock);
 		}
 
 		if (stop) {

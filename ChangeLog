@@ -1,6 +1,9 @@
+1.3.5
+
 1.3.4
 - Fix race on fanotify fd on termination
 - Improve efficiency loading the rpm database into trust db
+- Fix issue where lock from rpmdb(Sqlite3 backend) is dropped when it shouldn't
 
 1.3.3
 - Improve dpkg support (Stephen Tridgell)
