@@ -127,7 +127,8 @@ The object is the file that the subject is interacting with. The fields in the r
 This matches against any obbject. When used, this must be the only object in the rule.
 .TP
 .B path
-This is the full path to the file that will be accessed. Globbing is not supported. You may also use the special keyword \fBuntrusted\fP to match on the object not being listed in the rpm database.
+This is the full path to the file that will be accessed. You may use the special keyword \fBuntrusted\fP to match on the object not being listed in the rpm database. You may also
+use unix shell-style wildcards (fnmatch) e.g. /home/*/.wine/*, however this may result in poor performance and negative security implications.
 .TP
 .B dir
 If you wish to match on access to any file in a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIdir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBuntrusted\fP. See the \fBdir\fP option under Subject for an explanation of these keywords.

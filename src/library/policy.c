@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <limits.h>
 
 #include "database.h"
 #include "escape.h"
@@ -46,6 +47,7 @@
 #include "gcc-attributes.h"
 #include "string-util.h"
 #include "paths.h"
+#include "llist.h"
 
 #define MAX_SYSLOG_FIELDS	21
 #define NGID_LIMIT		32
@@ -74,6 +76,9 @@ static const nv_t table[] = {
 
 extern unsigned int debug_mode;
 extern unsigned int permissive;
+
+// Global variables
+extern list_t wildcards;
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
 
@@ -242,12 +247,30 @@ static FILE *open_file(void)
 	return f;
 }
 
+// Simple determination of glob expression greediness
+// based on slashes counting before and after first asterisk
+int glob_meter(const char *s) {
+   int slashes = 0, leading = 0;
+   for (int i = 0; s[i]; i++) {
+        if (s[i] == '/') slashes++;
+		else if ((s[i] == '*' || s[i] == '?') && leading == 0) leading = slashes;
+   }
+   if (leading == 0) leading = slashes; // No asterisks found
+   return(leading * PATH_MAX + slashes);
+};
+
+// Comparison of wildcards greediness based on glob_meter function
+int glob_compare(const void* a, const void* b) {
+    return (glob_meter(b) - glob_meter(a));
+}
+
 // Returns 0 on success and 1 on error
 static int _load_rules(const conf_t *_config, FILE *f)
 {
 	int rc, lineno = 1;
 	char *line = NULL;
 	size_t len = 0;
+	list_init(&wildcards);
 
 	if (rules_create(&rules))
 		return 1;
@@ -260,6 +283,23 @@ static int _load_rules(const conf_t *_config, FILE *f)
 		if (ptr)
 			*ptr = 0;
 		msg(LOG_DEBUG, "%s", line);
+
+		// Get wildcards by keyword from the rule and add to the list
+		char wc_key[16] = "path=";
+		char *wc_data = strstr(line, wc_key);
+		if (wc_data) {
+			if (strpbrk(wc_data, "?*[" ) != NULL) {
+				char *wildcard = malloc(strlen(wc_data));
+				sscanf(wc_data, strcat(wc_key,"%s"), wildcard);
+				if (!list_contains(&wildcards, wildcard)) {
+					msg(LOG_DEBUG, "Add to the list discovered wildcard %s", wildcard);
+					list_append(&wildcards, wildcard, wildcard);
+				}
+			}
+		}
+		// Less greedy glob expressions should be at the top of the list
+		list_bubble_sort(&wildcards, glob_compare);
+
 		rc = rules_append(&rules, line, lineno);
 		if (rc) {
 			free(line);
@@ -346,6 +386,9 @@ int load_rule_file(void)
 int do_reload_rules(const conf_t *_config)
 {
 	destroy_rules();
+
+	// Remove wildcards as well
+	list_empty(&wildcards);
 
 	if (init_attr_sets())
 		return 1;
