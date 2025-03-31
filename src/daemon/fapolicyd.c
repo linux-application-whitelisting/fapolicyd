@@ -134,6 +134,18 @@ static int cmp_fs(void *a, void *b)
 	return strcmp(((fs_data_t *)a)->fs_name, ((fs_data_t *)b)->fs_name);
 }
 
+static int cmp_mount_point(void *a, void *b)
+{
+	const char *tmp = ((fs_data_t *)a)->fs_name;
+	const int len = strlen(tmp);
+	const char last = tmp[len - 1];
+
+	if (last == '*')
+		return strncmp(((fs_data_t *)a)->fs_name, ((fs_data_t *)b)->fs_name, len);
+	else
+		return strcmp(((fs_data_t *)a)->fs_name, ((fs_data_t *)b)->fs_name);
+}
+
 
 static void free_filesystem(fs_data_t *s)
 {
@@ -195,16 +207,16 @@ static fs_data_t *find_filesystem(fs_avl* fs, const char *f)
 }
 
 
-static void init_fs_list(fs_avl* fs, const char *watch_fs)
+static void init_fs_list(fs_avl* fs, int (cmp_callback)(void*, void*), const char *fs_list)
 {
-	if (watch_fs == NULL) {
+	if (fs_list == NULL) {
 		msg(LOG_ERR, "File systems to watch is empty");
 		exit(1);
 	}
-	avl_init(&fs->index, cmp_fs);
+	avl_init(&fs->index, cmp_callback);
 
 	// Now parse up list and push into avl
-	char *ptr, *saved, *tmp = strdup(watch_fs);
+	char *ptr, *saved, *tmp = strdup(fs_list);
 	ptr = strtok_r(tmp, ",", &saved);
 	while (ptr) {
 		new_filesystem(fs, ptr);
@@ -640,8 +652,8 @@ int main(int argc, const char *argv[])
 	}
 
 	// Setup filesystem to watch list
-	init_fs_list(&filesystems, config.watch_fs);
-	init_fs_list(&ignored_mounts, config.ignore_mounts);
+	init_fs_list(&filesystems, cmp_fs, config.watch_fs);
+	init_fs_list(&ignored_mounts, cmp_mount_point, config.ignore_mounts);
 
 	// Write the pid file for the init system
 	write_pid_file();

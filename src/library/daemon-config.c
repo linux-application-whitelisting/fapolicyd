@@ -149,7 +149,7 @@ static void clear_daemon_config(conf_t *config)
 	config->rpm_sha256_only = 0;
 	config->allow_filesystem_mark = 0;
     config->report_interval = 0;
-	config->ignore_mounts = strdup("/run,/sys");
+	config->ignore_mounts = strdup("/run,/sys*");
 }
 
 int load_daemon_config(conf_t *config)
