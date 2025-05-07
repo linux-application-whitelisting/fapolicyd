@@ -54,8 +54,6 @@ static int rpm_init_backend(void);
 static int rpm_load_list(const conf_t *);
 static int rpm_destroy_backend(void);
 
-volatile atomic_bool ongoing_rpm_operation = 0;
-
 backend rpm_backend =
 {
 	"rpmdb",
@@ -65,75 +63,6 @@ backend rpm_backend =
 	/* list initialization */
 	{ 0, 0, NULL },
 };
-
-#ifdef RPM_DB_PATH
-const char *rpm_dir_path = RPM_DB_PATH;
-#else
-const char *rpm_dir_path = "/usr/lib/sysimage/rpm";
-#endif
-ssize_t rpm_dir_path_len = -1;
-
-
-static size_t fd_buffer_size = 0;
-static size_t fd_buffer_pos = 0;
-static int *fd_buffer = NULL;
-
-#define MIN_BUFFER_SIZE 512
-static int init_fd_buffer(void) {
-	struct rlimit limit;
-	getrlimit(RLIMIT_NOFILE, &limit);
-
-	fd_buffer_size = limit.rlim_cur / 4;
-	if (fd_buffer_size < MIN_BUFFER_SIZE)
-		fd_buffer_size = MIN_BUFFER_SIZE;
-
-	fd_buffer = malloc(fd_buffer_size * sizeof(int));
-	if (!fd_buffer)
-		return 1;
-
-	for(size_t i = 0 ; i < fd_buffer_size; i++)
-		fd_buffer[i] = -1;
-
-	msg(LOG_DEBUG, "FD buffer size set to: %ld",  fd_buffer_size);
-	return 0;
-}
-
-int push_fd_to_buffer(int fd) {
-
-	if (!fd_buffer) {
-		msg(LOG_ERR, "FD buffer already freed!");
-		return 1;
-	}
-	if (fd_buffer_pos < fd_buffer_size) {
-		msg(LOG_DEBUG, "Pushing to FD buffer(%ld), ocupancy: %ld", fd_buffer_size,  fd_buffer_pos);
-		fd_buffer[fd_buffer_pos++] = fd;
-		return 0;
-	}
-
-	msg(LOG_ERR, "FD buffer full");
-	return 1;
-}
-
-static void close_fds_in_buffer(void) {
-	if (fd_buffer_pos)
-		msg(LOG_DEBUG, "Closing FDs from buffer, size: %ld",  fd_buffer_pos);
-	for (size_t i = 0 ; i < fd_buffer_pos ; i++) {
-		close(fd_buffer[i]);
-		fd_buffer[i] = -1;
-	}
-
-	fd_buffer_pos = 0;
-}
-
-static void destroy_fd_buffer(void) {
-
-	if (!fd_buffer)
-		return;
-
-	free(fd_buffer);
-	fd_buffer = NULL;
-	fd_buffer_size = -1;
-}
 
 static rpmts ts = NULL;
 static rpmtxn txn = NULL;
@@ -330,8 +259,6 @@ static int rpm_load_list(const conf_t *conf)
 	// hash table
 	struct _hash_record *hashtable = NULL;
 
-	ongoing_rpm_operation = 1;
-
 	msg(LOG_INFO, "Loading rpmdb backend");
 	if ((rc = init_rpm())) {
 		msg(LOG_ERR, "init_rpm() failed (%d)", rc);
@@ -421,9 +348,6 @@ static int rpm_load_list(const conf_t *conf)
 
 	close_rpm();
 
-	ongoing_rpm_operation = 0;
-	close_fds_in_buffer();
-
 	// cleaning up
 	struct _hash_record *item, *tmp;
 	HASH_ITER( hh, hashtable, item, tmp) {
@@ -442,25 +366,13 @@ static int rpm_load_list(const conf_t *conf)
 
 static int rpm_init_backend(void)
 {
-	// first time initialization
-	// we need to be sure following is not called when reloading backend
-	if (rpm_dir_path_len == -1) {
-		rpm_dir_path_len = strlen(rpm_dir_path);
 
-		if(init_fd_buffer()) {
-			return 1;
-		}
+	if (filter_init())
+		return 1;
 
-		if (filter_init()) {
-			destroy_fd_buffer();
-			return 1;
-		}
-
-		if (filter_load_file()) {
-			filter_destroy();
-			destroy_fd_buffer();
-			return 1;
-		}
+	if (filter_load_file()) {
+		filter_destroy();
+		return 1;
 	}
 
 	list_init(&rpm_backend.list);
@@ -468,18 +380,10 @@ static int rpm_init_backend(void)
 	return 0;
 }
 
-
-extern volatile atomic_bool stop;
 static int rpm_destroy_backend(void)
 {
 	list_empty(&rpm_backend.list);
-	// for sure
-	close_fds_in_buffer();
 
-	// just in case fapolicyd is going down
-	if (stop) {
-		filter_destroy();
-		destroy_fd_buffer();
-	}
+	filter_destroy();
 	return 0;
 }
