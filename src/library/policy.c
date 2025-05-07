@@ -562,15 +562,10 @@ static int test_info_api(int fd)
 }
 #endif
 
-#ifdef USE_RPM
-int push_fd_to_buffer(int);
-extern volatile atomic_bool ongoing_rpm_operation;
-extern const char *rpm_dir_path;
-extern ssize_t rpm_dir_path_len;
-#endif
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e)
 {
+	close(metadata->fd);
 #ifdef FAN_AUDIT_RULE_NUM
 	static int use_new = 2;
 	if (use_new == 2)
@@ -609,24 +604,6 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 	response.fd = metadata->fd;
 	response.response = reply;
 	write(fd, &response, sizeof(struct fanotify_response));
-
-#ifdef USE_RPM
-	if (ongoing_rpm_operation) {
-
-		object_attr_t *obj;
-		char *path = NULL;
-		if (e && (obj = get_obj_attr(e, PATH))) {
-			path = obj->o;
-		}
-
-		if (path && !strncmp(path, rpm_dir_path, rpm_dir_path_len)) {
-			if(push_fd_to_buffer(metadata->fd))
-				close(metadata->fd);
-			return; // no close for now
-		}
-	}
-#endif
-	close(metadata->fd);
 }
 
 

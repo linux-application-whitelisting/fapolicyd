@@ -177,10 +177,6 @@ AC_CHECK_LIB(lmdb, mdb_env_create, , [AC_MSG_ERROR([liblmdb not found])], -llmdb
 
 LD_SO_PATH
 
-if test x$use_rpm = xyes ; then
-RPMDB_PATH
-fi
-
 AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile rules.d/Makefile])
 AC_OUTPUT
 
