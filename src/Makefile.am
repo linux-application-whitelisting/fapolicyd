@@ -72,6 +72,15 @@ libfapolicyd_la_SOURCES += \
 	library/filter.c \
 	library/filter.h
 
+sbin_PROGRAMS += fapolicyd-rpm-loader
+
+fapolicyd_rpm_loader_SOURCES = \
+	handler/fapolicyd-rpm-loader.c
+
+fapolicyd_rpm_loader_CFLAGS = $(fapolicyd_CFLAGS)
+fapolicyd_rpm_loader_LDFLAGS = $(fapolicyd_LDFLAGS)
+
+fapolicyd_rpm_loader_LDADD = libfapolicyd.la
 endif
 
 if WITH_DEB
