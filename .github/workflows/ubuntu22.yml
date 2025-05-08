@@ -24,7 +24,7 @@ jobs:
       run: apt update
 
     - name: installing dependencies 1
-      run: apt install -y autoconf automake libtool gcc libdpkg-dev libmd-dev uthash-dev liblmdb-dev libudev-dev 
+      run: apt install -y autoconf automake libtool gawk gcc libdpkg-dev libmd-dev uthash-dev liblmdb-dev libudev-dev
 
     - name: installing dependencies 2
       run: apt install -y libgcrypt-dev libssl-dev libmagic-dev libcap-ng-dev  libseccomp-dev make debmake debhelper

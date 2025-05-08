@@ -21,7 +21,7 @@ jobs:
       run: cat /etc/*release
 
     - name: installing dependencies 1
-      run: dnf -y install epel-release dnf-plugins-core python3-dnf-plugins-core util-linux --nogpgcheck
+      run: dnf -y install epel-release dnf-plugins-core gawk python3-dnf-plugins-core util-linux --nogpgcheck
 
     - name: installing dependencies 2
       run:  dnf -y builddep ./fapolicyd.spec --enablerepo='powertools' --nogpgcheck

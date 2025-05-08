@@ -21,7 +21,7 @@ jobs:
       run: cat /etc/fedora-release
 
     - name: installing dependencies
-      run: dnf -y install dnf-plugins-core python3-dnf-plugins-core util-linux; dnf -y builddep ./fapolicyd.spec
+      run: dnf -y install dnf-plugins-core gawk python3-dnf-plugins-core util-linux; dnf -y builddep ./fapolicyd.spec
 
     - name: generate config files
       run: ./autogen.sh
