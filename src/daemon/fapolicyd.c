@@ -67,7 +67,11 @@ unsigned int debug_mode = 0, permissive = 0;
 const char* mounts = "/proc/mounts";
 
 // Signal handler notifications
-volatile atomic_bool stop = false, hup = false, run_stats = false;
+volatile atomic_bool try_to_stop = false, stop = false;
+volatile atomic_bool hup = false, run_stats = false;
+
+extern volatile atomic_bool update_thread_loop;
+extern volatile atomic_bool update_thread_stop;
 
 // Local variables
 static conf_t config;
@@ -215,7 +219,7 @@ static void init_fs_list(const char *watch_fs)
 
 static void term_handler(int sig __attribute__((unused)))
 {
-	stop = true;
+	try_to_stop = true;
 }
 
 
@@ -702,7 +706,7 @@ int main(int argc, const char *argv[])
 			msg(LOG_DEBUG, "Got SIGHUP");
 			reconfigure();
 		}
-		rc = poll(pfd, 2, -1);
+		rc = poll(pfd, 2, 1);
 
 #ifdef DEBUG
 		msg(LOG_DEBUG, "Main poll interrupted");
@@ -734,7 +738,15 @@ int main(int argc, const char *argv[])
 			sigaction(SIGINT, &sa, NULL);
 #endif
 		}
+
+		if (try_to_stop)
+			update_thread_stop = true;
+
+		if (try_to_stop && !update_thread_loop)
+			stop = true;
+
 	}
+
 	msg(LOG_INFO, "shutting down...");
 	shutdown_fanotify(m);
 	close(pfd[0].fd);

@@ -70,6 +70,9 @@ static struct pollfd ffd[1] =  { {0, 0, 0} };
 static integrity_t integrity;
 static atomic_int reload_db = 0;
 
+volatile atomic_bool update_thread_loop = false;
+volatile atomic_bool update_thread_stop = false;
+
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
 static pthread_mutex_t rule_lock;
@@ -1296,7 +1299,8 @@ static void *update_thread_main(void *arg)
 	fcntl(ffd[0].fd, F_SETFL, O_NONBLOCK);
 	ffd[0].events = POLLIN;
 
-	while (!stop) {
+	update_thread_loop = true;
+	while (!update_thread_stop) {
 
 		rc = poll(ffd, 1, 1000);
 
@@ -1420,6 +1424,7 @@ static void *update_thread_main(void *arg)
 	}
 
 finalize:
+	update_thread_loop = false;
 	close(ffd[0].fd);
 	unlink_fifo();
 
