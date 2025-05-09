@@ -118,6 +118,24 @@ void parse_filehash2(struct pkginfo *pkg, struct pkgbin *pkgbin)
 // End of functions copied from dpkg.
 // =======================================================================
 
+static int is_conffile_deb(struct fsys_namenode *namenode, struct pkginfo *pkg)
+{
+    // Check if the file is in the package's conffiles list
+    for (const struct conffile *conf = pkg->installed.conffiles; 
+         conf != NULL; conf = conf->next) {
+        if (strcmp(conf->name, namenode->name) == 0) {
+            return 1;
+        }
+    }
+    
+    // Also check the flag
+    if (namenode->flags & FNNF_DEREF_CONFFILE) {
+        return 1;
+    }
+    
+    return 0;
+}
+
 static int deb_load_list(const conf_t *conf)
 {
   const char *control_file = "md5sums";
@@ -158,6 +176,11 @@ static int deb_load_list(const conf_t *conf)
     // Loop over all files in the package, adding them to debdb.
     while (file) {
       struct fsys_namenode *namenode = file->namenode;
+      // Skip config files
+      if (is_conffile_deb(namenode, package)) {
+        file = file->next;
+        continue;
+      }
       // Get the hash and path of the file.
       const char *hash =
           (namenode->newhash == NULL) ? namenode->oldhash : namenode->newhash;
@@ -207,4 +230,3 @@ static int deb_destroy_backend(void)
   modstatdb_shutdown();
   return 0;
 }
-
