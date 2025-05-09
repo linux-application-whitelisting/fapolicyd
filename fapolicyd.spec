@@ -144,7 +144,7 @@ popd
 
 %install
 %make_install
-install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
+install -p -m 644 -D extra/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
@@ -254,6 +254,8 @@ fi
 %attr(644,root,%{name}) %{_datadir}/%{name}/default-ruleset.known-libs
 %attr(644,root,%{name}) %{_datadir}/%{name}/sample-rules/*
 %attr(644,root,%{name}) %{_datadir}/%{name}/fapolicyd-magic.mgc
+%exclude %{_sysconfdir}/init.d/%{name}
+%exclude %{_sysconfdir}/conf.d/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/trust.d
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/rules.d
