@@ -268,6 +268,7 @@ fi
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}
 %attr(755,root,root) %{_sbindir}/%{name}-cli
+%attr(755,root,root) %{_sbindir}/%{name}-rpm-loader
 %attr(755,root,root) %{_sbindir}/fagenrules
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*
