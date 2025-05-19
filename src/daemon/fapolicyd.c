@@ -162,12 +162,14 @@ static void destroy_fs_list(void)
 		destroy_filesystem();
 }
 
-
+// Add a filesystem to the AVL tree.
+// Returns: 0 on failure, 1 if item is in the AVL tree.
 static int add_filesystem(fs_data_t *f)
 {
 	fs_data_t *tmp=(fs_data_t *)avl_insert(&filesystems.index,(avl_t *)(f));
 	if (tmp) {
 		if (tmp != f) {
+			// already in the tree, delete the current item
 			msg(LOG_DEBUG, "fs_list: duplicate filesystem found");
 			free_filesystem(f);
 		}
@@ -176,16 +178,21 @@ static int add_filesystem(fs_data_t *f)
 	return 0;
 }
 
-
-static fs_data_t *new_filesystem(const char *fs)
+// Create fsdata_t struct and add it to the filesystem AVL tree
+// Returns 1 on success and 0 on failure
+static int new_filesystem(const char *fs)
 {
 	fs_data_t *tmp = malloc(sizeof(fs_data_t));
 	if (tmp) {
 		tmp->fs_name = fs ? strdup(fs) : strdup("");
-		if (add_filesystem(tmp) != 0)
-			return NULL;
+		if (add_filesystem(tmp) == 0) {
+			free((void *)tmp->fs_name);
+			free(tmp);
+			return 0;
+		}
+		return 1;
 	}
-	return tmp;
+	return 0;
 }
 
 
