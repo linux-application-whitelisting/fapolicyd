@@ -23,6 +23,7 @@
  */
 
 #include "config.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdatomic.h>
 #include <stddef.h>
@@ -31,7 +32,9 @@
 #include <sys/syslog.h>
 #include <sys/types.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <spawn.h>
 #include <fcntl.h>
 #include <rpm/rpmlib.h>
 #include <rpm/rpmts.h>
@@ -45,16 +48,19 @@
 
 #include "message.h"
 #include "gcc-attributes.h"
+#include "fd-fgets.h"
 #include "fapolicyd-backend.h"
 #include "llist.h"
 
 #include "filter.h"
 
+int do_rpm_init_backend(void);
+int do_rpm_load_list(const conf_t *);
+int do_rpm_destroy_backend(void);
+
 static int rpm_init_backend(void);
 static int rpm_load_list(const conf_t *);
 static int rpm_destroy_backend(void);
-
-volatile atomic_bool ongoing_rpm_operation = 0;
 
 backend rpm_backend =
 {
@@ -65,75 +71,6 @@ backend rpm_backend =
 	/* list initialization */
 	{ 0, 0, NULL },
 };
-
-#ifdef RPM_DB_PATH
-const char *rpm_dir_path = RPM_DB_PATH;
-#else
-const char *rpm_dir_path = "/usr/lib/sysimage/rpm";
-#endif
-ssize_t rpm_dir_path_len = -1;
-
-
-static size_t fd_buffer_size = 0;
-static size_t fd_buffer_pos = 0;
-static int *fd_buffer = NULL;
-
-#define MIN_BUFFER_SIZE 512
-static int init_fd_buffer(void) {
-	struct rlimit limit;
-	getrlimit(RLIMIT_NOFILE, &limit);
-
-	fd_buffer_size = limit.rlim_cur / 4;
-	if (fd_buffer_size < MIN_BUFFER_SIZE)
-		fd_buffer_size = MIN_BUFFER_SIZE;
-
-	fd_buffer = malloc(fd_buffer_size * sizeof(int));
-	if (!fd_buffer)
-		return 1;
-
-	for(size_t i = 0 ; i < fd_buffer_size; i++)
-		fd_buffer[i] = -1;
-
-	msg(LOG_DEBUG, "FD buffer size set to: %ld",  fd_buffer_size);
-	return 0;
-}
-
-int push_fd_to_buffer(int fd) {
-
-	if (!fd_buffer) {
-		msg(LOG_ERR, "FD buffer already freed!");
-		return 1;
-	}
-	if (fd_buffer_pos < fd_buffer_size) {
-		msg(LOG_DEBUG, "Pushing to FD buffer(%ld), ocupancy: %ld", fd_buffer_size,  fd_buffer_pos);
-		fd_buffer[fd_buffer_pos++] = fd;
-		return 0;
-	}
-
-	msg(LOG_ERR, "FD buffer full");
-	return 1;
-}
-
-static void close_fds_in_buffer(void) {
-	if (fd_buffer_pos)
-		msg(LOG_DEBUG, "Closing FDs from buffer, size: %ld",  fd_buffer_pos);
-	for (size_t i = 0 ; i < fd_buffer_pos ; i++) {
-		close(fd_buffer[i]);
-		fd_buffer[i] = -1;
-	}
-
-	fd_buffer_pos = 0;
-}
-
-static void destroy_fd_buffer(void) {
-
-	if (!fd_buffer)
-		return;
-
-	free(fd_buffer);
-	fd_buffer = NULL;
-	fd_buffer_size = -1;
-}
 
 static rpmts ts = NULL;
 static rpmtxn txn = NULL;
@@ -316,8 +253,102 @@ struct _hash_record {
 	UT_hash_handle hh;
 };
 
-extern unsigned int debug_mode;
+#define BUFFER_SIZE 4098
+#define MAX_DELIMS 3
 static int rpm_load_list(const conf_t *conf)
+{
+
+	int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe failed");
+        return 1;
+    }
+
+	// we well read stdout later
+	// there will be data from rpmdb
+	posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+	posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+
+	char *argv[] = { NULL };
+	char *custom_env[] = { NULL };
+
+	pid_t pid = -1;
+//	int status = posix_spawn(&pid, "/home/rsroka/Work/fapolicyd-upstream-fork2/src/fapolicyd-rpm-loader", &actions, NULL, argv, custom_env);
+	int status = posix_spawn(&pid, "/usr/sbin/fapolicyd-rpm-loader", &actions, NULL, argv, custom_env);
+
+
+	 close(pipefd[1]);  // Parent doesn't write
+
+	if (status == 0) {
+		msg(LOG_DEBUG, "fapolicyd-rpm-loader spawned with pid: %d", pid);
+
+        char buff[BUFFER_SIZE];
+		fd_fgets_context_t * fd_fgets_context = fd_fgets_init();
+		do {
+			fd_fgets_rewind(fd_fgets_context);
+			int res = fd_fgets(fd_fgets_context, buff, sizeof(buff), pipefd[0]);
+			if (res == -1)
+				break;
+			else if (res > 0) {
+				char* end  = strchr(buff, '\n');
+
+				if (end == NULL) {
+					msg(LOG_ERR, "Too long line?");
+						continue;
+				}
+
+				int size = end - buff;
+				*end = '\0';
+
+				// its better to parse it from the end because there can be space in file name
+				int delims = 0;
+				char * delim = NULL;
+				for (int i = size-1 ; i >= 0 ; i--) {
+					if (isspace(buff[i])) {
+						delim = &buff[i];
+						delims++;
+					}
+					if (delims >= MAX_DELIMS) {
+						buff[i] = '\0';
+						break;
+					}
+				}
+				
+				char * index = strdup(buff);
+				char * data = strdup(delim + 1);
+				if (!index || !data) {
+					free(index);
+					free(data);
+					continue;
+				}
+
+				list_append(&rpm_backend.list, index, data);
+			}
+		} while(!fd_fgets_eof(fd_fgets_context));
+
+	fd_fgets_destroy(fd_fgets_context);
+	close(pipefd[0]);
+	waitpid(pid, NULL, 0);
+    } else {
+        msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
+    }
+
+	posix_spawn_file_actions_destroy(&actions);
+
+	if (rpm_backend.list.count == 0) {
+		msg(LOG_DEBUG, "Recieved 0 files from rpmdb loader");
+		return 1;
+	}
+
+	return 0;
+}
+
+// this function is used in fapolicyd-rpm-loader
+extern unsigned int debug_mode;
+int do_rpm_load_list(const conf_t *conf)
 {
 	int rc;
 	int error = 0;
@@ -329,8 +360,6 @@ static int rpm_load_list(const conf_t *conf)
 
 	// hash table
 	struct _hash_record *hashtable = NULL;
-
-	ongoing_rpm_operation = 1;
 
 	msg(LOG_INFO, "Loading rpmdb backend");
 	if ((rc = init_rpm())) {
@@ -421,9 +450,6 @@ static int rpm_load_list(const conf_t *conf)
 
 	close_rpm();
 
-	ongoing_rpm_operation = 0;
-	close_fds_in_buffer();
-
 	// cleaning up
 	struct _hash_record *item, *tmp;
 	HASH_ITER( hh, hashtable, item, tmp) {
@@ -442,25 +468,21 @@ static int rpm_load_list(const conf_t *conf)
 
 static int rpm_init_backend(void)
 {
-	// first time initialization
-	// we need to be sure following is not called when reloading backend
-	if (rpm_dir_path_len == -1) {
-		rpm_dir_path_len = strlen(rpm_dir_path);
+	list_init(&rpm_backend.list);
 
-		if(init_fd_buffer()) {
-			return 1;
-		}
+	return 0;
+}
 
-		if (filter_init()) {
-			destroy_fd_buffer();
-			return 1;
-		}
+// this function is used in fapolicyd-rpm-loader
+int do_rpm_init_backend(void)
+{
 
-		if (filter_load_file()) {
-			filter_destroy();
-			destroy_fd_buffer();
-			return 1;
-		}
+	if (filter_init())
+		return 1;
+
+	if (filter_load_file()) {
+		filter_destroy();
+		return 1;
 	}
 
 	list_init(&rpm_backend.list);
@@ -468,18 +490,16 @@ static int rpm_init_backend(void)
 	return 0;
 }
 
-
-extern volatile atomic_bool stop;
 static int rpm_destroy_backend(void)
 {
 	list_empty(&rpm_backend.list);
-	// for sure
-	close_fds_in_buffer();
+	return 0;
+}
 
-	// just in case fapolicyd is going down
-	if (stop) {
-		filter_destroy();
-		destroy_fd_buffer();
-	}
+// this function is used in fapolicyd-rpm-loader
+int do_rpm_destroy_backend(void)
+{
+	list_empty(&rpm_backend.list);
+	filter_destroy();
 	return 0;
 }
