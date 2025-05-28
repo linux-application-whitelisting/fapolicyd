@@ -67,19 +67,11 @@ static int ftw_add_list_append(const char *fpath,
  */
 static int add_list_load_path(const char *path)
 {
-	int fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		msg(LOG_ERR, "Cannot open %s", path);
-		return 1;
-	}
-
 	struct stat sb;
-	if (fstat(fd, &sb)) {
+	if (stat(path, &sb)) {
 		msg(LOG_ERR, "Cannot stat %s", path);
-		close(fd);
 		return 1;
 	}
-	close(fd);
 
 	if (S_ISDIR(sb.st_mode))
 		nftw(path, &ftw_add_list_append, FTW_NOPENFD, FTW_FLAGS);

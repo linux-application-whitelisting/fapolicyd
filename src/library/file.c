@@ -19,6 +19,7 @@
  * Boston, MA 02110-1335, USA.
  *
  * Authors:
+ *   Radovan Sroka <rsroka@redhat.com>
  *   Steve Grubb <sgrubb@redhat.com>
  */
 
@@ -440,8 +441,6 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
  * If a size of 0 is passed, it will return a NULL pointer.
  * If there is an error with mmap, it will also return a NULL pointer.
  */
-static const char *degenerate_hash_sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-static const char *degenerate_hash_md5 = "d41d8cd98f00b204e9800998ecf8427e";
 char *get_hash_from_fd2(int fd, size_t size, const int is_sha)
 {
 	unsigned char *mapped;
@@ -449,8 +448,8 @@ char *get_hash_from_fd2(int fd, size_t size, const int is_sha)
 
 	if (size == 0) {
 		if (is_sha)
-			return strdup(degenerate_hash_sha);
-		return strdup(degenerate_hash_md5);
+			return strdup(DEGENERATE_HASH_SHA);
+		return strdup(DEGENERATE_HASH_MD5);
 	}
 
 	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
