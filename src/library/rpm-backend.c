@@ -23,6 +23,7 @@
  */
 
 #include "config.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdatomic.h>
 #include <stddef.h>
@@ -31,7 +32,9 @@
 #include <sys/syslog.h>
 #include <sys/types.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <spawn.h>
 #include <fcntl.h>
 #include <rpm/rpmlib.h>
 #include <rpm/rpmts.h>
@@ -45,10 +48,15 @@
 
 #include "message.h"
 #include "gcc-attributes.h"
+#include "fd-fgets.h"
 #include "fapolicyd-backend.h"
 #include "llist.h"
 
 #include "filter.h"
+
+int do_rpm_init_backend(void);
+int do_rpm_load_list(const conf_t *);
+int do_rpm_destroy_backend(void);
 
 static int rpm_init_backend(void);
 static int rpm_load_list(const conf_t *);
@@ -245,8 +253,100 @@ struct _hash_record {
 	UT_hash_handle hh;
 };
 
-extern unsigned int debug_mode;
+#define BUFFER_SIZE 4096
+#define MAX_DELIMS 3
 static int rpm_load_list(const conf_t *conf)
+{
+
+	int pipefd[2];
+	if (pipe(pipefd) == -1) {
+		perror("pipe failed");
+		return 1;
+	}
+
+	// we well read stdout later
+	// there will be data from rpmdb
+	posix_spawn_file_actions_t actions;
+	posix_spawn_file_actions_init(&actions);
+	posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+	posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+	posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+
+	char *argv[] = { NULL };
+	char *custom_env[] = { NULL };
+
+	pid_t pid = -1;
+	int status = posix_spawn(&pid, "/usr/sbin/fapolicyd-rpm-loader",
+							 &actions, NULL, argv, custom_env);
+	close(pipefd[1]);  // Parent doesn't write
+
+	if (status == 0) {
+		msg(LOG_DEBUG, "fapolicyd-rpm-loader spawned with pid: %d", pid);
+
+		char buff[BUFFER_SIZE];
+		fd_fgets_context_t * fd_fgets_context = fd_fgets_init();
+		do {
+			fd_fgets_rewind(fd_fgets_context);
+			int res = fd_fgets(fd_fgets_context, buff, sizeof(buff), pipefd[0]);
+			if (res == -1)
+				break;
+			else if (res > 0) {
+				char* end  = strchr(buff, '\n');
+
+				if (end == NULL) {
+					msg(LOG_ERR, "Too long line?");
+						continue;
+				}
+
+				int size = end - buff;
+				*end = '\0';
+
+				// its better to parse it from the end because there can be space in file name
+				int delims = 0;
+				char * delim = NULL;
+				for (int i = size-1 ; i >= 0 ; i--) {
+					if (isspace(buff[i])) {
+						delim = &buff[i];
+						delims++;
+					}
+					if (delims >= MAX_DELIMS) {
+						buff[i] = '\0';
+						break;
+					}
+				}
+
+				char * index = strdup(buff);
+				char * data = strdup(delim + 1);
+				if (!index || !data) {
+					free(index);
+					free(data);
+					continue;
+				}
+
+				list_append(&rpm_backend.list, index, data);
+			}
+		} while(!fd_fgets_eof(fd_fgets_context));
+
+		fd_fgets_destroy(fd_fgets_context);
+		close(pipefd[0]);
+		waitpid(pid, NULL, 0);
+	} else {
+		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
+	}
+
+	posix_spawn_file_actions_destroy(&actions);
+
+	if (rpm_backend.list.count == 0) {
+		msg(LOG_DEBUG, "Recieved 0 files from rpmdb loader");
+		return 1;
+	}
+
+	return 0;
+}
+
+// this function is used in fapolicyd-rpm-loader
+extern unsigned int debug_mode;
+int do_rpm_load_list(const conf_t *conf)
 {
 	int rc;
 	int error = 0;
@@ -366,6 +466,14 @@ static int rpm_load_list(const conf_t *conf)
 
 static int rpm_init_backend(void)
 {
+	list_init(&rpm_backend.list);
+
+	return 0;
+}
+
+// this function is used in fapolicyd-rpm-loader
+int do_rpm_init_backend(void)
+{
 
 	if (filter_init())
 		return 1;
@@ -383,7 +491,13 @@ static int rpm_init_backend(void)
 static int rpm_destroy_backend(void)
 {
 	list_empty(&rpm_backend.list);
+	return 0;
+}
 
+// this function is used in fapolicyd-rpm-loader
+int do_rpm_destroy_backend(void)
+{
+	list_empty(&rpm_backend.list);
 	filter_destroy();
 	return 0;
 }
