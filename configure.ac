@@ -125,6 +125,7 @@ if test $perm = "no"; then
 	AC_MSG_ERROR([FAN_OPEN_EXEC_PERM is not defined in linux/fanotify.h. It is required for the kernel to support it])
 fi
 AC_CHECK_DECLS([FAN_MARK_FILESYSTEM], [], [], [[#include <linux/fanotify.h>]])
+AC_CHECK_DECLS([FAN_MARK_IGNORE], [], [], [[#include <linux/fanotify.h>]])
 
 withval=""
 AC_ARG_WITH(rpm,

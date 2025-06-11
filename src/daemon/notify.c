@@ -25,6 +25,7 @@
 
 #include "config.h" /* Needed to get O_LARGEFILE definition */
 #include <string.h>
+#include <dirent.h>
 #include <errno.h>
 #include <sys/fanotify.h>
 #include <fcntl.h>
@@ -73,6 +74,11 @@ void do_stat_report(FILE *f, int shutdown);
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
+
+static int isnormaldir(const struct dirent *d)
+{
+	return (d->d_type == DT_DIR) && (d->d_name[0] != '.');
+}
 
 int init_fanotify(const conf_t *conf, mlist *m)
 {
@@ -165,6 +171,41 @@ retry_mark:
 		msg(LOG_DEBUG, "added %s mount point", path);
 		path = mlist_next(m);
 	}
+
+
+#if defined HAVE_DECL_FAN_MARK_IGNORE && HAVE_DECL_FAN_MARK_IGNORE != 0
+	/* The journal could present a deadlock if we write to it while it attempts
+	 * to rotate journal files and our own queue is full, as neither daemon can
+	 * progress. To avoid this, let's exempt everything in /var/log/journal from
+	 * being watched by fapolicyd. */
+
+	int jfd = open("/var/log/journal", O_RDONLY | O_DIRECTORY);
+	if (jfd == -1 && errno != ENOENT) {
+		msg(LOG_ERR, "Error (%s) opening /var/log/journal", strerror(errno));
+		exit(1);
+	} else if (jfd == -1 && errno == ENOENT) {
+		/* No persistent journal to ignore */
+		return fd;
+	}
+
+	struct dirent **namelist;
+	int n = scandirat(jfd, ".", &namelist, isnormaldir, alphasort);
+	if (n == -1) {
+		msg(LOG_ERR, "Error in scandir (%s) listing /var/log/journal", strerror(errno));
+		exit(1);
+	}
+
+	for (int i = 0; i < n; i++) {
+		struct dirent *d = namelist[i];
+		if (fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_IGNORE_SURV, FAN_EVENT_ON_CHILD | mask, jfd, d->d_name) == -1)
+			msg(LOG_ERR, "Error in fanotify_mark (%s) trying to ignoring /var/log/journal/%s", strerror(errno), d->d_name);
+		else
+			msg(LOG_INFO, "Ignoring events in /var/log/journal/%s", d->d_name);
+		free(d);
+	}
+	close(jfd);
+	free(namelist);
+#endif
 
 	return fd;
 }
