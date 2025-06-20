@@ -74,26 +74,34 @@ int _count;
  */
 static char *make_data_string(const char *path)
 {
-	int fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		msg(LOG_ERR, "Cannot open %s", path);
-		return NULL;
-	}
-
 	// Get the size
 	struct stat sb;
-	if (fstat(fd, &sb)) {
+	if (stat(path, &sb)) {
 		msg(LOG_ERR, "Cannot stat %s", path);
-		close(fd);
 		return NULL;
 	}
 
-	// Get the hash
-	char *hash = get_hash_from_fd2(fd, sb.st_size, 1);
-	close(fd);
-	if (!hash) {
-		msg(LOG_ERR, "Cannot hash %s", path);
-		return NULL;
+	char *hash = NULL;
+	if (S_ISREG(sb.st_mode)) {
+		// Get the hash
+
+		int fd = open(path, O_RDONLY);
+		if (fd < 0) {
+			msg(LOG_ERR, "Cannot open %s", path);
+			return NULL;
+		}
+
+		hash = get_hash_from_fd2(fd, sb.st_size, 1);
+
+		close(fd);
+
+		if (!hash) {
+			msg(LOG_ERR, "Cannot hash %s", path);
+			return NULL;
+		}
+
+	} else {
+		hash = strdup(DEGENERATE_HASH_SHA);
 	}
 
 	char *line;
