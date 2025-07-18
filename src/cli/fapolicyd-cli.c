@@ -185,33 +185,35 @@ static int do_dump_db(void)
 		goto txn_abort;
 	}
 	do {
-		char *path, *data, sha[65];
+		char *path = NULL, *data = NULL, sha[65];
 		unsigned int tsource;
 		off_t size;
 		const char *source;
 
-		path = malloc(key.mv_size+1);
+		path = malloc(key.mv_size + 1);
 		if (!path)
-			continue;
+			goto next_record;
+
 		memcpy(path, key.mv_data, key.mv_size);
 		path[key.mv_size] = 0;
-		data = malloc(val.mv_size+1);
-		if (!data) {
-			free(path);
-			continue;
-		}
+		data = malloc(val.mv_size + 1);
+
+		if (!data)
+			goto next_record;
+
 		memcpy(data, val.mv_data, val.mv_size);
 		data[val.mv_size] = 0;
-		if (sscanf(data, DATA_FORMAT, &tsource, &size, sha) != 3) {
-			free(data);
-			free(path);
-			continue;
-		}
+
+		if (sscanf(data, DATA_FORMAT, &tsource, &size, sha) != 3)
+			goto next_record;
+
 		source = lookup_tsource(tsource);
 		printf("%s %s %lu %s\n", source, path, size, sha);
+
+next_record:
 		free(data);
 		free(path);
-		// Try to get the duplicate. If doesn't exist, get the next one
+		// Try to get the duplicate. If it doesn't exist, get the next one
 		rc = mdb_cursor_get(cursor, &key, &val, MDB_NEXT_DUP);
 		if (rc == MDB_NOTFOUND)
 			rc = mdb_cursor_get(cursor, &key, &val, MDB_NEXT_NODUP);
