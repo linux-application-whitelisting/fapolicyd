@@ -32,7 +32,8 @@
 typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
 
 // source, size, sha
-#define DATA_FORMAT "%u %lu %64s"
+// do not pad the hash value so SHA1 and SHA256 digests parse correctly
+#define DATA_FORMAT "%u %lu %s"
 
 typedef struct _backend
 {
