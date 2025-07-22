@@ -55,6 +55,8 @@
 
 #include "filter.h"
 
+extern volatile atomic_bool stop;
+
 int do_rpm_init_backend(void);
 int do_rpm_load_list(const conf_t *);
 int do_rpm_destroy_backend(void);
@@ -335,9 +337,9 @@ int do_rpm_load_list(const conf_t *conf)
 	}
 
 	// Loop across the rpm database
-	while (get_next_package_rpm()) {
+	while (!stop && get_next_package_rpm()) {
 		// Loop across the packages
-		while (get_next_file_rpm()) {
+		while (!stop && get_next_file_rpm()) {
 			// We do not want directories or symlinks in the
 			// database. Multiple packages can own the same
 			// directory and that causes problems in the size info.
