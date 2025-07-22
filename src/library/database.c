@@ -621,13 +621,13 @@ static int create_database(int with_sync)
 	msg(LOG_INFO, "Creating trust database");
 	int rc = 0;
 
-	for (backend_entry *be = backend_get_first() ; be != NULL ;
-						     be = be->next ) {
+	for (backend_entry *be = backend_get_first() ; be != NULL && !stop ;
+							be = be->next ) {
 		msg(LOG_INFO,"Loading trust data from %s backend",
-		    be->backend->name);
+							be->backend->name);
 
 		list_item_t *item = list_get_first(&be->backend->list);
-		for (; item != NULL; item = item->next) {
+		for (; item != NULL && !stop; item = item->next) {
 			if ((rc = write_db(item->index, item->data)))
 				msg(LOG_ERR,
 				    "Error (%d) writing key=\"%s\" data=\"%s\"",
@@ -635,6 +635,9 @@ static int create_database(int with_sync)
 				    (const char*)item->data);
 		}
 	}
+	if (stop)
+		return 1;
+
 	// Flush everything to disk
 	if (with_sync)
 		mdb_env_sync(env, 1);
@@ -704,14 +707,14 @@ static int check_database_copy(void)
 	long backend_total_entries = 0;
 	long backend_added_entries = 0;
 
-	for (backend_entry *be = backend_get_first() ; be != NULL ;
-							 be = be->next ) {
+	for (backend_entry *be = backend_get_first() ; be != NULL && !stop ;
+							be = be->next ) {
 		msg(LOG_INFO, "Importing trust data from %s backend",
-							 be->backend->name);
+							be->backend->name);
 
 		backend_total_entries += be->backend->list.count;
 		list_item_t *item = list_get_first(&be->backend->list);
-		for (; item != NULL; item = item->next) {
+		for (; item != NULL && !stop; item = item->next) {
 
 			int matched = 0;
 			int found = check_data_presence(item->index,
@@ -736,6 +739,11 @@ static int check_database_copy(void)
 				}
 			}
 		}
+	}
+
+	if (stop) {
+		end_long_term_read_ops();
+		return 1;
 	}
 
 	end_long_term_read_ops();
@@ -1172,6 +1180,9 @@ static int update_database(conf_t *config)
 	   return rc;
 	   }*/
 
+	if (stop)
+		return 1;
+
 	lock_update_thread();
 
 	if ((rc = delete_all_entries_db())) {
@@ -1180,10 +1191,19 @@ static int update_database(conf_t *config)
 		return rc;
 	}
 
-	rc = create_database(/*with_sync*/0);
+	if (stop) {
+		unlock_update_thread();
+		return 1;
+	}
+
+	if (!stop)
+		rc = create_database(/*with_sync*/0);
+	else
+		rc = 1;
 
 	// signal that cache need to be flushed
-	needs_flush = true;
+	if (!stop)
+		needs_flush = true;
 
 	unlock_update_thread();
 	mdb_env_sync(env, 1);
@@ -1202,6 +1222,9 @@ static int handle_record(const char * buffer)
 	char path[2048+1];
 	char hash[64+1];
 	off_t size;
+
+	if (stop)
+		return 1;
 
 	// validating input
 	int res = sscanf(buffer, "%2048s %lu %64s", path, &size, hash);
@@ -1291,6 +1314,9 @@ static void *update_thread_main(void *arg)
 
 		rc = poll(ffd, 1, 1000);
 
+		if (stop)
+			break;
+
 		if (reload_rules) {
 			reload_rules = false;
 			load_rule_file();
@@ -1330,8 +1356,10 @@ static void *update_thread_main(void *arg)
 
 				fd_fgets_state_t *st = fd_fgets_init();
 				do {
+					if (stop)
+						break;
 					int res = fd_fgets_r(st, buff,
-						    sizeof(buff), ffd[0].fd);
+						sizeof(buff), ffd[0].fd);
 
 					// nothing to read
 					if (res == -1)
@@ -1349,6 +1377,8 @@ static void *update_thread_main(void *arg)
 						*end = '\0';
 
 						for (int i = 0 ; i < count ; i++) {
+							if (stop)
+								break;
 							// assume file name
 							// operation = 0
 							if (buff[i] == '/') {
@@ -1380,6 +1410,9 @@ static void *update_thread_main(void *arg)
 
 						*end = '\n';
 
+						if (stop)
+							break;
+
 						// got "1" -> reload db
 						if (do_operation == RELOAD_DB) {
 							do_operation = DB_NO_OP;
@@ -1404,7 +1437,7 @@ static void *update_thread_main(void *arg)
 						}
 					}
 
-				} while(!fd_fgets_eof_r(st));
+				} while(!fd_fgets_eof_r(st) && !stop);
 				fd_fgets_destroy(st);
 			}
 		}
