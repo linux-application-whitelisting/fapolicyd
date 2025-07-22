@@ -1052,6 +1052,9 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 		else if ((e->type & FAN_OPEN_EXEC_PERM) && pinfo->path1 &&
 				strcmp(pinfo->path1, SYSTEM_LD_SO) == 0) {
 			pinfo->state = STATE_LD_SO;
+			msg(LOG_DEBUG, "pid %d ld.so exec path1=%s path2=%s",
+			    pinfo->pid, pinfo->path1 ? pinfo->path1 : "(null)",
+			    pinfo->path2 ? pinfo->path2 : "(null)");
 			goto make_decision;
 		}
 		// otherwise, we don't have enough info for a decision
@@ -1068,10 +1071,13 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 
 		// Pattern detection is only static or not, ld.so started or
 		// not. That means everything else is normal.
-		if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0)
+		if (strcmp(pinfo->path1, SYSTEM_LD_SO) == 0) {
 			// First thing is ld.so when its used - detected above
 			pinfo->state = STATE_LD_SO;
-		else	// To get here, pgm matched path1
+		msg(LOG_DEBUG, "pid %d ld.so early path1=%s path2=%s",
+		    pinfo->pid, pinfo->path1 ? pinfo->path1 : "(null)",
+		    pinfo->path2 ? pinfo->path2 : "(null)");
+		} else    // To get here, pgm matched path1
 			pinfo->state = STATE_NORMAL;
 	}
 
