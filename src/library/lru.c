@@ -25,7 +25,6 @@
 #include "config.h"
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include "lru.h"
 #include "message.h"
 #include "gcc-attributes.h"
@@ -282,7 +281,10 @@ void lru_evict(Queue *queue, unsigned int key)
 	if (queue_is_empty(queue))
 		return;
 
-	assert(key < queue->total);
+	if (key >= queue->total) {
+		msg(LOG_ERR, "lru_evict called with out of bounds key");
+		return;
+	}
 
 	Hash *hash = queue->hash;
 	QNode *temp = queue->front;
