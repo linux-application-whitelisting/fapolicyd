@@ -152,10 +152,9 @@ char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 		ptr = strchr(buf, 0x0A);
 		if (ptr)
 			*ptr = 0;
-	} else  // FIXME: this should be NULL
-		snprintf(buf, blen-1,
-			"Error-getting-comm(errno=%d,pid=%d)",
-			errno, pid);
+	} else
+		return NULL;
+
 	return buf;
 }
 
