@@ -421,14 +421,23 @@ int filter_load_file(void)
 		}
 
 		filter_t * filter = filter_create_obj();
-
-		if (filter) {
-			filter->path = strdup(rest);
-			filter->len = strlen(filter->path);
-			filter->type = type;
+		if (!filter) {
+			free(line);
+			line = NULL;
+			goto bad;
 		}
 
-		// comparing level of indetantion between the last line and the current one
+		filter->path = strdup(rest);
+		if (filter->path == NULL) {
+			filter_destroy_obj(filter);
+			free(line);
+			line = NULL;
+			goto bad;
+		}
+		filter->len = strlen(filter->path);
+		filter->type = type;
+
+		// compare indetention between the last and current line
 		last_level = ((stack_item_t*)stack_top(&stack))->level;
 		if (level == last_level) {
 
@@ -437,7 +446,8 @@ int filter_load_file(void)
 			stack_pop_vars(&stack);
 
 			// pushing filter to the list of top's children list
-			list_prepend(&((stack_item_t*)stack_top(&stack))->filter->list, NULL, (void*)filter);
+			list_prepend(&((stack_item_t*)stack_top(&stack))->filter->list,
+				     NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
 			stack_push_vars(&stack, level, 0, filter);
@@ -447,15 +457,16 @@ int filter_load_file(void)
 			// we wont do pop just push
 
 			// pushing filter to the list of top's children list
-			list_prepend(&((stack_item_t*)stack_top(&stack))->filter->list, NULL, (void*)filter);
+			list_prepend(&((stack_item_t*)stack_top(&stack))->filter->list,
+				     NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
 			stack_push_vars(&stack, level, 0, filter);
 
 		} else if (level < last_level){
-			// level of indentation dropped
-			// we need to pop
-			// +1 is meant for getting rid of the current level so we can again push
+			// level of indentation dropped, we need to pop
+			// +1 is meant for getting rid of the current
+			// level so we can push again
 			for (int i = 0 ; i < last_level - level + 1; i++) {
 				stack_pop_vars(&stack);
 			}
