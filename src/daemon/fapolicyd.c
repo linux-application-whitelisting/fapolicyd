@@ -720,6 +720,8 @@ int main(int argc, const char *argv[])
 			if (errno == EINTR)
 				continue;
 			else {
+				stop = true;
+				close_database();
 				msg(LOG_ERR, "Poll error (%s)\n",
 						strerror(errno));
 				exit(1);
