@@ -272,7 +272,7 @@ static int rpm_load_list(const conf_t *conf)
 	posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
 	posix_spawn_file_actions_addclose(&actions, pipefd[1]);
 
-	char *argv[] = { "", NULL };
+	char *argv[] = { "fapolicyd-rpm-loader", NULL };
 	char *custom_env[] = { NULL };
 
 	pid_t pid = -1;
