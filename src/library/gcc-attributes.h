@@ -17,5 +17,8 @@
 #ifndef __attribute_malloc__
 #  define __attribute_malloc__
 #endif
+#ifndef __wur
+# define __wur
+#endif
 
 #endif

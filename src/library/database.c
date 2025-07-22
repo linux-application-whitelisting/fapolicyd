@@ -1348,10 +1348,10 @@ static void *update_thread_main(void *arg)
 		} else {
 			if (ffd[0].revents & POLLIN) {
 
-				fd_fgets_context_t * fd_fgets_context = fd_fgets_init();
+				fd_fgets_state_t *st = fd_fgets_init();
 				do {
-					fd_fgets_rewind(fd_fgets_context);
-					int res = fd_fgets(fd_fgets_context, buff, sizeof(buff), ffd[0].fd);
+					int res = fd_fgets_r(st, buff,
+						    sizeof(buff), ffd[0].fd);
 
 					// nothing to read
 					if (res == -1)
@@ -1424,8 +1424,8 @@ static void *update_thread_main(void *arg)
 						}
 					}
 
-				} while(!fd_fgets_eof(fd_fgets_context));
-				fd_fgets_destroy(fd_fgets_context);
+				} while(!fd_fgets_eof_r(st));
+				fd_fgets_destroy(st);
 			}
 		}
 	}

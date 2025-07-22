@@ -1,5 +1,5 @@
 /* fd-fgets.h -- a replacement for glibc's fgets
- * Copyright 2019,2020,2022 Red Hat Inc.
+ * Copyright 2019,2020,2022,2025 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -26,29 +26,33 @@
 #include <sys/types.h>
 #include "gcc-attributes.h"
 
-#ifndef __attr_access
-#  define __attr_access(x)
-#endif
+typedef struct fd_fgets_state fd_fgets_state_t;
 
-#ifndef FD_FGETS_BUF_SIZE
-#  define FD_FGETS_BUF_SIZE 8192
-#endif
+enum fd_mem {
+        MEM_MALLOC,
+        MEM_MMAP,
+        MEM_SELF_MANAGED
+};
 
-typedef struct fd_fgets_context {
-    char buffer[2*FD_FGETS_BUF_SIZE+1];
-    char *current;
-    char *eptr;
-    int eof;
-} fd_fgets_context_t;
+void fd_fgets_clear(void);
+int fd_fgets_eof(void);
+int fd_fgets_more(size_t blen);
+int fd_fgets(char *buf, size_t blen, int fd)
+	__attr_access ((__write_only__, 1, 2)) __wur;
+int fd_setvbuf(void *buf, size_t buff_size, enum fd_mem how)
+	__attr_access ((__read_only__, 1, 2));
 
-void fd_fgets_destroy(fd_fgets_context_t *ctx);
-fd_fgets_context_t * fd_fgets_init(void) __attribute_malloc__
-     __attr_dealloc (fd_fgets_destroy, 1);
-
-int fd_fgets_eof(fd_fgets_context_t *ctx);
-void fd_fgets_rewind(fd_fgets_context_t *ctx);
-int fd_fgets(fd_fgets_context_t *ctx, char *buf, size_t blen, int fd)
-	__attr_access ((__write_only__, 2, 3));
+void fd_fgets_destroy(fd_fgets_state_t *st);
+fd_fgets_state_t *fd_fgets_init(void)
+	__attribute_malloc__ __attr_dealloc (fd_fgets_destroy, 1);
+void fd_fgets_clear_r(fd_fgets_state_t *st);
+int fd_fgets_eof_r(fd_fgets_state_t *st);
+int fd_fgets_more_r(fd_fgets_state_t *st, size_t blen);
+int fd_fgets_r(fd_fgets_state_t *st, char *buf, size_t blen, int fd)
+	__attr_access ((__write_only__, 2, 3)) __wur;
+int fd_setvbuf_r(fd_fgets_state_t *st, void *buf, size_t buff_size,
+		enum fd_mem how)
+		__attr_access ((__read_only__, 2, 3));
 
 #endif
 

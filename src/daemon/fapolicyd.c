@@ -383,13 +383,13 @@ static void handle_mounts(int fd)
 
 	// Rewind the descriptor
 	lseek(fd, 0, SEEK_SET);
-	fd_fgets_context_t * fd_fgets_context = fd_fgets_init();
-	if (!fd_fgets_context)
+	fd_fgets_state_t *st = fd_fgets_init();
+	if (!st)
 		return;
 
 	mlist_mark_all_deleted(m);
 	do {
-		int rc = fd_fgets(fd_fgets_context, buf, sizeof(buf), fd);
+		int rc = fd_fgets_r(st, buf, sizeof(buf), fd);
 		// Get a line
 		if (rc > 0) {
 			// Parse it
@@ -408,9 +408,9 @@ static void handle_mounts(int fd)
 			}
 		} else if (rc < 0) // Some kind of error - stop
 			break;
-	} while (!fd_fgets_eof(fd_fgets_context));
+	} while (!fd_fgets_eof_r(st));
 
-	fd_fgets_destroy(fd_fgets_context);
+	fd_fgets_destroy(st);
 	// update marks
 	fanotify_update(m);
 }
@@ -439,15 +439,15 @@ void do_stat_report(FILE *f, int shutdown)
 
 int already_running(void)
 {
-	fd_fgets_context_t * fd_fgets_context = fd_fgets_init();
-	if (!fd_fgets_context)
+	fd_fgets_state_t *st = fd_fgets_init();
+	if (!st)
 		return 1;
 
 	int pidfd = open(pidfile, O_RDONLY);
 	if (pidfd >= 0) {
 		char pid_buf[16];
 
-		if (fd_fgets(fd_fgets_context, pid_buf, sizeof(pid_buf), pidfd)) {
+		if (fd_fgets_r(st, pid_buf, sizeof(pid_buf), pidfd)) {
 			int pid;
 			char exe_buf[80], my_path[80];
 
@@ -479,7 +479,7 @@ int already_running(void)
 			if (pid != getpid())
 				goto err_out;
 good:
-			fd_fgets_destroy(fd_fgets_context);
+			fd_fgets_destroy(st);
 			close(pidfd);
 			unlink(pidfile);
 			return 0;
@@ -488,12 +488,12 @@ good:
 err_out: // At this point, we have a pid file, let's just assume it's alive
 	 // because if 2 are running, it deadlocks the machine
 
-		fd_fgets_destroy(fd_fgets_context);
+		fd_fgets_destroy(st);
 		close(pidfd);
 		return 1;
 	}
 
-	fd_fgets_destroy(fd_fgets_context);
+	fd_fgets_destroy(st);
 	return 0; // pid file doesn't exist, we're good to go
 }
 

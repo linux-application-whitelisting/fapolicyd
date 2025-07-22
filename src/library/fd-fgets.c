@@ -1,129 +1,255 @@
-/* fd-fgets.c --
- * Copyright 2019,2020 Red Hat Inc.
+/* audit-fgets.c -- a replacement for glibc's fgets
+ * Copyright 2018,2022,2025 Red Hat Inc.
  * All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
+ * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors:
- *   Steve Grubb <sgrubb@redhat.com>
+ *      Steve Grubb <sgrubb@redhat.com>
  */
 
 #include "config.h"
 #include <assert.h>
 #include <string.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include "libaudit.h"
 #include "fd-fgets.h"
 
+/*
+ * The theory of operation for this family of functions is that it
+ * operates like the glibc fgets function except with a descriptor.
+ * It reads from the descriptor into a buffer and then looks through
+ * the buffer to find a string terminated with a '\n'. It terminates
+ * the string with a 0 and returns it. It updates current to point
+ * to where it left off. On the next read it starts there and tries to
+ * find a '\n'. If it can't find one, it slides the buffer down and
+ * fills as much as it can from the descriptor. If the descriptor
+ * becomes invalid or there is an error reading, it makes eof true.
+ * The variable eptr marks the end of the buffer. It never changes.
+ */
 
-fd_fgets_context_t * fd_fgets_init(void)
+#define BUF_SIZE 8192
+
+struct fd_fgets_state {
+	char internal[2*BUF_SIZE+1];
+	char *buffer;
+	char *current;
+	char *eptr;
+	int eof;
+	enum fd_mem mem_type;
+	size_t buff_size;
+};
+
+static struct fd_fgets_state global_state;
+static int global_init_done;
+
+static void fd_fgets_state_init(struct fd_fgets_state *st)
 {
-	fd_fgets_context_t *ctx = malloc(sizeof(fd_fgets_context_t));
-	if (!ctx)
-		return NULL;
-
-	memset(ctx->buffer, 0, sizeof(ctx->buffer));
-	ctx->current = ctx->buffer;
-	ctx->eptr = ctx->buffer+(2*FD_FGETS_BUF_SIZE);
-	ctx->eof = 0;
-	return ctx;
+	st->buffer = st->internal;
+	st->internal[0] = '\0';
+	st->current = st->buffer;
+	st->eptr = st->buffer + (2*BUF_SIZE);
+	st->eof = 0;
+	st->mem_type = MEM_SELF_MANAGED;
+	st->buff_size = 2*BUF_SIZE;
 }
 
-void fd_fgets_destroy(fd_fgets_context_t *ctx)
+struct fd_fgets_state *fd_fgets_init(void)
 {
-	free(ctx);
+	struct fd_fgets_state *st = malloc(sizeof(*st));
+	if (st)
+		fd_fgets_state_init(st);
+	return st;
 }
 
-int fd_fgets_eof(fd_fgets_context_t *ctx)
+
+void fd_fgets_destroy(struct fd_fgets_state *st)
 {
-	return ctx->eof;
+	if (st->buffer != st->internal) {
+		switch (st->mem_type) {
+		case MEM_MALLOC:
+			free(st->buffer);
+			break;
+		case MEM_MMAP:
+			munmap(st->buffer, st->buff_size);
+			break;
+		case MEM_SELF_MANAGED:
+		default:
+			break;
+		}
+	}
+	free(st);
 }
 
-void fd_fgets_rewind(fd_fgets_context_t *ctx)
+int fd_fgets_eof_r(struct fd_fgets_state *st)
 {
-	ctx->eof = 0;
+	return st->eof;
 }
 
-int fd_fgets(fd_fgets_context_t *ctx, char *buf, size_t blen, int fd)
+/* This function dumps any accumulated text. This is to remove dangling text
+ * that never got consumed for the intended purpose. */
+void fd_fgets_clear_r(struct fd_fgets_state *st)
 {
-	int complete = 0;
-	size_t line_len = 0;
-	char *line_end = NULL;
+	st->buffer[0] = 0;
+	st->current = st->buffer;
+	st->eof = 0;
+}
+
+/* Function to check if we have more data stored
+ * and ready to process. If we have a newline or enough
+ * bytes we return 1 for success. Otherwise 0 meaning that
+ * there is not enough to process without blocking. */
+int fd_fgets_more_r(struct fd_fgets_state *st, size_t blen)
+{
+	size_t avail;
+	char *nl;
 
 	assert(blen != 0);
-	/* See if we have more in the buffer first */
-	if (ctx->current != ctx->buffer) {
-		line_end = strchr(ctx->buffer, '\n');
-		if (line_end == NULL && (size_t)(ctx->current - ctx->buffer) >= blen-1)
-			line_end = ctx->current-1; //enough to fill blen,point to end
-	}
+	avail = st->current - st->buffer;
 
-	/* Otherwise get some new bytes */
-	if (line_end == NULL && ctx->current != ctx->eptr && !ctx->eof) {
-		ssize_t len;
-
-		/* Use current since we may be adding more */
-		do {
-			len = read(fd, ctx->current, ctx->eptr - ctx->current);
-		} while (len < 0 && errno == EINTR);
-		if (len < 0)
-			return -1;
-		if (len == 0)
-			ctx->eof = 1;
-		else
-			ctx->current[len] = 0;
-		ctx->current += len;
-
-		/* Start from beginning to see if we have one */
-		line_end = strchr(ctx->buffer, '\n');
-	}
-
-	/* See what we have */
-	if (line_end) {
-		/* Include the last character (usually newline) */
-		line_len = (line_end+1) - ctx->buffer;
-		/* Make sure we are within the right size */
-		if (line_len > blen-1)
-			line_len = blen-1;
-		complete = 1;
-	} else if (ctx->current == ctx->eptr) {
-		/* We are full but no newline */
-		line_len = blen-1;
-		complete = 1;
-	} else if (ctx->current >= ctx->buffer+blen-1) {
-		/* Not completely full, no newline, but enough to fill buf */
-		line_len = blen-1;
-		complete = 1;
-	}
-	if (complete) {
-		size_t remainder_len;
-
-		/* Move to external buf and terminate it */
-		memcpy(buf, ctx->buffer, line_len);
-		buf[line_len] = 0;
-		remainder_len = ctx->current - (ctx->buffer + line_len);
-		if (remainder_len > 0) {
-			/* We have a few leftover bytes to move */
-			memmove(ctx->buffer, ctx->buffer+line_len, remainder_len);
-			ctx->current = ctx->buffer+remainder_len;
-		} else {
-			/* Got the whole thing, just reset */
-			ctx->current = ctx->buffer;
-		}
-		*(ctx->current) = 0;
-	}
-	return complete;
+	/* only scan the valid region */
+	nl = memchr(st->buffer, '\n', avail);
+	return (nl || avail >= blen - 1);
 }
+
+/* Function to read the next chunk of data from the given fd. If we have
+ * data to return, we Read up to blen-1 chars (or through the next newline),
+ * copy into buf, NUL-terminate, and return the number of chars.
+ * It also returns 0 for no data. And -1 if there was an error reading
+ * the fd. */
+int fd_fgets_r(struct fd_fgets_state *st, char *buf, size_t blen, int fd)
+{
+	size_t avail = st->current - st->buffer, line_len;
+	char  *line_end;
+	ssize_t nread;
+
+	assert(blen != 0);
+
+	/* 1) Is there already a '\n' in the buffered data? */
+	line_end = memchr(st->buffer, '\n', avail);
+
+	/* 2) If not, and we still can read more, pull in more data */
+	if (line_end == NULL && !st->eof && st->current != st->eptr) {
+		do {
+			nread = read(fd, st->current, st->eptr - st->current);
+		} while (nread < 0 && errno == EINTR);
+
+		if (nread < 0)
+			return -1;
+
+		if (nread == 0)
+			st->eof = 1;
+		else {
+			size_t got = (size_t)nread;
+			st->current[got] = '\0';
+			st->current += got;
+			avail += got;
+		}
+
+		/* see if a newline arrived in that chunk */
+		line_end = memchr(st->buffer, '\n', avail);
+	}
+
+	/* 3) Do we now have enough to return? */
+	if (line_end == NULL) {
+		/* not a full line—only return early if we still expect more */
+		if (!st->eof && avail < blen - 1 && st->current != st->eptr)
+			return 0;
+
+		/* else we’ll return whatever we have (either at EOF,
+		 * buffer‑full, or enough for blen) */
+	}
+
+	/* 4) Compute how many chars to hand back */
+	if (line_end) {
+		/* include the '\n', but never exceed blen-1 */
+		line_len = (line_end - st->buffer) + 1;
+		if (line_len > blen - 1)
+			line_len = blen - 1;
+
+	} else
+		/* no newline: return up to blen-1 or whatever’s left
+		 * at EOF/full */
+		line_len = (avail < blen - 1) ? avail : (blen - 1);
+
+	/* 5) Copy out, slide the remainder down, reset pointers */
+	memcpy(buf, st->buffer, line_len);
+	buf[line_len] = '\0';
+
+	size_t remainder = avail - line_len;
+	if (remainder > 0)
+		memmove(st->buffer, st->buffer + line_len, remainder);
+
+	st->current = st->buffer + remainder;
+	*st->current = '\0';
+
+	return (int)line_len;
+}
+
+static inline void fd_fgets_ensure_global(void)
+{
+	if (!global_init_done) {
+		fd_fgets_state_init(&global_state);
+		global_init_done = 1;
+	}
+}
+
+int fd_fgets_eof(void)
+{
+	fd_fgets_ensure_global();
+	return fd_fgets_eof_r(&global_state);
+}
+
+void fd_fgets_clear(void)
+{
+	fd_fgets_ensure_global();
+	fd_fgets_clear_r(&global_state);
+}
+
+int fd_fgets_more(size_t blen)
+{
+	fd_fgets_ensure_global();
+	return fd_fgets_more_r(&global_state, blen);
+}
+
+int fd_fgets(char *buf, size_t blen, int fd)
+{
+	fd_fgets_ensure_global();
+	return fd_fgets_r(&global_state, buf, blen, fd);
+}
+
+int fd_setvbuf_r(struct fd_fgets_state *st, void *buf,
+			size_t buff_size, enum fd_mem how)
+{
+	if (st == NULL || buf == NULL || buff_size == 0)
+		return 1;
+	st->buffer = buf;
+	st->current = st->buffer;
+	st->eptr = st->buffer + buff_size;
+	st->eof = 0;
+	st->mem_type = how;
+	st->buff_size = buff_size;
+	return 0;
+}
+
+int fd_setvbuf(void *buf, size_t buff_size, enum fd_mem how)
+{
+        fd_fgets_ensure_global();
+        return fd_setvbuf_r(&global_state, buf, buff_size, how);
+}
+

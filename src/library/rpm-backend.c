@@ -309,10 +309,9 @@ static int rpm_load_list(const conf_t *conf)
 		memcpy(&memfd, CMSG_DATA(c), sizeof memfd);
 
 		char buff[BUFFER_SIZE];
-		fd_fgets_context_t * fd_fgets_context = fd_fgets_init();
+		fd_fgets_state_t *st = fd_fgets_init();
 		do {
-			fd_fgets_rewind(fd_fgets_context);
-			int res = fd_fgets(fd_fgets_context, buff, sizeof(buff), memfd);
+			int res = fd_fgets_r(st, buff, sizeof(buff), memfd);
 			if (res == -1)
 				break;
 			else if (res > 0) {
@@ -326,7 +325,8 @@ static int rpm_load_list(const conf_t *conf)
 				int size = end - buff;
 				*end = '\0';
 
-				// its better to parse it from the end because there can be space in file name
+				// its better to parse it from the end because
+				// there can be space in file name
 				int delims = 0;
 				char * delim = NULL;
 				for (int i = size-1 ; i >= 0 ; i--) {
@@ -340,8 +340,8 @@ static int rpm_load_list(const conf_t *conf)
 					}
 				}
 
-				char * index = strdup(buff);
-				char * data = strdup(delim + 1);
+				char *index = strdup(buff);
+				char *data = strdup(delim + 1);
 				if (!index || !data) {
 					free(index);
 					free(data);
@@ -350,9 +350,9 @@ static int rpm_load_list(const conf_t *conf)
 
 				list_append(&rpm_backend.list, index, data);
 			}
-		} while(!fd_fgets_eof(fd_fgets_context));
+		} while(!fd_fgets_eof_r(st));
 
-		fd_fgets_destroy(fd_fgets_context);
+		fd_fgets_destroy(st);
 		waitpid(pid, NULL, 0);
 	} else {
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));

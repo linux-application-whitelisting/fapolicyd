@@ -605,8 +605,8 @@ static int check_watch_fs(void)
 		return 1;
 	}
 
-	fd_fgets_context_t *fd_fgets_context = fd_fgets_init();
-	if (!fd_fgets_context) {
+	fd_fgets_state_t *st = fd_fgets_init();
+	if (!st) {
 		fprintf(stderr, "Failed fd_fgets_init\n");
 		free_daemon_config(&config);
 		list_empty(&fs);
@@ -617,7 +617,7 @@ static int check_watch_fs(void)
 	// Build the list of mount point types
 	list_init(&mnt);
 	do {
-		if (fd_fgets(fd_fgets_context, buf, sizeof(buf), fd)) {
+		if (fd_fgets_r(st, buf, sizeof(buf), fd)) {
 			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
 			       device,point, type, mntops, &fs_req, &fs_passno);
 			// Some file systems are not watchable
@@ -625,8 +625,8 @@ static int check_watch_fs(void)
 				continue;
 			list_append(&mnt, strdup(type), strdup("0"));
 		}
-	} while (!fd_fgets_eof(fd_fgets_context));
-	fd_fgets_destroy(fd_fgets_context);
+	} while (!fd_fgets_eof_r(st));
+	fd_fgets_destroy(st);
 	close(fd);
 
 
@@ -820,8 +820,8 @@ static int do_status_report(void)
 {
 	const char *reason = "no pid file";
 
-	fd_fgets_context_t *fd_fgets_context = fd_fgets_init();
-	if (!fd_fgets_context)
+	fd_fgets_state_t *st = fd_fgets_init();
+	if (!st)
 		return 1;
 
 	// open pid file
@@ -830,7 +830,7 @@ static int do_status_report(void)
 		char pid_buf[16];
 
 		// read contents
-		if (fd_fgets(fd_fgets_context, pid_buf, sizeof(pid_buf), pidfd)) {
+		if (fd_fgets_r(st, pid_buf, sizeof(pid_buf), pidfd)) {
 			int rpt_fd;
 			unsigned int pid, tries = 0;
 			char exe_buf[64];
@@ -880,21 +880,21 @@ retry:
 					goto err_out;
 				}
 			}
-			fd_fgets_rewind(fd_fgets_context);
+			fd_fgets_clear_r(st);
 			do {
 				char buf[80];
-				if (fd_fgets(fd_fgets_context, buf, sizeof(buf), rpt_fd))
+				if (fd_fgets_r(st, buf, sizeof(buf), rpt_fd))
 					write(1, buf, strlen(buf));
-			} while (!fd_fgets_eof(fd_fgets_context));
+			} while (!fd_fgets_eof_r(st));
 			close(rpt_fd);
 		} else
 			reason = "can't read pid file";
 		close(pidfd);
-		fd_fgets_destroy(fd_fgets_context);
+		fd_fgets_destroy(st);
 		return 0;
 	}
 err_out:
-	fd_fgets_destroy(fd_fgets_context);
+	fd_fgets_destroy(st);
 	if (pidfd >= 0)
 		close(pidfd);
 	printf("Can't find fapolicyd: %s\n", reason);
