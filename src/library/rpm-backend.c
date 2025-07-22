@@ -74,7 +74,6 @@ backend rpm_backend =
 };
 
 static rpmts ts = NULL;
-static rpmtxn txn = NULL;
 static rpmdbMatchIterator mi = NULL;
 
 static int init_rpm(void)
@@ -83,62 +82,11 @@ static int init_rpm(void)
 }
 
 static Header h = NULL;
-#define MAX_RETRIES 3
-static int get_next_package_rpm(int *error)
+static int get_next_package_rpm(void)
 {
 	// If this is the first time, create a package iterator
 	if (mi == NULL) {
 		ts = rpmtsCreate();
-
-		int stderr_fd = dup(fileno(stderr)); // Duplicate stderr
-		int stdin_fd = dup(fileno(stdin)); // Duplicate stdin
-
-		int devnull = open("/dev/null", O_WRONLY);
-		int devnontty = open("/dev/null", O_RDONLY);
-
-		if (devnull == -1 || stderr_fd == -1 || devnontty == -1 || stdin_fd == -1 )
-			return 0;
-
-		// supress messages from rpmdb in stderr
-		dup2(devnull, fileno(stderr)); // Redirect stderr to /dev/null
-
-		// force rpm lib to use nonblocking waiting
-		// it checks for isatty(STDIN_FILENO) == 0
-		dup2(devnontty, fileno(stdin)); // Redirect stdin to non pty device /dev/null
-
-		close(devnull);
-		close(devnontty);
-
-		int i = 0;
-		while (1) {
-			txn = rpmtxnBegin(ts, 0);
-
-			msg(LOG_DEBUG, "Waiting for RPM transaction lock");
-
-			if (txn == NULL) {
-				if (i < MAX_RETRIES)
-					sleep(1);
-			} else {
-				break;
-			}
-
-			if (i >= MAX_RETRIES)
-				break;
-			i++;
-		}
-
-		dup2(stderr_fd, fileno(stderr)); // Restore stderr
-		dup2(stdin_fd, fileno(stdin)); // Restore stdin
-		close(stderr_fd);
-		close(stdin_fd);
-
-		if (txn == NULL) {
-			*error = 1;
-			return 0;
-		}
-
-		msg(LOG_DEBUG, "Got rpmdb lock on %d iterations", i);
-
 		mi = rpmtsInitIterator(ts, RPMDBI_PACKAGES, NULL, 0);
 		if (mi == NULL)
 			return 0;
@@ -239,8 +187,6 @@ static void close_rpm(void)
 	h = NULL;
 	rpmdbFreeIterator(mi);
 	mi = NULL;
-	rpmtxnEnd(txn);
-	txn = NULL;
 	rpmtsFree(ts);
 	ts = NULL;
 	rpmFreeCrypto();
@@ -373,7 +319,6 @@ extern unsigned int debug_mode;
 int do_rpm_load_list(const conf_t *conf)
 {
 	int rc;
-	int error = 0;
 	unsigned int msg_count = 0;
 	unsigned int tsource = SRC_RPM;
 
@@ -390,7 +335,7 @@ int do_rpm_load_list(const conf_t *conf)
 	}
 
 	// Loop across the rpm database
-	while (get_next_package_rpm(&error)) {
+	while (get_next_package_rpm()) {
 		// Loop across the packages
 		while (get_next_file_rpm()) {
 			// We do not want directories or symlinks in the
@@ -478,11 +423,6 @@ int do_rpm_load_list(const conf_t *conf)
 		HASH_DEL( hashtable, item );
 		free((void*)item->key);
 		free((void*)item);
-	}
-
-	if (error) {
-		msg(LOG_INFO, "Could not acquire lock for rpmdb, staying with old db");
-		return 1;
 	}
 
 	return 0;
