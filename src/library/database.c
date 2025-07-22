@@ -1109,6 +1109,13 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 
 void close_database(void)
 {
+	/*
+	 * Ensure the background update thread terminates before
+	 * cleaning up the database resources.  Without this the
+	 * caller would have to set update_thread_stop itself which
+	 * is easy to miss, leaving the thread polling forever.
+	*/
+	update_thread_stop = true;
 	pthread_join(update_thread, NULL);
 
 	// we can close db when we are really sure update_thread does not exist
