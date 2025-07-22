@@ -70,9 +70,6 @@ static struct pollfd ffd[1] =  { {0, 0, 0} };
 static integrity_t integrity;
 static atomic_int reload_db = 0;
 
-volatile atomic_bool update_thread_loop = false;
-volatile atomic_bool update_thread_stop = false;
-
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
 static pthread_mutex_t rule_lock;
@@ -1109,13 +1106,6 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 
 void close_database(void)
 {
-	/*
-	 * Ensure the background update thread terminates before
-	 * cleaning up the database resources.  Without this the
-	 * caller would have to set update_thread_stop itself which
-	 * is easy to miss, leaving the thread polling forever.
-	*/
-	update_thread_stop = true;
 	pthread_join(update_thread, NULL);
 
 	// we can close db when we are really sure update_thread does not exist
@@ -1306,8 +1296,7 @@ static void *update_thread_main(void *arg)
 	fcntl(ffd[0].fd, F_SETFL, O_NONBLOCK);
 	ffd[0].events = POLLIN;
 
-	update_thread_loop = true;
-	while (!update_thread_stop) {
+	while (!stop) {
 
 		rc = poll(ffd, 1, 1000);
 
@@ -1431,7 +1420,6 @@ static void *update_thread_main(void *arg)
 	}
 
 finalize:
-	update_thread_loop = false;
 	close(ffd[0].fd);
 	unlink_fifo();
 
