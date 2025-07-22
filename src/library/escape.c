@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "message.h"
 
@@ -61,13 +62,18 @@ size_t check_escape_shell(const char *input)
 }
 
 #define MAX_SIZE 8192
-static char escape_buffer[MAX_SIZE];
 char *escape_shell(const char *input, const size_t expected_size)
 {
+	char *escape_buffer;
+
 	if(!input)
 		return NULL;
 
 	if (expected_size >= MAX_SIZE)
+		return NULL;
+
+	escape_buffer = malloc(expected_size + 1);
+	if (escape_buffer == NULL)
 		return NULL;
 
 	size_t len = strlen(input);

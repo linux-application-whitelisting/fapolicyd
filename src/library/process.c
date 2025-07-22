@@ -49,7 +49,7 @@
  */
 static const char *uitoa(unsigned int j)
 {
-	static char buf[BUFSZ];
+	static __thread char buf[BUFSZ];
 	if (j == 0)
 		return "0";
 
@@ -63,7 +63,7 @@ static const char *uitoa(unsigned int j)
 	return ptr;
 }
 
-static char ppath[40] = "/proc/";
+static __thread char ppath[40] = "/proc/";
 static inline const char *proc_path(unsigned int pid, const char *file)
 {
 	char *p = stpcpy(ppath + 6, uitoa(pid));

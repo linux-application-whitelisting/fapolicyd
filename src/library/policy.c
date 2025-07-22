@@ -389,19 +389,23 @@ static char *format_value(int item, unsigned int num, decision_t results,
 		object_attr_t *obj = get_obj_attr(e, item);
 		if (item != OBJ_TRUST) {
 			char * str = obj ? obj->o : "?";
+			char *tmp = NULL;
 			size_t need_escape = check_escape_shell(str);
 
-			if (need_escape)
+			if (need_escape) {
 				// need_escape contains potential size of escaped string
-				str = escape_shell(str, need_escape);
+				tmp = escape_shell(str, need_escape);
+				str = tmp;
+			}
 
-			if (asprintf(&out, "%s", str ? str : "??") < 0)
+			if (asprintf(&out, "%s", str ? str : "??") < 0) {
 				out = NULL;
-
-		} else {
+				free(tmp);
+			}
+			free(tmp);
+		} else
 		    if (asprintf(&out, "%d", obj ? (obj->val ? 1 : 0) : 9) < 0)
 				out = NULL;
-		}
 	} else {
 		subject_attr_t *subj = get_subj_attr(e, item);
 		if (item < GID) {
@@ -409,14 +413,18 @@ static char *format_value(int item, unsigned int num, decision_t results,
 				out = NULL;
 		} else if (item >= COMM) {
 			char * str = subj ? subj->str : "?";
+			char *tmp = NULL;
 			size_t need_escape = check_escape_shell(str);
 
-			if (need_escape)
+			if (need_escape) {
 				// need_escape contains potential size of escaped string
-				str = escape_shell(str, need_escape);
+				tmp = escape_shell(str, need_escape);
+				str = tmp;
+			}
 
 			if (asprintf(&out, "%s", str ? str : "??") < 0)
 				out = NULL;
+			free(tmp);
 
 		} else { // GID only log first 32
 			out = malloc(NGID_LIMIT*12);
