@@ -25,6 +25,8 @@
 #include "config.h"
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/syslog.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -58,6 +60,9 @@ int do_rpm_destroy_backend(void);
 
 extern backend rpm_backend;
 
+// fetch the socket FD number – defaults to 3 if env not set
+int sock_fd = 3; // same number dup2’ed by parent
+
 int main(int argc, char * const argv[])
 {
 
@@ -67,6 +72,12 @@ int main(int argc, char * const argv[])
 
 	load_daemon_config(&config);
 
+	int memfd = memfd_create("rpm_snapshot", MFD_CLOEXEC);
+	if (memfd < 0) {
+		msg(LOG_ERR, "memfd_create failed");
+		exit(1);
+	}
+
 	do_rpm_init_backend();
 	do_rpm_load_list(&config);
 
@@ -74,8 +85,36 @@ int main(int argc, char * const argv[])
 
 	list_item_t *item = list_get_first(&rpm_backend.list);
 	for (; item != NULL; item = item->next) {
-		printf("%s %s\n", (const char*)item->index, (const char*)item->data);
+		dprintf(memfd, "%s %s\n", (const char*)item->index, (const char*)item->data);
 	}
+
+	fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE);
+	lseek(memfd, 0, SEEK_SET);            /* rewind – not strictly needed */
+
+	// send the FD
+	struct msghdr  _msg = {0};
+	struct iovec   iov = { .iov_base = (char[1]){0}, .iov_len = 1 };
+	union { struct cmsghdr align; char buf[CMSG_SPACE(sizeof(int))]; } cmsgbuf;
+
+	_msg.msg_iov = &iov;
+	_msg.msg_iovlen = 1;
+	_msg.msg_control = cmsgbuf.buf;
+	_msg.msg_controllen = sizeof cmsgbuf.buf;
+
+	struct cmsghdr *c = CMSG_FIRSTHDR(&_msg);
+
+	c->cmsg_level = SOL_SOCKET;
+	c->cmsg_type  = SCM_RIGHTS;
+	c->cmsg_len   = CMSG_LEN(sizeof(int));
+	memcpy(CMSG_DATA(c), &memfd, sizeof(int));
+
+	if (sendmsg(sock_fd, &_msg, 0) < 0) {
+		msg(LOG_ERR, "sendmsg failed");
+		exit(1);
+	}
+
+	close(sock_fd);       // closes the channel; parent gets EOF
+	close(memfd);         // parent has its own refcount
 
 	do_rpm_destroy_backend();
 

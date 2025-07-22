@@ -53,7 +53,13 @@ In practice this means:
 
 - Indent with tabs (8 spaces per tab).
 - Keep lines within ~80 columns.
-- Place braces and other formatting as in the kernel style.
+- Place braces and other formatting as in the kernel style. However, if the
+  basic block is a 1 liner, do not use curly braces for it.
+- Add a comment before any new function describing it, input variables, and
+  return codes.
+- Comments within a function may be C++ style.
+- Do not do any whitespace adustment of existing code.
+- Keep existing function and variable names.
 
 ## Commit Messages
 
@@ -92,6 +98,7 @@ intended ordering.
 - Run `make check` to execute the self-tests.
 - Follow Linux Kernel coding style (tabs, 80 columns).
 - Keep commit messages short and descriptive.
+- Always add comments to explain new code.
 - Maintain rule file organization as described in `rules.d/README-rules`.
 
 These guidelines should help future contributors and automated tools

@@ -28,6 +28,7 @@
 #include <stdatomic.h>
 #include <stddef.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/syslog.h>
 #include <sys/syslog.h>
 #include <sys/types.h>
@@ -258,36 +259,60 @@ struct _hash_record {
 static int rpm_load_list(const conf_t *conf)
 {
 
-	int pipefd[2];
-	if (pipe(pipefd) == -1) {
-		perror("pipe failed");
-		return 1;
+// before the spawn
+	int sv[2];
+	if (socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv) < 0) {
+		msg(LOG_ERR, "socketpair failed");
+		exit(1);
 	}
 
-	// we well read stdout later
-	// there will be data from rpmdb
 	posix_spawn_file_actions_t actions;
 	posix_spawn_file_actions_init(&actions);
-	posix_spawn_file_actions_addclose(&actions, pipefd[0]);
-	posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
-	posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+
+	// child sees sv[1] as FD 3 (arbitrary but fixed)
+	posix_spawn_file_actions_adddup2(&actions, sv[1], 3);
+	posix_spawn_file_actions_addclose(&actions, sv[0]);
+	posix_spawn_file_actions_addclose(&actions, sv[1]);
 
 	char *argv[] = { "fapolicyd-rpm-loader", NULL };
-	char *custom_env[] = { NULL };
+	char *custom_env[] = { "FAPO_SOCK_FD=3", NULL };
 
 	pid_t pid = -1;
 	int status = posix_spawn(&pid, "/usr/sbin/fapolicyd-rpm-loader",
 							 &actions, NULL, argv, custom_env);
-	close(pipefd[1]);  // Parent doesn't write
+	close(sv[1]);  // Parent doesn't write
 
 	if (status == 0) {
 		msg(LOG_DEBUG, "fapolicyd-rpm-loader spawned with pid: %d", pid);
+
+		struct msghdr  _msg  = {0};
+		struct iovec   iov  = { .iov_base = (char[1]){0}, .iov_len = 1 };
+		union { struct cmsghdr align; char buf[CMSG_SPACE(sizeof(int))]; } cmsgbuf;
+		_msg.msg_iov    = &iov;
+		_msg.msg_iovlen = 1;
+		_msg.msg_control = cmsgbuf.buf;
+		_msg.msg_controllen = sizeof cmsgbuf.buf;
+
+		if (recvmsg(sv[0], &_msg, 0) < 0) {
+			msg(LOG_ERR, "recvmesg failed");
+			exit(1);
+		}
+		close(sv[0]);
+
+		struct cmsghdr *c = CMSG_FIRSTHDR(&_msg);
+		if (!c || c->cmsg_type != SCM_RIGHTS) {
+			msg(LOG_ERR, "missing fd");
+			exit(1);
+		}
+
+		int memfd;
+		memcpy(&memfd, CMSG_DATA(c), sizeof memfd);
 
 		char buff[BUFFER_SIZE];
 		fd_fgets_context_t * fd_fgets_context = fd_fgets_init();
 		do {
 			fd_fgets_rewind(fd_fgets_context);
-			int res = fd_fgets(fd_fgets_context, buff, sizeof(buff), pipefd[0]);
+			int res = fd_fgets(fd_fgets_context, buff, sizeof(buff), memfd);
 			if (res == -1)
 				break;
 			else if (res > 0) {
@@ -328,7 +353,6 @@ static int rpm_load_list(const conf_t *conf)
 		} while(!fd_fgets_eof(fd_fgets_context));
 
 		fd_fgets_destroy(fd_fgets_context);
-		close(pipefd[0]);
 		waitpid(pid, NULL, 0);
 	} else {
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
