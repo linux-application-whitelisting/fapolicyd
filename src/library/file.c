@@ -68,8 +68,8 @@ static const char *interpreters[] = {
 	"/usr/lib64/ld-linux-x86-64.so.2",
 	"/usr/lib/ld-linux.so.2",		// i686
 	"/lib/ld.so.2",
-	"/lib/ld-linux-armhf.so.3",   // fedora armv7hl
-	"/lib/ld-linux-aarch64.so.1", // fedora aarch64
+	"/lib/ld-linux-armhf.so.3",		// fedora armv7hl
+	"/lib/ld-linux-aarch64.so.1",		// fedora aarch64
 	"/lib/ld64.so.1",			// rhel8 s390x
 	"/lib64/ld64.so.2",			// rhel8 ppc64le
 };
@@ -630,7 +630,7 @@ uint32_t gather_elf(int fd, off_t size)
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
 				uint32_t len;
-				char interp[23];
+				char interp[65];
 				uint32_t filesz = ph_tbl[i].p_filesz;
 				uint32_t offset = ph_tbl[i].p_offset;
 
@@ -639,7 +639,7 @@ uint32_t gather_elf(int fd, off_t size)
 								!= offset)
 					goto err_out32;
 
-				len = (filesz < 23 ? filesz : 23);
+				len = (filesz < 65 ? filesz : 65);
 
 				if ((unsigned int) safe_read(fd, (char *)
 						interp, len) != len)
@@ -785,7 +785,7 @@ done32_obj:
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
 				uint64_t len;
-				char interp[33];
+				char interp[65];
 				uint64_t filesz = ph_tbl[i].p_filesz;
 				uint64_t offset = ph_tbl[i].p_offset;
 
@@ -794,7 +794,7 @@ done32_obj:
 								!= offset)
 					goto err_out64;
 
-				len = (filesz < 33 ? filesz : 33);
+				len = (filesz < 65 ? filesz : 65);
 
 				if ((unsigned int) safe_read(fd, (char *)
 						interp, len) != len)
