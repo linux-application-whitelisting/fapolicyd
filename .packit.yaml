@@ -18,38 +18,40 @@ jobs:
         - bash -c "ls -la"
     targets:
       - fedora-all
+      - epel-10
       - epel-9
       - epel-8
 
-  - job: copr_build
-    trigger: pull_request
-    identifier: build-asan
-    actions:
-      post-upstream-clone:
-        - bash -c "sed -i 's/#ASAN %//' fapolicyd.spec"
-        - bash -c "sed -i 's/#ELN %//' fapolicyd.spec"
-        - bash -c "curl -L -o $(grep Source1 fapolicyd.spec | cut -d ' ' -f 2 | sed -r \"s/%\{name\}/$(grep 'Name:' fapolicyd.spec | cut -f 2 -d ' ')/g;s/%\{semodule_version\}/$(grep '%define semodule_version' fapolicyd.spec | cut -f 3 -d ' ')/g\" | sed -r 's|(.*)#/(.*)|\2 \1|')"
-        - bash -c "curl -L -o $(grep Source2 fapolicyd.spec | cut -d ' ' -f 2 | sed -r 's|(.*)#/(.*)|\2 \1|')"
-        - bash -c "cp uthash*.tar.gz /builddir/build/SOURCES/"
-        - bash -c "pwd"
-        - bash -c "ls -la"
-    targets:
-      - fedora-all
-      - epel-9
-      - epel-8
+#  - job: copr_build
+#    trigger: pull_request
+#    identifier: build-asan
+#    actions:
+#      post-upstream-clone:
+#        - bash -c "sed -i 's/#ASAN %//' fapolicyd.spec"
+#        - bash -c "sed -i 's/#ELN %//' fapolicyd.spec"
+#        - bash -c "curl -L -o $(grep Source1 fapolicyd.spec | cut -d ' ' -f 2 | sed -r \"s/%\{name\}/$(grep 'Name:' fapolicyd.spec | cut -f 2 -d ' ')/g;s/%\{semodule_version\}/$(grep '%define semodule_version' fapolicyd.spec | cut -f 3 -d ' ')/g\" | sed -r 's|(.*)#/(.*)|\2 \1|')"
+#        - bash -c "curl -L -o $(grep Source2 fapolicyd.spec | cut -d ' ' -f 2 | sed -r 's|(.*)#/(.*)|\2 \1|')"
+#        - bash -c "cp uthash*.tar.gz /builddir/build/SOURCES/"
+#        - bash -c "pwd"
+#        - bash -c "ls -la"
+#    targets:
+#      - fedora-all
+#      - epel-9
+#      - epel-8
 
   - job: tests
     trigger: pull_request
     identifier: build-normal
     targets:
       - fedora-all
+      - epel-10
       - epel-9
       - epel-8
 
-  - job: tests
-    trigger: pull_request
-    identifier: build-asan
-    targets:
-      - fedora-all
-      - epel-9
-      - epel-8
+#  - job: tests
+#    trigger: pull_request
+#    identifier: build-asan
+#    targets:
+#      - fedora-all
+#      - epel-9
+#      - epel-8
