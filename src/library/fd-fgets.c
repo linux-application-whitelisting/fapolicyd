@@ -89,7 +89,7 @@ void fd_fgets_destroy(struct fd_fgets_state *st)
 			break;
 		case MEM_MMAP:
 		case MEM_MMAP_FILE:
-			munmap(st->buffer, st->buff_size);
+			munmap(st->orig, st->buff_size);
 			break;
 		case MEM_SELF_MANAGED:
 		default:
@@ -214,7 +214,8 @@ int fd_fgets_r(struct fd_fgets_state *st, char *buf, size_t blen, int fd)
 	}
 
 	st->current = st->buffer + remainder;
-	*st->current = '\0';
+	if (st->mem_type != MEM_MMAP_FILE)
+		*st->current = '\0';
 
 	return (int)line_len;
 }
