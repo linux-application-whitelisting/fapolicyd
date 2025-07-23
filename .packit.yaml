@@ -18,6 +18,7 @@ jobs:
         - bash -c "ls -la"
     targets:
       - fedora-all
+      - epel-10
       - epel-9
       - epel-8
 
@@ -35,6 +36,7 @@ jobs:
         - bash -c "ls -la"
     targets:
       - fedora-all
+      - epel-10
       - epel-9
       - epel-8
 
@@ -43,6 +45,7 @@ jobs:
     identifier: build-normal
     targets:
       - fedora-all
+      - epel-10
       - epel-9
       - epel-8
 
@@ -51,5 +54,6 @@ jobs:
     identifier: build-asan
     targets:
       - fedora-all
+      - epel-10
       - epel-9
       - epel-8
