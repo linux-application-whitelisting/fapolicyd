@@ -29,9 +29,10 @@
 typedef struct fd_fgets_state fd_fgets_state_t;
 
 enum fd_mem {
+	MEM_SELF_MANAGED,
         MEM_MALLOC,
         MEM_MMAP,
-        MEM_SELF_MANAGED
+        MEM_MMAP_FILE
 };
 
 void fd_fgets_clear(void);
