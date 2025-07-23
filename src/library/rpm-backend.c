@@ -44,6 +44,7 @@
 #include <rpm/rpmdb.h>
 #include <rpm/rpmpgp.h>
 #include <fnmatch.h>
+#include <sys/mman.h>
 
 #include <uthash.h>
 
@@ -54,6 +55,7 @@
 #include "llist.h"
 
 #include "filter.h"
+
 
 extern atomic_bool stop;
 
@@ -258,10 +260,23 @@ static int rpm_load_list(const conf_t *conf)
 
 		char buff[BUFFER_SIZE];
 		fd_fgets_state_t *st = fd_fgets_init();
+
+		// On any failure, fall back to descriptor based reads
+		struct stat sb;
+		if (fstat(memfd, &sb) == 0) {
+			void *base = mmap(NULL, sb.st_size, PROT_READ,
+					  MAP_PRIVATE, memfd, 0);
+
+			if (base != MAP_FAILED)
+				fd_setvbuf_r(st,base,sb.st_size,MEM_MMAP_FILE);
+		}
+
 		do {
 			int res = fd_fgets_r(st, buff, sizeof(buff), memfd);
-			if (res == -1)
+			if (res == -1) {
+				msg(LOG_ERR, "fd_fgets_r on memfd");
 				break;
+			}
 			else if (res > 0) {
 				char* end  = strchr(buff, '\n');
 
