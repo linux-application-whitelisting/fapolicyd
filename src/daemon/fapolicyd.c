@@ -67,7 +67,7 @@ unsigned int debug_mode = 0, permissive = 0;
 const char* mounts = "/proc/mounts";
 
 // Signal handler notifications
-volatile atomic_bool stop = false, hup = false, run_stats = false;
+atomic_bool stop = false, hup = false, run_stats = false;
 
 // Local variables
 static conf_t config;

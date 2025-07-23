@@ -79,9 +79,9 @@ static void *update_thread_main(void *arg);
 static int update_database(conf_t *config);
 
 // External variables
-extern volatile atomic_bool stop;
-extern volatile atomic_bool needs_flush;
-extern volatile atomic_bool reload_rules;
+extern atomic_bool stop;
+extern atomic_bool needs_flush;
+extern atomic_bool reload_rules;
 
 
 static int is_link(const char *path)

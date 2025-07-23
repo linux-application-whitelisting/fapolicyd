@@ -49,7 +49,7 @@
 #include "fd-fgets.h"
 #include "paths.h"
 
-volatile atomic_bool stop = 0;  // Library needs this
+atomic_bool stop = 0;  // Library needs this
 unsigned int debug_mode = 0;			// Library needs this
 unsigned int permissive = 0;			// Library needs this
 

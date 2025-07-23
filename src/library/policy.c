@@ -55,8 +55,8 @@ static unsigned long allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
 
-extern volatile atomic_bool stop;
-volatile atomic_bool reload_rules = false;
+extern atomic_bool stop;
+atomic_bool reload_rules = false;
 
 static const nv_t table[] = {
 {       NO_OPINION, "no-opinion" },

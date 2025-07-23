@@ -88,7 +88,7 @@ static struct option long_opts[] =
 	{ NULL,		0, NULL, 0 }
 };
 
-volatile atomic_bool stop = 0;  // Library needs this
+atomic_bool stop = 0;  // Library needs this
 unsigned int debug_mode = 0;			// Library needs this
 unsigned int permissive = 0;			// Library needs this
 

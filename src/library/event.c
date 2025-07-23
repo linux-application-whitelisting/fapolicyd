@@ -46,7 +46,7 @@
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 
-volatile atomic_bool needs_flush = false;
+atomic_bool needs_flush = false;
 
 // Return 0 on success and 1 on error
 int init_event_system(const conf_t *config)

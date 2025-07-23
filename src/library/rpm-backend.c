@@ -55,7 +55,7 @@
 
 #include "filter.h"
 
-extern volatile atomic_bool stop;
+extern atomic_bool stop;
 
 int do_rpm_init_backend(void);
 int do_rpm_load_list(const conf_t *);

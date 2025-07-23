@@ -47,7 +47,7 @@
 #define MAX_EVENTS 4
 
 // External variables
-extern volatile atomic_bool stop, run_stats;
+extern atomic_bool stop, run_stats;
 extern unsigned int permissive;
 
 // Local variables
@@ -59,8 +59,8 @@ static pthread_mutexattr_t decision_lock_attr;
 static pthread_mutex_t decision_lock;
 static pthread_cond_t do_decision;
 static pthread_condattr_t rpt_timer_attr;
-static volatile atomic_bool events_ready;
-static volatile atomic_int alive = 1;
+static atomic_bool events_ready;
+static atomic_int alive = 1;
 static int fd = -1;
 static int rpt_timer_fd = -1;
 static uint64_t mask;
