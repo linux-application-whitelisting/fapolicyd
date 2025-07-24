@@ -72,7 +72,7 @@ int main(int argc, char * const argv[])
 
 	load_daemon_config(&config);
 
-	int memfd = memfd_create("rpm_snapshot", MFD_CLOEXEC);
+	int memfd = memfd_create("rpm_snapshot", MFD_CLOEXEC|MFD_ALLOW_SEALING);
 	if (memfd < 0) {
 		msg(LOG_ERR, "memfd_create failed");
 		exit(1);
