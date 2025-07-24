@@ -55,6 +55,7 @@
 #include "llist.h"
 
 #include "filter.h"
+#include "file.h"
 
 
 extern atomic_bool stop;
@@ -151,9 +152,24 @@ static rpm_loff_t get_file_size_rpm(void)
 	return rpmfiFSize(fi);
 }
 
-static char *get_sha256_rpm(void)
+static char *get_sha256_rpm(int *len)
 {
-	return rpmfiFDigestHex(fi, NULL);
+	// The rpm database has SHA512, SHA26, and SHA1 hashes. This uses
+	// a static buffer to avoid a short lived malloc/free cycle.
+	static char sha[SHA512_LEN * 2 + 1];
+	const unsigned char *digest;
+	size_t tlen = 0;
+
+	// This gets the binary form of the hash.
+	digest = rpmfiFDigest(fi, NULL, &tlen);
+	if (digest && len) // clip to sha512 size.
+		bytes2hex(sha, digest, tlen > SHA512_LEN ? SHA512_LEN : tlen);
+	else
+		sha[0] = 0;
+
+	// Return the length to avoid a strlen call later.
+	*len = 2*tlen;
+	return sha;
 }
 
 static int is_dir_link_rpm(void)
@@ -372,7 +388,8 @@ int do_rpm_load_list(const conf_t *conf)
 			// Get specific file information
 			const char *file_name = get_file_name_rpm();
 			rpm_loff_t sz = get_file_size_rpm();
-			const char *sha = get_sha256_rpm();
+			int len;
+			const char *sha = get_sha256_rpm(&len);
 			char *data;
 
 			if (file_name == NULL)
@@ -381,11 +398,13 @@ int do_rpm_load_list(const conf_t *conf)
 			// should we drop a path?
 			if (!filter_check(file_name)) {
 				free((void *)file_name);
-				free((void *)sha);
 				continue;
 			}
 
-			if (strlen(sha) != 64) {
+			// Note that some rpm builders have moved to
+			// SHA512. Originally this was to weed out SHA1.
+			// FIXME: This should be revisited to allow SHA512.
+			if (len != 64) {
 				// Limit this to 5 if production
 				if (debug_mode || msg_count++ < 5) {
 					msg(LOG_WARNING, "No SHA256 for %s",
@@ -395,7 +414,6 @@ int do_rpm_load_list(const conf_t *conf)
 				// skip the entry if there is no sha256
 				if (conf && conf->rpm_sha256_only) {
 					free((void *)file_name);
-					free((void *)sha);
 					continue;
 				}
 			}
@@ -428,7 +446,6 @@ int do_rpm_load_list(const conf_t *conf)
 			} else {
 				free((void*)file_name);
 			}
-			free((void *)sha);
 		}
 	}
 
