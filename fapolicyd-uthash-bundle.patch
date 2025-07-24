@@ -1,8 +1,8 @@
 diff --git a/configure.ac b/configure.ac
-index 8188d13..6430e1e 100644
+index 40067279ecce..c0e6583af8ad 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -112,9 +112,6 @@ AC_CHECK_HEADER(sys/fanotify.h, , [AC_MSG_ERROR(
+@@ -162,9 +162,6 @@ AC_CHECK_HEADER(sys/fanotify.h, , [AC_MSG_ERROR(
  ["Couldn't find sys/fanotify.h...your kernel might not be new enough"] )])
  AC_CHECK_FUNCS(fexecve, [], [])
  AC_CHECK_FUNCS([gettid])
@@ -13,7 +13,7 @@ index 8188d13..6430e1e 100644
  echo .
  echo Checking for required libraries
 diff --git a/src/Makefile.am b/src/Makefile.am
-index 25afbcd..dc308ec 100644
+index 05d0f8e9ddd6..65a218992152 100644
 --- a/src/Makefile.am
 +++ b/src/Makefile.am
 @@ -5,6 +5,9 @@ AM_CPPFLAGS = \
@@ -27,12 +27,12 @@ index 25afbcd..dc308ec 100644
  lib_LTLIBRARIES= libfapolicyd.la
  
 diff --git a/src/library/rpm-backend.c b/src/library/rpm-backend.c
-index 8d5aa20..6e92f10 100644
+index c972874311d7..0acf7ba5b84a 100644
 --- a/src/library/rpm-backend.c
 +++ b/src/library/rpm-backend.c
-@@ -33,7 +33,7 @@
- #include <rpm/rpmpgp.h>
+@@ -46,7 +46,7 @@
  #include <fnmatch.h>
+ #include <sys/mman.h>
  
 -#include <uthash.h>
 +#include "uthash.h"
