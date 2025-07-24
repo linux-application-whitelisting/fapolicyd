@@ -46,6 +46,9 @@
 #ifndef HAVE_GETTID
 #include <sys/syscall.h>
 #endif
+#ifdef HAVE_MALLINFO2
+#include <malloc.h>
+#endif
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -420,6 +423,35 @@ static void usage(void)
 	exit(1);
 }
 
+#ifdef HAVE_MALLINFO2
+static struct mallinfo2 last_mi;
+static void memory_use_report(FILE *f)
+{
+        struct mallinfo2 mi = mallinfo2();
+
+        fprintf(f, "glibc arena (total memory) is: %zu KiB, was: %zu KiB\n",
+                        (size_t)mi.arena/1024, (size_t)last_mi.arena/1024);
+        fprintf(f, "glibc uordblks (in use memory) is: %zu KiB, was: %zu KiB\n",
+                        (size_t)mi.uordblks/1024,(size_t)last_mi.uordblks/1024);
+        fprintf(f,"glibc fordblks (total free space) is: %zu KiB, was: %zu KiB\n",
+                        (size_t)mi.fordblks/1024,(size_t)last_mi.fordblks/1024);
+
+        memcpy(&last_mi, &mi, sizeof(struct mallinfo2));
+}
+
+static void close_memory_report(void)
+{
+	struct mallinfo2 mi = mallinfo2();
+
+        msg(LOG_DEBUG, "total memory: %zu KiB, was: %zu KiB",
+                        (size_t)mi.arena/1024, (size_t)last_mi.arena/1024);
+        msg(LOG_DEBUG, "in use memory: %zu KiB, was: %zu KiB",
+                        (size_t)mi.uordblks/1024,(size_t)last_mi.uordblks/1024);
+        msg(LOG_DEBUG,"total free memory: %zu KiB, was: %zu KiB",
+                        (size_t)mi.fordblks/1024,(size_t)last_mi.fordblks/1024);
+}
+#endif
+
 void do_stat_report(FILE *f, int shutdown)
 {
 	fprintf(f, "Permissive: %s\n", config.permissive ? "true" : "false");
@@ -427,6 +459,9 @@ void do_stat_report(FILE *f, int shutdown)
 	q_report(f);
 	decision_report(f);
 	database_report(f);
+#ifdef HAVE_MALLINFO2
+	memory_use_report(f);
+#endif
 	if (shutdown)
 		fputs("\n", f);
 	else
@@ -753,6 +788,9 @@ int main(int argc, const char *argv[])
 	free(m);
 	file_close();
 	close_database();
+#ifdef HAVE_MALLINFO2
+	close_memory_report();
+#endif
 	unlink(pidfile);
 	// Reinstate the strict umask in case rpm messed with it
 	(void) umask( 0237 );
