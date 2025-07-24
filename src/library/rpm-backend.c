@@ -418,6 +418,8 @@ int do_rpm_load_list(const conf_t *conf)
 				}
 			}
 
+			// We use asprintf here because the linked list
+			// takes custody of the memory and frees it later.
 			if (asprintf(	&data,
 					DATA_FORMAT,
 					tsource,
@@ -435,10 +437,15 @@ int do_rpm_load_list(const conf_t *conf)
 				HASH_FIND_STR( hashtable, key, rcd );
 
 				if (!rcd) {
-					rcd = (struct _hash_record*) malloc(sizeof(struct _hash_record));
+					rcd = (struct _hash_record*)
+					    malloc(sizeof(struct _hash_record));
 					rcd->key = strdup(key);
-					HASH_ADD_KEYPTR( hh, hashtable, rcd->key, strlen(rcd->key), rcd );
-					list_append(&rpm_backend.list, file_name, data);
+					HASH_ADD_KEYPTR( hh, hashtable,
+							 rcd->key,
+							 strlen(rcd->key),
+							 rcd );
+					list_append(&rpm_backend.list,
+						    file_name, data);
 				} else {
 					free((void*)file_name);
 					free((void*)data);
