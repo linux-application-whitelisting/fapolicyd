@@ -27,7 +27,6 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#include "libaudit.h"
 #include "fd-fgets.h"
 
 /*
