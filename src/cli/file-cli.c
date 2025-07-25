@@ -67,7 +67,7 @@ static int ftw_add_list_append(const char *fpath,
  */
 static int add_list_load_path(const char *path)
 {
-	int fd = open(path, O_RDONLY);
+	int fd = open(path, O_RDONLY|O_NONBLOCK);
 	if (fd < 0) {
 		msg(LOG_ERR, "Cannot open %s", path);
 		return 1;
@@ -83,8 +83,11 @@ static int add_list_load_path(const char *path)
 
 	if (S_ISDIR(sb.st_mode))
 		nftw(path, &ftw_add_list_append, FTW_NOPENFD, FTW_FLAGS);
-	else
+	else if (S_ISREG(sb.st_mode)) {
 		list_append(&add_list, strdup(path), NULL);
+	} else {
+		msg(LOG_INFO, "Skipping non regular file: %s", path);
+	}
 
 	return 0;
 }
