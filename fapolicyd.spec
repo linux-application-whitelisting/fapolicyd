@@ -17,9 +17,6 @@ Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
 
 #ELN %Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/heads/%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
 
-# we bundle uthash for rhel9
-#ELN %Source2: https://github.com/troydhanson/uthash/archive/refs/tags/v2.3.0.tar.gz#/uthash-2.3.0.tar.gz
-
 BuildRequires: gcc
 BuildRequires: kernel-headers
 BuildRequires: autoconf automake make gcc libtool
@@ -27,9 +24,7 @@ BuildRequires: systemd systemd-devel openssl-devel rpm-devel file-devel file
 BuildRequires: libcap-ng-devel libseccomp-devel lmdb-devel
 BuildRequires: python3-devel
 
-#ELN %%if 0%{?fedora} > 0
 BuildRequires: uthash-devel
-#ELN %%endif
 
 %if %{defined asan_build}
 BuildRequires: libasan
@@ -45,7 +40,6 @@ Requires(preun): systemd-units
 Requires(postun): systemd-units
 
 # applied in CI only
-Patch1: fapolicyd-uthash-bundle.patch
 Patch2: fapolicyd-selinux-var-run.patch
 
 %description
@@ -83,12 +77,6 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 %if %{defined eln_build}
 # selinux
 %setup -q -D -T -a 1
-%endif
-
-%if 0%{?fedora} == 0
-# uthash
-#ELN %%setup -q -D -T -a 2
-#ELN %%patch -P1 -p1 -b .uthash
 %endif
 
 
