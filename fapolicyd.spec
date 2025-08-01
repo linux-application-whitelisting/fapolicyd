@@ -107,6 +107,13 @@ interpret=`readelf -e /usr/bin/bash \
 
 sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
 
+%if 0%{?fedora} || 0%{?rhel} > 9
+# Create a sysusers.d config file
+cat >fapolicyd.sysusers.conf <<EOF
+u fapolicyd - 'Application Whitelisting Daemon' %{_localstatedir}/lib/%{name} -
+EOF
+%endif
+
 %build
 ./autogen.sh
 configure_flags="--with-audit --with-rpm --disable-shared"
@@ -155,6 +162,10 @@ install -p -m 644 %{name}-selinux-%{semodule_version}/%{name}.if %{buildroot}%{_
 #cleanup
 find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
 
+%if 0%{?fedora} || 0%{?rhel} > 9
+install -m0644 -D fapolicyd.sysusers.conf %{buildroot}%{_sysusersdir}/fapolicyd.conf
+%endif
+
 %define manage_default_rules   default_changed=0 \
   # check changed fapolicyd.rules \
   if [ -e %{_sysconfdir}/%{name}/%{name}.rules ]; then \
@@ -195,7 +206,9 @@ find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
 make check
 
 %pre
+%if 0%{?rhel} && 0%{?rhel} <= 9
 getent passwd %{name} >/dev/null || useradd -r -M -d %{_localstatedir}/lib/%{name} -s /sbin/nologin -c "Application Whitelisting Daemon" %{name}
+%endif
 if [ $1 -eq 2 ]; then
 # detect changed default rules in case of upgrade
 %manage_default_rules
@@ -266,6 +279,9 @@ fi
 %ghost %attr(660,root,%{name}) /run/%{name}/%{name}.fifo
 %ghost %attr(660,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/lib/%{name}/data.mdb
 %ghost %attr(660,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/lib/%{name}/lock.mdb
+%if 0%{?fedora} || 0%{?rhel} > 9
+%{_sysusersdir}/fapolicyd.conf
+%endif
 
 %if %{defined eln_build}
 %files selinux
