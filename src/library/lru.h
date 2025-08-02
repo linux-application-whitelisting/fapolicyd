@@ -55,11 +55,12 @@ typedef struct Queue
 	Hash *hash;
 	const char *name;	// Used for reporting
 	void (*cleanup)(void *); // Function to call when releasing memory
+	void (*evict_cb)(void *); // Optional callback when evicting item
 } Queue;
 
 void destroy_lru(Queue *queue);
 Queue *init_lru(unsigned int qsize, void (*cleanup)(void *),
-		const char *name) __attribute_malloc__
+		const char *name, void (*evict_cb)(void *)) __attribute_malloc__
 		__attr_dealloc (destroy_lru, 1);
 void lru_evict(Queue *queue, unsigned int key);
 QNode *check_lru_cache(Queue *q, unsigned int key);

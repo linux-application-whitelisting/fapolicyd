@@ -106,6 +106,9 @@ static Queue *create_queue(unsigned int qsize, const char *name)
 
 	queue->name = name;
 
+	queue->cleanup = NULL;
+	queue->evict_cb = NULL;
+
 	return queue;
 }
 
@@ -257,6 +260,9 @@ static void dequeue(Queue *queue)
 	QNode *temp = queue->end;
 	remove_node(queue, queue->end);
 
+	// Let caller know an entry is being evicted
+	if (queue->evict_cb)
+		queue->evict_cb(temp->item);
 	queue->cleanup(temp->item);
 	free(temp->item);
 	free(temp);
@@ -298,11 +304,14 @@ void lru_evict(Queue *queue, unsigned int key)
 	hash->array[key] = NULL;
 	remove_node(queue, queue->front);
 
+	// Let caller know an entry is being evicted
+	if (queue->evict_cb)
+		queue->evict_cb(temp->item);
 	queue->cleanup(temp->item);
 	free(temp->item);
 	free(temp);
 
-        // decrement the total of full slots by 1
+	// decrement the total of full slots by 1
 	queue->count--;
 	queue->evictions++;
 }
@@ -370,13 +379,14 @@ QNode *check_lru_cache(Queue *queue, unsigned int key)
 }
 
 Queue *init_lru(unsigned int qsize, void (*cleanup)(void *),
-		const char *name)
+		const char *name, void (*evict_cb)(void *))
 {
 	Queue *q = create_queue(qsize, name);
 	if (q == NULL)
 		return q;
 
 	q->cleanup = cleanup;
+	q->evict_cb = evict_cb;
 	q->hash = create_hash(qsize);
 
 	return q;

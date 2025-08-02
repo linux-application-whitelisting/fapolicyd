@@ -48,16 +48,46 @@ static Queue *obj_cache = NULL;
 
 atomic_bool needs_flush = false;
 
+/*
+ * subject_evict_warn - warn when a subject is evicted before fully built
+ * @s: subject array to be evicted
+ *
+ * Rapid PID reuse can force a partially collected subject out of the
+ * cache if the cache is too small. When this happens the dynamic linker
+ * (ld.so) rule may deny access because when the evicted process re-appears
+ * in the future, the loader (ld.so) appears as a standalone execution and
+ * matches the ld_so pattern. Warn the administrator so they can consider
+ * raising subj_cache_size to reduce the chances of this happening.
+ */
+static void subject_evict_warn(s_array *s)
+{
+	int pid = -1;
+	if (s && s->info)
+		pid = s->info->pid;
+	if (s && s->info && s->info->state < STATE_FULL)
+		msg(LOG_WARNING,
+		    "pid %d is being evicted from the subject cache before "
+		    "pattern detection completes: increase subj_cache_size", pid);
+}
+
 // Return 0 on success and 1 on error
 int init_event_system(const conf_t *config)
 {
+	/*
+	 * Attach subject_evict_warn so we can see when fast PID turnover
+	 * drops a subject before classification completes.  Without all the
+	 * paths collected ld.so can report spurious access denials.  A larger
+	 * subj_cache_size lengthens the window and avoids this condition.
+	 */
 	subj_cache=init_lru(config->subj_cache_size,
-				(void (*)(void *))subject_clear, "Subject");
+				(void (*)(void *))subject_clear, "Subject",
+				(void (*)(void *))subject_evict_warn);
 	if (!subj_cache)
 		return 1;
 
 	obj_cache = init_lru(config->obj_cache_size,
-				(void (*)(void *))object_clear, "Object");
+				(void (*)(void *))object_clear, "Object",
+				NULL);
 	if (!obj_cache)
 		return 1;
 
@@ -75,7 +105,8 @@ static int flush_cache(void)
 	destroy_lru(obj_cache);
 
 	obj_cache = init_lru(size,
-				(void (*)(void *))object_clear, "Object");
+				(void (*)(void *))object_clear, "Object",
+				NULL);
 	if (!obj_cache)
 		return 1;
 
