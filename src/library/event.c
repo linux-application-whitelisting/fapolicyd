@@ -117,6 +117,9 @@ static int flush_cache(void)
 
 void destroy_event_system(void)
 {
+	/* We're intentionally clearing the caches; disable warnings */
+	if (subj_cache)
+		subj_cache->evict_cb = NULL;
 	destroy_lru(subj_cache);
 	destroy_lru(obj_cache);
 }
