@@ -54,20 +54,21 @@
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
-"--check-config        Check the daemon config for syntax errors\n"
-"--check-path          Check files in $PATH against the trustdb for problems\n"
-"--check-status        Dump the deamon's internal performance statistics\n"
-"--check-trustdb       Check the trustdb against files on disk for problems\n"
-"--check-watch_fs      Check watch_fs against currently mounted file systems\n"
-"-d, --delete-db       Delete the trust database\n"
-"-D, --dump-db         Dump the trust database contents\n"
-"-f, --file cmd path   Manage the file trust database\n"
-"--trust-file file     Use after --file to specify trust file\n"
-"-h, --help            Prints this help message\n"
-"-t, --ftype file-path Prints out the mime type of a file\n"
-"-l, --list            Prints a list of the daemon's rules with numbers\n"
-"-u, --update          Notifies fapolicyd to perform update of database\n"
-"-r, --reload-rules    Notifies fapolicyd to perform reload of rules\n"
+"--check-config            Check the daemon config for syntax errors\n"
+"--check-path              Check files in $PATH against the trustdb for problems\n"
+"--check-status            Dump the deamon's internal performance statistics\n"
+"--check-trustdb           Check the trustdb against files on disk for problems\n"
+"--check-watch_fs          Check watch_fs against currently mounted file systems\n"
+"-d, --delete-db           Delete the trust database\n"
+"-D, --dump-db             Dump the trust database contents\n"
+"-f, --file cmd path       Manage the file trust database\n"
+"--trust-file file         Use after --file to specify trust file\n"
+"-h, --help                Prints this help message\n"
+"-t, --ftype file-path     Prints out the mime type of a file\n"
+"-T, --ftype-ext file-path Prints out the file name along with its mime type\n"
+"-l, --list                Prints a list of the daemon's rules with numbers\n"
+"-u, --update              Notifies fapolicyd to perform update of database\n"
+"-r, --reload-rules        Notifies fapolicyd to perform reload of rules\n"
 ;
 
 static struct option long_opts[] =
@@ -82,6 +83,7 @@ static struct option long_opts[] =
 	{"file",	1, NULL, 'f'},
 	{"help",	0, NULL, 'h'},
 	{"ftype",	1, NULL, 't'},
+	{"ftype-ext",	1, NULL, 'T'},
 	{"list",	0, NULL, 'l'},
 	{"update",	0, NULL, 'u'},
 	{"reload-rules",	0, NULL, 'r'},
@@ -334,7 +336,7 @@ static int do_manage_files(int argc, char * const argv[])
 }
 
 
-static int do_ftype(const char *path)
+static int do_ftype(const char *path, char opt_ftype)
 {
 	int fd;
 	magic_t magic_cookie;
@@ -397,7 +399,10 @@ static int do_ftype(const char *path)
 		str = strchr(buf, ';');
 		if (str)
 			*str = 0;
-		printf("%s\n", buf);
+		if (opt_ftype == 'T')
+                        printf("%s: %s\n", path, buf);
+                else
+                        printf("%s\n", buf);
 	} else
 		printf("unknown\n");
 
@@ -911,7 +916,7 @@ int main(int argc, char * const argv[])
 		return rc;
 	}
 
-	opt = getopt_long(argc, argv, "Ddf:ht:lur",
+	opt = getopt_long(argc, argv, "Ddf:ht:T:lur",
 				 long_opts, &option_index);
 	switch (opt) {
 	case 'd':
@@ -936,9 +941,10 @@ int main(int argc, char * const argv[])
 		rc = 0;
 		break;
 	case 't':
+	case 'T':
 		if (argc > 3)
 			goto args_err;
-		rc = do_ftype(optarg);
+		rc = do_ftype(optarg, opt);
 		break;
 	case 'l':
 		if (argc > 2)
