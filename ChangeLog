@@ -1,4 +1,48 @@
 1.3.5
+- Raise default value for db_max_size
+- Increase buffer size for reading process groups
+- Pid read buffer size is defined using define rather than const
+- Allow override of mounts file
+- Fix leak and problematic memory managament
+- Fix creation of RUN_DIR because it breaks rpm verify
+- Add Microsoft Windows PE MIME magic definition
+- Microsoft Windows PE rules
+- Optimize path allocation
+- Revert change to report interval logic (#325)
+- Ensure fagenrules handles incomplete lines
+- Describe how to handle nss-user-lookup correctly
+- Fix normal pattern handling
+- Improve AVL test
+- Install gawk in test workflows
+- Cleanup and document filesystem code
+- Add AGENTS.md
+- Revert "Fix for rpmdb with SQLite3 backend"
+- Fix rpmdb locking issues by loading via separate process
+- Fix an infinite loop (#345)
+- Use memfd instead of pipe (#346)
+- fapolicyd-cli --check-path  doesn't exit
+- Fix null argv when spawning fapolicyd-rpm-loader (#343)
+- Fix some concurrency issues
+- Update comments in lru_evict header
+- Update fd_fgets code
+- On exit due to poll error, try to stop and save the database
+- Improve update thread synchronization in fapolicyd
+- Modify rpm_load_list for stop checks
+- Fix a TODO that notes NULL should be returned
+- Add some error cleanup in filter_load_file
+- Increase buffer size when reading the PT_INTERP string in gather_elf()
+- Add debug logs for STATE_LD_SO decisions
+- Remove volatile qualifier from atomic types
+- Add MEM_MMAP_FILE storage type for fd_fgets
+- Fix segfault when writing to readonly memory
+- Switch rpm-backend to mmap based list parsing
+- Add memory statistics report
+- To allow sealing, need to create with MFD_ALLOW_SEALING
+- Ease SHA strings allocated on each iteration
+- Skip to add non regular files to trustdb (#333)
+- Fix segfault when socket is inside of the directory (#355)
+- Subject cache eviction warning
+- No eviction warnings on shutdown
 
 1.3.4
 - Fix race on fanotify fd on termination
