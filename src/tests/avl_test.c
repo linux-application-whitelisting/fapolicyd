@@ -16,6 +16,22 @@ static int intcmp_cb(void *a, void *b)
 	return ((avl_int_data_t *)a)->num - ((avl_int_data_t *)b)->num;
 }
 
+/*
+ * destroy_tree - remove all nodes from an AVL tree
+ * @t: tree to empty
+ */
+static void destroy_tree(avl_tree_t *t)
+{
+	avl_t *cur;
+
+	while ((cur = t->root) != NULL) {
+		avl_int_data_t *tmp;
+
+		tmp = (avl_int_data_t *)avl_remove(t, cur);
+		free(tmp);
+	}
+}
+
 int append(int num)
 {
 	avl_int_data_t *data = malloc(sizeof(avl_int_data_t));
@@ -89,6 +105,8 @@ static void test_search(void)
 	res = (avl_int_data_t *)avl_search(&tree, (avl_t *)&tmp);
 	if (res)
 		error(1, 0, "avl_search incorrectly found 99");
+
+	destroy_tree(&tree);
 }
 
 static void test_duplicates(void)
@@ -106,6 +124,8 @@ static void test_duplicates(void)
 	int count = avl_traverse(&tree, count_cb, NULL);
 	if (count != 1)
 		error(1, 0, "duplicate insert created %d nodes (expected 1)", count);
+
+	destroy_tree(&tree);
 }
 
 static void test_traverse_count(void)
@@ -116,6 +136,8 @@ static void test_traverse_count(void)
 	int count = avl_traverse(&tree, count_cb, NULL);
 	if (count != 5)
 		error(1, 0, "avl_traverse returned %d (expected 5)", count);
+
+	destroy_tree(&tree);
 }
 
 static void test_intersection(void)
@@ -130,13 +152,16 @@ static void test_intersection(void)
 	if (!avl_intersection(&tree, &tree2))
 		error(1, 0, "avl_intersection failed to detect common element");
 
+	destroy_tree(&tree2);
 	avl_init(&tree2, intcmp_cb);
 	if (avl_intersection(&tree, &tree2))
 		error(1, 0, "avl_intersection false positive on empty second tree");
 
-	avl_init(&tree, intcmp_cb);
+	destroy_tree(&tree);
 	if (avl_intersection(&tree, &tree2))
 		error(1, 0, "avl_intersection false positive on two empty trees");
+
+	destroy_tree(&tree2);
 }
 
 static void test_iterator_null(void)
@@ -148,6 +173,8 @@ static void test_iterator_null(void)
 
 	if (avl_next(NULL) != NULL)
 		error(1, 0, "avl_next(NULL) should return NULL");
+
+	destroy_tree(&tree);
 }
 
 /* https://stackoverflow.com/questions/3955680/how-to-check-if-my-avl-tree-implementation-is-correct */
@@ -238,6 +265,9 @@ int main(void)
 	test_traverse_count();
 	test_intersection();
 	test_iterator_null();
+
+	destroy_tree(&tree);
+	destroy_tree(&tree2);
 
 	return 0;
 }
