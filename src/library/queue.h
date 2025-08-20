@@ -33,14 +33,12 @@
 
 struct queue
 {
-	/* NULL if !Q_IN_MEMORY.  [i] contains a memory copy of the queue entry
- 	 * "i", if known - it may be NULL even if entry exists. */
-	void **memory;
+	/* Ring buffer of fanotify events */
+	struct fanotify_event_metadata *events;
 	size_t num_entries;
-	size_t entry_size;
 	size_t queue_head;
+	size_t queue_tail;
 	atomic_size_t queue_length;
-	unsigned char buffer[]; /* Used only locally within q_peek() */
 };
 
 /* Close Q. */

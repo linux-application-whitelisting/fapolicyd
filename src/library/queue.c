@@ -37,6 +37,20 @@
 #include "queue.h"
 #include "message.h"
 
+/*
+ * Ring buffer queue
+ *
+ * The queue is a fixed-size ring of struct fanotify_event_metadata.
+ * q_open() allocates the array and sets head/tail counters.
+ * q_append() copies a new event into the tail.
+ * q_peek() fetches the head without removing it.
+ * q_drop_head() advances the head after an event is processed.
+ * All queue operations are serialized by decision_lock in notify.c;
+ * queue_length is read without the lock by the deadman thread and is
+ * therefore atomic. Using a ring buffer avoids per-event malloc/free
+ * and keeps memory usage predictable. max_depth records the highest
+ * queue_length observed for diagnostics.
+ */
 
 /* Queue implementation */
 static unsigned int max_depth;
@@ -46,35 +60,26 @@ struct queue *q_open(size_t num_entries)
 {
 	struct queue *q;
 	int saved_errno;
-	size_t sz, entry_size = sizeof(struct fanotify_event_metadata);
 
-	if (num_entries == 0 || num_entries > UINT32_MAX
-	    || entry_size < 1 /* for trailing NUL */
-	    /* to allocate "struct queue" including its buffer*/
-	    || entry_size > UINT32_MAX - sizeof(struct queue)) {
-		errno = EINVAL;
-		return NULL;
-	}
-	if (num_entries > SIZE_MAX / sizeof(*q->memory)) {
+	if (num_entries == 0 || num_entries > UINT32_MAX ||
+	    num_entries > SIZE_MAX / sizeof(struct fanotify_event_metadata)) {
 		errno = EINVAL;
 		return NULL;
 	}
 
-	q = malloc(sizeof(*q) + entry_size);
+	q = malloc(sizeof(*q));
 	if (q == NULL)
 		return NULL;
-	q->memory = NULL;
+
+	q->events = calloc(num_entries, sizeof(struct fanotify_event_metadata));
+	if (q->events == NULL)
+		goto err;
+
 	q->num_entries = num_entries;
-	q->entry_size = entry_size;
 	q->queue_head = 0;
+	q->queue_tail = 0;
 	q->queue_length = 0;
 	max_depth = 0;
-
-	sz = num_entries * sizeof(*q->memory);
-	q->memory = malloc(sz);
-	if (q->memory == NULL)
-		goto err;
-	memset(q->memory, 0, sz);
 
 	return q;
 
@@ -87,13 +92,7 @@ err:
 
 void q_close(struct queue *q)
 {
-	if (q->memory != NULL) {
-		size_t i;
-
-		for (i = 0; i < q->num_entries; i++)
-			free(q->memory[i]);
-		free(q->memory);
-	}
+	free(q->events);
 	msg(LOG_DEBUG, "Inter-thread max queue depth %u", max_depth);
 	free(q);
 }
@@ -106,29 +105,15 @@ void q_report(FILE *f)
 /* add DATA to Q */
 int q_append(struct queue *q, const struct fanotify_event_metadata *data)
 {
-	size_t entry_index;
-	unsigned char *copy;
-
 	if (q->queue_length == q->num_entries) {
 		errno = ENOSPC;
 		return -1;
 	}
 
-	entry_index = (q->queue_head + q->queue_length) % q->num_entries;
-	if (q->memory != NULL) {
-		if (q->memory[entry_index] != NULL) {
-			errno = EIO; /* This is _really_ unexpected. */
-			return -1;
-		}
-		copy = malloc(sizeof(struct fanotify_event_metadata));
-		if (copy == NULL)
-			return -1;
-		memcpy(copy, data, sizeof(struct fanotify_event_metadata));
-	} else
-		copy = NULL;
-
-	if (copy != NULL)
-		q->memory[entry_index] = copy;
+	q->events[q->queue_tail] = *data;
+	q->queue_tail++;
+	if (q->queue_tail == q->num_entries)
+		q->queue_tail = 0;
 
 	q->queue_length++;
 	if (q->queue_length > max_depth)
@@ -142,13 +127,8 @@ int q_peek(const struct queue *q, struct fanotify_event_metadata *data)
 	if (q->queue_length == 0)
 		return 0;
 
-	if (q->memory != NULL && q->memory[q->queue_head] != NULL) {
-		struct fanotify_event_metadata *d = q->memory[q->queue_head];
-		memcpy(data, d, sizeof(struct fanotify_event_metadata));
-
-		return 1;
-	}
-	return 0;
+	*data = q->events[q->queue_head];
+	return 1;
 }
 
 /* drop head of Q */
@@ -159,14 +139,10 @@ int q_drop_head(struct queue *q)
 		return -1;
 	}
 
-	if (q->memory != NULL) {
-		free(q->memory[q->queue_head]);
-		q->memory[q->queue_head] = NULL;
-	}
-
 	q->queue_head++;
 	if (q->queue_head == q->num_entries)
 		q->queue_head = 0;
+
 	q->queue_length--;
 	return 0;
 }
