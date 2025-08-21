@@ -135,6 +135,5 @@ chown root:fapolicyd /etc/fapolicyd/
 chown root:fapolicyd /etc/fapolicyd/rules.d/
 chown root:fapolicyd /etc/fapolicyd/trust.d/
 chown root:fapolicyd /var/lib/fapolicyd/
-chown root:fapolicyd /usr/share/fapolicyd/
 ```
 
