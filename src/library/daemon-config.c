@@ -132,7 +132,7 @@ static void clear_daemon_config(conf_t *config)
 	config->do_stat_report = 1;
 	config->detailed_report = 1;
 	config->db_max_size = 100;
-	config->subj_cache_size = 1549;
+	config->subj_cache_size = 4099;
 	config->obj_cache_size = 8191;
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
 #ifdef USE_RPM

@@ -298,8 +298,8 @@ but could be better. This would suggest that for the workload on that system,
 the cache could be a little bigger. If the number used for the cache size is
 a prime number, you will get less cache churn due to collisions than if it
 had a common denominator. Some primes you might consider for cache size are:
-1021, 1549, 2039, 4099, 6143, 8191, 10243, 12281, 16381, 20483, 24571,
-28669, 32687, 40961, 49157, 57347, 65353, etc.
+2039, 4099, 6143, 8191, 10243, 12281, 16381, 20483, 24571, 28669, 32687,
+40961, 49157, 57347, 65353, etc.
 
 This report can be scheduled to be written periodically by setting the
 configuration option `report_interval`. This option is set to `0` by default

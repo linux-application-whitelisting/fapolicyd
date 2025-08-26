@@ -40,7 +40,7 @@ This option controls how many megabytes to allow the trust database to grow to. 
 
 .TP
 .B subj_cache_size
-This option controls how many entries the subject cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. There are only 64k processes allowed at any time, so this would be the upper limit. The default value is 1549.
+This option controls how many entries the subject cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. There are only 64k processes allowed at any time, so this would be the upper limit. The default value is 4099.
 
 .TP
 .B obj_cache_size
