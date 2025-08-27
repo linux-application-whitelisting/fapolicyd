@@ -244,16 +244,20 @@ static int rpm_load_list(const conf_t *conf)
 	char *custom_env[] = { "FAPO_SOCK_FD=3", NULL };
 
 	pid_t pid = -1;
-	int status = posix_spawn(&pid, "/usr/sbin/fapolicyd-rpm-loader",
-							 &actions, NULL, argv, custom_env);
+	int status = posix_spawn(&pid, "/usr/bin/fapolicyd-rpm-loader",
+					 &actions, NULL, argv, custom_env);
 	close(sv[1]);  // Parent doesn't write
 
 	if (status == 0) {
-		msg(LOG_DEBUG, "fapolicyd-rpm-loader spawned with pid: %d", pid);
+		msg(LOG_DEBUG, "fapolicyd-rpm-loader spawned with pid: %d",pid);
 
 		struct msghdr  _msg  = {0};
-		struct iovec   iov  = { .iov_base = (char[1]){0}, .iov_len = 1 };
-		union { struct cmsghdr align; char buf[CMSG_SPACE(sizeof(int))]; } cmsgbuf;
+		struct iovec   iov = { .iov_base = (char[1]){0}, .iov_len = 1 };
+		union {
+			struct cmsghdr align;
+			char buf[CMSG_SPACE(sizeof(int))];
+		} cmsgbuf;
+
 		_msg.msg_iov    = &iov;
 		_msg.msg_iovlen = 1;
 		_msg.msg_control = cmsgbuf.buf;

@@ -72,7 +72,7 @@ libfapolicyd_la_SOURCES += \
 	library/filter.c \
 	library/filter.h
 
-sbin_PROGRAMS += fapolicyd-rpm-loader
+bin_PROGRAMS = fapolicyd-rpm-loader
 
 fapolicyd_rpm_loader_SOURCES = \
 	handler/fapolicyd-rpm-loader.c
