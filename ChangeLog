@@ -1,4 +1,5 @@
 1.3.6
+- Increase the default subject cache size
 
 1.3.5
 - Raise default value for db_max_size
