@@ -86,7 +86,7 @@ endif
 if WITH_DEB
 libfapolicyd_la_SOURCES += library/deb-backend.c
 fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
-fapolicyd_LDFLAGS += -ldpkg
+fapolicyd_LDFLAGS += -ldpkg -lmd
 endif
 
 if NEED_MD5
