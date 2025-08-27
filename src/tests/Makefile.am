@@ -31,7 +31,7 @@ gid_proc_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 if WITH_DEB
 check_PROGRAMS += deb_test
 deb_test_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE -DLIBDPKG_VOLATILE_API
-deb_test_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now,-ldpkg
+deb_test_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now,-ldpkg -lmd
 
 deb_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 deb_test_SOURCES = \
