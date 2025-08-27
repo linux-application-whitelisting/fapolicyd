@@ -9,7 +9,7 @@
 
 Summary: Application Whitelisting Daemon
 Name: fapolicyd
-Version: 1.3.5
+Version: 1.3.6
 Release: 1%{?dist}
 License: GPL-3.0-or-later
 URL: http://people.redhat.com/sgrubb/fapolicyd
@@ -304,5 +304,5 @@ fi
 %endif
 
 %changelog
-* Mon Oct 28 2024 Steve Grubb <sgrubb@redhat.com> 1.3.5-1
+* Wed Aug 27 2025 Steve Grubb <sgrubb@redhat.com> 1.3.6-1
 - New release

@@ -1,3 +1,5 @@
+1.3.6
+
 1.3.5
 - Raise default value for db_max_size
 - Increase buffer size for reading process groups
