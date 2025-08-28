@@ -1267,6 +1267,9 @@ static void do_reload_db(conf_t* config)
 	if ((rc = update_database(config))) {
 		msg(LOG_ERR,
 			"Cannot update trust database!");
+		if (stop)
+			goto out;
+
 		close(ffd[0].fd);
 		backend_close();
 		unlink_fifo();
@@ -1275,6 +1278,7 @@ static void do_reload_db(conf_t* config)
 
 	msg(LOG_INFO, "Updated");
 
+out:
 	// Conserve memory
 	backend_close();
 }
