@@ -61,7 +61,7 @@ typedef struct _stack_item
 int filter_init(void);
 void filter_destroy(void);
 int filter_check(const char *path);
-int filter_load_file(void);
+int filter_load_file(const char *path);
 
 
 #endif // FILTER_H_

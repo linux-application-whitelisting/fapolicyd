@@ -114,7 +114,8 @@ static void filter_destroy_obj(filter_t *_filter)
 }
 
 // create struct and push it to the top of stack
-static void stack_push_vars(stack_t *_stack, int _level, int _offset, filter_t *_filter)
+static void stack_push_vars(stack_t *_stack, int _level, int _offset,
+			    filter_t *_filter)
 {
 	if (_stack == NULL)
 		return;
@@ -222,7 +223,8 @@ int filter_check(const char *_path)
 				path_lim = path_old_lim = path+offset;
 
 				// there can be wildcard in the dir name as well
-				// we need to count how many chars can be eaten by wildcard
+				// we need to count how many chars can be eaten
+				// by wildcard
 				while(1) {
 					filter_lim = strchr(filter_lim, '/');
 					path_lim = strchr(path_lim, '/');
@@ -249,7 +251,7 @@ int filter_check(const char *_path)
 				}
 
 				// check fnmatch
-				matched = !fnmatch(filter->path, path+offset, 0);
+				matched = !fnmatch(filter->path, path+offset,0);
 
 				// and set back
 				if (count && *(filter_old_lim+1) == '\0')
@@ -260,7 +262,8 @@ int filter_check(const char *_path)
 				}
 			} else {
 				// match normal path or just specific part of it
-				matched = !strncmp(path+offset, filter->path, filter->len);
+				matched = !strncmp(path+offset, filter->path,
+						   filter->len);
 				if (matched)
 					offset += filter->len;
 			}
@@ -269,17 +272,20 @@ int filter_check(const char *_path)
 				level++;
 				filter->matched = 1;
 
-				// if matched we need ot push descendants to the stack
+				// if matched we need ot push descendants
+				// to the stack
 				list_item_t *item = list_get_first(&filter->list);
 
-				// if there are no descendants and it is a wildcard then it's a match
+				// if there are no descendants and it is
+				// a wildcard then it's a match
 				if (item == NULL && is_wildcard) {
 					// if '+' ret 1 and if '-' ret 0
 					res = filter->type == ADD ? 1 : 0;
 					goto end;
 				}
 
-				// no descendants, and already compared whole path string so its a match
+				// no descendants, and already compared
+				// whole path string so its a match
 				if (item == NULL && path_len == offset) {
 					// if '+' ret 1 and if '-' ret 0
 					res = filter->type == ADD ? 1 : 0;
@@ -289,7 +295,8 @@ int filter_check(const char *_path)
 				// push descendants to the stack
 				for (; item != NULL ; item = item->next) {
 					filter_t *next_filter = (filter_t*)item->data;
-					stack_push_vars(&stack, level, offset, next_filter);
+					stack_push_vars(&stack, level,
+							offset, next_filter);
 				}
 
 			}
@@ -304,8 +311,10 @@ int filter_check(const char *_path)
 				offset = stack_item->offset;
 				level = stack_item->level;
 
-				// assuimg that nothing has matched on the upper level so it's a directory match
-				if (filter->matched && filter->path[filter->len-1] == '/') {
+				// assuimg that nothing has matched on the
+				// upper level so it's a directory match
+				if (filter->matched &&
+				    filter->path[filter->len-1] == '/') {
 					res = filter->type == ADD ? 1 : 0;
 					goto end;
 				}
@@ -333,21 +342,35 @@ end:
 }
 
 // load filter configuration file and fill the filter structure
-int filter_load_file(void)
+int filter_load_file(const char *path)
 {
 	int res = 0;
-	FILE *stream = fopen(OLD_FILTER_FILE, "r");
+	FILE *stream;
 
-	if (stream == NULL) {
+	if (path == NULL) {
+		stream = fopen(OLD_FILTER_FILE, "r");
 
-		stream = fopen(FILTER_FILE, "r");
 		if (stream == NULL) {
-			msg(LOG_ERR, "Cannot open filter file %s", FILTER_FILE);
-			return 1;
+
+			stream = fopen(FILTER_FILE, "r");
+			if (stream == NULL) {
+				msg(LOG_ERR,
+				    "Cannot open filter file %s", FILTER_FILE);
+				return 1;
+			}
+		} else {
+			msg(LOG_INFO,
+			    "Using old filter file: %s, use the new one: %s",
+			    OLD_FILTER_FILE, FILTER_FILE);
+			msg(LOG_INFO, "Consider 'mv %s %s'",
+			    OLD_FILTER_FILE, FILTER_FILE);
 		}
 	} else {
-		msg(LOG_INFO, "Using old filter file: %s, use the new one: %s", OLD_FILTER_FILE, FILTER_FILE);
-		msg(LOG_INFO, "Consider 'mv %s %s'", OLD_FILTER_FILE, FILTER_FILE);
+		stream = fopen(path, "r");
+		if (stream == NULL) {
+			msg(LOG_ERR, "Cannot open filter file %s", path);
+			return 1;
+		}
 	}
 
 	ssize_t nread;
@@ -414,7 +437,9 @@ int filter_load_file(void)
 
 		// if something bad return error
 		if (type == BAD) {
-			msg(LOG_ERR, "filter_load_file: cannot parse line number %ld, \"%s\"", line_number, line);
+			msg(LOG_ERR,
+		       "filter_load_file: cannot parse line number %ld, \"%s\"",
+				line_number, line);
 			free(line);
 			line = NULL;
 			goto bad;
@@ -500,7 +525,9 @@ good:
 	stack_pop_all_vars(&stack);
 	stack_destroy(&stack);
 	if (global_filter->list.count == 0) {
-		msg(LOG_ERR, "filter_load_file: no valid filter provided in %s", FILTER_FILE);
+		const char *conf_file = path ? path : FILTER_FILE;
+		msg(LOG_ERR, "filter_load_file: no valid filter provided in %s",
+		    conf_file);
 	}
 	return res;
 }

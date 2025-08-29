@@ -487,7 +487,7 @@ int do_rpm_init_backend(void)
 	if (filter_init())
 		return 1;
 
-	if (filter_load_file()) {
+	if (filter_load_file(NULL)) {
 		filter_destroy();
 		return 1;
 	}
