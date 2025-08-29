@@ -391,11 +391,6 @@ int do_rpm_load_list(const conf_t *conf)
 
 			// Get specific file information
 			const char *file_name = get_file_name_rpm();
-			rpm_loff_t sz = get_file_size_rpm();
-			int len;
-			const char *sha = get_sha256_rpm(&len);
-			char *data;
-
 			if (file_name == NULL)
 				continue;
 
@@ -404,6 +399,11 @@ int do_rpm_load_list(const conf_t *conf)
 				free((void *)file_name);
 				continue;
 			}
+
+			rpm_loff_t sz = get_file_size_rpm();
+			int len;
+			const char *sha = get_sha256_rpm(&len);
+			char *data;
 
 			// Note that some rpm builders have moved to
 			// SHA512. Originally this was to weed out SHA1.
