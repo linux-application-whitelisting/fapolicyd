@@ -1,6 +1,7 @@
 1.3.6
 - Increase the default subject cache size
 - Move fapolicyd-rpm-loader to bin directory
+- Suppress the subject cache eviction for scripts run by interpreters
 
 1.3.5
 - Raise default value for db_max_size
