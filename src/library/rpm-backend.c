@@ -335,7 +335,8 @@ static int rpm_load_list(const conf_t *conf)
 			}
 		} while(!fd_fgets_eof_r(st));
 
-		fd_fgets_destroy(st);
+		fd_fgets_destroy(st); // calls munmap
+		close(memfd);
 		waitpid(pid, NULL, 0);
 	} else {
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
