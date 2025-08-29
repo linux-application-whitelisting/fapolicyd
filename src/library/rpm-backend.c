@@ -225,7 +225,7 @@ struct _hash_record {
 static int rpm_load_list(const conf_t *conf)
 {
 
-// before the spawn
+	// before the spawn
 	int sv[2];
 	if (socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv) < 0) {
 		msg(LOG_ERR, "socketpair failed");
@@ -296,13 +296,12 @@ static int rpm_load_list(const conf_t *conf)
 			if (res == -1) {
 				msg(LOG_ERR, "fd_fgets_r on memfd");
 				break;
-			}
-			else if (res > 0) {
-				char* end  = strchr(buff, '\n');
+			} else if (res > 0) {
+				char *end  = strchr(buff, '\n');
 
 				if (end == NULL) {
 					msg(LOG_ERR, "Too long line?");
-						continue;
+					continue;
 				}
 
 				int size = end - buff;
@@ -311,7 +310,7 @@ static int rpm_load_list(const conf_t *conf)
 				// its better to parse it from the end because
 				// there can be space in file name
 				int delims = 0;
-				char * delim = NULL;
+				char *delim = NULL;
 				for (int i = size-1 ; i >= 0 ; i--) {
 					if (isspace(buff[i])) {
 						delim = &buff[i];
