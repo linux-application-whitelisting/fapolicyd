@@ -61,6 +61,10 @@ typedef enum {	STATE_COLLECTING=0,	// initial state - execute
 #define HAS_RWE_LOAD	0x00800
 #define HAS_PHDR	0x01000
 #define HAS_EXE_STACK	0x02000
+// These next two are used to suppress eviction warnings when the
+// state is STATE_REOPEN because that is when an interpreter shows up
+#define HAS_SHEBANG	0x10000 // script with a leading shebang
+#define TEXT_SCRIPT	0x20000 // likely to be a script
 
 // Information we will cache to identify the same executable
 struct proc_info

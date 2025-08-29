@@ -64,10 +64,21 @@ static void subject_evict_warn(s_array *s)
 	int pid = -1;
 	if (s && s->info)
 		pid = s->info->pid;
-	if (s && s->info && s->info->state < STATE_FULL)
-		msg(LOG_WARNING,
-		    "pid %d is being evicted from the subject cache before "
-		    "pattern detection completes: increase subj_cache_size", pid);
+	if (s && s->info && s->info->state < STATE_FULL) {
+		/*
+		 * Normal interpreter re-exec replaces the process image
+		 * before all paths are gathered. If the re-exec ends in
+		 * a script (with or without #!) we know it is benign.
+		 * Suppress the suggestion to grow the cache.
+		 */
+		if (!((s->info->state == STATE_REOPEN) &&
+		      (s->info->elf_info & (HAS_SHEBANG|TEXT_SCRIPT))) )
+			msg(LOG_WARNING,
+			    "pid %d in state %d (%s) is being evicted from the "
+			    "subject cache before pattern detection completes: "
+			    "increase subj_cache_size",
+			    pid, s->info->state, s->info->path1);
+	}
 }
 
 // Return 0 on success and 1 on error

@@ -372,7 +372,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	// We need to do it ourselves for consistency.
 	if (i->mode & S_IFREG) {
 		uint32_t elf = gather_elf(fd, i->size);
-		if (elf) {
+		if (elf & IS_ELF) {
 			ptr = classify_elf_info(elf, path);
 			if (ptr == NULL)
 				return (char *)ptr;
@@ -551,6 +551,20 @@ static int check_interpreter(const char *interp)
 	return 1;
 }
 
+static int looks_like_text_script(int fd)
+{
+	unsigned char hdr[512];
+	ssize_t n = pread(fd, hdr, sizeof(hdr), 0);
+	if (n < 4)
+		return 0;                   /* too small */
+
+	/* if it contains a NUL or control characters, call it binary */
+	for (ssize_t i = 0; i < n; ++i)
+		if (hdr[i] < 0x09)
+			return 0;
+
+	return 1; /* looks like plain text */
+}
 
 // size is the file size from fstat done when event was received
 uint32_t gather_elf(int fd, off_t size)
@@ -560,8 +574,19 @@ uint32_t gather_elf(int fd, off_t size)
 	if (read_preliminary_header(fd))
 		goto rewind_out;
 
-	if (strncmp((char *)e_ident, ELFMAG, 4))
+	/* Detect scripts via shebang before ELF check */
+	if (e_ident[0] == '#' && e_ident[1] == '!') {
+		info |= HAS_SHEBANG;
 		goto rewind_out;
+	}
+
+	/* Check ELF magic */
+	if (strncmp((char *)e_ident, ELFMAG, 4)) {
+		// Not ELF - see if it might be text script
+		if (looks_like_text_script(fd))
+			info |= TEXT_SCRIPT;
+		goto rewind_out;
+	}
 
 	info |= IS_ELF;
 	if (e_ident[EI_CLASS] == ELFCLASS32) {

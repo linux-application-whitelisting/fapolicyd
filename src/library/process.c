@@ -216,7 +216,7 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 		// We can identify it much faster than libmagic.
 		if (fstat(fd, &sb) == 0) {
 			uint32_t elf = gather_elf(fd, sb.st_size);
-			if (elf) {
+			if (elf & IS_ELF) {
 				ptr = classify_elf_info(elf, path);
 				close(fd);
 				if (ptr == NULL)
