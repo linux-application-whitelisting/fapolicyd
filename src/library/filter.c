@@ -200,6 +200,16 @@ static void stack_pop_reset(stack_t *_stack, int *sp)
 {
 	if (_stack == NULL || sp == NULL || *sp <= 0)
 		return;
+	/*
+	 * Reset the processed flag for the filter referenced by the top
+	 * stack item before removing it.  filter_check() marks nodes as
+	 * processed during traversal; without clearing this flag here,
+	 * filter_destroy() would treat those nodes as already handled and
+	 * leak their descendants.
+	 */
+	stack_item_t *item = (stack_item_t *)stack_top(_stack);
+	if (item && item->filter)
+		item->filter->processed = 0;
 
 	stack_pop(_stack);
 	(*sp)--;
