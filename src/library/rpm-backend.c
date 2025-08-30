@@ -128,23 +128,9 @@ static int get_next_file_rpm(void)
 	return 1;
 }
 
-// Like strdup, but sets a minimum size for safety
-static inline char *strmdup(const char *s, size_t min) __attr_dealloc_free;
-static inline char *strmdup(const char *s, size_t min)
-{
-	char *new;
-	size_t len = strlen(s) + 1;
-
-	new = malloc(len < min ? min : len);
-	if (new == NULL)
-		return NULL;
-
-	return (char *)memcpy(new, s, len);
-}
-
 static const char *get_file_name_rpm(void)
-{
-	return strmdup(rpmfiFN(fi), 7);
+{	// Copy is made because the linked list takes custody of it
+	return strdup(rpmfiFN(fi));
 }
 
 static rpm_loff_t get_file_size_rpm(void)
