@@ -39,16 +39,19 @@
  *
  * Using a stack keeps memory usage predictable and avoids deep recursion when
  * filters contain many nested paths.
+ *
+ * Assumption: real-world filter nesting is shallow (Fedora default max = 4).
+ * MAX_FILTER_DEPTH is set to 64 for safety; raise it if installers add deeper
+ * trees.
  */
 
-#include "filter.h"
-
+#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include <fnmatch.h>
 
-#include "llist.h"
+#include "filter.h"
 #include "stack.h"
 #include "message.h"
 #include "string-util.h"
@@ -147,80 +150,80 @@ static void filter_destroy_obj(filter_t *_filter)
 
 /*
  * stack_push_vars - create context item & push it to the top of traversal stack
+ * Returns 0 on success and -1 if MAX_FILTER_DEPTH would be exceeded.
  */
-static void stack_push_vars(stack_t *_stack, int _level, int _offset,
-			    filter_t *_filter)
+static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
+			   int _level, int _offset, filter_t *_filter)
 {
-	if (_stack == NULL)
-		return;
+	if (_stack == NULL || buf == NULL || sp == NULL)
+		return -1;
+	if (*sp >= MAX_FILTER_DEPTH)
+		return -1; /* TODO: trie rewrite to remove depth limit */
 
-	stack_item_t *item = malloc(sizeof(stack_item_t));
-	if (item == NULL)
-		return;
-
+	stack_item_t *item = &buf[(*sp)++];
 	item->level = _level;
 	item->offset = _offset;
 	item->filter = _filter;
 
 	stack_push(_stack, item);
+	return 0;
 }
 
 /*
- * stack_pop_vars - pop context item from traversal stack and free it
+ * stack_pop_vars - pop context item from traversal stack
  */
-static void stack_pop_vars(stack_t *_stack)
+static void stack_pop_vars(stack_t *_stack, int *sp)
 {
-	if (_stack == NULL)
+	if (_stack == NULL || sp == NULL || *sp <= 0)
 		return;
 
-	stack_item_t * item = (stack_item_t*)stack_top(_stack);
-	free(item);
 	stack_pop(_stack);
+	(*sp)--;
 }
 
 /*
- * stack_pop_all_vars - pop and free all context items
+ * stack_pop_all_vars - pop all context items
  */
-static void stack_pop_all_vars(stack_t *_stack)
+static void stack_pop_all_vars(stack_t *_stack, int *sp)
 {
-	if (_stack == NULL)
+	if (_stack == NULL || sp == NULL)
 		return;
 
 	while (!stack_is_empty(_stack))
-		stack_pop_vars(_stack);
+		stack_pop_vars(_stack, sp);
 }
 
 /*
- * stack_pop_reset - pop top item after resetting processed flag
+ * stack_pop_reset - pop top item
  */
-static void stack_pop_reset(stack_t *_stack)
+static void stack_pop_reset(stack_t *_stack, int *sp)
 {
-	if (_stack == NULL)
+	if (_stack == NULL || sp == NULL || *sp <= 0)
 		return;
 
-	stack_item_t *stack_item = (stack_item_t*)stack_top(_stack);
-	free(stack_item);
 	stack_pop(_stack);
+	(*sp)--;
 }
 
 /*
  * stack_pop_all_reset - reset and pop all stack items
  */
-static void stack_pop_all_reset(stack_t *_stack)
+static void stack_pop_all_reset(stack_t *_stack, int *sp)
 {
-	if (_stack == NULL)
+	if (_stack == NULL || sp == NULL)
 		return;
 
 	while (!stack_is_empty(_stack))
-		stack_pop_reset(_stack);
+		stack_pop_reset(_stack, sp);
 }
 
 /*
  * filter_check - compare path against loaded filters
  * @_path: full path of file to test
- * Returns 1 if file should be kept and 0 if it should be dropped.
+ * Returns FILTER_ALLOW if file should be kept, FILTER_DENY if it should be
+ * dropped, or FILTER_ERR_DEPTH if MAX_FILTER_DEPTH is exceeded.
  */
-int filter_check(const char *_path)
+filter_rc_t filter_check(const char *_path)
 {
 	if (_path == NULL) {
 		msg(LOG_ERR, "filter_check: path is NULL, something is wrong!");
@@ -231,16 +234,26 @@ int filter_check(const char *_path)
 	size_t path_len = strlen(_path);
 	char *path = alloca(path_len + 1);
 	strcpy(path, _path);
+	if (strstr(path, "/../"))
+		return FILTER_DENY;
 	/* offset tracks how much of the path has already matched */
 	size_t offset = 0;
 	/* Create a stack to store the filters that need to be checked */
 	stack_t stack;
 	stack_init(&stack);
+	stack_item_t stack_buf[MAX_FILTER_DEPTH];
+	int sp = 0;
 
-	int res = 0;
+	filter_rc_t res = FILTER_DENY;
 	int level = 0;
 
-	stack_push_vars(&stack, level, offset, filter);
+	if (stack_push_vars(&stack, stack_buf, &sp, level, offset, filter)) {
+		msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
+		    MAX_FILTER_DEPTH);
+		stack_destroy(&stack);
+		return FILTER_ERR_DEPTH; /* TODO: trie rewrite removes limit */
+	}
 
 	while(!stack_is_empty(&stack)) {
 		int matched = 0;
@@ -253,7 +266,15 @@ int filter_check(const char *_path)
 			// push all the descendants to the stack
 			for (; item != NULL ; item = item->next) {
 				filter_t *next_filter = (filter_t*)item->data;
-				stack_push_vars(&stack, level+1, offset, next_filter);
+				if (stack_push_vars(&stack, stack_buf, &sp,
+						    level+1, offset,
+						    next_filter)) {
+					msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
+					    MAX_FILTER_DEPTH);
+					res = FILTER_ERR_DEPTH;
+					goto end;
+				}
 			}
 
 		// usual branch, start with processing
@@ -326,7 +347,8 @@ int filter_check(const char *_path)
 				// a wildcard then it's a match
 				if (item == NULL && is_wildcard) {
 					// if '+' ret 1 and if '-' ret 0
-					res = filter->type == ADD ? 1 : 0;
+					res = filter->type == ADD ?
+						FILTER_ALLOW : FILTER_DENY;
 					goto end;
 				}
 
@@ -334,15 +356,23 @@ int filter_check(const char *_path)
 				// whole path string so its a match
 				if (item == NULL && path_len == offset) {
 					// if '+' ret 1 and if '-' ret 0
-					res = filter->type == ADD ? 1 : 0;
+					res = filter->type == ADD ?
+						FILTER_ALLOW : FILTER_DENY;
 					goto end;
 				}
 
 				// push descendants to the stack
 				for (; item != NULL ; item = item->next) {
 					filter_t *next_filter = (filter_t*)item->data;
-					stack_push_vars(&stack, level,
-							offset, next_filter);
+					if (stack_push_vars(&stack, stack_buf,
+							    &sp, level, offset,
+							    next_filter)) {
+						msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
+						    MAX_FILTER_DEPTH);
+						res = FILTER_ERR_DEPTH;
+						goto end;
+					}
 				}
 
 			}
@@ -361,12 +391,13 @@ int filter_check(const char *_path)
 				// upper level so it's a directory match
 				if (filter->matched &&
 				    filter->path[filter->len-1] == '/') {
-					res = filter->type == ADD ? 1 : 0;
+					res = filter->type == ADD ?
+						FILTER_ALLOW : FILTER_DENY;
 					goto end;
 				}
 
 				// reset processed flag
-				stack_pop_reset(&stack);
+				stack_pop_reset(&stack, &sp);
 			}
 
 			stack_item = (stack_item_t*)stack_top(&stack);
@@ -382,7 +413,7 @@ int filter_check(const char *_path)
 
 end:
 	// Clean up the stack
-	stack_pop_all_reset(&stack);
+	stack_pop_all_reset(&stack, &sp);
 	stack_destroy(&stack);
 	return res;
 }
@@ -431,8 +462,17 @@ int filter_load_file(const char *path)
 
 	stack_t stack;
 	stack_init(&stack);
+	stack_item_t stack_buf[MAX_FILTER_DEPTH];
+	int sp = 0;
 	/* root of the tree is already allocated */
-	stack_push_vars(&stack, last_level, 0, global_filter);
+	if (stack_push_vars(&stack, stack_buf, &sp, last_level, 0,
+			    global_filter)) {
+					msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
+		    MAX_FILTER_DEPTH);
+		fclose(stream);
+		return 1; /* depth too deep */
+	}
 
 	while ((nread = getline(&line, &len, stream)) != -1) {
 		line_number++;
@@ -519,7 +559,7 @@ int filter_load_file(const char *path)
 
 			// since we are at the same level as filter before
 			// we need to pop the previous filter from the top
-			stack_pop_vars(&stack);
+			stack_pop_vars(&stack, &sp);
 
 			// pushing filter to the list of top's children list
 			list_prepend(
@@ -527,7 +567,16 @@ int filter_load_file(const char *path)
 			    NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
-			stack_push_vars(&stack, level, 0, filter);
+			if (stack_push_vars(&stack, stack_buf, &sp, level, 0,
+					    filter)) {
+				msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
+					MAX_FILTER_DEPTH);
+				filter_destroy_obj(filter);
+				free(line);
+				line = NULL;
+				goto bad;
+			}
 
 		} else if (level == last_level + 1) {
 			// this filter has higher level tha privious one
@@ -539,14 +588,23 @@ int filter_load_file(const char *path)
 			    NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
-			stack_push_vars(&stack, level, 0, filter);
+			if (stack_push_vars(&stack, stack_buf, &sp, level, 0,
+					    filter)) {
+						msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
+					MAX_FILTER_DEPTH);
+				filter_destroy_obj(filter);
+				free(line);
+				line = NULL;
+				goto bad;
+			}
 
 		} else if (level < last_level){
 			// level of indentation dropped, we need to pop
 			// +1 is meant for getting rid of the current
 			// level so we can push again
 			for (int i = 0 ; i < last_level - level + 1; i++) {
-				stack_pop_vars(&stack);
+				stack_pop_vars(&stack, &sp);
 			}
 
 			// pushing filter to the list of top's children list
@@ -555,7 +613,16 @@ int filter_load_file(const char *path)
 			    NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
-			stack_push_vars(&stack, level, 0, filter);
+			if (stack_push_vars(&stack, stack_buf, &sp, level, 0,
+					    filter)) {
+				msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
+					MAX_FILTER_DEPTH);
+				filter_destroy_obj(filter);
+				free(line);
+				line = NULL;
+				goto bad;
+			}
 
 		} else {
 			msg(LOG_ERR,
@@ -579,7 +646,7 @@ bad:
 
 good:
 	fclose(stream);
-	stack_pop_all_vars(&stack);
+	stack_pop_all_vars(&stack, &sp);
 	stack_destroy(&stack);
 	if (global_filter->list.count == 0) {
 		const char *conf_file = path ? path : FILTER_FILE;

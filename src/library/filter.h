@@ -57,10 +57,20 @@ typedef struct _stack_item
 	filter_t *filter;
 } stack_item_t;
 
+#ifndef MAX_FILTER_DEPTH
+#define MAX_FILTER_DEPTH 64
+#endif
+
+/* filter_check return codes */
+typedef enum {
+	FILTER_DENY = 0,
+	FILTER_ALLOW = 1,
+	FILTER_ERR_DEPTH = -2,
+} filter_rc_t;
 
 int filter_init(void);
 void filter_destroy(void);
-int filter_check(const char *path);
+filter_rc_t filter_check(const char *path);
 int filter_load_file(const char *path);
 
 

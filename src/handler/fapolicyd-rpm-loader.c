@@ -49,6 +49,8 @@
 #include "fd-fgets.h"
 #include "paths.h"
 
+#define BENCHMARK 1
+
 atomic_bool stop = 0;  // Library needs this
 unsigned int debug_mode = 0;			// Library needs this
 unsigned int permissive = 0;			// Library needs this
@@ -78,15 +80,39 @@ int main(int argc, char * const argv[])
 		exit(1);
 	}
 
+#ifdef BENCHMARK
+	#include <sys/time.h>
+	struct timeval t0, t1, t2;
+	gettimeofday(&t0, NULL);
+#endif
+
 	do_rpm_init_backend();
 	do_rpm_load_list(&config);
 
+#ifdef BENCHMARK
+	gettimeofday(&t1, NULL);
+#endif
 	msg(LOG_INFO, "Loaded files %ld", rpm_backend.list.count);
 
 	list_item_t *item = list_get_first(&rpm_backend.list);
 	for (; item != NULL; item = item->next) {
-		dprintf(memfd, "%s %s\n", (const char*)item->index, (const char*)item->data);
+		dprintf(memfd, "%s %s\n", (const char*)item->index,
+			(const char*)item->data);
 	}
+
+#ifdef BENCHMARK
+	gettimeofday(&t2, NULL);
+	long seconds1  = t1.tv_sec  - t0.tv_sec;
+	long useconds1 = t1.tv_usec - t0.tv_usec;
+	long mseconds1 = useconds1 / 1000;
+	printf("rpmdb Elapsed: %ld seconds, %ld milliseconds\n",
+		seconds1, mseconds1);
+	long seconds2  = t2.tv_sec  - t1.tv_sec;
+	long useconds2 = t2.tv_usec - t1.tv_usec;
+	long mseconds2 = useconds2 / 1000;
+	printf("memfd Elapsed: %ld seconds, %ld milliseconds\n",
+		seconds2, mseconds2);
+#endif
 
 	fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE);
 	lseek(memfd, 0, SEEK_SET);            /* rewind – not strictly needed */

@@ -124,7 +124,7 @@ static int get_next_file_rpm(void)
 			fi = NULL;
 			return 0;
 		}
-        }
+	}
 	return 1;
 }
 
@@ -395,8 +395,11 @@ int do_rpm_load_list(const conf_t *conf)
 				continue;
 
 			// should we drop a path?
-			if (!filter_check(file_name)) {
+			filter_rc_t f_res = filter_check(file_name);
+			if (f_res != FILTER_ALLOW) {
 				free((void *)file_name);
+				if (f_res == FILTER_ERR_DEPTH)
+					return FILTER_ERR_DEPTH;
 				continue;
 			}
 
