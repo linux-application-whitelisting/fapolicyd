@@ -20,7 +20,6 @@
 #
 
 CONFIG_CLEAN_FILES = *.orig *.cur
-EXTRA_DIST = filter.conf
 check_PROGRAMS = avl_test gid_proc_test filter_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
@@ -31,9 +30,7 @@ gid_proc_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 
 filter_test_SOURCES = filter_test.c
 filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-filter_test_CPPFLAGS = -I${top_srcdir}/src/library/
-
-TESTS_ENVIRONMENT = FILTER_CONF=$(abs_srcdir)/filter.conf
+filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 
 if WITH_DEB
 check_PROGRAMS += deb_test
