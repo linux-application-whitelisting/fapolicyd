@@ -22,6 +22,25 @@
 *   Radovan Sroka <rsroka@redhat.com>
 */
 
+/*
+ * Overview
+ * -------
+ *
+ * Filters are stored in a tree.  Each node describes a path fragment and
+ * whether it should be kept (ADD) or dropped (SUB).  The tree is walked using
+ * an explicit stack rather than recursion.  Stack items track the current
+ * filter node, the depth level and an offset into the path being evaluated.
+ *
+ * Three major users of the stack exist:
+ *
+ *  - filter_check() walks the tree comparing a path against the filters.
+ *  - filter_load_file() builds the tree from an indented configuration file.
+ *  - filter_destroy_obj() iteratively frees the tree.
+ *
+ * Using a stack keeps memory usage predictable and avoids deep recursion when
+ * filters contain many nested paths.
+ */
+
 #include "filter.h"
 
 #include <stdio.h>
@@ -44,7 +63,10 @@ filter_t *global_filter = NULL;
 static filter_t *filter_create_obj(void);
 static void filter_destroy_obj(filter_t *_filter);
 
-// init fuction of this module
+/*
+ * filter_init - initialize module and global filter tree
+ * Returns 0 on success and 1 on failure.
+ */
 int filter_init(void)
 {
 	global_filter = filter_create_obj();
@@ -54,14 +76,19 @@ int filter_init(void)
 	return 0;
 }
 
-// destroy funtion of this module
+/*
+ * filter_destroy - free global filter tree
+ */
 void filter_destroy(void)
 {
 	filter_destroy_obj(global_filter);
 	global_filter = NULL;
 }
 
-// alocate new filter object and fill with the defaults
+/*
+ * filter_create_obj - allocate filter object and fill with defaults
+ * Returns pointer to new object or NULL on failure.
+ */
 static filter_t *filter_create_obj(void)
 {
 	filter_t *filter = malloc(sizeof(filter_t));
@@ -76,7 +103,10 @@ static filter_t *filter_create_obj(void)
 	return filter;
 }
 
-// free all nested filters
+/*
+ * filter_destroy_obj - free filter tree rooted at _filter
+ * Uses an explicit stack to avoid deep recursion.
+ */
 static void filter_destroy_obj(filter_t *_filter)
 {
 	if (_filter == NULL)
@@ -92,7 +122,8 @@ static void filter_destroy_obj(filter_t *_filter)
 		filter = (filter_t*)stack_top(&stack);
 		if (filter->processed) {
 			(void)free(filter->path);
-			// asume that item->data is NULL
+			// assume that item->data is NULL (list nodes were
+			// cleared earlier)
 			list_empty(&filter->list);
 			(void)free(filter);
 			stack_pop(&stack);
@@ -108,12 +139,15 @@ static void filter_destroy_obj(filter_t *_filter)
 				item->data = NULL;
 				stack_push(&stack, next_filter);
 		}
+		/* mark node as processed so it will be freed on next pass */
 		filter->processed = 1;
 	}
 	stack_destroy(&stack);
 }
 
-// create struct and push it to the top of stack
+/*
+ * stack_push_vars - create context item & push it to the top of traversal stack
+ */
 static void stack_push_vars(stack_t *_stack, int _level, int _offset,
 			    filter_t *_filter)
 {
@@ -131,7 +165,9 @@ static void stack_push_vars(stack_t *_stack, int _level, int _offset,
 	stack_push(_stack, item);
 }
 
-// pop stack_item_t and free it
+/*
+ * stack_pop_vars - pop context item from traversal stack and free it
+ */
 static void stack_pop_vars(stack_t *_stack)
 {
 	if (_stack == NULL)
@@ -142,7 +178,9 @@ static void stack_pop_vars(stack_t *_stack)
 	stack_pop(_stack);
 }
 
-// pop all the stack_item_t and free them
+/*
+ * stack_pop_all_vars - pop and free all context items
+ */
 static void stack_pop_all_vars(stack_t *_stack)
 {
 	if (_stack == NULL)
@@ -152,7 +190,9 @@ static void stack_pop_all_vars(stack_t *_stack)
 		stack_pop_vars(_stack);
 }
 
-// reset filter to default, pop top and free
+/*
+ * stack_pop_reset - pop top item after resetting processed flag
+ */
 static void stack_pop_reset(stack_t *_stack)
 {
 	if (_stack == NULL)
@@ -163,7 +203,9 @@ static void stack_pop_reset(stack_t *_stack)
 	stack_pop(_stack);
 }
 
-// reset and pop all the stack_item_t
+/*
+ * stack_pop_all_reset - reset and pop all stack items
+ */
 static void stack_pop_all_reset(stack_t *_stack)
 {
 	if (_stack == NULL)
@@ -173,8 +215,11 @@ static void stack_pop_all_reset(stack_t *_stack)
 		stack_pop_reset(_stack);
 }
 
-// this funtion gets full path and checks it against filter
-// returns 1 for keeping the file and 0 for dropping it
+/*
+ * filter_check - compare path against loaded filters
+ * @_path: full path of file to test
+ * Returns 1 if file should be kept and 0 if it should be dropped.
+ */
 int filter_check(const char *_path)
 {
 	if (_path == NULL) {
@@ -186,8 +231,9 @@ int filter_check(const char *_path)
 	size_t path_len = strlen(_path);
 	char *path = alloca(path_len + 1);
 	strcpy(path, _path);
+	/* offset tracks how much of the path has already matched */
 	size_t offset = 0;
-	// Create a stack to store the filters that need to be checked
+	/* Create a stack to store the filters that need to be checked */
 	stack_t stack;
 	stack_init(&stack);
 
@@ -250,10 +296,10 @@ int filter_check(const char *_path)
 					*(path_old_lim+1) = '\0';
 				}
 
-				// check fnmatch
+				// check fnmatch against remaining path
 				matched = !fnmatch(filter->path, path+offset,0);
 
-				// and set back
+				// restore original path string
 				if (count && *(filter_old_lim+1) == '\0')
 					*(path_old_lim+1) = tmp;
 
@@ -304,7 +350,7 @@ int filter_check(const char *_path)
 		}
 
 		stack_item_t * stack_item = NULL;
-		// popping processed filters from the top of the stack
+		// pop already processed filters from the top of the stack
 		do {
 			if (stack_item) {
 				filter = stack_item->filter;
@@ -341,7 +387,11 @@ end:
 	return res;
 }
 
-// load filter configuration file and fill the filter structure
+/*
+ * filter_load_file - load filter configuration and build tree
+ * @path: optional configuration file path, defaults to FILTER_FILE
+ * Returns 0 on success and 1 on error.
+ */
 int filter_load_file(const char *path)
 {
 	int res = 0;
@@ -381,6 +431,7 @@ int filter_load_file(const char *path)
 
 	stack_t stack;
 	stack_init(&stack);
+	/* root of the tree is already allocated */
 	stack_push_vars(&stack, last_level, 0, global_filter);
 
 	while ((nread = getline(&line, &len, stream)) != -1) {
@@ -471,8 +522,9 @@ int filter_load_file(const char *path)
 			stack_pop_vars(&stack);
 
 			// pushing filter to the list of top's children list
-			list_prepend(&((stack_item_t*)stack_top(&stack))->filter->list,
-				     NULL, (void*)filter);
+			list_prepend(
+			    &((stack_item_t*)stack_top(&stack))->filter->list,
+			    NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
 			stack_push_vars(&stack, level, 0, filter);
@@ -482,8 +534,9 @@ int filter_load_file(const char *path)
 			// we wont do pop just push
 
 			// pushing filter to the list of top's children list
-			list_prepend(&((stack_item_t*)stack_top(&stack))->filter->list,
-				     NULL, (void*)filter);
+			list_prepend(
+			    &((stack_item_t*)stack_top(&stack))->filter->list,
+			    NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
 			stack_push_vars(&stack, level, 0, filter);
@@ -497,13 +550,17 @@ int filter_load_file(const char *path)
 			}
 
 			// pushing filter to the list of top's children list
-			list_prepend(&((stack_item_t*)stack_top(&stack))->filter->list, NULL, (void*)filter);
+			list_prepend(
+			    &((stack_item_t*)stack_top(&stack))->filter->list,
+			    NULL, (void*)filter);
 
 			// pushing filter to the top of the stack
 			stack_push_vars(&stack, level, 0, filter);
 
 		} else {
-			msg(LOG_ERR, "filter_load_file: paring error line: %ld, \"%s\"", line_number, line);
+			msg(LOG_ERR,
+			    "filter_load_file: paring error line: %ld, \"%s\"",
+			    line_number, line);
 			filter_destroy_obj(filter);
 			free(line);
 			line = NULL;
