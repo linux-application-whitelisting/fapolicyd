@@ -40,23 +40,24 @@ static const char sh_set[] = "\"'`$\\!()| ";
  */
 size_t check_escape_shell(const char *input)
 {
-	unsigned int len = strlen(input);
-	size_t i = 0, cnt = 0;
+	const char *p = input;
+	size_t size = 0, cnt = 0;
 
-	while (i < len) {
+	while (*p) {
 		// \000
-		if (input[i] < 32)
+		if (*p < 32)
 			cnt += 4;
 		// \\ \/
-		else if (strchr(sh_set, input[i]))
+		else if (strchr(sh_set, *p))
 			cnt += 2;
 		// non escaped char
 		else
 			cnt++;
-		i++;
+		p++;
+		size++;
 	}
 	// if no escaped char
-	if (cnt == len)
+	if (cnt == size)
 		return 0;
 
 	return cnt;
