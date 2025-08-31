@@ -457,8 +457,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	case COMM:
 	case EXE:
 	case EXE_DIR:
-	case EXE_TYPE:
-	case EXE_DEVICE: {
+	case EXE_TYPE: {
 		if (add_attr_set(name, STRING, &index)) {
 			goto free_and_error;
 		}
@@ -1211,8 +1210,7 @@ static int check_subject(lnode *r, event_t *e)
 		// fall through
 
 		case COMM:
-		case EXE_TYPE:
-		case EXE_DEVICE: {
+		case EXE_TYPE: {
 			if (!subj->str) {
 				break;
 			}

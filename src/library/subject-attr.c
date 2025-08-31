@@ -43,7 +43,6 @@ static const nv_t table1[] = {
 {	EXE,        "exe"	},
 {	EXE_DIR,    "exe_dir"	},
 {	EXE_TYPE,   "exe_type"	},
-{	EXE_DEVICE, "exe_device" },
 };
 #define MAX_SUBJECTS1 (sizeof(table1)/sizeof(table1[0]))
 
@@ -64,7 +63,6 @@ static const nv_t table2[] = {
 {	EXE,        "exe"	},
 {	EXE_DIR,    "dir"	},
 {	EXE_TYPE,   "ftype"	},
-{	EXE_DEVICE, "device"	},
 };
 #define MAX_SUBJECTS2 (sizeof(table2)/sizeof(table2[0]))
 

@@ -405,10 +405,6 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 				subj.str = strdup("?");
 			}
 			break;
-		case EXE_DEVICE:
-			// FIXME: write real code for this
-			subj.str = strdup("?");
-			break;
 		case SUBJ_TRUST: {
 			subject_attr_t *exe = get_subj_attr(e, EXE);
 
