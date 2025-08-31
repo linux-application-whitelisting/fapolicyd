@@ -130,6 +130,7 @@ static int get_next_file_rpm(void)
 
 static const char *get_file_name_rpm(void)
 {	// Copy is made because the linked list takes custody of it
+	// FIXME: if the linked list ever goes away, remove strdup
 	return strdup(rpmfiFN(fi));
 }
 
