@@ -67,8 +67,10 @@ size_t check_escape_shell(const char *input)
 char *escape_shell(const char *input, const size_t expected_size)
 {
 	char *escape_buffer;
+	const char *p;
+	unsigned int j = 0;
 
-	if(!input)
+	if (!input)
 		return NULL;
 
 	if (expected_size >= MAX_SIZE)
@@ -78,21 +80,19 @@ char *escape_shell(const char *input, const size_t expected_size)
 	if (escape_buffer == NULL)
 		return NULL;
 
-	size_t len = strlen(input);
-
-	unsigned int i = 0, j = 0;
-	while (i < len) {
-		if ((unsigned char)input[i] < 32) {
+	p = input;
+	while (*p) {
+		if ((unsigned char)*p < 32) {
 			escape_buffer[j++] = ('\\');
-			escape_buffer[j++] = ('0' + ((input[i] & 0300) >> 6));
-			escape_buffer[j++] = ('0' + ((input[i] & 0070) >> 3));
-			escape_buffer[j++] = ('0' + (input[i] & 0007));
-		} else if (strchr(sh_set, input[i])) {
+			escape_buffer[j++] = ('0' + ((*p & 0300) >> 6));
+			escape_buffer[j++] = ('0' + ((*p & 0070) >> 3));
+			escape_buffer[j++] = ('0' + (*p & 0007));
+		} else if (strchr(sh_set, *p)) {
 			escape_buffer[j++] = ('\\');
-			escape_buffer[j++] = input[i];
+			escape_buffer[j++] = *p;
 		} else
-			escape_buffer[j++] = input[i];
-		i++;
+			escape_buffer[j++] = *p;
+		p++;
 	}
 	escape_buffer[j] = '\0';	/* terminate string */
 
