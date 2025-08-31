@@ -653,3 +653,57 @@ good:
 	}
 	return res;
 }
+
+/*
+ * These are some ideas to improve performance if the number of rules grows
+ * or we find this is holding up trustdb restablishment in the future:
+ *
+ * Speed-up steps from simplest to most involved
+ *
+ * 1. Compute and cache wildcard metadata at load time
+ * Add two fields to filter_t: bool has_wildcard and char last_char.
+ * Set them once in filter_load_file().
+ * During matching skip strpbrk() and the separator-count loop unless
+ * has_wildcard is true; for plain prefixes just use memcmp().
+ *
+ * 2. Stop copying the path
+ * Instead of alloca+strcpy, keep a const char *p = _path; pointer and move
+ * it with offsets.
+ * If mutability is required only for the “temporarily NUL-terminate”
+ * trick, maintain a small struct { size_t pos; char saved; } stack
+ * and restore the byte after fnmatch.
+ *
+ * 3. Reset node flags with a generation counter
+ * Give filter_t a 32-bit vis_tag and increment a global visit_id each
+ * time filter_check() starts.
+ * A node is “visited” when vis_tag == visit_id; no memory writes are
+ * needed to “unvisit” between calls, eliminating persistent
+ * matched/processed state and making the code thread-friendly.
+ *
+ * 4. Group children into two vectors
+ * On load, partition each node’s children into
+ * • “literal” (no wildcard)
+ * • “pattern” (has wildcard)
+ * Store literals in a sorted array and binary-search them; patterns stay
+ * in a small list evaluated with fnmatch().
+ * ROI: most look-ups stop after a logarithmic search without polling
+ * wildcard siblings.
+ *
+ * 5. Build a prefix-trie
+ * Instead of a general linked list, compile the filter into a radix tree
+ * keyed by path components.
+ * Each node then needs at most one comparison per component; backtracking
+ * is unnecessary. Memory usage stays modest because rules share prefixes.
+ *
+ * 6. Pre-compile glob patterns into DFA
+ * Libraries like libglob/libtre can compile POSIX globs into a mini-automaton.
+ * The matcher then advances the DFA over the path once, rather than
+ * calling fnmatch() repeatedly.
+ *
+ * 7. Batch evaluation / directory memoisation
+ * When scanning entire RPM databases the same directory prefix recurs
+ * thousands of times (/usr/lib/ vs. every .so).
+ * Cache the verdict for each directory path; skip evaluation for children
+ *  once an ancestor’s decision is known.
+ *
+ */
