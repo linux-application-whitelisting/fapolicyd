@@ -29,6 +29,8 @@
 #include <sys/types.h>
 #include <sys/fanotify.h>
 #include <stdatomic.h>
+#include <pthread.h>
+#include <time.h>
 #include "gcc-attributes.h"
 
 struct queue
@@ -39,6 +41,8 @@ struct queue
 	size_t queue_head;
 	size_t queue_tail;
 	atomic_size_t queue_length;
+	pthread_mutex_t lock;
+	pthread_cond_t cond;
 };
 
 /* Close Q. */
@@ -52,14 +56,21 @@ struct queue *q_open(size_t num_entries) __attribute_malloc__
 void q_report(FILE *f);
 
 /* Add DATA to tail of Q. Return 0 on success, -1 on error and set errno. */
-int q_append(struct queue *q, const struct fanotify_event_metadata *data);
+int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data);
 
-/* Peek at head of Q, storing it into BUF of SIZE. Return 1 if an entry
- * exists, 0 if queue is empty. On error, return -1 and set errno. */
-int q_peek(const struct queue *q, struct fanotify_event_metadata *data);
+/* Remove up to MAX events from Q, storing them into DATA. Return number of
+ * events dequeued. */
+int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+	       size_t max);
 
-/* Drop head of Q and return 0. On error, return -1 and set errno. */
-int q_drop_head(struct queue *q);
+/* Remove up to MAX events from Q, blocking until timeout. On success, return
+ * number of events dequeued. On timeout, return 0 and set errno to ETIMEDOUT.
+ */
+int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+		     size_t max, const struct timespec *ts);
+
+/* Wake up anyone waiting on the queue. */
+void q_shutdown(struct queue *q);
 
 /* Return the number of entries in Q. */
 static inline size_t q_queue_length(const struct queue *q) { return q->queue_length; }
