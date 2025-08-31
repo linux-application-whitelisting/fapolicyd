@@ -141,44 +141,46 @@ static char asciiHex2Bits(char X)
 // it makes code backwards compatible
 char *unescape(const char *input)
 {
-	char buffer[4096 + 1] = {0};
 	size_t input_len = strlen(input);
+	size_t out_len = 0;
+
+	for (size_t i = 0; i < input_len; i++) {
+		if (input[i] == '%' && i + 2 < input_len &&
+		    IS_HEX(input[i + 1]) && IS_HEX(input[i + 2])) {
+			out_len++;
+			i += 2;
+		} else {
+			out_len++;
+		}
+	}
+
+	if (out_len > 4096)
+		return NULL; //for backward compatibility
+
+	char *buffer = malloc(out_len + 1);
+	if (!buffer)
+		return NULL;
+
 	size_t pos = 0;
 
-	for (size_t i = 0; i < input_len; i++ ) {
-		if (input[i] == '%') {
-
-			if (i+2 < input_len && (IS_HEX(input[i+1]) && IS_HEX(input[i+2])) ) {
-				char c = asciiHex2Bits(input[i+1]);
-				char d = asciiHex2Bits(input[i+2]);
-
-				if (pos >=(sizeof(buffer) - 1))
-					return NULL;
-
-				buffer[pos++] = (c << 4) + d;
-				i += 2;
-
-			} else {
-
-				msg(LOG_WARNING, "Input %s does not have a valid escape sequence, "
-					"unable to unescape, copying char by char", input);
-
-				// if not vaid sequence, copy char by char
-				if (pos >=(sizeof(buffer) - 1))
-					return NULL;
-
-				buffer[pos++] = input[i];
-
-			}
-
+	for (size_t i = 0; i < input_len; i++) {
+		if (input[i] == '%' && i + 2 < input_len &&
+		    IS_HEX(input[i + 1]) && IS_HEX(input[i + 2])) {
+			char c = asciiHex2Bits(input[i + 1]);
+			char d = asciiHex2Bits(input[i + 2]);
+			buffer[pos++] = (c << 4) + d;
+			i += 2;
 		} else {
-
-			if (pos >=(sizeof(buffer) - 1))
-				return NULL;
-
+			if (input[i] == '%')
+				msg(LOG_WARNING,
+				    "Input %s does not have a valid escape sequence, "
+				    "unable to unescape, copying char by char",
+				    input);
 			buffer[pos++] = input[i];
 		}
 	}
 
-	return strdup(buffer);
+	buffer[pos] = '\0';
+
+	return buffer;
 }
