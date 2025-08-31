@@ -50,6 +50,22 @@
 #define BROKEN_CONF TEST_BASE "/tests/fixtures/broken-filter.conf"
 #define PROD_CONF TEST_BASE "/init/fapolicyd-filter.conf"
 
+extern filter_t *global_filter;
+
+/* reset_tree - clear processed and matched flags in filter tree */
+static void reset_tree(filter_t *f)
+{
+	if (!f)
+		return;
+
+	f->processed = 0;
+	f->matched = 0;
+
+	list_item_t *item = list_get_first(&f->list);
+	for (; item; item = item->next)
+		reset_tree((filter_t *)item->data);
+}
+
 static int file_exists(const char *path)
 {
 	struct stat st;
@@ -101,6 +117,7 @@ static int run_cases(const char *cfg, const char *path)
 			break;
 		}
 		int res = filter_check(p);
+		reset_tree(global_filter);
 		if (res != exp) {
 			fprintf(stderr,
 				"[ERROR:4] %s:%s expected %s got %s\n",
