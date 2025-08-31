@@ -34,6 +34,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdatomic.h>
 #include "queue.h"
 #include "message.h"
 
@@ -42,18 +43,18 @@
  *
  * The queue is a fixed-size ring of struct fanotify_event_metadata.
  * q_open() allocates the array and sets head/tail counters.
- * q_append() copies a new event into the tail.
- * q_peek() fetches the head without removing it.
- * q_drop_head() advances the head after an event is processed.
- * All queue operations are serialized by decision_lock in notify.c;
- * queue_length is read without the lock by the deadman thread and is
- * therefore atomic. Using a ring buffer avoids per-event malloc/free
- * and keeps memory usage predictable. max_depth records the highest
+ * q_enqueue() copies a new event into the tail.
+ * q_dequeue() fetches events from the head and advances it.
+ *
+ * queue_length is read without locking by the deadman thread and is
+ * therefore atomic. Using a ring buffer avoids per-event malloc/free and
+ * keeps memory usage predictable. max_depth records the highest
  * queue_length observed for diagnostics.
  */
 
 /* Queue implementation */
 static unsigned int max_depth;
+extern atomic_bool stop;
 
 /* Initialize a queue   */
 struct queue *q_open(size_t num_entries)
@@ -81,6 +82,13 @@ struct queue *q_open(size_t num_entries)
 	q->queue_length = 0;
 	max_depth = 0;
 
+	pthread_mutex_init(&q->lock, NULL);
+	pthread_condattr_t attr;
+	pthread_condattr_init(&attr);
+	pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+	pthread_cond_init(&q->cond, &attr);
+	pthread_condattr_destroy(&attr);
+
 	return q;
 
 err:
@@ -92,6 +100,8 @@ err:
 
 void q_close(struct queue *q)
 {
+	pthread_cond_destroy(&q->cond);
+	pthread_mutex_destroy(&q->lock);
 	free(q->events);
 	msg(LOG_DEBUG, "Inter-thread max queue depth %u", max_depth);
 	free(q);
@@ -102,48 +112,103 @@ void q_report(FILE *f)
 	fprintf(f, "Inter-thread max queue depth: %u\n", max_depth);
 }
 
-/* add DATA to Q */
-int q_append(struct queue *q, const struct fanotify_event_metadata *data)
+/* Internal helpers */
+static void q_append(struct queue *q,
+		      const struct fanotify_event_metadata *data)
 {
-	if (q->queue_length == q->num_entries) {
-		errno = ENOSPC;
-		return -1;
-	}
-
 	q->events[q->queue_tail] = *data;
 	q->queue_tail++;
 	if (q->queue_tail == q->num_entries)
-		q->queue_tail = 0;
-
-	q->queue_length++;
-	if (q->queue_length > max_depth)
-		max_depth = q->queue_length;
-
-	return 0;
+	q->queue_tail = 0;
 }
 
-int q_peek(const struct queue *q, struct fanotify_event_metadata *data)
+static void q_peek(const struct queue *q,
+		    struct fanotify_event_metadata *data)
 {
-	if (q->queue_length == 0)
-		return 0;
-
 	*data = q->events[q->queue_head];
-	return 1;
 }
 
-/* drop head of Q */
-int q_drop_head(struct queue *q)
+static void q_drop_head(struct queue *q)
 {
-	if (q->queue_length == 0) {
-		errno = EINVAL;
-		return -1;
-	}
-
 	q->queue_head++;
 	if (q->queue_head == q->num_entries)
 		q->queue_head = 0;
+}
 
-	q->queue_length--;
-	return 0;
+/* add DATA to Q */
+int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
+{
+	int rc = 0;
+
+	pthread_mutex_lock(&q->lock);
+	if (q->queue_length == q->num_entries) {
+		errno = ENOSPC;
+		rc = -1;
+	} else {
+		q_append(q, data);
+		q->queue_length++;
+		if (q->queue_length > max_depth)
+			max_depth = q->queue_length;
+		pthread_cond_signal(&q->cond);
+	}
+	pthread_mutex_unlock(&q->lock);
+	return rc;
+}
+
+/* remove events from Q */
+int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+	       size_t max)
+{
+	size_t i = 0;
+
+	pthread_mutex_lock(&q->lock);
+	while (q->queue_length == 0 && !stop)
+	pthread_cond_wait(&q->cond, &q->lock);
+	while (i < max && q->queue_length > 0) {
+		q_peek(q, &data[i]);
+		q_drop_head(q);
+		q->queue_length--;
+		i++;
+	}
+	pthread_mutex_unlock(&q->lock);
+	return i;
+}
+
+int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+		     size_t max, const struct timespec *ts)
+{
+	size_t i = 0;
+	int rc = 0;
+
+	pthread_mutex_lock(&q->lock);
+	while (q->queue_length == 0 && !stop) {
+		rc = pthread_cond_timedwait(&q->cond, &q->lock, ts);
+		if (rc)
+			break;
+	}
+	if (rc == ETIMEDOUT) {
+		pthread_mutex_unlock(&q->lock);
+		errno = ETIMEDOUT;
+		return 0;
+	} else if (rc) {
+		pthread_mutex_unlock(&q->lock);
+		errno = rc;
+		return -1;
+	}
+	while (i < max && q->queue_length > 0) {
+		q_peek(q, &data[i]);
+		q_drop_head(q);
+		q->queue_length--;
+		i++;
+	}
+	pthread_mutex_unlock(&q->lock);
+	return i;
+}
+
+void q_shutdown(struct queue *q)
+{
+	pthread_mutex_lock(&q->lock);
+	pthread_cond_signal(&q->cond);
+	pthread_mutex_unlock(&q->lock);
 }
 

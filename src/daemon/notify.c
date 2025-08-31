@@ -55,11 +55,6 @@ static pid_t our_pid;
 static struct queue *q = NULL;
 static pthread_t decision_thread;
 static pthread_t deadmans_switch_thread;
-static pthread_mutexattr_t decision_lock_attr;
-static pthread_mutex_t decision_lock;
-static pthread_cond_t do_decision;
-static pthread_condattr_t rpt_timer_attr;
-static atomic_bool events_ready;
 static atomic_int alive = 1;
 static int fd = -1;
 static int rpt_timer_fd = -1;
@@ -114,15 +109,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	}
 
 	// Start decision thread so its ready when first event comes
-	pthread_mutexattr_init(&decision_lock_attr);
-	pthread_mutexattr_settype(&decision_lock_attr,
-						PTHREAD_MUTEX_ERRORCHECK);
-	pthread_mutex_init(&decision_lock, &decision_lock_attr);
-	pthread_condattr_init(&rpt_timer_attr);
-	pthread_condattr_setclock(&rpt_timer_attr, CLOCK_MONOTONIC);
-	pthread_cond_init(&do_decision, &rpt_timer_attr);
 	rpt_interval = conf->report_interval;
-	events_ready = false;
 	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
 	pthread_create(&deadmans_switch_thread, NULL,
 			deadmans_switch_thread_main, NULL);
@@ -235,12 +222,9 @@ void shutdown_fanotify(mlist *m)
 	unmark_fanotify(m);
 
 	// End the thread
-	pthread_cond_signal(&do_decision);
+	q_shutdown(q);
 	pthread_join(decision_thread, NULL);
 	pthread_join(deadmans_switch_thread, NULL);
-	pthread_mutex_destroy(&decision_lock);
-	pthread_mutexattr_destroy(&decision_lock_attr);
-	pthread_cond_destroy(&do_decision);
 
 	// Clean up
 	q_close(q);
@@ -262,20 +246,6 @@ void decision_report(FILE *f)
 	fprintf(f, "Denied accesses: %lu\n", getDenied());
 }
 
-static bool get_ready(void)
-{
-	return events_ready;
-}
-
-static void set_ready(void)
-{
-	events_ready = true;
-}
-
-static void clear_ready(void)
-{
-	events_ready = false;
-}
 
 static void *deadmans_switch_thread_main(void *arg)
 {
@@ -292,8 +262,7 @@ static void *deadmans_switch_thread_main(void *arg)
 
 	do {
 		// Are you alive decision thread?
-		if (alive == 0 && get_ready() && !stop &&
-					q_queue_length(q) > 5) {
+		if (alive == 0 && !stop && q_queue_length(q) > 5) {
 			msg(LOG_ERR,
 				"Deadman's switch activated...killing process");
 			raise(SIGKILL);
@@ -372,117 +341,78 @@ static void *decision_thread_main(void *arg)
 		int len;
 		struct fanotify_event_metadata metadata[MAX_EVENTS];
 
-		pthread_mutex_lock(&decision_lock);
-		while (get_ready() == 0) {
-			// if an interval has been configured
-			if (rpt_interval) {
+		// if an interval has been configured
+		if (rpt_interval) {
+			errno = 0;
+			len = q_timed_dequeue(q, metadata, MAX_EVENTS,
+					      &rpt_timeout);
+			if (len == 0) {
 				// check for timer expirations
-				uint64_t expired = 0;
-				if (read(rpt_timer_fd, &expired,
-					 sizeof(uint64_t)) == -1) {
-					// EAGAIN expected w/nonblocking timer
-					// any other error is unrecoverable
-					if (errno != EAGAIN) {
-						rpt_disable(strerror(errno));
-						continue;
+				if (errno == ETIMEDOUT) {
+					uint64_t expired = 0;
+					if (read(rpt_timer_fd, &expired,
+						sizeof(uint64_t)) == -1) {
+						// EAGAIN expected w/nonblocking
+						// timer. Any other error is
+						// unrecoverable.
+						if (errno != EAGAIN) {
+							rpt_disable(
+							    strerror(errno));
+							continue;
+						}
 					}
-				}
-				// timer expired or stats explicitly requested
-				if (expired || run_stats) {
+					// timer expired or stats explicitly
+					// requested
+					if (expired || run_stats) {
 					// write a new report only when one of
 					// 1. new events seen since last report
 					// 2. explicitly requested w/run_stats
-					if (rpt_is_stale || run_stats) {
-						rpt_write();
-						run_stats = 0;
-						rpt_is_stale = 0;
+						if (rpt_is_stale || run_stats) {
+							rpt_write();
+							run_stats = 0;
+							rpt_is_stale = 0;
+						}
+						// adjust the pthread timeout to
+						// a full interval from now
+						if (clock_gettime(CLOCK_MONOTONIC,
+								&rpt_timeout)) {
+							// gettime errors are
+							// unrecoverable
+							rpt_disable(
+							    "clock failure");
+							continue;
+						}
+						rpt_timeout.tv_sec +=
+							rpt_interval;
 					}
-					// adjust the pthread timeout to
-					// a full interval from now
-					if (clock_gettime(CLOCK_MONOTONIC,
-							  &rpt_timeout)) {
-						// gettime errors are unrecoverable
-						rpt_disable("clock failure");
-						continue;
-					}
-					rpt_timeout.tv_sec += rpt_interval;
 				}
-				// await a fan event, timing out at the
-				// next report interval
-				if (stop)
-					break;
-				pthread_cond_timedwait(&do_decision,
-						       &decision_lock,
-						       &rpt_timeout);
-			} else {
+				continue;
+			}
+		} else {
+			len = q_dequeue(q, metadata, MAX_EVENTS);
+			if (len == 0) {
 				if (run_stats) {
 					rpt_write();
 					run_stats = 0;
 				}
-				if (stop)
-					break;
-
-				// no interval reports, await a fan event indefinitely
-				pthread_cond_wait(&do_decision, &decision_lock);
+				continue;
 			}
-		}
-
-		if (stop) {
-			msg(LOG_DEBUG, "Exiting decision thread");
-			pthread_mutex_unlock(&decision_lock);
-			return NULL;
+			if (run_stats) {
+				rpt_write();
+				run_stats = 0;
+			}
 		}
 
 		alive = 1;
 		rpt_is_stale = 1;
 
-		// Grab up to MAX_EVENTS events while locked
-		unsigned i = 0;
-		size_t num = q_queue_length(q);
-		if (num > MAX_EVENTS)
-			num = MAX_EVENTS;
-		while (i < num) {
-			len = q_peek(q, &metadata[i]);
-			if (len == 0) {
-				// Should never happen
-				clear_ready(); // Reset to reality
-				msg(LOG_DEBUG,
-					"queue size is 0 but event received");
-				// limit processing to what we have
-				num = i;
-				goto out;
-			}
-			q_drop_head(q);
-			if (q_queue_length(q) == 0)
-				clear_ready();
-			i++;
-		}
-out:
-		pthread_mutex_unlock(&decision_lock);
-
-		for (i=0; i<num; i++) {
+		for (int i = 0; i < len; i++) {
 			alive = 1;
 			make_policy_decision(&metadata[i], fd, mask);
 		}
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
-}
-
-static void enqueue_event(const struct fanotify_event_metadata *metadata)
-{
-	if (q_append(q, metadata)) {
-		msg(LOG_ERR, "Failed to enqueue event for PID %d: "
-			"queue is full, please consider tuning q_size if issue happens often", metadata->pid);
-		// We have to deny. This allows the kernel to free it's
-		// memory related to this request. reply_event also closes
-		// the descriptor, so we don't need to do it here.
-		int decision = FAN_DENY;
-		if (permissive)
-			decision = FAN_ALLOW;
-		reply_event(fd, metadata, decision, NULL);
-	} else
-		set_ready();
 }
 
 void handle_events(void)
@@ -508,9 +438,6 @@ void handle_events(void)
 			return;
 	}
 
-	// Do all the locking outside of the loop so that we do
-	// not keep reacquiring the locks with each iteration
-	pthread_mutex_lock(&decision_lock);
 	metadata = (const struct fanotify_event_metadata *)buf;
 	while (FAN_EVENT_OK(metadata, len)) {
 		if (metadata->vers != FANOTIFY_METADATA_VERSION) {
@@ -522,9 +449,18 @@ void handle_events(void)
 			if (metadata->mask & mask) {
 				if (metadata->pid == our_pid)
 					reply_event(fd, metadata, FAN_ALLOW,
-							NULL);
-				else
-					enqueue_event(metadata);
+						    NULL);
+				else if (q_enqueue(q, metadata)) {
+					msg(LOG_ERR,
+				"Failed to enqueue event for PID %d: "
+				"queue is full, please consider tuning q_size "
+				"if issue happens often", metadata->pid);
+					int decision = FAN_DENY;
+					if (permissive)
+						decision = FAN_ALLOW;
+					reply_event(fd, metadata, decision,
+						    NULL);
+				}
 			} else {
 				// This should never happen. Reply with deny
 				// which releases the descriptor and kernel
@@ -534,8 +470,5 @@ void handle_events(void)
 		}
 		metadata = FAN_EVENT_NEXT(metadata, len);
 	}
-
-	pthread_cond_signal(&do_decision);
-	pthread_mutex_unlock(&decision_lock);
 }
 
