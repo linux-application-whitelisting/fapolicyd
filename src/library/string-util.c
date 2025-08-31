@@ -32,24 +32,25 @@
 
 char *fapolicyd_strtrim(char *s)
 {
-	char *cp1;
-	char *cp2;
+	if (!s)
+		return NULL;
 
-	if (!s) return NULL;
+	// skip leading spaces
+	char *start = s;
+	while (*start && isspace((unsigned char)*start)) start++;
 
-	// skip leading spaces, via cp1
-	for (cp1=s; isspace(*cp1); cp1++ );
+	// shift left (no-op if start == s)
+	size_t len = strlen(start);
+	memmove(s, start, len + 1);	// includes the '\0'
 
-	// shift left remaining chars, via cp2
-	for (cp2=s; *cp1; cp1++, cp2++)
-		*cp2 = *cp1;
+	// all spaces?
+	if (*s == '\0')
+		return s;
 
-	// mark new end of string for s
-	*cp2-- = 0;
-
-	// replace trailing spaces with '\0'
-	while ( cp2 > s && isspace(*cp2) )
-		*cp2-- = 0;
+	// trim trailing
+	char *end = s + len - 1;
+	while (end >= s && isspace((unsigned char)*end))
+		*end-- = '\0';
 
 	return s;
 }
