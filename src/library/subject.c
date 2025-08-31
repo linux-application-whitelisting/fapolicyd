@@ -36,8 +36,8 @@ void subject_create(s_array *a)
 {
 	int i;
 
-	a->subj = malloc(sizeof(subject_attr_t *) * ((SUBJ_END-SUBJ_START)+1));
-	for (i = 0; i < SUBJ_END - SUBJ_START; i++)
+	a->subj = malloc(sizeof(subject_attr_t *) * SUBJ_COUNT);
+	for (i = 0; i < SUBJ_COUNT; i++)
 		a->subj[i] = NULL;
 	a->cnt = 0;
 	a->info = NULL;
@@ -52,7 +52,7 @@ static void sanity_check_array(const s_array *a, const char *id)
 		msg(LOG_DEBUG, "%s - array is NULL", id);
 		abort();
 	}
-	for (i = 0; i < SUBJ_END - SUBJ_START; i++)
+	for (i = 0; i < SUBJ_COUNT; i++)
 		if (a->subj[i])
 			num++;
 	if (num != a->cnt) {
@@ -138,7 +138,7 @@ void subject_clear(s_array* a)
 		return;
 
 	sanity_check_array(a, "subject_clear");
-	for (i = 0; i < SUBJ_END - SUBJ_START; i++) {
+	for (i = 0; i < SUBJ_COUNT; i++) {
 		current = a->subj[i];
 		if (current == NULL)
 			continue;
@@ -148,10 +148,13 @@ void subject_clear(s_array* a)
 		} else if (current->type >= COMM)
 			free(current->str);
 		free(current);
+		a->subj[i] = NULL;
 	}
 	clear_proc_info(a->info);
 	free(a->info);
+	a->info = NULL;
 	free(a->subj);
+	a->subj = NULL;
 	a->cnt = 0;
 }
 

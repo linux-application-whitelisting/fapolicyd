@@ -32,9 +32,10 @@
 
 // Top is numbers, bottom is strings
 typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, PPID,
-       PATTERN, SUBJ_TRUST, GID, COMM, EXE, EXE_DIR, EXE_TYPE} subject_type_t;
+	PATTERN, SUBJ_TRUST, GID, COMM, EXE, EXE_DIR, EXE_TYPE} subject_type_t;
 
 #define SUBJ_END EXE_TYPE
+#define SUBJ_COUNT (SUBJ_END - SUBJ_START + 1)
 
 typedef struct s {
 	subject_type_t type;
