@@ -36,8 +36,8 @@ void object_create(o_array *a)
 {
 	int i;
 
-	a->obj = malloc(sizeof(object_attr_t *) * ((OBJ_END-OBJ_START)+1));
-	for (i = 0; i < OBJ_END - OBJ_START; i++)
+	a->obj = malloc(sizeof(object_attr_t *) * OBJ_COUNT);
+	for (i = 0; i < OBJ_COUNT; i++)
 		a->obj[i] = NULL;
 	a->cnt = 0;
 	a->info = NULL;
@@ -48,7 +48,7 @@ static void sanity_check_array(o_array *a, const char *id)
 {
 	int i;
 	unsigned int num = 0;
-	for (i = 0; i < OBJ_END - OBJ_START; i++)
+	for (i = 0; i < OBJ_COUNT; i++)
 		if (a->obj[i])
 			num++;
 	if (num != a->cnt) {
@@ -112,7 +112,7 @@ void object_clear(o_array *a)
 	if (a == NULL)
 		return;
 
-	for (i = 0; i < OBJ_END - OBJ_START; i++) {
+	for (i = 0; i < OBJ_COUNT; i++) {
 		current = a->obj[i];
 		if (current == NULL)
 			continue;

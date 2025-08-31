@@ -35,6 +35,7 @@ typedef enum { ALL_OBJ = OBJ_START, PATH, ODIR, DEVICE, FTYPE,
 		OBJ_TRUST, SHA256HASH, FMODE } object_type_t;
 
 #define OBJ_END FMODE
+#define OBJ_COUNT (OBJ_END - OBJ_START + 1)
 
 typedef struct o {
 	object_type_t type;
