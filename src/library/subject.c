@@ -114,7 +114,7 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 subject_attr_t *subject_find_exe(const s_array *a)
 {
 	sanity_check_array(a, "subject_find_exe");
-        if (a->subj[EXE - SUBJ_START])
+        if (a && a->subj[EXE - SUBJ_START])
                 return a->subj[EXE - SUBJ_START];
 
 	return NULL;
@@ -123,7 +123,7 @@ subject_attr_t *subject_find_exe(const s_array *a)
 subject_attr_t *subject_find_comm(const s_array *a)
 {
 	sanity_check_array(a, "subject_find_comm");
-        if (a->subj[COMM - SUBJ_START])
+        if (a && a->subj[COMM - SUBJ_START])
                 return a->subj[COMM - SUBJ_START];
 
 	return NULL;

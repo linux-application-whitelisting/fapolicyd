@@ -784,8 +784,6 @@ int main(int argc, const char *argv[])
 	msg(LOG_INFO, "shutting down...");
 	shutdown_fanotify(m);
 	close(pfd[0].fd);
-	mlist_clear(m);
-	free(m);
 	file_close();
 	close_database();
 #ifdef HAVE_MALLINFO2
@@ -804,7 +802,9 @@ int main(int argc, const char *argv[])
 			fclose(f);
 		}
 	}
-	destroy_event_system();
+	mlist_clear(m);	// removes mounts
+	free(m);
+	destroy_event_system(); // clears lru caches
 	destroy_rules();
 	destroy_fs_list();
 	free_daemon_config(&config);
