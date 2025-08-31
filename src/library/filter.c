@@ -55,11 +55,9 @@
 #include "stack.h"
 #include "message.h"
 #include "string-util.h"
+#include "paths.h"
 
 #pragma GCC optimize("O3")
-
-#define OLD_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"
-#define FILTER_FILE "/etc/fapolicyd/fapolicyd-filter.conf"
 
 filter_t *global_filter = NULL;
 

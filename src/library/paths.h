@@ -38,4 +38,7 @@
 #define fifo_path       "/run/fapolicyd/fapolicyd.fifo"
 #define pidfile         "/run/fapolicyd.pid"
 
+#define OLD_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"
+#define FILTER_FILE     "/etc/fapolicyd/fapolicyd-filter.conf"
+
 #endif
