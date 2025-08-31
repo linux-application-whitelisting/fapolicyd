@@ -2,6 +2,8 @@
 - Increase the default subject cache size
 - Move fapolicyd-rpm-loader to bin directory
 - Suppress the subject cache eviction for scripts run by interpreters
+- Fix decriptor leak in previous release - only leaks on rpminstall/delete
+- Improve performance of filter code
 
 1.3.5
 - Raise default value for db_max_size
