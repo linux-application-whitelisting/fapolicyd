@@ -22,6 +22,7 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
+#include "config.h"
 #include "escape.h"
 
 #include <stdio.h>

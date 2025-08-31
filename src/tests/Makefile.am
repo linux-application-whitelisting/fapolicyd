@@ -20,13 +20,15 @@
 #
 
 CONFIG_CLEAN_FILES = *.orig *.cur
-check_PROGRAMS = avl_test gid_proc_test
+check_PROGRAMS = avl_test gid_proc_test escape_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 
 avl_test_SOURCES = avl_test.c ${top_srcdir}/src/library/avl.c
 gid_proc_test_SOURCES = gid_proc_test.c
 gid_proc_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+escape_test_SOURCES = escape_test.c
+escape_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 
 if WITH_RPM
 check_PROGRAMS += filter_test
