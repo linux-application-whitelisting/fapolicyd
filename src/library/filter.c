@@ -395,10 +395,13 @@ filter_rc_t filter_check(const char *_path)
 
 		}
 
-		const char *rule = (filter->path && *filter->path) ? filter->path : "/";
-		FILTER_TRACE("%s %s %s\n",
-			filter->type == ADD ? "allow" : "deny",
-			rule, matched ? "match" : "no match");
+		if (filter->type != NONE) {
+			const char *rule = (filter->path && *filter->path) ?
+				filter->path : "/";
+			FILTER_TRACE("%s %s %s\n",
+				filter->type == ADD ? "allow" : "deny",
+				rule, matched ? "match" : "no match");
+		}
 
 		stack_item_t * stack_item = NULL;
 		// pop already processed filters from the top of the stack
@@ -433,6 +436,8 @@ filter_rc_t filter_check(const char *_path)
 	}
 
 end:
+	FILTER_TRACE("decision %s\n",
+		res == FILTER_ALLOW ? "allow" : "deny");
 	// Clean up the stack
 	stack_pop_all_reset(&stack, &sp);
 	stack_destroy(&stack);
