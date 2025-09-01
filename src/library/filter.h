@@ -27,6 +27,7 @@
 
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #include "llist.h"
 
@@ -72,6 +73,7 @@ int filter_init(void);
 void filter_destroy(void);
 filter_rc_t filter_check(const char *path);
 int filter_load_file(const char *path);
+void filter_set_trace(FILE *stream);
 
 
 #endif // FILTER_H_
