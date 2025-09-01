@@ -51,7 +51,9 @@
 #include "llist.h"
 #include "fd-fgets.h"
 #include "paths.h"
+#ifdef HAVE_LIBRPM
 #include "filter.h"
+#endif
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
@@ -63,13 +65,15 @@ static const char *usage =
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
-"--trust-file file     Use after --file to specify trust file\n"
-"--test-filter path    Test FILTER_FILE against path and trace to stdout\n"
 "-h, --help            Prints this help message\n"
 "-t, --ftype file-path Prints out the mime type of a file\n"
 "-l, --list            Prints a list of the daemon's rules with numbers\n"
-"-u, --update          Notifies fapolicyd to perform update of database\n"
 "-r, --reload-rules    Notifies fapolicyd to perform reload of rules\n"
+#ifdef HAVE_LIBRPM
+"--test-filter path    Test FILTER_FILE against path and trace to stdout\n"
+#endif
+"--trust-file file     Use after --file to specify trust file\n"
+"-u, --update          Notifies fapolicyd to perform update of database\n"
 ;
 
 static struct option long_opts[] =
@@ -87,7 +91,9 @@ static struct option long_opts[] =
 	{"list",	0, NULL, 'l'},
 	{"update",	0, NULL, 'u'},
 	{"reload-rules",	0, NULL, 'r'},
+#ifdef HAVE_LIBRPM
 	{"test-filter", 1, NULL, 6 },
+#endif
 	{ NULL,		0, NULL, 0 }
 };
 
@@ -904,6 +910,7 @@ err_out:
 	return 1;
 }
 
+#ifdef HAVE_LIBRPM
 static int do_test_filter(const char *path)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
@@ -922,6 +929,7 @@ static int do_test_filter(const char *path)
 	filter_destroy();
 	return 0;
 }
+#endif
 
 int main(int argc, char * const argv[])
 {
@@ -1015,12 +1023,15 @@ int main(int argc, char * const argv[])
 			goto args_err;
 		return check_path();
 		break;
+
+#ifdef HAVE_LIBRPM
 	case 6: { // --test-filter
 		if (argc > 3)
 			goto args_err;
 		return do_test_filter(optarg);
 		}
 		break;
+#endif
 	default:
 		printf("%s", usage);
 		rc = 1;
