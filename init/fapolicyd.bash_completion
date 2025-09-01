@@ -7,11 +7,11 @@ _fapolicydcli()
 	local cur="${COMP_WORDS[COMP_CWORD]}"
 	local prev="${COMP_WORDS[COMP_CWORD-1]}"
 	local opts="--check-config --check-path --check-status --check-trustdb \
-                --check-watch_fs --delete-db --dump-db \
-                --file --ftype --help --list --update --reload-rules"
+		--check-watch_fs --delete-db --dump-db \
+		--file --ftype --help --list --update --reload-rules --test-filter"
 
 	case $prev in
-		--ftype)
+		--ftype|--test-filter)
 			# If bash completions is installed, use it
 			if [ -e /usr/share/bash-completion/bash_completion ] ; then
 				_filedir

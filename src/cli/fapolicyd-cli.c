@@ -51,6 +51,7 @@
 #include "llist.h"
 #include "fd-fgets.h"
 #include "paths.h"
+#include "filter.h"
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
@@ -63,6 +64,7 @@ static const char *usage =
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
 "--trust-file file     Use after --file to specify trust file\n"
+"--test-filter path    Test FILTER_FILE against given path\n"
 "-h, --help            Prints this help message\n"
 "-t, --ftype file-path Prints out the mime type of a file\n"
 "-l, --list            Prints a list of the daemon's rules with numbers\n"
@@ -85,6 +87,7 @@ static struct option long_opts[] =
 	{"list",	0, NULL, 'l'},
 	{"update",	0, NULL, 'u'},
 	{"reload-rules",	0, NULL, 'r'},
+	{"test-filter", 1, NULL, 6 },
 	{ NULL,		0, NULL, 0 }
 };
 
@@ -901,6 +904,27 @@ err_out:
 	return 1;
 }
 
+static int do_test_filter(const char *path)
+{
+	set_message_mode(MSG_STDERR, DBG_NO);
+
+	if (filter_init()) {
+		fprintf(stderr, "filter_init failed\n");
+		return 1;
+	}
+	if (filter_load_file(FILTER_FILE)) {
+		fprintf(stderr, "filter_load_file failed\n");
+		filter_destroy();
+		return 1;
+	}
+	if (filter_check(path) == FILTER_ALLOW)
+		printf("allow\n");
+	else
+		printf("deny\n");
+	filter_destroy();
+	return 0;
+}
+
 int main(int argc, char * const argv[])
 {
 	int opt, option_index, rc = 1;
@@ -992,6 +1016,11 @@ int main(int argc, char * const argv[])
 		if (argc > 2)
 			goto args_err;
 		return check_path();
+		break;
+	case 6: // --test-filter
+		if (argc > 3)
+			goto args_err;
+		return do_test_filter(optarg);
 		break;
 	default:
 		printf("%s", usage);
