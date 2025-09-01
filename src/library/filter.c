@@ -61,6 +61,11 @@
 
 filter_t *global_filter = NULL;
 static FILE *trace = NULL;
+#define FILTER_TRACE(fmt, ...) \
+do { \
+if (trace) \
+	fprintf(trace, fmt, ##__VA_ARGS__); \
+} while (0)
 
 void filter_set_trace(FILE *stream)
 {
@@ -390,12 +395,17 @@ filter_rc_t filter_check(const char *_path)
 
 		}
 
+		const char *rule = (filter->path && *filter->path) ? filter->path : "/";
+		FILTER_TRACE("%s %s %s\n",
+			filter->type == ADD ? "allow" : "deny",
+			rule, matched ? "match" : "no match");
+
 		stack_item_t * stack_item = NULL;
 		// pop already processed filters from the top of the stack
 		do {
-			if (stack_item) {
-				filter = stack_item->filter;
-				offset = stack_item->offset;
+		if (stack_item) {
+			filter = stack_item->filter;
+			offset = stack_item->offset;
 				level = stack_item->level;
 
 				// assuimg that nothing has matched on the
@@ -426,8 +436,6 @@ end:
 	// Clean up the stack
 	stack_pop_all_reset(&stack, &sp);
 	stack_destroy(&stack);
-	if (trace)
-		fprintf(trace, "%s\n", res == FILTER_ALLOW ? "allow" : "deny");
 	return res;
 }
 
