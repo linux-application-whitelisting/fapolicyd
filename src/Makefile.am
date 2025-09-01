@@ -9,7 +9,12 @@ sbin_PROGRAMS = fapolicyd fapolicyd-cli
 lib_LTLIBRARIES= libfapolicyd.la
 
 fapolicyd_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
-fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now
+fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now  -static
+fapolicyd_LDADD = libfapolicyd.la
+
+fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
+fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
+fapolicyd_cli_LDADD = libfapolicyd.la
 
 libfapolicyd_la_SOURCES = \
 	library/avl.c \
@@ -79,14 +84,14 @@ fapolicyd_rpm_loader_SOURCES = \
 
 fapolicyd_rpm_loader_CFLAGS = $(fapolicyd_CFLAGS)
 fapolicyd_rpm_loader_LDFLAGS = $(fapolicyd_LDFLAGS)
-
 fapolicyd_rpm_loader_LDADD = libfapolicyd.la
 endif
 
 if WITH_DEB
 libfapolicyd_la_SOURCES += library/deb-backend.c
 fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
-fapolicyd_LDFLAGS += -ldpkg -lmd
+fapolicyd_LDADD += -ldpkg -lmd
+fapolicyd_cli_LDADD += -ldpkg -lmd
 endif
 
 if NEED_MD5
@@ -94,9 +99,6 @@ libfapolicyd_la_SOURCES += \
 	library/md5-backend.c \
 	library/md5-backend.h
 endif
-
-fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
-fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 
 libfapolicyd_la_CFLAGS = $(fapolicyd_CFLAGS)
 libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread
@@ -108,14 +110,7 @@ fapolicyd_SOURCES = \
 	daemon/notify.c \
 	daemon/notify.h
 
-
-fapolicyd_LDADD = libfapolicyd.la
-fapolicyd_LDFLAGS += -static
-
-
 fapolicyd_cli_SOURCES = \
 	cli/fapolicyd-cli.c \
 	cli/file-cli.c \
 	cli/file-cli.h
-
-fapolicyd_cli_LDADD = libfapolicyd.la
