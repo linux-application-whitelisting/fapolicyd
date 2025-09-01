@@ -192,12 +192,18 @@ static void stack_pop_all_vars(stack_t *_stack, int *sp)
 }
 
 /*
- * stack_pop_reset - pop top item
+ * stack_pop_reset - reset flags and pop top item
  */
 static void stack_pop_reset(stack_t *_stack, int *sp)
 {
 	if (_stack == NULL || sp == NULL || *sp <= 0)
 		return;
+
+	stack_item_t *item = (stack_item_t *)stack_top(_stack);
+	if (item && item->filter) {
+		item->filter->processed = 0;
+		item->filter->matched = 0;
+	}
 
 	stack_pop(_stack);
 	(*sp)--;

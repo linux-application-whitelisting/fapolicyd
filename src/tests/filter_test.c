@@ -52,18 +52,22 @@
 
 extern filter_t *global_filter;
 
-/* reset_tree - clear processed and matched flags in filter tree */
-static void reset_tree(filter_t *f)
+/* check_tree_reset - ensure processed and matched flags are cleared */
+static int check_tree_reset(filter_t *f)
 {
 	if (!f)
-		return;
+		return 1;
 
-	f->processed = 0;
-	f->matched = 0;
+	if (f->processed || f->matched)
+		return 0;
 
 	list_item_t *item = list_get_first(&f->list);
-	for (; item; item = item->next)
-		reset_tree((filter_t *)item->data);
+	for (; item; item = item->next) {
+			if (!check_tree_reset((filter_t *)item->data))
+				return 0;
+	}
+
+	return 1;
 }
 
 static int file_exists(const char *path)
@@ -117,7 +121,13 @@ static int run_cases(const char *cfg, const char *path)
 			break;
 		}
 		int res = filter_check(p);
-		reset_tree(global_filter);
+		if (!check_tree_reset(global_filter)) {
+			fprintf(stderr,
+			"[ERROR:7] filter flags not reset after filter_check\n");
+			rc = 7;
+			filter_destroy();
+			break;
+		}
 		if (res != exp) {
 			fprintf(stderr,
 				"[ERROR:4] %s:%s expected %s got %s\n",
