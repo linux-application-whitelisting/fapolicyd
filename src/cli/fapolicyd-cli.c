@@ -904,10 +904,10 @@ err_out:
 	return 1;
 }
 
-static int do_test_filter(const char *path, FILE *trace)
+static int do_test_filter(const char *path)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
-	filter_set_trace(trace);
+	filter_set_trace(stdout);
 
 	if (filter_init()) {
 		fprintf(stderr, "filter_init failed\n");
@@ -1018,7 +1018,7 @@ int main(int argc, char * const argv[])
 	case 6: { // --test-filter
 		if (argc > 3)
 			goto args_err;
-		return do_test_filter(optarg, stdout);
+		return do_test_filter(optarg);
 		}
 		break;
 	default:
