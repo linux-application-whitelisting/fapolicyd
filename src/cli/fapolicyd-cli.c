@@ -64,7 +64,7 @@ static const char *usage =
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
 "--trust-file file     Use after --file to specify trust file\n"
-"--test-filter path    Test FILTER_FILE against given path\n"
+"--test-filter path    Test FILTER_FILE against path and trace to stdout\n"
 "-h, --help            Prints this help message\n"
 "-t, --ftype file-path Prints out the mime type of a file\n"
 "-l, --list            Prints a list of the daemon's rules with numbers\n"
@@ -904,23 +904,21 @@ err_out:
 	return 1;
 }
 
-static int do_test_filter(const char *path)
+static int do_test_filter(const char *path, FILE *trace)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
+	filter_set_trace(trace);
 
 	if (filter_init()) {
 		fprintf(stderr, "filter_init failed\n");
 		return 1;
 	}
 	if (filter_load_file(FILTER_FILE)) {
-		fprintf(stderr, "filter_load_file failed\n");
 		filter_destroy();
+		fprintf(stderr, "filter_load_file failed\n");
 		return 1;
 	}
-	if (filter_check(path) == FILTER_ALLOW)
-		printf("allow\n");
-	else
-		printf("deny\n");
+	filter_check(path);
 	filter_destroy();
 	return 0;
 }
@@ -1017,10 +1015,11 @@ int main(int argc, char * const argv[])
 			goto args_err;
 		return check_path();
 		break;
-	case 6: // --test-filter
+	case 6: { // --test-filter
 		if (argc > 3)
 			goto args_err;
-		return do_test_filter(optarg);
+		return do_test_filter(optarg, stdout);
+		}
 		break;
 	default:
 		printf("%s", usage);

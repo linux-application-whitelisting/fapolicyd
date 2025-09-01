@@ -60,6 +60,13 @@
 #pragma GCC optimize("O3")
 
 filter_t *global_filter = NULL;
+static FILE *trace = NULL;
+
+void filter_set_trace(FILE *stream)
+{
+	trace = stream;
+}
+
 
 static filter_t *filter_create_obj(void);
 static void filter_destroy_obj(filter_t *_filter);
@@ -419,6 +426,8 @@ end:
 	// Clean up the stack
 	stack_pop_all_reset(&stack, &sp);
 	stack_destroy(&stack);
+	if (trace)
+		fprintf(trace, "%s\n", res == FILTER_ALLOW ? "allow" : "deny");
 	return res;
 }
 
