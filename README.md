@@ -465,13 +465,38 @@ MANAGING TRUST
 --------------
 Fapolicyd use lmdb as a backend database for its trusted software list. You
 can find this database in /var/lib/fapolicyd/. This list gets updated
-whenever packages are installed by dnf by a dnf plugin. If packages are
-installed by rpm instead of dnf, fapolicyd does not get a notification. In
-that case, you would also need to tell the daemon that it needs to update
-the trust database. This is done by running fapolicyd-cli and passing
-along the --update option. Also, if you add or delete files from the file
-trust list, fapolicyd.trust, then you will also have to run the fapolicyd-cli
-utility.
+whenever packages are installed by dnf or rpm by a rpm plugin.
+
+The files that go into the trust database from rpm go through a filter to
+eliminate as many unimportant files as possible so that the trust database
+is concise. To see what kinds of files are in the trust database, you can try this:
+
+```
+fapolicyd-cli -D  | awk '{print $2}'  | awk -F/ '{
+     base=$NF
+     ext="*"
+     if (base !~ /^\./ && base ~ /\./) {
+       n=split(base,a,"."); ext="*."a[n]
+     }
+     path=""
+     for(i=1;i<NF;i++) if($i!="") path=path"/"$i
+     print path"/"ext
+   }'  | sort | uniq -c | sort -nr | less
+
+```
+This will show you which directories and file extensions are present like this:
+
+```
+   4913 /usr/bin/*
+   2028 /usr/lib/python3.13/site-packages/yt_dlp/extractor/__pycache__/*.pyc
+   1937 /usr/lib64/R/library/Matrix/help/*.html
+   1622 /usr/lib64/R/library/base/help/*.html
+```
+
+This could give you the idea to get rid of the html files since there are a lot
+and they do not need to be considered trusted. Files that are in the trusted
+database should be known files that will get executed. See the fapolicyd-filter.conf
+man page for more information about writing filter rules.
 
 Lmdb is a very fast database. Normally it works fine. But it does not tolerate
 malformed databases. When this happens, it can segfault fapolicyd. The fix
@@ -504,6 +529,11 @@ fapolicyd-cli --file delete /opt/my-app/
 The command line utility will remove all files that match that directory from
 fapolicyd.trust. There is also a --file update extension that can update the
 size and hash information with what is currently on disk.
+
+If files are added or deleted into the file trust database, fapolicyd
+does not get a notification. In that case, you would also need to tell the
+daemon that it needs to update the trust database. This is done by running
+fapolicyd-cli and passing along the --update option.
 
 Sometimes you want to see what is stored in the combined file and rpm
 trust database. In this case you can use the dump command
