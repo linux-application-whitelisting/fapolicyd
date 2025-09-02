@@ -496,7 +496,9 @@ This will show you which directories and file extensions are present like this:
 Another view that you may find handy is an aggregate roll up of the trust database:
 
 ```
-fapolicyd-cli -D  | awk '{split($2, a, "."); print a[length(a)]}' | sort | uniq -c | sort -nr | less
+fapolicyd-cli -D  | \
+awk '{split($2, a, "."); print a[length(a)]}' | \
+sort | uniq -c | sort -nr | less
 ```
 
 Which gives a summary by type:
