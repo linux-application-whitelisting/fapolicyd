@@ -493,15 +493,33 @@ This will show you which directories and file extensions are present like this:
    1622 /usr/lib64/R/library/base/help/*.html
 ```
 
+Another view that you may find handy is an aggregate roll up of the trust database:
+
+```
+fapolicyd-cli -D  | awk '{split($2, a, "."); print a[length(a)]}' | sort | uniq -c | sort -nr | less
+```
+
+Which gives a summary by type:
+
+```
+  17426 xz
+  13571 h
+  11734 html
+   7873 go
+   5598 json
+
+```
+
 This could give you the idea to get rid of the html files since there are a lot
 and they do not need to be considered trusted. Files that are in the trusted
 database should be known files that will get executed. See the fapolicyd-filter.conf
 man page for more information about writing filter rules.
 
-Lmdb is a very fast database. Normally it works fine. But it does not tolerate
-malformed databases. When this happens, it can segfault fapolicyd. The fix
-is to delete the database and restart the daemon. It will then rebuild the
-database and work as it should. To do this, run the following command:
+One last thing about the trustdb, lmdb is a very fast database. Normally it
+works fine. But it does not tolerate malformed databases. When this happens,
+it can segfault fapolicyd. The fix is to delete the database and restart
+the daemon. It will then rebuild the database and work as it should. To do
+this, run the following command:
 
 ```
 fapolicyd-cli --delete-db
