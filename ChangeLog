@@ -9,6 +9,7 @@
 - Fix build flags for Debian to include libmd
 - Add --test-filter to fapolicy-cli to help test filter rules
 - Fix bug in the filter that was allowing unexpected files though the filter
+- Drop 2 more kinds of files from the rpm filter: html and md
 
 1.3.5
 - Raise default value for db_max_size
