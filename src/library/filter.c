@@ -437,7 +437,7 @@ filter_rc_t filter_check(const char *_path)
 
 end:
 	FILTER_TRACE("decision %s\n",
-		res == FILTER_ALLOW ? "allow" : "deny");
+		res == FILTER_ALLOW ? "include" : "exclude");
 	// Clean up the stack
 	stack_pop_all_reset(&stack, &sp);
 	stack_destroy(&stack);

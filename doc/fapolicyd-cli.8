@@ -49,7 +49,7 @@ This command updates the size and hash of any matching paths in the file trust d
 Use after \fBfile\fP option. Makes every command of \fBfile\fP option operate on a single trust file named \fBtrust-file-name\fP that is located inside trust.d directory. If a trust file with such a name does not exist inside trust.d directory, it is created.
 .TP
 .B --test-filter /path/to/file
-Evaluate FILTER_FILE against the given path and emit a rule-by-rule trace ending with "decision allow" or "decision deny".
+Evaluate FILTER_FILE against the given path and emit a rule-by-rule trace ending with "decision include" or "decision exclude". This let's you know if the file will be included in the trust database or not.
 .TP
 .B \-t, \-\-ftype /path/to/file
 Prints the mime type of the file given. A full path must be specified. This command is intended to help get the ftype parameter of rules correct by seeing how fapolicyd will classify it. Fapolicyd may differ from the \fBfile\fP command.
