@@ -509,7 +509,6 @@ Which gives a summary by type:
   11734 html
    7873 go
    5598 json
-
 ```
 
 This could give you the idea to get rid of the html files since there are a lot
