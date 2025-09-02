@@ -14,7 +14,7 @@
  * ---------------------
  * This harness validates filter.c against both a minimal example
  * configuration and the full production filter.  Path/verdict pairs
- * are defined in tests/fixtures/filter-cases.txt; for each entry the
+ * are defined in src/tests/fixtures/filter-cases.txt; for each entry the
  * test:
  *   1. re‑initializes the filter,
  *   2. loads the designated filter file,
@@ -24,7 +24,7 @@
  * versus file semantics, duplicate slashes, “..” traversal, UTF‑8
  * path segments, and other edge cases.
  *
- * Negative parsing: tests/fixtures/broken-filter.conf contains mixed
+ * Negative parsing: src/tests/fixtures/broken-filter.conf contains mixed
  * whitespace indentation, a missing leading ‘+’/‘-’, and an unescaped
  * ‘#’ to ensure filter_load_file() fails on malformed syntax.
  *
@@ -45,9 +45,9 @@
 #define TEST_BASE "."
 #endif
 
-#define CASES_FILE TEST_BASE "/tests/fixtures/filter-cases.txt"
-#define MIN_CONF  TEST_BASE "/tests/fixtures/filter-minimal.conf"
-#define BROKEN_CONF TEST_BASE "/tests/fixtures/broken-filter.conf"
+#define CASES_FILE TEST_BASE "/src/tests/fixtures/filter-cases.txt"
+#define MIN_CONF  TEST_BASE "/src/tests/fixtures/filter-minimal.conf"
+#define BROKEN_CONF TEST_BASE "/src/tests/fixtures/broken-filter.conf"
 #define PROD_CONF TEST_BASE "/init/fapolicyd-filter.conf"
 
 extern filter_t *global_filter;

@@ -2,9 +2,9 @@
 SUBDIRS = src init doc rules.d
 
 TEST_FIXTURES = \
-tests/fixtures/filter-minimal.conf \
-tests/fixtures/filter-cases.txt \
-tests/fixtures/broken-filter.conf \
+src/tests/fixtures/filter-minimal.conf \
+src/tests/fixtures/filter-cases.txt \
+src/tests/fixtures/broken-filter.conf \
 init/fapolicyd-filter.conf
 
 EXTRA_DIST = ChangeLog AUTHORS NEWS README.md INSTALL fapolicyd.spec \
