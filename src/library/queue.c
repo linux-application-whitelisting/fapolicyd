@@ -34,7 +34,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <stdatomic.h>
 #include "queue.h"
 #include "message.h"
 
@@ -53,7 +52,7 @@
  */
 
 /* Queue implementation */
-static unsigned int max_depth;
+static atomic_uint max_depth;
 extern atomic_bool stop;
 
 /* Initialize a queue   */
