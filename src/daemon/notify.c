@@ -35,7 +35,6 @@
 #include <sys/syscall.h>
 #include <sys/timerfd.h>
 #include <stdbool.h>
-#include <stdatomic.h>
 #include "policy.h"
 #include "event.h"
 #include "message.h"
