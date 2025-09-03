@@ -1,5 +1,6 @@
 1.3.7
-
+- Refactor queue to unify enqueue and dequeue
+ 
 1.3.6
 - Increase the default subject cache size
 - Move fapolicyd-rpm-loader to bin directory
