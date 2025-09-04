@@ -40,10 +40,15 @@
 /*
  * Ring buffer queue
  *
- * The queue is a fixed-size ring of struct fanotify_event_metadata.
- * q_open() allocates the array and sets head/tail counters.
- * q_enqueue() copies a new event into the tail.
- * q_dequeue() fetches events from the head and advances it.
+ * The queue is a fixed-size ring of struct fanotify_event_metadata.  A
+ * semaphore tracks how many events are queued while atomic indices maintain
+ * the next slot to use for enqueueing and dequeueing.  This avoids blocking
+ * producers and consumers on a mutex which improves latency under load.
+ *
+ * q_open() allocates the array and initializes the semaphore and indices.
+ * q_enqueue() copies a new event into the producer slot, advances it and posts
+ * to the semaphore.  q_dequeue() waits on the semaphore, reads from the
+ * consumer slot and advances it.
  *
  * queue_length is read without locking by the deadman thread and is
  * therefore atomic. Using a ring buffer avoids per-event malloc/free and
@@ -53,7 +58,6 @@
 
 /* Queue implementation */
 static atomic_uint max_depth;
-extern atomic_bool stop;
 
 /* Initialize a queue   */
 struct queue *q_open(size_t num_entries)
@@ -76,17 +80,13 @@ struct queue *q_open(size_t num_entries)
 		goto err;
 
 	q->num_entries = num_entries;
-	q->queue_head = 0;
-	q->queue_tail = 0;
-	q->queue_length = 0;
+	atomic_store_explicit(&q->q_next, 0, memory_order_relaxed);
+	atomic_store_explicit(&q->q_last, 0, memory_order_relaxed);
+	atomic_store_explicit(&q->queue_length, 0, memory_order_relaxed);
 	max_depth = 0;
 
-	pthread_mutex_init(&q->lock, NULL);
-	pthread_condattr_t attr;
-	pthread_condattr_init(&attr);
-	pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
-	pthread_cond_init(&q->cond, &attr);
-	pthread_condattr_destroy(&attr);
+	if (sem_init(&q->sem, 0, 0) == -1)
+		goto err;
 
 	return q;
 
@@ -99,8 +99,7 @@ err:
 
 void q_close(struct queue *q)
 {
-	pthread_cond_destroy(&q->cond);
-	pthread_mutex_destroy(&q->lock);
+	sem_destroy(&q->sem);
 	free(q->events);
 	msg(LOG_DEBUG, "Inter-thread max queue depth %u", max_depth);
 	free(q);
@@ -111,103 +110,128 @@ void q_report(FILE *f)
 	fprintf(f, "Inter-thread max queue depth: %u\n", max_depth);
 }
 
-/* Internal helpers */
-static void q_append(struct queue *q,
-		      const struct fanotify_event_metadata *data)
-{
-	q->events[q->queue_tail] = *data;
-	q->queue_tail++;
-	if (q->queue_tail == q->num_entries)
-	q->queue_tail = 0;
-}
-
-static void q_peek(const struct queue *q,
-		    struct fanotify_event_metadata *data)
-{
-	*data = q->events[q->queue_head];
-}
-
-static void q_drop_head(struct queue *q)
-{
-	q->queue_head++;
-	if (q->queue_head == q->num_entries)
-		q->queue_head = 0;
-}
-
 /* add DATA to Q */
 int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 {
-	int rc = 0;
+	unsigned int n;
 
-	pthread_mutex_lock(&q->lock);
-	if (q->queue_length == q->num_entries) {
+	if (atomic_load_explicit(&q->queue_length, memory_order_relaxed) ==
+		q->num_entries) {
 		errno = ENOSPC;
-		rc = -1;
-	} else {
-		q_append(q, data);
-		q->queue_length++;
-		if (q->queue_length > max_depth)
-			max_depth = q->queue_length;
-		pthread_cond_signal(&q->cond);
+		return -1;
 	}
-	pthread_mutex_unlock(&q->lock);
-	return rc;
+
+	/*
+	 * Load the producer index with relaxed ordering.  sem_post() acts as a
+	 * release barrier and sem_wait() in q_dequeue() provides the matching
+	 * acquire barrier.  Because the threads synchronize on the semaphore,
+	 * a relaxed load of q_next is sufficient here.
+	 */
+	n = atomic_load_explicit(&q->q_next, memory_order_relaxed);
+	q->events[n] = *data;
+
+	n++;
+	if (n == q->num_entries)
+		n = 0;
+
+	/*
+	 * Store the updated producer index with release semantics.  The event
+	 * was written to q->events above and sem_post() will be issued next.
+	 * sem_post() itself is a release barrier and sem_wait() in
+	 * q_dequeue() will acquire it, so the combination guarantees the
+	 * consumer sees the event before noticing that q_next advanced.
+	 */
+	atomic_store_explicit(&q->q_next, n, memory_order_release);
+
+	n = atomic_fetch_add_explicit(&q->queue_length, 1, memory_order_relaxed) + 1;
+	if (n > atomic_load_explicit(&max_depth, memory_order_relaxed))
+		atomic_store_explicit(&max_depth, n, memory_order_relaxed);
+
+	sem_post(&q->sem);
+	return 0;
 }
 
-/* remove events from Q */
-int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-	       size_t max)
+/* remove one event from Q */
+int q_dequeue(struct queue *q, struct fanotify_event_metadata *data)
 {
-	size_t i = 0;
+	for (;;) {
+		if (sem_wait(&q->sem)) {
+			if (errno == EINTR)
+				continue;
+			return -1;
+		}
+		if (atomic_load_explicit(&q->queue_length,
+					 memory_order_relaxed) == 0)
+			return 0;
 
-	pthread_mutex_lock(&q->lock);
-	while (q->queue_length == 0 && !stop)
-	pthread_cond_wait(&q->cond, &q->lock);
-	while (i < max && q->queue_length > 0) {
-		q_peek(q, &data[i]);
-		q_drop_head(q);
-		q->queue_length--;
-		i++;
+		/*
+		 * The consumer waits on sem_wait() above which provides an
+		 * acquire barrier for the producer's sem_post().  Because of
+		 * that synchronization a relaxed load of the consumer index is
+		 * safe here.
+		 */
+		unsigned int n = atomic_load_explicit(&q->q_last,
+						      memory_order_relaxed);
+		*data = q->events[n];
+		n++;
+		if (n == q->num_entries)
+			n = 0;
+
+		/*
+		 * Release ensures the slot is cleared before we advance the
+		 * consumer index.  The following sem_post() pairs with the
+		 * producer's sem_wait(), so the semaphore again provides the
+		 * cross-thread ordering needed for the queue operations.
+		 */
+		atomic_store_explicit(&q->q_last, n, memory_order_release);
+		atomic_fetch_sub_explicit(&q->queue_length, 1,
+					  memory_order_relaxed);
+		return 1;
 	}
-	pthread_mutex_unlock(&q->lock);
-	return i;
 }
 
 int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-		     size_t max, const struct timespec *ts)
+		     const struct timespec *ts)
 {
-	size_t i = 0;
-	int rc = 0;
+	for (;;) {
+		if (sem_timedwait(&q->sem, ts)) {
+			if (errno == EINTR)
+				continue;
+			if (errno == ETIMEDOUT)
+				return 0;
+			return -1;
+		}
+		break;
+	}
 
-	pthread_mutex_lock(&q->lock);
-	while (q->queue_length == 0 && !stop) {
-		rc = pthread_cond_timedwait(&q->cond, &q->lock, ts);
-		if (rc)
-			break;
-	}
-	if (rc == ETIMEDOUT) {
-		pthread_mutex_unlock(&q->lock);
-		errno = ETIMEDOUT;
+	if (atomic_load_explicit(&q->queue_length,
+				 memory_order_relaxed) == 0)
 		return 0;
-	} else if (rc) {
-		pthread_mutex_unlock(&q->lock);
-		errno = rc;
-		return -1;
-	}
-	while (i < max && q->queue_length > 0) {
-		q_peek(q, &data[i]);
-		q_drop_head(q);
-		q->queue_length--;
-		i++;
-	}
-	pthread_mutex_unlock(&q->lock);
-	return i;
+
+	/*
+	 * The consumer waits on sem_timedwait() above which provides an
+	 * acquire barrier for the producer's sem_post().  Because of that
+	 * synchronization a relaxed load of the consumer index is safe here.
+	 */
+	unsigned int n = atomic_load_explicit(&q->q_last,
+			                      memory_order_relaxed);
+	*data = q->events[n];
+	n++;
+	if (n == q->num_entries)
+		n = 0;
+
+	/*
+	 * Release ensures the slot is cleared before we advance the consumer
+	 * index.  The semaphore again provides the cross-thread ordering needed
+	 * for the queue operations.
+	 */
+	atomic_store_explicit(&q->q_last, n, memory_order_release);
+	atomic_fetch_sub_explicit(&q->queue_length, 1, memory_order_relaxed);
+	return 1;
 }
 
 void q_shutdown(struct queue *q)
 {
-	pthread_mutex_lock(&q->lock);
-	pthread_cond_signal(&q->cond);
-	pthread_mutex_unlock(&q->lock);
+	sem_post(&q->sem);
 }
 

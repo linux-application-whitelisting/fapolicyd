@@ -35,5 +35,6 @@ void unmark_fanotify(mlist *m);
 void shutdown_fanotify(mlist *m);
 void decision_report(FILE *f);
 void handle_events(void);
+void nudge_queue(void);
 
 #endif

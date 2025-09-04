@@ -43,7 +43,6 @@
 #include "paths.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192
-#define MAX_EVENTS 4
 
 // External variables
 extern atomic_bool stop, run_stats;
@@ -235,6 +234,11 @@ void shutdown_fanotify(mlist *m)
 	msg(LOG_DEBUG, "Denied accesses: %lu", getDenied());
 }
 
+void nudge_queue(void)
+{
+	q_shutdown(q);
+}
+
 void decision_report(FILE *f)
 {
 	if (f == NULL)
@@ -337,15 +341,14 @@ static void *decision_thread_main(void *arg)
 	run_stats = 1;
 
 	while (!stop) {
-		int len;
-		struct fanotify_event_metadata metadata[MAX_EVENTS];
+		int rc;
+		struct fanotify_event_metadata metadata;
 
 		// if an interval has been configured
 		if (rpt_interval) {
 			errno = 0;
-			len = q_timed_dequeue(q, metadata, MAX_EVENTS,
-					      &rpt_timeout);
-			if (len == 0) {
+			rc = q_timed_dequeue(q, &metadata, &rpt_timeout);
+			if (rc == 0) {
 				// check for timer expirations
 				if (errno == ETIMEDOUT) {
 					uint64_t expired = 0;
@@ -388,8 +391,8 @@ static void *decision_thread_main(void *arg)
 				continue;
 			}
 		} else {
-			len = q_dequeue(q, metadata, MAX_EVENTS);
-			if (len == 0) {
+			rc = q_dequeue(q, &metadata);
+			if (rc == 0) {
 				if (run_stats) {
 					rpt_write();
 					run_stats = 0;
@@ -404,11 +407,8 @@ static void *decision_thread_main(void *arg)
 
 		alive = 1;
 		rpt_is_stale = 1;
-
-		for (int i = 0; i < len; i++) {
-			alive = 1;
-			make_policy_decision(&metadata[i], fd, mask);
-		}
+		alive = 1;
+		make_policy_decision(&metadata, fd, mask);
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
