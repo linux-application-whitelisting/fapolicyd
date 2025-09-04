@@ -80,8 +80,8 @@ struct fs_avl {
 };
 // This is the data about a specific file system to watch
 typedef struct fs_data {
-        avl_t avl;        // This has to be first
-        const char *fs_name;
+	avl_t avl;        // This has to be first
+	const char *fs_name;
 } fs_data_t;
 static struct fs_avl filesystems;
 
@@ -228,6 +228,7 @@ static void init_fs_list(const char *watch_fs)
 static void term_handler(int sig __attribute__((unused)))
 {
 	stop = true;
+	nudge_queue();
 }
 
 
@@ -258,6 +259,7 @@ static void hup_handler(int sig __attribute__((unused)))
 static void usr1_handler(int sig __attribute__((unused)))
 {
 	run_stats = true;
+	nudge_queue();
 }
 
 /*
@@ -427,28 +429,28 @@ static void usage(void)
 static struct mallinfo2 last_mi;
 static void memory_use_report(FILE *f)
 {
-        struct mallinfo2 mi = mallinfo2();
+	struct mallinfo2 mi = mallinfo2();
 
-        fprintf(f, "glibc arena (total memory) is: %zu KiB, was: %zu KiB\n",
-                        (size_t)mi.arena/1024, (size_t)last_mi.arena/1024);
-        fprintf(f, "glibc uordblks (in use memory) is: %zu KiB, was: %zu KiB\n",
-                        (size_t)mi.uordblks/1024,(size_t)last_mi.uordblks/1024);
-        fprintf(f,"glibc fordblks (total free space) is: %zu KiB, was: %zu KiB\n",
-                        (size_t)mi.fordblks/1024,(size_t)last_mi.fordblks/1024);
+	fprintf(f, "glibc arena (total memory) is: %zu KiB, was: %zu KiB\n",
+			(size_t)mi.arena/1024, (size_t)last_mi.arena/1024);
+	fprintf(f, "glibc uordblks (in use memory) is: %zu KiB, was: %zu KiB\n",
+			(size_t)mi.uordblks/1024,(size_t)last_mi.uordblks/1024);
+	fprintf(f,"glibc fordblks (total free space) is: %zu KiB, was: %zu KiB\n",
+			(size_t)mi.fordblks/1024,(size_t)last_mi.fordblks/1024);
 
-        memcpy(&last_mi, &mi, sizeof(struct mallinfo2));
+	memcpy(&last_mi, &mi, sizeof(struct mallinfo2));
 }
 
 static void close_memory_report(void)
 {
 	struct mallinfo2 mi = mallinfo2();
 
-        msg(LOG_DEBUG, "total memory: %zu KiB, was: %zu KiB",
-                        (size_t)mi.arena/1024, (size_t)last_mi.arena/1024);
-        msg(LOG_DEBUG, "in use memory: %zu KiB, was: %zu KiB",
-                        (size_t)mi.uordblks/1024,(size_t)last_mi.uordblks/1024);
-        msg(LOG_DEBUG,"total free memory: %zu KiB, was: %zu KiB",
-                        (size_t)mi.fordblks/1024,(size_t)last_mi.fordblks/1024);
+	msg(LOG_DEBUG, "total memory: %zu KiB, was: %zu KiB",
+			(size_t)mi.arena/1024, (size_t)last_mi.arena/1024);
+	msg(LOG_DEBUG, "in use memory: %zu KiB, was: %zu KiB",
+			(size_t)mi.uordblks/1024,(size_t)last_mi.uordblks/1024);
+	msg(LOG_DEBUG,"total free memory: %zu KiB, was: %zu KiB",
+			(size_t)mi.fordblks/1024,(size_t)last_mi.fordblks/1024);
 }
 #endif
 
@@ -756,9 +758,10 @@ int main(int argc, const char *argv[])
 				continue;
 			else {
 				stop = true;
+				nudge_queue();
 				close_database();
 				msg(LOG_ERR, "Poll error (%s)\n",
-						strerror(errno));
+					strerror(errno));
 				exit(1);
 			}
 		} else if (rc > 0) {

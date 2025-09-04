@@ -29,7 +29,7 @@
 #include <sys/types.h>
 #include <sys/fanotify.h>
 #include <stdatomic.h>
-#include <pthread.h>
+#include <semaphore.h>
 #include <time.h>
 #include "gcc-attributes.h"
 
@@ -38,11 +38,10 @@ struct queue
 	/* Ring buffer of fanotify events */
 	struct fanotify_event_metadata *events;
 	size_t num_entries;
-	size_t queue_head;
-	size_t queue_tail;
-	atomic_size_t queue_length;
-	pthread_mutex_t lock;
-	pthread_cond_t cond;
+	atomic_uint q_next;
+	atomic_uint q_last;
+	atomic_uint queue_length;
+        sem_t sem;
 };
 
 /* Close Q. */
@@ -58,16 +57,14 @@ void q_report(FILE *f);
 /* Add DATA to tail of Q. Return 0 on success, -1 on error and set errno. */
 int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data);
 
-/* Remove up to MAX events from Q, storing them into DATA. Return number of
- * events dequeued. */
-int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-	       size_t max);
+/* Remove one event from Q, storing it into DATA. Return 1 on success or 0 if
+ * the queue is empty. */
+int q_dequeue(struct queue *q, struct fanotify_event_metadata *data);
 
-/* Remove up to MAX events from Q, blocking until timeout. On success, return
- * number of events dequeued. On timeout, return 0 and set errno to ETIMEDOUT.
- */
-int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-		     size_t max, const struct timespec *ts);
+/* Remove one event from Q, blocking until timeout. On success return 1. On
+ * timeout return 0 and set errno to ETIMEDOUT. */
+ int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+		     const struct timespec *ts);
 
 /* Wake up anyone waiting on the queue. */
 void q_shutdown(struct queue *q);
