@@ -68,6 +68,7 @@ static Hash *create_hash(unsigned int hsize)
 	for (i = 0; i < hsize; i++)
 		hash->array[i] = NULL;
 
+	hash->size = hsize;
 	return hash;
 }
 
@@ -404,7 +405,7 @@ void destroy_lru(Queue *queue)
 unsigned int compute_subject_key(const Queue *queue, unsigned int pid)
 {
 	if (queue)
-		return pid % queue->total;
+		return pid % queue->hash->size;
 	else
 		return 0;
 }
@@ -412,7 +413,7 @@ unsigned int compute_subject_key(const Queue *queue, unsigned int pid)
 unsigned long compute_object_key(const Queue *queue, unsigned long num)
 {
 	if (queue)
-		return num % queue->total;
+		return num % queue->hash->size;
 	else
 		return 0;
 }
