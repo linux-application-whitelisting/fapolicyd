@@ -99,8 +99,11 @@ int init_event_system(const conf_t *config)
 	obj_cache = init_lru(config->obj_cache_size,
 				(void (*)(void *))object_clear, "Object",
 				NULL);
-	if (!obj_cache)
+	if (!obj_cache) {
+		destroy_lru(subj_cache);
+		subj_cache = NULL;
 		return 1;
+	}
 
 	return 0;
 }
