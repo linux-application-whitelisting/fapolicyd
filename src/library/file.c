@@ -376,14 +376,19 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			ptr = classify_elf_info(elf, path);
 			if (ptr == NULL)
 				return (char *)ptr;
-			return strncpy(buf, ptr, blen-1);
+			strncpy(buf, ptr, blen-1);
+			buf[blen-1] = 0;
+			return buf;
 		}
 	}
 
 	// Take a look to see if its a device
 	ptr = classify_device(i->mode);
-	if (ptr)
-		return strncpy(buf, ptr, blen-1);
+	if (ptr) {
+		strncpy(buf, ptr, blen-1);
+		buf[blen-1] = 0;
+		return buf;
+	}
 
 	// Do the normal classification
 	ptr = magic_descriptor(magic_cookie, fd);
