@@ -600,8 +600,12 @@ static int check_watch_fs(void)
 	list_init(&fs);
 	ptr = strtok_r(tmp, ",", &saved);
 	while (ptr) {
-		// we do not care about the data
-		list_append(&fs, strdup(ptr), strdup("0"));
+		char *index = strdup(ptr);
+		char *data = strdup("0");
+		if (!index || !data || list_append(&fs, index, data)) {
+			free(index);
+			free(data);
+		}
 		ptr = strtok_r(NULL, ",", &saved);
 	}
 	free(tmp);
@@ -632,7 +636,12 @@ static int check_watch_fs(void)
 			// Some file systems are not watchable
 			if (not_watchable(type))
 				continue;
-			list_append(&mnt, strdup(type), strdup("0"));
+			char *index = strdup(type);
+			char *data = strdup("0");
+			if (!index || !data || list_append(&mnt, index, data)) {
+				free(index);
+				free(data);
+			}
 		}
 	} while (!fd_fgets_eof_r(st));
 	fd_fgets_destroy(st);

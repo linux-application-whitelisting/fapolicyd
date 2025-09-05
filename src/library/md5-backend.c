@@ -136,7 +136,12 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 			rcd->key = strdup(key);
 			HASH_ADD_KEYPTR(hh, *hashtable, rcd->key,
 					strlen(rcd->key), rcd);
-			list_append(&dstbackend->list, strdup(path), data);
+			char *dup = strdup(path);
+			if (!dup || list_append(&dstbackend->list, dup, data)) {
+				free(dup);
+				free((void *)data);
+				return 1;
+			}
 		} else {
 			free((void *)data);
 		}

@@ -75,6 +75,9 @@ int list_append(list_t *list, const char *index, const char *data)
 {
 	list_item_t *item = create_item(index, data);
 
+	if (!item)
+		return 1;
+
 	if (list->first) {
 		list->last->next = item;
 		list->last = item;

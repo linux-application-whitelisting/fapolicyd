@@ -55,7 +55,13 @@ static int ftw_add_list_append(const char *fpath,
 {
 	if (typeflag == FTW_F) {
 		if (S_ISREG(sb->st_mode)) {
-			list_append(&add_list, strdup(fpath), NULL);
+			char *tmp = strdup(fpath);
+			if (!tmp)
+				return FTW_STOP;
+			if (list_append(&add_list, tmp, NULL)) {
+				free(tmp);
+				return FTW_STOP;
+			}
 		} else {
 			msg(LOG_INFO, "Skipping non regular file: %s", fpath);
 		}
@@ -86,12 +92,20 @@ static int add_list_load_path(const char *path)
 	}
 	close(fd);
 
-	if (S_ISDIR(sb.st_mode))
-		nftw(path, &ftw_add_list_append, FTW_NOPENFD, FTW_FLAGS);
-	else
-		list_append(&add_list, strdup(path), NULL);
+	int rc;
 
-	return 0;
+	if (S_ISDIR(sb.st_mode))
+		rc = nftw(path, &ftw_add_list_append, FTW_NOPENFD, FTW_FLAGS);
+	else {
+		char *tmp = strdup(path);
+		if (!tmp)
+			return 1;
+		rc = list_append(&add_list, tmp, NULL);
+		if (rc)
+			free(tmp);
+	}
+
+	return rc ? 1 : 0;
 }
 
 int file_append(const char *path, const char *fname)

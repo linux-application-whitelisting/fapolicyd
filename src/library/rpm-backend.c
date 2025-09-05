@@ -317,7 +317,10 @@ static int rpm_load_list(const conf_t *conf)
 					continue;
 				}
 
-				list_append(&rpm_backend.list, index, data);
+				if (list_append(&rpm_backend.list, index, data)) {
+					free(index);
+					free(data);
+				}
 			}
 		} while(!fd_fgets_eof_r(st));
 
@@ -438,8 +441,11 @@ int do_rpm_load_list(const conf_t *conf)
 							 rcd->key,
 							 strlen(rcd->key),
 							 rcd );
-					list_append(&rpm_backend.list,
-						    file_name, data);
+					if (list_append(&rpm_backend.list,
+							file_name, data)) {
+						free((void*)file_name);
+						free((void*)data);
+					}
 				} else {
 					free((void*)file_name);
 					free((void*)data);
