@@ -175,21 +175,39 @@ static int init_db(const conf_t *config)
 #ifndef DEBUG
 	flags |= MDB_WRITEMAP;
 #endif
-	if (mdb_env_create(&env))
+	if (mdb_env_create(&env)) {
+		/* env not allocated on failure, but ensure it's NULL */
+		env = NULL;
 		return 1;
+	}
 
-	if (mdb_env_set_maxdbs(env, 2))
+	if (mdb_env_set_maxdbs(env, 2)) {
+		/* Clean up environment on failure */
+		mdb_env_close(env);
+		env = NULL;
 		return 2;
+	}
 
-	if (mdb_env_set_mapsize(env, config->db_max_size*MEGABYTE))
+	if (mdb_env_set_mapsize(env, config->db_max_size*MEGABYTE)) {
+		/* Clean up environment on failure */
+		mdb_env_close(env);
+		env = NULL;
 		return 3;
+	}
 
-	if (mdb_env_set_maxreaders(env, 4))
+	if (mdb_env_set_maxreaders(env, 4)) {
+		/* Clean up environment on failure */
+		mdb_env_close(env);
+		env = NULL;
 		return 4;
+	}
 
 	int rc = mdb_env_open(env, data_dir, flags, 0660);
 	if (rc) {
 		msg(LOG_ERR, "env_open error: %s", mdb_strerror(rc));
+		/* Clean up environment on failure */
+		mdb_env_close(env);
+		env = NULL;
 		return 5;
 	}
 
