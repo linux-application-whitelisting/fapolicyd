@@ -221,7 +221,9 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 				close(fd);
 				if (ptr == NULL)
 					return (char *)ptr;
-				return strncpy(buf, ptr, blen-1);
+				strncpy(buf, ptr, blen-1);
+				buf[blen-1] = 0;
+				return buf;
 			}
 		}
 
