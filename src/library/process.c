@@ -134,6 +134,9 @@ char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
 	ssize_t rc;
 	int fd;
 
+	if (blen == 0)
+		return NULL;
+
 	const char *path = proc_path(pid, "/comm");
 	fd = open(path, O_RDONLY|O_CLOEXEC);
 	if (fd >= 0) {
@@ -186,12 +189,14 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 		len = blen - 1;
 
 	buf[len] = '\0';
+	if (len == 0)
+		return buf;
 	// some binaries can be deleted after execution
 	// then we need to delete the suffix so they are
 	// trusted even after deletion
 
 	// strlen(" deleted") == 10
-	if (buf[len-1] == ')' && len > 10) {
+	if (len > 10 && buf[len-1] == ')') {
 
 		if (strcmp(&buf[len - 10], " (deleted)") == 0)
 			buf[len - 10] = '\0';
@@ -204,6 +209,9 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	int fd;
+
+	if (blen == 0)
+		return NULL;
 
 	const char *path = proc_path(pid, "/exe");
 	fd = open(path, O_RDONLY|O_NOATIME|O_CLOEXEC);
