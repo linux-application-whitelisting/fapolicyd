@@ -5,7 +5,8 @@ TEST_FIXTURES = \
 src/tests/fixtures/filter-minimal.conf \
 src/tests/fixtures/filter-cases.txt \
 src/tests/fixtures/broken-filter.conf \
-init/fapolicyd-filter.conf
+init/fapolicyd-filter.conf \
+src/tests/fixtures/rules-valid.rules
 
 EXTRA_DIST = ChangeLog AUTHORS NEWS README.md INSTALL fapolicyd.spec \
 dnf/fapolicyd-dnf-plugin.py autogen.sh \

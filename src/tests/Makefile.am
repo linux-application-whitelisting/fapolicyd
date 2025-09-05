@@ -20,7 +20,7 @@
 #
 
 CONFIG_CLEAN_FILES = *.orig *.cur
-check_PROGRAMS = avl_test gid_proc_test escape_test attr_sets_test
+check_PROGRAMS = avl_test gid_proc_test escape_test attr_sets_test rules_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 
@@ -31,6 +31,9 @@ escape_test_SOURCES = escape_test.c
 escape_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 attr_sets_test_SOURCES = attr_sets_test.c
 attr_sets_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+rules_test_SOURCES = rules_test.c
+rules_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+rules_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 
 if WITH_RPM
 check_PROGRAMS += filter_test
