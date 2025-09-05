@@ -250,7 +250,11 @@ filter_rc_t filter_check(const char *_path)
 	size_t path_len = strlen(_path);
 	char *path = alloca(path_len + 1);
 	strcpy(path, _path);
-	if (strstr(path, "/../"))
+	/* Reject paths with parent directory references */
+	if ((path[0] == '.' && path[1] == '.' &&
+		(path[2] == '/' || path[2] == '\0')) ||
+		strstr(path, "/../") != NULL ||
+		    (path_len >= 3 && strcmp(path + path_len - 3, "/..") == 0))
 		return FILTER_DENY;
 	/* offset tracks how much of the path has already matched */
 	size_t offset = 0;

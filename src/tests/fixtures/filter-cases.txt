@@ -7,6 +7,10 @@ minimal /usr/src/kernel123/scripts/build 0
 minimal /etc/hosts 1
 minimal /var/log/messages 0
 minimal /var/log/public/info.log 1
+minimal ../foo 0
+minimal foo/.. 0
+prod ../foo 0
+prod foo/.. 0
 prod /usr/share/../include/stdio.h 0
 prod /usr/includee/stdio.h 1
 prod /usr/share/doc.txt 0
