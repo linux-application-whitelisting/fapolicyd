@@ -278,7 +278,13 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	rc = 1;
 	finfo = stat_file_entry(m->fd);
 	if (finfo == NULL)
+	if (finfo == NULL) {
+		if (evict) {
+			lru_evict(subj_cache, key);
+			e->s = NULL;
+		}
 		return 1;
+	}
 
 	// Just using inodes don't give a good key. It needs
 	// conditioning to use more slots in the cache.
