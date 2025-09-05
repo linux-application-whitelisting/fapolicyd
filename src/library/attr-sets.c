@@ -157,8 +157,9 @@ int add_attr_set(const char * name, const int type, size_t * index)
 	else if (type == INT)
 		avl_init(&entry->tree, intcmp_cb);
 	else {
-	  // TODO error
-	  (void)index;
+		free(entry->name);
+		memset(entry, 0, sizeof(*entry));
+	return 1;
 	}
 
 	*index = sets.size;
