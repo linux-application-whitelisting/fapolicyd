@@ -89,7 +89,7 @@ endif
 
 if WITH_DEB
 libfapolicyd_la_SOURCES += library/deb-backend.c
-libfapolicyd_la_LIBADD += -ldpkg -lmd
+libfapolicyd_la_LIBADD = -ldpkg -lmd
 fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
 LIBS += -ldpkg -lmd
 endif
