@@ -389,7 +389,7 @@ static int do_ftype(const char *path)
 		// Only classify if a regular file
 		if (sb.st_mode & S_IFREG)
 			elf = gather_elf(fd, sb.st_size);
-		if (elf)
+		if (elf & IS_ELF)
 			ptr = classify_elf_info(elf, path);
 		else {
 			ptr = classify_device(sb.st_mode);
