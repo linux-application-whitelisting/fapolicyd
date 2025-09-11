@@ -18,7 +18,6 @@ jobs:
       - fedora-all
       - epel-10
       - epel-9
-      - epel-8
 
 #  - job: copr_build
 #    trigger: pull_request
@@ -35,7 +34,6 @@ jobs:
 #    targets:
 #      - fedora-all
 #      - epel-9
-#      - epel-8
 
   - job: tests
     trigger: pull_request
@@ -44,7 +42,6 @@ jobs:
       - fedora-all
       - epel-10
       - epel-9
-      - epel-8
 
 #  - job: tests
 #    trigger: pull_request
@@ -52,4 +49,3 @@ jobs:
 #    targets:
 #      - fedora-all
 #      - epel-9
-#      - epel-8
