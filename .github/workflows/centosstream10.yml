@@ -1,4 +1,4 @@
-name: almalinux8-build
+name: centosstream10-build
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: almalinux:8
+    container: quay.io/centos/centos:stream10
 
     steps:
     - uses: actions/checkout@v2
@@ -24,7 +24,7 @@ jobs:
       run: dnf -y install epel-release dnf-plugins-core gawk python3-dnf-plugins-core util-linux --nogpgcheck
 
     - name: installing dependencies 2
-      run:  dnf -y builddep ./fapolicyd.spec --enablerepo='powertools' --nogpgcheck
+      run:  dnf -y builddep ./fapolicyd.spec --enablerepo='crb' --nogpgcheck
 
     - name: generate config files
       run: ./autogen.sh
