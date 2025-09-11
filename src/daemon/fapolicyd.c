@@ -464,10 +464,20 @@ void do_stat_report(FILE *f, int shutdown)
 #ifdef HAVE_MALLINFO2
 	memory_use_report(f);
 #endif
+	if (!shutdown)
+		do_cache_reports(f);
+
+	// Report mounts under fanotify watch
+	if (m) {
+		const char *path = mlist_first(m);
+		while (path) {
+			fprintf(f, "watching mount: %s\n", path);
+			path = mlist_next(m);
+		}
+	}
+
 	if (shutdown)
 		fputs("\n", f);
-	else
-		do_cache_reports(f);
 }
 
 int already_running(void)
