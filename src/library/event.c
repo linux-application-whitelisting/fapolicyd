@@ -277,7 +277,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// get file fingerprint
 	rc = 1;
 	finfo = stat_file_entry(m->fd);
-	if (finfo == NULL)
 	if (finfo == NULL) {
 		if (evict) {
 			lru_evict(subj_cache, key);
