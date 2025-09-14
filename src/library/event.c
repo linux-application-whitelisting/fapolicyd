@@ -45,6 +45,7 @@
 
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
+static bool obj_cache_warned = false, subj_cache_warned = false;
 
 atomic_bool needs_flush = false;
 
@@ -62,6 +63,10 @@ atomic_bool needs_flush = false;
 static void subject_evict_warn(s_array *s)
 {
 	int pid = -1;
+
+	if (subj_cache_warned)
+		return;
+
 	if (s && s->info)
 		pid = s->info->pid;
 	if (s && s->info && s->info->state < STATE_FULL) {
@@ -72,12 +77,82 @@ static void subject_evict_warn(s_array *s)
 		 * Suppress the suggestion to grow the cache.
 		 */
 		if (!((s->info->state == STATE_REOPEN) &&
-		      (s->info->elf_info & (HAS_SHEBANG|TEXT_SCRIPT))) )
+		      (s->info->elf_info & (HAS_SHEBANG|TEXT_SCRIPT))) ) {
 			msg(LOG_WARNING,
 			    "pid %d in state %d (%s) is being evicted from the "
 			    "subject cache before pattern detection completes: "
 			    "increase subj_cache_size",
 			    pid, s->info->state, s->info->path1);
+			subj_cache_warned = true;
+		}
+	}
+}
+
+/*
+ * obj_evict_warn - check object cache eviction ratios
+ *
+ * Opportunistically check eviction ratios during evictions and warn the
+ * administrator when thresholds indicate the object cache is too small.
+ * Checks occur no more than once every 16 evictions and only one runtime
+ * warning is emitted.
+ *
+ * It uses 2 ratios to decide if we need to issue a warning:
+ *
+ * E_over_M = evictions / misses
+ *   - Measures how often a miss requires throwing out an existing object.
+ *   - High values mean the cache is not just missing, but actively churning,
+ *     which points to either capacity pressure or poor distribution.
+ *
+ * E_over_Q = evictions / total lookups
+ *   - Measures the overall fraction of requests that cause an eviction.
+ *   - This gives a user-facing view of churn: how much of the workload is
+ *     paying the eviction penalty out of all operations.
+ *
+ * Together, these ratios let us distinguish "expected misses" from
+ * "pathological evictions" and trigger a resize warning only when the cache
+ * is turning over too aggressively for its occupancy level.
+ */
+static void obj_evict_warn(void *unused)
+{
+	unsigned long evicts, miss, hit, lookups, e_over_m, e_over_q;
+	unsigned int occ, thr_m = 0, thr_q = 0;
+
+	if (obj_cache_warned)
+		return;
+
+	if (obj_cache->evictions & 0xF)
+		return;
+
+	evicts = obj_cache->evictions + 1;
+	miss = obj_cache->misses + 1;
+	hit = obj_cache->hits;
+	lookups = hit + miss;
+	occ = (obj_cache->count * 100) / obj_cache->total;
+	e_over_m = (evicts * 100) / miss;
+	e_over_q = (evicts * 100) / (lookups ? lookups : 1);
+
+	if (occ >= 85) {
+		// Near-full tables churn; above these levels growth is
+		// usually cheaper than misses.
+		thr_m = 60;
+		thr_q = 22;
+	} else if (occ >= 75) {
+		// Some churn is expected; beyond this you’re throwing away
+		// too much reuse.
+		thr_m = 30;
+		thr_q = 10;
+	} else if (occ >= 50) {
+		// At half-full, evictions should be rare; higher means
+		// collisions/skew or underprovisioning.
+		thr_m = 10;
+		thr_q = 2;
+	} else
+		return;
+
+	if (e_over_m > thr_m || e_over_q > thr_q) {
+		msg(LOG_WARNING,
+		  "object cache eviction ratios high: increase obj_cache_size");
+		obj_cache_warned = true;
 	}
 }
 
@@ -98,7 +173,7 @@ int init_event_system(const conf_t *config)
 
 	obj_cache = init_lru(config->obj_cache_size,
 				(void (*)(void *))object_clear, "Object",
-				NULL);
+				obj_evict_warn);
 	if (!obj_cache) {
 		destroy_lru(subj_cache);
 		subj_cache = NULL;
@@ -116,11 +191,12 @@ static int flush_cache(void)
 	const unsigned int size = obj_cache->total;
 
 	msg(LOG_DEBUG, "Flushing object cache");
+	obj_cache->evict_cb = NULL;
 	destroy_lru(obj_cache);
 
 	obj_cache = init_lru(size,
 				(void (*)(void *))object_clear, "Object",
-				NULL);
+				obj_evict_warn);
 	if (!obj_cache)
 		return 1;
 
@@ -133,7 +209,16 @@ void destroy_event_system(void)
 {
 	/* We're intentionally clearing the caches; disable warnings */
 	if (subj_cache)
-		subj_cache->evict_cb = NULL;
+	        subj_cache->evict_cb = NULL;
+	if (subj_cache_warned)
+		msg(LOG_WARNING,
+		   "Processes are being evicted from the subject cache before "
+		   "pattern detection completes: increase subj_cache_size");
+	if (obj_cache)
+		obj_cache->evict_cb = NULL;
+	if (obj_cache_warned)
+		msg(LOG_WARNING,
+		  "object cache eviction ratios high: increase obj_cache_size");
 	destroy_lru(subj_cache);
 	destroy_lru(obj_cache);
 }

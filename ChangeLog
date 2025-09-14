@@ -3,6 +3,7 @@
 - Improve text/x-shellscript detection
 - Fix bug in fapolicyd-cli --ftype detection which was introduced in 1.3.6
 - Add watched mount points to state report - important since they can change
+- Warn when object cache eviction ratios are high
  
 1.3.6
 - Increase the default subject cache size
