@@ -278,6 +278,9 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	rc = 1;
 	finfo = stat_file_entry(m->fd);
 	if (finfo == NULL) {
+		/* On stat_file_entry failure, evict the subject to avoid
+		 * leaving an incomplete subject cached, which could
+		 * confuse later lookups and pattern matching. */
 		if (evict) {
 			lru_evict(subj_cache, key);
 			e->s = NULL;
