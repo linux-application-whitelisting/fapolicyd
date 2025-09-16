@@ -36,6 +36,7 @@
 #include <sys/syslog.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <uthash.h>
 
 #include "fapolicyd-backend.h"
 #include "file.h"
@@ -63,6 +64,11 @@
 list_t _list;
 char *_path;
 int _count;
+
+struct trust_seen_entry {
+	const char *path;
+	UT_hash_handle hh;
+};
 
 
 
@@ -257,6 +263,8 @@ int trust_file_load(const char *fpath, list_t *list)
 	char buffer[BUFFER_SIZE];
 	int escaped = 0;
 	long line = 0;
+	int rc = 0;
+	struct trust_seen_entry *seen = NULL;
 
 	FILE *file = fopen(fpath, "r");
 	if (!file)
@@ -277,8 +285,8 @@ int trust_file_load(const char *fpath, list_t *list)
 
 		if (parse_line_backwards(buffer, name, &sz, sha)) {
 			msg(LOG_WARNING, "Can't parse %s", buffer);
-			fclose(file);
-			return 2;
+			rc = 2;
+			goto out;
 		}
 
 		if (asprintf(&data, DATA_FORMAT, tsource, sz, sha) == -1)
@@ -297,21 +305,47 @@ int trust_file_load(const char *fpath, list_t *list)
 			continue;
 		}
 
-		if (list_contains(list, index)) {
+		struct trust_seen_entry *entry;
+
+		HASH_FIND_STR(seen, index, entry);
+		if (entry) {
 			msg(LOG_WARNING, "%s contains a duplicate %s", fpath, index);
 			free(index);
 			free(data);
 			continue;
 		}
 
+		entry = malloc(sizeof(*entry));
+		if (!entry) {
+			msg(LOG_ERR, "Out of memory tracking %s", index);
+			free(index);
+			free(data);
+			rc = 3;
+			goto out;
+		}
+
+		entry->path = index;
+		HASH_ADD_KEYPTR(hh, seen, entry->path, strlen(entry->path), entry);
+
 		if (list_append(list, index, data)) {
+			HASH_DEL(seen, entry);
+			free(entry);
 			free(index);
 			free(data);
 		}
 	}
 
+out:
 	fclose(file);
-	return 0;
+
+	struct trust_seen_entry *item, *tmp;
+
+	HASH_ITER(hh, seen, item, tmp) {
+		HASH_DEL(seen, item);
+		free(item);
+	}
+
+	return rc;
 }
 
 int trust_file_delete_path(const char *fpath, const char *path)
