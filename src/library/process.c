@@ -326,28 +326,17 @@ pid_t get_program_ppid_from_pid(pid_t pid)
 }
 
 
-uid_t get_program_uid_from_pid(pid_t pid)
-{
-	char buf[128];
-	uid_t uid = 0;
-	FILE *f;
-
-	const char *path = proc_path(pid, "/status");
-	f = fopen(path, "rt");
-	if (f) {
-		__fsetlocking(f, FSETLOCKING_BYCALLER);
-		while (fgets(buf, 128, f)) {
-			if (memcmp(buf, "Uid:", 4) == 0) {
-				sscanf(buf, "Uid: %u ", &uid);
-				break;
-			}
-		}
-		fclose(f);
-	}
-	return uid;
-}
-
-
+/*
+ * get_gid_set_from_pid - Gather the credential-related GID set for a process
+ * @pid: process identifier whose credentials should be inspected
+ *
+ * The returned attribute set includes the real, effective, saved, and
+ * filesystem GIDs parsed from /proc/<pid>/status along with the auxiliary
+ * groups reported in the same file.  The caller takes ownership of the
+ * returned set and must release it with destroy_attr_set() and free().
+ *
+ * Return: initialized attribute set on success, or NULL on allocation failure.
+ */
 attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 {
 	char buf[BUF_SIZE];
@@ -362,22 +351,94 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 			__fsetlocking(f, FSETLOCKING_BYCALLER);
 			while (fgets(buf, BUF_SIZE, f)) {
 				if (memcmp(buf, "Gid:", 4) == 0) {
-					sscanf(buf, "Gid: %u ", &gid);
-					append_int_attr_set(set, (int64_t)gid);
+					unsigned int real_gid = 0, eff_gid = 0;
+					unsigned int saved_gid = 0, fs_gid = 0;
+					int fields = sscanf(buf,
+							"Gid: %u %u %u %u",
+							&real_gid, &eff_gid,
+							&saved_gid, &fs_gid);
+					if (fields >= 1)
+						append_int_attr_set(set,
+							(int64_t)real_gid);
+					if (fields >= 2)
+						append_int_attr_set(set,
+							(int64_t)eff_gid);
+					if (fields >= 3)
+						append_int_attr_set(set,
+							(int64_t)saved_gid);
+					if (fields >= 4)
+						append_int_attr_set(set,
+							(int64_t)fs_gid);
 					break;
 				}
 			}
 
-			char *data;
-			int offset;
+                        char *data;
+                        int offset;
+			/*
+			 * The "Groups" line enumerates supplemental group
+			 * memberships as a whitespace separated list; walk the
+			 * tokens in place rather than reallocating buffers.
+			 */
 			while (fgets(buf, BUF_SIZE, f)) {
 				if (memcmp(buf, "Groups:", 7) == 0) {
 					data = buf + 7;
 					while (sscanf(data, " %u%n", &gid,
-						      &offset) == 1) {
+							&offset) == 1) {
 						data += offset;
 						append_int_attr_set(set, (int64_t)gid);
 					}
+					break;
+				}
+			}
+			fclose(f);
+		}
+	}
+	return set;
+}
+
+
+/**
+ * get_uid_set_from_pid - Gather the credential-related UID set for a process
+ * @pid: process identifier whose credentials should be inspected
+ *
+ * The returned attribute set includes the real, effective, saved, and
+ * filesystem UIDs parsed from /proc/<pid>/status.  The caller takes ownership
+ * of the returned set and must release it with destroy_attr_set() and free().
+ *
+ * Return: initialized attribute set on success, or NULL on allocation failure.
+ */
+attr_sets_entry_t *get_uid_set_from_pid(pid_t pid)
+{
+	char buf[BUF_SIZE];
+	FILE *f;
+	attr_sets_entry_t *set = init_standalone_set(UNSIGNED);
+
+	if (set) {
+		const char *path = proc_path(pid, "/status");
+		f = fopen(path, "rt");
+		if (f) {
+			__fsetlocking(f, FSETLOCKING_BYCALLER);
+			while (fgets(buf, BUF_SIZE, f)) {
+				if (memcmp(buf, "Uid:", 4) == 0) {
+					unsigned int real_uid = 0, eff_uid = 0;
+					unsigned int saved_uid = 0, fs_uid = 0;
+					int fields = sscanf(buf,
+							"Uid: %u %u %u %u",
+							&real_uid, &eff_uid,
+							&saved_uid, &fs_uid);
+					if (fields >= 1)
+						append_int_attr_set(set,
+							(int64_t)real_uid);
+					if (fields >= 2)
+						append_int_attr_set(set,
+							(int64_t)eff_uid);
+//					if (fields >= 3)
+//						append_int_attr_set(set,
+//							(int64_t)saved_uid);
+					if (fields >= 4)
+						append_int_attr_set(set,
+							(int64_t)fs_uid);
 					break;
 				}
 			}

@@ -456,7 +456,13 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			subj.uval = get_program_auid_from_pid(e->pid);
 			break;
 		case UID:
-			subj.uval = get_program_uid_from_pid(e->pid);
+			/*
+			 * UID credentials may differ between the real,
+			 * effective, saved, and filesystem slots.  Cache the
+			 * complete set so the rule engine can evaluate all
+			 * possible identities during matching.
+			 */
+			subj.set = get_uid_set_from_pid(e->pid);
 			break;
 		case SESSIONID:
 			subj.uval = (unsigned int)

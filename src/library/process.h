@@ -91,7 +91,7 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 uid_t get_program_auid_from_pid(pid_t pid);
 int get_program_sessionid_from_pid(pid_t pid);
 pid_t get_program_ppid_from_pid(pid_t pid);
-uid_t get_program_uid_from_pid(pid_t pid);
+attr_sets_entry_t *get_uid_set_from_pid(pid_t pid);
 attr_sets_entry_t *get_gid_set_from_pid(pid_t pid);
 int check_environ_from_pid(pid_t pid);
 

@@ -1271,13 +1271,24 @@ static int check_subject(lnode *r, event_t *e)
 
 		// numbers -> multiple value
 		case AUID:
-		case UID:
 		case SESSIONID: {
 			if (!check_int_attr_set(r->s[cnt].set,
 						(int64_t)subj->uval))
 				return 0;
 			break;
 		}
+		case UID:
+			/*
+			 * A process can present multiple UID values (real,
+			 * effective, saved, filesystem).  Require the rule's
+			 * UID set to intersect the complete credential set the
+			 * subject cached so that any matching identity
+			 * authorizes the rule.
+			 */
+			if (!avl_intersection(&(r->s[cnt].set->tree),
+					      &(subj->set->tree)))
+				return 0;
+			break;
 		case PID:
 		case PPID: {
 			if (!check_int_attr_set(r->s[cnt].set,
