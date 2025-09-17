@@ -56,13 +56,13 @@ static const struct err_case errors[] = {
 	{ "%strs=foo,bar",
 	  "allow perm=any auid=%strs : path=/bin/ls",
 	  NULL },
-	"cannot assign %strs which has STRING type to INT"
+	"cannot assign %strs which has STRING type to auid (UNSIGNED expected)"
 	},
 	{
 	{ "%nums=1,2",
 	  "allow perm=any all : path=%nums",
 	  NULL },
-	"INT set nums to the STRING attribute"
+	"SIGNED set nums to the STRING attribute"
 	}
 };
 
@@ -111,7 +111,7 @@ static int append_capture(llist *l, const char *line, unsigned ln,
 /*
 * prep_event - allocate and populate an event for evaluation
 */
-static void prep_event(event_t *e, int auid, const char *path)
+static void prep_event(event_t *e, unsigned int auid, const char *path)
 {
 	e->s = malloc(sizeof(s_array));
 	e->o = malloc(sizeof(o_array));
@@ -125,7 +125,7 @@ static void prep_event(event_t *e, int auid, const char *path)
 	if (!e->s->info)
 		error(1, errno, "calloc failed");
 
-	subject_attr_t sattr = { .type = AUID, .val = auid };
+	subject_attr_t sattr = { .type = AUID, .uval = auid };
 	if (subject_add(e->s, &sattr))
 		error(1, 0, "subject_add failed");
 

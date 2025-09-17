@@ -26,6 +26,7 @@
 #define ATTR_SETS_H
 
 #include "stddef.h"
+#include <stdint.h>
 
 #include "avl.h"
 
@@ -37,14 +38,14 @@ typedef struct _avl_str_data {
 
 typedef struct _avl_int_data {
 	avl_t avl;
-	int num;
+	int64_t num;
 } avl_int_data_t;
 
 
 typedef struct attr_sets_entry {
 	// optional
 	char * name;
-	// STRING, INT from DATA_TYPES
+	// STRING, SIGNED, or UNSIGNED from DATA_TYPES
 	int type;
 	avl_tree_t tree;
 } attr_sets_entry_t;
@@ -60,7 +61,8 @@ typedef struct attr_sets {
 
 typedef enum _types {
 		STRING = 1,
-		INT,
+		SIGNED,
+		UNSIGNED,
 } DATA_TYPES;
 
 
@@ -72,10 +74,10 @@ void destroy_attr_sets(void);
 size_t search_attr_set_by_name(const char * name);
 attr_sets_entry_t *init_standalone_set(const int type);
 
-int append_int_attr_set(attr_sets_entry_t * set, const int num);
+int append_int_attr_set(attr_sets_entry_t *set, const int64_t num);
 int append_str_attr_set(attr_sets_entry_t * set, const char * str);
 
-int check_int_attr_set(attr_sets_entry_t * set, const int num);
+int check_int_attr_set(attr_sets_entry_t *set, const int64_t num);
 int check_str_attr_set(attr_sets_entry_t * set, const char * str);
 int check_pstr_attr_set(attr_sets_entry_t * set, const char * str);
 

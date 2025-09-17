@@ -181,24 +181,24 @@ static int parse_syslog_format(const char *syslog_format)
 
 int dec_name_to_val(const char *name)
 {
-        unsigned int i = 0;
-        while (i < MAX_DECISIONS) {
-                if (strcmp(name, table[i].name) == 0)
-                        return table[i].value;
-                i++;
-        }
-        return -1;
+	unsigned int i = 0;
+	while (i < MAX_DECISIONS) {
+		if (strcmp(name, table[i].name) == 0)
+			return table[i].value;
+		i++;
+	}
+	return -1;
 }
 
 static const char *dec_val_to_name(unsigned int v)
 {
 	unsigned int i = 0;
-        while (i < MAX_DECISIONS) {
+	while (i < MAX_DECISIONS) {
 		if (v == table[i].value)
 	                return table[i].name;
 		i++;
 	}
-        return NULL;
+	return NULL;
 }
 
 static FILE *open_file(void)
@@ -220,17 +220,17 @@ static FILE *open_file(void)
 
     struct stat sb;
     if (fstat(fd, &sb)) {
-        msg(LOG_ERR, "Failed to stat rule file %s", strerror(errno));
-        close(fd);
-        return NULL;
+	msg(LOG_ERR, "Failed to stat rule file %s", strerror(errno));
+	close(fd);
+	return NULL;
     }
 
     char *sha_buf = get_hash_from_fd2(fd, sb.st_size, 1);
     if (sha_buf) {
-        msg(LOG_INFO, "Ruleset identity: %s", sha_buf);
-        free(sha_buf);
+	msg(LOG_INFO, "Ruleset identity: %s", sha_buf);
+	free(sha_buf);
     } else {
-        msg(LOG_WARNING, "Failed to hash rule identity %s", strerror(errno));
+	msg(LOG_WARNING, "Failed to hash rule identity %s", strerror(errno));
     }
 
     f = fdopen(fd, "r");
@@ -408,8 +408,11 @@ static char *format_value(int item, unsigned int num, decision_t results,
 				out = NULL;
 	} else {
 		subject_attr_t *subj = get_subj_attr(e, item);
-		if (item < GID) {
-			if (asprintf(&out, "%d", subj ? subj->val : -2) < 0)
+		if (item == PID || item == PPID) {
+			if (asprintf(&out, "%d", subj ? subj->pid : 0) < 0)
+				out = NULL;
+		} else if (item < GID) {
+			if (asprintf(&out, "%u", subj ? subj->uval : 0) < 0)
 				out = NULL;
 		} else if (item >= COMM) {
 			char * str = subj ? subj->str : "?";
@@ -438,12 +441,15 @@ static char *format_value(int item, unsigned int num, decision_t results,
 				           avl_first(&i, &(subj->set->tree));
 				           grp && cnt < NGID_LIMIT;
 					   grp=(avl_int_data_t *)avl_next(&i)) {
-					if (ptr == out)
+					if (ptr == out) {
 						snprintf(buf, sizeof(buf),
-							 "%d", grp->num);
-					else
+							 "%llu",
+						  (unsigned long long)grp->num);
+					} else {
 						snprintf(buf, sizeof(buf),
-							 ",%d", grp->num);
+							 ",%llu",
+						  (unsigned long long)grp->num);
+					}
 					ptr = stpcpy(ptr, buf);
 					cnt++;
 				}
@@ -594,9 +600,9 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 			f.a.rule_number = 0;
 
 		// Subj trust is rare. See if we have it.
-		if (e && (sn = subject_access(e->s, SUBJ_TRUST))) {
-			f.a.subj_trust = sn->val;
-		} else
+		if (e && (sn = subject_access(e->s, SUBJ_TRUST)))
+			f.a.subj_trust = sn->uval;
+		else
 			f.a.subj_trust = 2;
 		// All objects have a trust value
 		if (e && (obj = get_obj_attr(e, OBJ_TRUST))) {

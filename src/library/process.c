@@ -64,9 +64,9 @@ static const char *uitoa(unsigned int j)
 }
 
 static __thread char ppath[40] = "/proc/";
-static inline const char *proc_path(unsigned int pid, const char *file)
+static inline const char *proc_path(pid_t pid, const char *file)
 {
-	char *p = stpcpy(ppath + 6, uitoa(pid));
+	char *p = stpcpy(ppath + 6, uitoa((unsigned int)pid));
 	if (file)
 		stpcpy(p, file);
 	return ppath;
@@ -317,8 +317,8 @@ pid_t get_program_ppid_from_pid(pid_t pid)
 		while (fgets(buf, 128, f)) {
 			if (memcmp(buf, "PPid:", 4) == 0) {
 				sscanf(buf, "PPid: %d ", &ppid);
-                                break;
-                        }
+				break;
+			}
 		}
 		fclose(f);
 	}
@@ -329,7 +329,7 @@ pid_t get_program_ppid_from_pid(pid_t pid)
 uid_t get_program_uid_from_pid(pid_t pid)
 {
 	char buf[128];
-	int uid = -1;
+	uid_t uid = 0;
 	FILE *f;
 
 	const char *path = proc_path(pid, "/status");
@@ -338,9 +338,9 @@ uid_t get_program_uid_from_pid(pid_t pid)
 		__fsetlocking(f, FSETLOCKING_BYCALLER);
 		while (fgets(buf, 128, f)) {
 			if (memcmp(buf, "Uid:", 4) == 0) {
-				sscanf(buf, "Uid: %d ", &uid);
-                                break;
-                        }
+				sscanf(buf, "Uid: %u ", &uid);
+				break;
+			}
 		}
 		fclose(f);
 	}
@@ -350,10 +350,10 @@ uid_t get_program_uid_from_pid(pid_t pid)
 
 attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 {
-    char buf[BUF_SIZE];
-	int gid = -1;
+	char buf[BUF_SIZE];
+	gid_t gid = 0;
 	FILE *f;
-	attr_sets_entry_t *set = init_standalone_set(INT);
+	attr_sets_entry_t *set = init_standalone_set(UNSIGNED);
 
 	if (set) {
 		const char *path = proc_path(pid, "/status");
@@ -362,10 +362,10 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 			__fsetlocking(f, FSETLOCKING_BYCALLER);
 			while (fgets(buf, BUF_SIZE, f)) {
 				if (memcmp(buf, "Gid:", 4) == 0) {
-					sscanf(buf, "Gid: %d ", &gid);
-					append_int_attr_set(set, gid);
-		                        break;
-			        }
+					sscanf(buf, "Gid: %u ", &gid);
+					append_int_attr_set(set, (int64_t)gid);
+					break;
+				}
 			}
 
 			char *data;
@@ -373,10 +373,10 @@ attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
 			while (fgets(buf, BUF_SIZE, f)) {
 				if (memcmp(buf, "Groups:", 7) == 0) {
 					data = buf + 7;
-					while (sscanf(data," %d%n", &gid,
-						      &offset) == 1){
+					while (sscanf(data, " %u%n", &gid,
+						      &offset) == 1) {
 						data += offset;
-						append_int_attr_set(set, gid);
+						append_int_attr_set(set, (int64_t)gid);
 					}
 					break;
 				}

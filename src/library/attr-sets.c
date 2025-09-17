@@ -49,7 +49,7 @@ static int strcmp_cb(void * a, void * b)
 }
 
 /*
- * this is a compare callback for avl int tree
+ * this is a compare callback for avl signed int tree
  *
  * avl tree compare expect:
  * 0 when equals
@@ -58,8 +58,31 @@ static int strcmp_cb(void * a, void * b)
  */
 static int intcmp_cb(void * a, void * b)
 {
-	return ((avl_int_data_t *)a)->num - ((avl_int_data_t *)b)->num;
+	int64_t va = ((avl_int_data_t *)a)->num;
+	int64_t vb = ((avl_int_data_t *)b)->num;
+
+	if (va > vb)
+		return 1;
+	if (va < vb)
+		return -1;
+	return 0;
 }
+
+/*
+ * compare callback for avl unsigned int tree
+ */
+static int unsigned_cmp_cb(void * a, void * b)
+{
+	uint64_t va = (uint64_t)((avl_int_data_t *)a)->num;
+	uint64_t vb = (uint64_t)((avl_int_data_t *)b)->num;
+
+	if (va > vb)
+		return 1;
+	if (va < vb)
+		return -1;
+	return 0;
+}
+
 
 /*
  * this is a traverse callback for avl string tree
@@ -154,12 +177,14 @@ int add_attr_set(const char * name, const int type, size_t * index)
 
 	if (type == STRING)
 		avl_init(&entry->tree, strcmp_cb);
-	else if (type == INT)
+	else if (type == SIGNED)
 		avl_init(&entry->tree, intcmp_cb);
+	else if (type == UNSIGNED)
+		avl_init(&entry->tree, unsigned_cmp_cb);
 	else {
 		free(entry->name);
 		memset(entry, 0, sizeof(*entry));
-	return 1;
+		return 1;
 	}
 
 	*index = sets.size;
@@ -176,20 +201,29 @@ attr_sets_entry_t *init_standalone_set(const int type)
 		s->type = type;
 		if (type == STRING)
 			avl_init(&s->tree, strcmp_cb);
-		else
+		else if (type == SIGNED)
 			avl_init(&s->tree, intcmp_cb);
+		else if (type == UNSIGNED)
+			avl_init(&s->tree, unsigned_cmp_cb);
+		else {
+			free(s);
+			s = NULL;
+		}
 	}
 	return s;
 }
 
-int append_int_attr_set(attr_sets_entry_t * set, const int num)
+int append_int_attr_set(attr_sets_entry_t *set, const int64_t num)
 {
 	if (!set) return 1;
 
-	if (set->type != INT) {
+	if (set->type != SIGNED && set->type != UNSIGNED) {
 		// trying to insert wrong type?
 		return 1;
 	}
+
+	if (set->type == UNSIGNED && num < 0)
+		return 1;
 
 	avl_int_data_t * data = malloc(sizeof(avl_int_data_t));
 	if (!data)
@@ -239,9 +273,12 @@ int append_str_attr_set(attr_sets_entry_t * set, const char * str)
 	return 0;
 }
 
-int check_int_attr_set(attr_sets_entry_t * set, const int num)
+int check_int_attr_set(attr_sets_entry_t *set, const int64_t num)
 {
 	avl_int_data_t data;
+
+	if (set->type == UNSIGNED && num < 0)
+		return 0;
 
 	data.num = num;
 
@@ -249,7 +286,7 @@ int check_int_attr_set(attr_sets_entry_t * set, const int num)
 
 	//if (!set) return 1;
 
-	//if (set->type != INT)
+	//if (set->type != SIGNED)
 	//  return -1;
 
 	// ---------------------------------------------
@@ -315,11 +352,19 @@ static int print_str(void * entry, void *data)
 	return 0;
 }
 
-static int print_int(void * entry, void *data)
+static int print_signed(void *entry, void *data)
 {
 	(void) data;
-	const int num = ((avl_int_data_t *) entry)->num;
-	msg(LOG_DEBUG, "%d", num);
+	int64_t num = ((avl_int_data_t *) entry)->num;
+	msg(LOG_DEBUG, "%lld", (long long)num);
+	return 0;
+}
+
+static int print_unsigned(void *entry, void *data)
+{
+	(void) data;
+	uint64_t num = (uint64_t)((avl_int_data_t *) entry)->num;
+	msg(LOG_DEBUG, "%llu", (unsigned long long)num);
 	return 0;
 }
 
@@ -331,8 +376,10 @@ void print_attr_set(attr_sets_entry_t * set)
 
 	if (set->type == STRING)
 		avl_traverse(&set->tree, print_str, NULL);
-	if (set->type == INT)
-		avl_traverse(&set->tree, print_int, NULL);
+	else if (set->type == SIGNED)
+		avl_traverse(&set->tree, print_signed, NULL);
+	else if (set->type == UNSIGNED)
+		avl_traverse(&set->tree, print_unsigned, NULL);
 
 	msg(LOG_DEBUG, "--------------");
 }

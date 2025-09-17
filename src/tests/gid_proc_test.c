@@ -14,9 +14,9 @@ int main(void)
 	attr_sets_entry_t *groups = get_gid_set_from_pid(getpid());
 
 	gid = getgid();
-	res = check_int_attr_set(groups, gid);
+	res = check_int_attr_set(groups, (int64_t)gid);
 	if (!res)
-		error(1, 0, "Group %d not found", gid);
+		error(1, 0, "Group %u not found", (unsigned int)gid);
 
 	num = getgroups(NGROUPS_MAX, gids);
 	if (num < 0)
@@ -25,10 +25,10 @@ int main(void)
 	for (i = 0; i<num; i++) {
 		if (gids[i] == gid)
 			check_intersect = 1;
-		printf("Checking for %u...", gids[i]);
-		res = check_int_attr_set(groups, gids[i]);
+		printf("Checking for %u...", (unsigned int)gids[i]);
+		res = check_int_attr_set(groups, (int64_t)gids[i]);
 		if (!res)
-			error(1, 0, "Group %u not found", gids[i]);
+			error(1, 0, "Group %u not found", (unsigned int)gids[i]);
 		printf("found\n");
 	}
 
@@ -39,7 +39,7 @@ int main(void)
 
 	if (check_intersect) {
 		printf("Doing Negative AVL intersection\n");
-		attr_sets_entry_t *g = init_standalone_set(INT);
+		attr_sets_entry_t *g = init_standalone_set(UNSIGNED);
 		append_int_attr_set(g, 5);
 		append_int_attr_set(g, 7);
 		res = avl_intersection(&(g->tree), &(groups->tree));
@@ -47,7 +47,7 @@ int main(void)
 			error(1, 0, "Negative AVL intersection failed");
 
 		printf("Doing Positive AVL intersection\n");
-		append_int_attr_set(g, gid);
+		append_int_attr_set(g, (int64_t)gid);
 		res = avl_intersection(&(g->tree), &(groups->tree));
 		if (!res)
 			error(1, 0, "Positive AVL intersection failed");

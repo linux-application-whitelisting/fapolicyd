@@ -210,7 +210,7 @@ static bool is_subj_trusted(event_t *e)
 
 	if (!trusted)
 		return 0;
-	return trusted->val;
+	return trusted->uval;
 }
 
 
@@ -249,6 +249,20 @@ static char * parse_set_name(char * buf)
 }
 
 #define GROUP_NAME_SIZE 64
+
+static const char *data_type_to_name(int type)
+{
+	switch (type) {
+		case STRING:
+			return "STRING";
+		case SIGNED:
+			return "SIGNED";
+		case UNSIGNED:
+			return "UNSIGNED";
+		default:
+			return "UNKNOWN";
+	}
+}
 
 static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 {
@@ -298,19 +312,25 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			goto free_and_error;
 		}
 
-		// numbers
-		if (type <= PPID && set->type != INT ) {
-			msg(LOG_ERR, "rules: line:%d: assign_subject: "
-				"cannot assign %%%s which has STRING type to INT",
-				lineno, defined_set);
-			goto free_and_error;
+		if (type <= PPID) {
+			int expected = (type == PID || type == PPID) ? SIGNED : UNSIGNED;
+			if (set->type != expected) {
+				msg(LOG_ERR, "rules: line:%d: assign_subject: "
+					"cannot assign %%%s which has %s type to %s (%s expected)",
+					lineno, defined_set,
+					data_type_to_name(set->type),
+					subj_val_to_name(type, RULE_FMT_COLON),
+					data_type_to_name(expected));
+				goto free_and_error;
+			}
 		}
 
-		// strings
 		if (type >= COMM && set->type != STRING) {
 			msg(LOG_ERR, "rules: line:%d: assign_subject: "
-				"cannot assign %%%s which has STRING type to INT",
-				lineno, defined_set);
+				"cannot assign %%%s which has %s type to %s (STRING expected)",
+				lineno, defined_set,
+				data_type_to_name(set->type),
+				subj_val_to_name(type, RULE_FMT_COLON));
 			goto free_and_error;
 		}
 
@@ -338,7 +358,9 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	case GID:
 	case PID:
 	case PPID: {
-		if (add_attr_set(name, INT, &index)) {
+		int set_type = (n->s[i].type == PID || n->s[i].type == PPID) ? SIGNED : UNSIGNED;
+
+		if (add_attr_set(name, set_type, &index)) {
 			goto free_and_error;
 		}
 
@@ -348,17 +370,43 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 
 		ptr = strtok_r(tmp, ",", &saved);
 		while (ptr) {
-            // starts with a digit or minus sign
-			if (isdigit(*ptr) || *ptr == '-') {
+			ptr = fapolicyd_strtrim(ptr);
+			if (!ptr || *ptr == '\0') {
+				ptr = strtok_r(NULL, ",", &saved);
+				continue;
+			}
+			if (isdigit((unsigned char)*ptr) || *ptr == '-') {
 				errno = 0;
-				long val = strtol(ptr, NULL, 10);
-				if (errno) {
-					msg(LOG_ERR,
-					"Error converting val (%s) in line %d",
+				if (n->s[i].type == PID || n->s[i].type == PPID) {
+					long val = strtol(ptr, NULL, 10);
+					if (errno) {
+						msg(LOG_ERR,
+							"Error converting val (%s) in line %d",
 							ptr, lineno);
-					goto free_and_error;
-				} else if (append_int_attr_set(set, (int)val)) {
-					goto free_and_error;
+						goto free_and_error;
+					} else if (append_int_attr_set(set,
+							(int64_t)val)) {
+						goto free_and_error;
+					}
+				} else {
+					if (*ptr == '-') {
+						msg(LOG_ERR,
+							"rules: line:%d: assign_subject: "
+							"negative value %s not allowed for %s",
+							lineno, ptr,
+							subj_val_to_name(type, RULE_FMT_COLON));
+						goto free_and_error;
+					}
+					unsigned long val = strtoul(ptr, NULL, 10);
+					if (errno) {
+						msg(LOG_ERR,
+							"Error converting val (%s) in line %d",
+							ptr, lineno);
+						goto free_and_error;
+					} else if (append_int_attr_set(set,
+							(int64_t)val)) {
+						goto free_and_error;
+					}
 				}
 
 			// Support names for auid and uid entries
@@ -367,26 +415,26 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 				struct passwd *pw = getpwnam(ptr);
 				if (pw == NULL) {
 					msg(LOG_ERR, "user %s is unknown",
-							ptr);
+						ptr);
 					goto free_and_error;
 				}
-				int val = pw->pw_uid;
+				unsigned int val = pw->pw_uid;
 				endpwent();
 
-				if (append_int_attr_set(set, val))
+				if (append_int_attr_set(set, (int64_t)val))
 					goto free_and_error;
 
 			} else if (n->s[i].type == GID) {
 				struct group *gr = getgrnam(ptr);
 				if (gr == NULL) {
 					msg(LOG_ERR, "group %s is unknown",
-							ptr);
+						ptr);
 					goto free_and_error;
 				}
-				int val = gr->gr_gid;
+				unsigned int val = gr->gr_gid;
 				endgrent();
 
-				if (append_int_attr_set(set, val))
+				if (append_int_attr_set(set, (int64_t)val))
 					goto free_and_error;
 			}
 
@@ -407,13 +455,13 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 		}
 
 		if (strcmp(tmp,	PATTERN_LD_SO_STR) == 0) {
-			n->s[i].val = PATTERN_LD_SO_VAL;
+			n->s[i].uval = PATTERN_LD_SO_VAL;
 		} else if (strcmp(tmp, PATTERN_NORMAL_STR) == 0) {
-			n->s[i].val = PATTERN_NORMAL_VAL;
+			n->s[i].uval = PATTERN_NORMAL_VAL;
 		} else if (strcmp(tmp, PATTERN_STATIC_STR) == 0) {
-			n->s[i].val = PATTERN_STATIC_VAL;
+			n->s[i].uval = PATTERN_STATIC_VAL;
 		} else if (strcmp(tmp, PATTERN_LD_PRELOAD_STR) == 0) {
-			n->s[i].val = PATTERN_LD_PRELOAD_VAL;
+			n->s[i].uval = PATTERN_LD_PRELOAD_VAL;
 		} else {
 			msg(LOG_ERR,
 				"Unknown pattern value %s in line %d",
@@ -434,7 +482,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 		}
 
 		errno = 0;
-		long val = strtol(tmp, NULL, 10);
+		unsigned long val = strtoul(tmp, NULL, 10);
 		if (errno) {
 			msg(LOG_ERR,
 				"Error converting val (%s) in line %d",
@@ -446,7 +494,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 					"trust can be set to 1 or 0", lineno);
 				goto free_and_error;
 			}
-			n->s[i].val = val;
+			n->s[i].uval = (unsigned int)val;
 		}
 
 		break;
@@ -548,7 +596,8 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 		// strings
 		if (set->type != STRING) {
 			msg(LOG_ERR, "rules: line:%d: assign_object: "
-				"cannot assign INT set %s to the STRING attribute",
+				"cannot assign SIGNED set %s to the STRING "
+				"attribute",
 				lineno, defined_set);
 			goto free_and_error;
 		}
@@ -655,7 +704,7 @@ static int parse_new_format(lnode *n, int lineno)
 		int type;
 		char *ptr2 = strchr(ptr, '=');
 
-                if (ptr2) {
+		if (ptr2) {
 			*ptr2 = 0;
 			ptr2++;
 			if (state == 0) {
@@ -734,10 +783,49 @@ static int parse_set_line(const char * line, int lineno)
 
 
 	char *ptr, *saved, *tmp = sep + 1;
+	char *values = NULL;
+
+	tmp = fapolicyd_strtrim(tmp);
 
 	int type = STRING;
+	bool numeric_found = false;
 
-	if (isdigit(tmp[0])) type = INT;
+	values = strdup(tmp);
+	if (!values)
+		goto free_and_error;
+
+	char *val_ptr, *val_saved;
+	val_ptr = strtok_r(values, ",", &val_saved);
+	while (val_ptr) {
+		char *token = fapolicyd_strtrim(val_ptr);
+		if (!token || *token == '\0') {
+			val_ptr = strtok_r(NULL, ",", &val_saved);
+			continue;
+		}
+
+		errno = 0;
+		char *endptr = NULL;
+		long long sval = strtoll(token, &endptr, 10);
+		if (errno == 0 && endptr && *endptr == '\0') {
+			numeric_found = true;
+			if (sval < 0)
+				type = SIGNED;
+			else if (type != SIGNED)
+				type = UNSIGNED;
+		} else {
+			type = STRING;
+			numeric_found = false;
+			break;
+		}
+
+		val_ptr = strtok_r(NULL, ",", &val_saved);
+	}
+
+	if (!numeric_found && type != STRING)
+		type = STRING;
+
+	free(values);
+	values = NULL;
 
 	if (add_attr_set(name, type, &index)) {
 		goto free_and_error;
@@ -749,10 +837,15 @@ static int parse_set_line(const char * line, int lineno)
 
 	ptr = strtok_r(tmp, ",", &saved);
 	while (ptr) {
+		ptr = fapolicyd_strtrim(ptr);
+		if (!ptr || *ptr == '\0') {
+			ptr = strtok_r(NULL, ",", &saved);
+			continue;
+		}
 		if (type == STRING) {
 			if (append_str_attr_set(set, ptr))
 				goto free_and_error;
-		} else if (type == INT) {
+		} else if (type == SIGNED) {
 			errno = 0;
 			long val = strtol(ptr, NULL, 10);
 			if (errno) {
@@ -760,9 +853,27 @@ static int parse_set_line(const char * line, int lineno)
 					"Error converting val (%s) in line %d",
 					ptr, lineno);
 				goto free_and_error;
-			} else if (append_int_attr_set(set, (int)val))
+			} else if (append_int_attr_set(set,
+					(int64_t)val))
 				goto free_and_error;
 
+		} else if (type == UNSIGNED) {
+			if (*ptr == '-') {
+				msg(LOG_ERR,
+					"Error converting val (%s) in line %d",
+					ptr, lineno);
+				goto free_and_error;
+			}
+			errno = 0;
+			unsigned long val = strtoul(ptr, NULL, 10);
+			if (errno) {
+				msg(LOG_ERR,
+					"Error converting val (%s) in line %d",
+					ptr, lineno);
+				goto free_and_error;
+			} else if (append_int_attr_set(set,
+					(int64_t)val))
+				goto free_and_error;
 		}
 		ptr = strtok_r(NULL, ",", &saved);
 	}
@@ -771,6 +882,7 @@ static int parse_set_line(const char * line, int lineno)
 	return -1;
 
  free_and_error:
+	free(values);
 	free(l);
 	return 1;
 }
@@ -1082,7 +1194,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 
 	// Make a decision
 make_decision:
-	switch (s->val)
+	switch (s->uval)
 	{
 		case PATTERN_NORMAL_VAL:
 			if (pinfo->state == STATE_NORMAL)
@@ -1160,12 +1272,18 @@ static int check_subject(lnode *r, event_t *e)
 		// numbers -> multiple value
 		case AUID:
 		case UID:
-		case SESSIONID:
-		case PID:
-		case PPID: {
-			if (!check_int_attr_set(r->s[cnt].set, subj->val))
+		case SESSIONID: {
+			if (!check_int_attr_set(r->s[cnt].set,
+						(int64_t)subj->uval))
 				return 0;
 			break;
+		}
+		case PID:
+		case PPID: {
+			if (!check_int_attr_set(r->s[cnt].set,
+						(int64_t)subj->pid))
+				return 0;
+ 			break;
 		} // case
 
 		// GID is unique in that process can have multiple and
@@ -1193,7 +1311,7 @@ static int check_subject(lnode *r, event_t *e)
 
 		// single value exception
 		case SUBJ_TRUST: {
-			if (subj->val != r->s[cnt].val)
+			if (subj->uval != r->s[cnt].uval)
 				return 0;
 			break;
 		} // case

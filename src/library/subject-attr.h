@@ -40,7 +40,8 @@ typedef enum { ALL_SUBJ = SUBJ_START, AUID, UID, SESSIONID, PID, PPID,
 typedef struct s {
 	subject_type_t type;
 	union {
-		int val;
+		unsigned int uval;
+		pid_t pid;
 		char *str;
 		size_t gr_index;
 		attr_sets_entry_t * set;

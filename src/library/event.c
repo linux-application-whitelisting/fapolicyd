@@ -340,7 +340,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		e->s = malloc(sizeof(s_array));
 		subject_create(e->s);
 		subj.type = PID;
-		subj.val = e->pid;
+		subj.pid = e->pid;
 		subject_add(e->s, &subj);
 
 		// give custody of the list to the cache
@@ -453,19 +453,20 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 	subj.str = NULL;
 	switch (t) {
 		case AUID:
-			subj.val = get_program_auid_from_pid(e->pid);
+			subj.uval = get_program_auid_from_pid(e->pid);
 			break;
 		case UID:
-			subj.val = get_program_uid_from_pid(e->pid);
+			subj.uval = get_program_uid_from_pid(e->pid);
 			break;
 		case SESSIONID:
-			subj.val = get_program_sessionid_from_pid(e->pid);
+			subj.uval = (unsigned int)
+					get_program_sessionid_from_pid(e->pid);
 			break;
 		case PID:
-			subj.val = e->pid;
+			subj.pid = e->pid;
 			break;
 		case PPID:
-			subj.val = get_program_ppid_from_pid(e->pid);
+			subj.pid = get_program_ppid_from_pid(e->pid);
 			break;
 		case GID:
 			subj.set = get_gid_set_from_pid(e->pid);
@@ -504,16 +505,16 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		case SUBJ_TRUST: {
 			subject_attr_t *exe = get_subj_attr(e, EXE);
 
-			subj.val = 0;
+			subj.uval = 0;
 			if (exe) {
 				if (exe->str) {
 					int res = check_trust_database(exe->str, NULL, 0);
 
 					// ignore -1
 					if (res == 1)
-						subj.val = 1;
+						subj.uval = 1;
 					else
-						subj.val = 0;
+						subj.uval = 0;
 				}
 			}
 			}

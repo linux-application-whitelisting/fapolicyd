@@ -97,8 +97,10 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 				newnode->str = subj->str;
 			else if (subj->type == GID)
 				newnode->set = subj->set;
+			else if (subj->type == PID || subj->type == PPID)
+				newnode->pid = subj->pid;
 			else
-				newnode->val = subj->val;
+				newnode->uval = subj->uval;
 		} else
 			return 1;
 	} else
