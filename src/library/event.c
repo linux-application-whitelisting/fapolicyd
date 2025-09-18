@@ -134,18 +134,18 @@ static void obj_evict_warn(void *unused)
 	if (occ >= 85) {
 		// Near-full tables churn; above these levels growth is
 		// usually cheaper than misses.
-		thr_m = 60;
-		thr_q = 22;
+		thr_m = 70;
+		thr_q = 30;
 	} else if (occ >= 75) {
 		// Some churn is expected; beyond this you’re throwing away
 		// too much reuse.
-		thr_m = 30;
-		thr_q = 10;
+		thr_m = 40;
+		thr_q = 15;
 	} else if (occ >= 50) {
 		// At half-full, evictions should be rare; higher means
 		// collisions/skew or underprovisioning.
-		thr_m = 10;
-		thr_q = 2;
+		thr_m = 20;
+		thr_q = 8;
 	} else
 		return;
 
