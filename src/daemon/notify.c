@@ -35,6 +35,7 @@
 #include <sys/syscall.h>
 #include <sys/timerfd.h>
 #include <stdbool.h>
+#include <ctype.h>
 #include "policy.h"
 #include "event.h"
 #include "message.h"
@@ -67,9 +68,29 @@ void do_stat_report(FILE *f, int shutdown);
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
 
+/*
+ * ignore_mounts_configured - determine whether ignore_mounts has entries.
+ * @list: configuration string describing ignored mount points.
+ * Returns 1 when at least one entry is configured and 0 otherwise.
+ */
+static int ignore_mounts_configured(const char *list)
+{
+	if (list == NULL)
+		return 0;
+
+	while (*list) {
+		if (!isspace(*list) && *list != ',')
+			return 1;
+		list++;
+	}
+
+	return 0;
+}
+
 int init_fanotify(const conf_t *conf, mlist *m)
 {
 	const char *path;
+	int ignore_mounts_enabled;
 
 	// Get inter-thread queue ready
 	q = q_open(conf->q_size);
@@ -114,16 +135,24 @@ int init_fanotify(const conf_t *conf, mlist *m)
 
 	mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
 
+        ignore_mounts_enabled = ignore_mounts_configured(conf->ignore_mounts);
+
+        if (ignore_mounts_enabled && conf->allow_filesystem_mark) {
+                msg(LOG_ERR,
+                    "ignore_mounts conflicts with allow_filesystem_mark - disable filesystem marks");
+                exit(1);
+        }
+
 #if defined HAVE_DECL_FAN_MARK_FILESYSTEM && HAVE_DECL_FAN_MARK_FILESYSTEM != 0
-	if (conf->allow_filesystem_mark)
-		mark_flag = FAN_MARK_FILESYSTEM;
-	else
-		mark_flag = FAN_MARK_MOUNT;
+        if (conf->allow_filesystem_mark)
+                mark_flag = FAN_MARK_FILESYSTEM;
+        else
+                mark_flag = FAN_MARK_MOUNT;
 #else
-	if (conf->allow_filesystem_mark)
-		msg(LOG_ERR,
-	    "allow_filesystem_mark is unsupported for this kernel - ignoring");
-	mark_flag = FAN_MARK_MOUNT;
+        if (conf->allow_filesystem_mark)
+                msg(LOG_ERR,
+                    "allow_filesystem_mark is unsupported for this kernel - ignoring");
+        mark_flag = FAN_MARK_MOUNT;
 #endif
 	// Iterate through the mount points and add a mark
 	path = mlist_first(m);

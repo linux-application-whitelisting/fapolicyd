@@ -54,6 +54,8 @@ This is a comma separated list of file systems that should be watched for access
 .B ignore_mounts
 This is a comma separated list of mount points that should not be watched even when their file system type matches \fBwatch_fs\fP. Each entry must be the absolute path shown in the second column of /proc/mounts. Use this option when a particular mount point produces more activity than fapolicyd needs to monitor, such as very busy caches backed by network storage. Any whitespace around the comma separated entries is ignored.
 
+The '/' mount is always monitored so executables stored under /usr and other core directories remain protected even when additional mount points are ignored. This option cannot be combined with \fBallow_filesystem_mark\fP set to 1. Filesystem marks force submounts to be watched regardless of the ignore list, so when both settings are present the daemon exits with an error to highlight the conflicting configuration.
+
 .TP
 .B trust
 This is a comma separated list of trust back-ends. If this is not configured, 'rpmdb,file' is default. Fapolicyd supports \fBfile\fP back-end that reads content of /etc/fapolicyd/fapolicyd.trust and use it as a list of trusted files. The second option is \fBrpmdb\fP backend that generates list of trusted files from rpmdb.
@@ -94,6 +96,11 @@ The option set to 1 forces the daemon to work only with SHA256 hashes. This is u
 .TP
 .B allow_filesystem_mark
 When this option is set to 1, it allows fapolicyd to monitor file access events on the underlying file system when they are bind mounted or are overlayed (e.g. the overlayfs). Normally they block fapolicyd from seeing events on the underlying file systems. This may or may not be desirable. For example, you might start seeing containers accessing things outside of the container but there is no source of trust for the container. In that case you probably do not want to see access from the container. Or maybe you do not use containers but want to control anything run by systemd-run when dynamic users are allowed. In that case you probably want to turn it on. Not all kernel's support this option. Therefore the default value is 0.
+This option cannot be used when \fBignore_mounts\fP lists one or more paths.
+Filesystem marks extend monitoring beneath bind or overlay mounts in a way
+that prevents individual mount points from being ignored. When both options
+appear in the configuration the daemon terminates with an error so the
+conflict can be corrected before startup.
 
 .TP
 .B report_interval
