@@ -267,15 +267,15 @@ static void init_ignore_mounts(const char *ignore_list)
 						mount);
 			} else {
 				if (rc == 0)
-					msg(LOG_WARNING,
+					msg(LOG_ERR,
 						"ignore_mounts entry %s must be mounted noexec - it will be watched",
 						mount);
 				else if (rc == -1)
-					msg(LOG_WARNING,
+					msg(LOG_ERR,
 						"ignore_mounts entry %s is not present in %s - it will be watched",
 						mount, mounts);
 				else
-					msg(LOG_WARNING,
+					msg(LOG_ERR,
 						"Cannot determine mount options for %s - it will be watched",
 						mount);
 			}
