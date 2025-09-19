@@ -39,6 +39,7 @@
 #include <sys/xattr.h>
 #include <linux/hash_info.h>
 #include <sys/mman.h>
+#include <mntent.h>
 
 #include "file.h"
 #include "message.h"
@@ -175,6 +176,46 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 //msg(LOG_DEBUG, "mismatch DEV");
 		return 1;
 	}
+
+	return 0;
+}
+
+
+/*
+ * check_ignore_mount_noexec - ensure an ignored mount has the noexec flag.
+ * @mounts_file: path to the mount table used to validate the entry.
+ * @point: mount point path to examine.
+ * Returns 1 when the mount exists and has noexec, 0 when the mount is present
+ * but missing the flag, -1 when the mount point is not found, and -2 if the
+ * mount table cannot be read.
+ */
+int check_ignore_mount_noexec(const char *mounts_file, const char *point)
+{
+	FILE *fp;
+	struct mntent *ent;
+	int found = 0;
+
+	fp = setmntent(mounts_file, "r");
+	if (fp == NULL) {
+		msg(LOG_ERR, "Cannot read %s (%s)", mounts_file, strerror(errno));
+		return -2;
+	}
+
+	while ((ent = getmntent(fp))) {
+		if (strcmp(ent->mnt_dir, point) == 0) {
+			found = 1;
+			if (hasmntopt(ent, "noexec")) {
+				endmntent(fp);
+				return 1;
+			}
+			break;
+		}
+	}
+
+	endmntent(fp);
+
+	if (!found)
+		return -1;
 
 	return 0;
 }

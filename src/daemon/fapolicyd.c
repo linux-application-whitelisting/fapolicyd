@@ -256,11 +256,38 @@ static void init_ignore_mounts(const char *ignore_list)
 	while (ptr) {
 		char *mount = fapolicyd_strtrim(ptr);
 
-		if (*mount)
-			new_filesystem(&ignored_mounts, mount);
+		if (*mount) {
+			// Confirm the mount point is noexec before tracking it.
+			int rc = check_ignore_mount_noexec(mounts, mount);
+
+			if (rc == 1) {
+				if (!new_filesystem(&ignored_mounts, mount))
+					msg(LOG_ERR,
+						"Cannot store ignore_mounts entry %s",
+						mount);
+			} else {
+				if (rc == 0)
+					msg(LOG_WARNING,
+						"ignore_mounts entry %s must be mounted noexec - it will be watched",
+						mount);
+				else if (rc == -1)
+					msg(LOG_WARNING,
+						"ignore_mounts entry %s is not present in %s - it will be watched",
+						mount, mounts);
+				else
+					msg(LOG_WARNING,
+						"Cannot determine mount options for %s - it will be watched",
+						mount);
+			}
+		}
 		ptr = strtok_r(NULL, ",", &saved);
 	}
 	free(tmp);
+
+	if (ignored_mounts.index.root == NULL) {
+		free((void *)config.ignore_mounts);
+		config.ignore_mounts = NULL;
+	}
 }
 
 /*
