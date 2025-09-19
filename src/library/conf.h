@@ -41,6 +41,7 @@ typedef struct conf
 	unsigned int subj_cache_size;
 	unsigned int obj_cache_size;
 	const char *watch_fs;
+	const char *ignore_mounts;
 	const char *trust;
 	integrity_t integrity;
 	const char *syslog_format;

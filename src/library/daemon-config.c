@@ -84,6 +84,8 @@ static int do_stat_report_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int watch_fs_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
+static int ignore_mounts_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 static int trust_parser(const struct nv_pair *nv, int line,
 			   conf_t *config);
 static int integrity_parser(const struct nv_pair *nv, int line,
@@ -110,6 +112,7 @@ static const struct kw_pair keywords[] =
   {"obj_cache_size",	obj_cache_size_parser },
   {"do_stat_report",	do_stat_report_parser },
   {"watch_fs",		watch_fs_parser },
+  {"ignore_mounts",	ignore_mounts_parser },
   {"trust",		trust_parser },
   {"integrity",		integrity_parser },
   {"syslog_format",	syslog_format_parser },
@@ -135,6 +138,7 @@ static void clear_daemon_config(conf_t *config)
 	config->subj_cache_size = 4099;
 	config->obj_cache_size = 8191;
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
+	config->ignore_mounts = NULL;
 #ifdef USE_RPM
 	config->trust = strdup("rpmdb,file");
 #else
@@ -349,6 +353,7 @@ static const struct kw_pair *kw_lookup(const char *val)
 void free_daemon_config(conf_t *config)
 {
 	free((void*)config->watch_fs);
+	free((void*)config->ignore_mounts);
 	free((void*)config->trust);
 	free((void*)config->syslog_format);
 }
@@ -528,6 +533,24 @@ static int watch_fs_parser(const struct nv_pair *nv, int line,
 	free((void *)config->watch_fs);
 	config->watch_fs = strdup(nv->value);
 	if (config->watch_fs)
+		return 0;
+	msg(LOG_ERR, "Could not store value line %d", line);
+	return 1;
+}
+
+/*
+ * ignore_mounts_parser - store ignore_mounts configuration setting.
+ * @nv: name/value pair describing the option.
+ * @line: line number where the option was found.
+ * @config: configuration structure to update.
+ * Returns 0 on success and 1 when memory cannot be allocated.
+ */
+static int ignore_mounts_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	free((void *)config->ignore_mounts);
+	config->ignore_mounts = strdup(nv->value);
+	if (config->ignore_mounts)
 		return 0;
 	msg(LOG_ERR, "Could not store value line %d", line);
 	return 1;
