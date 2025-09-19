@@ -51,6 +51,10 @@ This option controls how many entries the object cache holds. You want the size 
 This is a comma separated list of file systems that should be watched for access permission. No attempt is made to validate the file systems names. They should exactly match the name presented in the first column of /proc/mounts. If this is not configured, it will default to watching ext4, xfs, and tmpfs.
 
 .TP
+.B ignore_mounts
+This is a comma separated list of mount points that should not be watched even when their file system type matches \fBwatch_fs\fP. Each entry must be the absolute path shown in the second column of /proc/mounts. Use this option when a particular mount point produces more activity than fapolicyd needs to monitor, such as very busy caches backed by network storage. Any whitespace around the comma separated entries is ignored.
+
+.TP
 .B trust
 This is a comma separated list of trust back-ends. If this is not configured, 'rpmdb,file' is default. Fapolicyd supports \fBfile\fP back-end that reads content of /etc/fapolicyd/fapolicyd.trust and use it as a list of trusted files. The second option is \fBrpmdb\fP backend that generates list of trusted files from rpmdb.
 

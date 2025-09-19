@@ -63,6 +63,7 @@
 #include "gcc-attributes.h"
 #include "avl.h"
 #include "paths.h"
+#include "string-util.h"
 
 
 // Global program variables
@@ -84,6 +85,7 @@ typedef struct fs_data {
 	const char *fs_name;
 } fs_data_t;
 static struct fs_avl filesystems;
+static struct fs_avl ignored_mounts;
 
 // List of mounts being watched
 static mlist *m = NULL;
@@ -139,35 +141,52 @@ static int cmp_fs(void *a, void *b)
 }
 
 
+/*
+ * free_filesystem - release storage for a single AVL entry.
+ * @s: filesystem data being destroyed.
+ * Returns nothing.
+ */
 static void free_filesystem(fs_data_t *s)
 {
 	free((void *)s->fs_name);
 	free((void *)s);
 }
 
-
-static void destroy_filesystem(void)
+/*
+ * destroy_filesystem - remove the first node from an AVL tree.
+ * @list: tree holding filesystem style strings.
+ * Returns nothing.
+ */
+static void destroy_filesystem(struct fs_avl *list)
 {
-	avl_t *cur = filesystems.index.root;
+	avl_t *cur = list->index.root;
 
-	fs_data_t *tmp =(fs_data_t *)avl_remove(&filesystems.index, cur);
+	fs_data_t *tmp =(fs_data_t *)avl_remove(&list->index, cur);
 	if ((avl_t *)tmp != cur)
-		msg(LOG_DEBUG, "filesystem: removal of invalid node");
+		msg(LOG_DEBUG, "string list: removal of invalid node");
 	free_filesystem(tmp);
 }
 
-
-static void destroy_fs_list(void)
+/*
+ * destroy_fs_list - free every node from an AVL tree.
+ * @list: tree that should be cleared.
+ * Returns nothing.
+ */
+static void destroy_fs_list(struct fs_avl *list)
 {
-	while (filesystems.index.root)
-		destroy_filesystem();
+	while (list->index.root)
+		destroy_filesystem(list);
 }
 
-// Add a filesystem to the AVL tree.
-// Returns: 0 on failure, 1 if item is in the AVL tree.
-static int add_filesystem(fs_data_t *f)
+/*
+ * add_filesystem - insert a string into an AVL tree.
+ * @list: tree receiving the entry.
+ * @f: filesystem data to insert.
+ * Returns: 0 on failure, 1 if the item is in the tree.
+ */
+static int add_filesystem(struct fs_avl *list, fs_data_t *f)
 {
-	fs_data_t *tmp=(fs_data_t *)avl_insert(&filesystems.index,(avl_t *)(f));
+	fs_data_t *tmp=(fs_data_t *)avl_insert(&list->index,(avl_t *)(f));
 	if (tmp) {
 		if (tmp != f) {
 			// already in the tree, delete the current item
@@ -179,14 +198,18 @@ static int add_filesystem(fs_data_t *f)
 	return 0;
 }
 
-// Create fsdata_t struct and add it to the filesystem AVL tree
-// Returns 1 on success and 0 on failure
-static int new_filesystem(const char *fs)
+/*
+ * new_filesystem - allocate and add a string into an AVL tree.
+ * @list: tree receiving the new entry.
+ * @fs: string representing the filesystem or mount point.
+ * Returns 1 on success and 0 on failure.
+ */
+static int new_filesystem(struct fs_avl *list, const char *fs)
 {
 	fs_data_t *tmp = malloc(sizeof(fs_data_t));
 	if (tmp) {
 		tmp->fs_name = fs ? strdup(fs) : strdup("");
-		if (add_filesystem(tmp) == 0) {
+		if (add_filesystem(list, tmp) == 0) {
 			free((void *)tmp->fs_name);
 			free(tmp);
 			return 0;
@@ -196,16 +219,65 @@ static int new_filesystem(const char *fs)
 	return 0;
 }
 
-
-static fs_data_t *find_filesystem(const char *f)
+/*
+ * find_filesystem - search the supplied AVL tree for a string.
+ * @list: tree that should be searched.
+ * @f: string to locate.
+ * Returns a pointer to the stored entry or NULL if not found.
+ */
+static fs_data_t *find_filesystem(struct fs_avl *list, const char *f)
 {
 	fs_data_t tmp;
 
 	tmp.fs_name = f;
-	return (fs_data_t *)avl_search(&filesystems.index, (avl_t *) &tmp);
+	return (fs_data_t *)avl_search(&list->index, (avl_t *) &tmp);
 }
 
+/*
+ * init_ignore_mounts - create the ignored mount AVL tree.
+ * @ignore_list: comma separated list of mount points to ignore.
+ * Returns nothing.
+ */
+static void init_ignore_mounts(const char *ignore_list)
+{
+	avl_init(&ignored_mounts.index, cmp_fs);
 
+	if (ignore_list == NULL)
+		return;
+
+	char *ptr, *saved, *tmp = strdup(ignore_list);
+
+	if (tmp == NULL) {
+		msg(LOG_ERR, "Cannot duplicate ignore_mounts list");
+		return;
+	}
+
+	ptr = strtok_r(tmp, ",", &saved);
+	while (ptr) {
+		char *mount = fapolicyd_strtrim(ptr);
+
+		if (*mount)
+			new_filesystem(&ignored_mounts, mount);
+		ptr = strtok_r(NULL, ",", &saved);
+	}
+	free(tmp);
+}
+
+/*
+ * mount_is_ignored - check if a mount point is in the ignore list.
+ * @point: mount point path.
+ * Returns 1 when the mount point should be skipped and 0 otherwise.
+ */
+static int mount_is_ignored(const char *point)
+{
+	return find_filesystem(&ignored_mounts, point) ? 1 : 0;
+}
+
+/*
+ * init_fs_list - create the filesystem type AVL tree.
+ * @watch_fs: comma separated list of filesystem types to watch.
+ * Returns nothing. Exits on failure when the list is missing.
+ */
 static void init_fs_list(const char *watch_fs)
 {
 	if (watch_fs == NULL) {
@@ -216,14 +288,19 @@ static void init_fs_list(const char *watch_fs)
 
 	// Now parse up list and push into avl
 	char *ptr, *saved, *tmp = strdup(watch_fs);
+
+	if (tmp == NULL) {
+		msg(LOG_ERR, "Cannot duplicate watch_fs list");
+		return;
+	}
+
 	ptr = strtok_r(tmp, ",", &saved);
 	while (ptr) {
-		new_filesystem(ptr);
+		new_filesystem(&filesystems, ptr);
 		ptr = strtok_r(NULL, ",", &saved);
 	}
 	free(tmp);
 }
-
 
 static void term_handler(int sig __attribute__((unused)))
 {
@@ -358,18 +435,21 @@ static int become_daemon(void)
 // Returns 1 if we care about the entry and 0 if we do not
 static int check_mount_entry(const char *point, const char *type)
 {
+	// Skip entries explicitly ignored by configuration
+	if (mount_is_ignored(point))
+		return 0;
+
 	// Some we know we don't want
 	if (strcmp(point, "/run") == 0)
 		return 0;
 	if (strncmp(point, "/sys", 4) == 0)
 		return 0;
 
-	if (find_filesystem(type))
+	if (find_filesystem(&filesystems, type))
 		return 1;
 	else
 		return 0;
 }
-
 
 static void handle_mounts(int fd)
 {
@@ -696,6 +776,7 @@ int main(int argc, const char *argv[])
 	}
 
 	// Setup filesystem to watch list
+	init_ignore_mounts(config.ignore_mounts);
 	init_fs_list(config.watch_fs);
 
 	// Write the pid file for the init system
@@ -734,7 +815,8 @@ int main(int argc, const char *argv[])
 	if (init_database(&config)) {
 		destroy_event_system();
 		destroy_rules();
-		destroy_fs_list();
+		destroy_fs_list(&filesystems);
+		destroy_fs_list(&ignored_mounts);
 		free_daemon_config(&config);
 		unlink(pidfile);
 		exit(1);
@@ -819,7 +901,8 @@ int main(int argc, const char *argv[])
 	free(m);
 	destroy_event_system(); // clears lru caches
 	destroy_rules();
-	destroy_fs_list();
+	destroy_fs_list(&filesystems);
+	destroy_fs_list(&ignored_mounts);
 	free_daemon_config(&config);
 
 	return 0;
