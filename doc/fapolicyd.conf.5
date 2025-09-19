@@ -52,7 +52,7 @@ This is a comma separated list of file systems that should be watched for access
 
 .TP
 .B ignore_mounts
-This is a comma separated list of mount points that should not be watched even when their file system type matches \fBwatch_fs\fP. Each entry must be the absolute path shown in the second column of /proc/mounts. Use this option when a particular mount point produces more activity than fapolicyd needs to monitor, such as very busy caches backed by network storage. Any whitespace around the comma separated entries is ignored.
+This is a comma separated list of mount points that should not be watched even when their file system type matches \fBwatch_fs\fP. Each entry must be the absolute path shown in the second column of /proc/mounts. Use this option when a particular mount point produces more activity than fapolicyd needs to monitor, such as very busy caches backed by network storage. Each ignored mount must be mounted with the \fBnoexec\fP option; otherwise the daemon warns that the entry will be monitored instead. Any whitespace around the comma separated entries is ignored.
 
 The '/' mount is always monitored so executables stored under /usr and other core directories remain protected even when additional mount points are ignored. This option cannot be combined with \fBallow_filesystem_mark\fP set to 1. Filesystem marks force submounts to be watched regardless of the ignore list, so when both settings are present the daemon exits with an error to highlight the conflicting configuration.
 
