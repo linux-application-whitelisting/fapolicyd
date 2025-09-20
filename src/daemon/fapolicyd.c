@@ -667,6 +667,7 @@ int main(int argc, const char *argv[])
 	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--permissive") == 0) {
 			permissive = 1;
+			config.permissive = 1;
 		} else if (strcmp(argv[i], "--boost") == 0) {
 			i++;
 			msg(LOG_ERR, "boost value on the command line is"
