@@ -44,6 +44,7 @@
 #include "file.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
+#include "string-util.h"
 
 // Local defines
 #define IMA_XATTR_DIGEST_NG 0x04	// security/integrity/integrity.h
@@ -218,6 +219,78 @@ int check_ignore_mount_noexec(const char *mounts_file, const char *point)
 		return -1;
 
 	return 0;
+}
+
+/*
+ * iterate_ignore_mounts - walk through ignore_mounts entries and invoke a callback.
+ * @ignore_list: comma separated list of mount points to process.
+ * @callback: function invoked for each trimmed entry.
+ * @user_data: opaque pointer passed to the callback on each invocation.
+ * Returns 0 on success, 1 when memory allocation fails, or the first non-zero
+ * value returned by the callback.
+ */
+int iterate_ignore_mounts(const char *ignore_list,
+	int (*callback)(const char *mount, void *user_data), void *user_data)
+{
+	char *ptr, *saved, *tmp;
+
+	if (ignore_list == NULL || callback == NULL)
+		return 0;
+
+	tmp = strdup(ignore_list);
+	if (tmp == NULL)
+		return 1;
+
+	ptr = strtok_r(tmp, ",", &saved);
+	while (ptr) {
+		char *mount = fapolicyd_strtrim(ptr);
+
+		if (*mount) {
+			int rc = callback(mount, user_data);
+			if (rc) {
+				free(tmp);
+				return rc;
+			}
+		}
+		ptr = strtok_r(NULL, ",", &saved);
+	}
+
+	free(tmp);
+	return 0;
+}
+
+/*
+ * check_ignore_mount_warning - obtain shared warning text for ignore_mounts.
+ * @mounts_file: path to the mount table used to validate entries.
+ * @point: mount point path to examine.
+ * @warning: updated with standardized warning text or NULL when not needed.
+ * Returns the same codes as check_ignore_mount_noexec.
+ */
+int check_ignore_mount_warning(const char *mounts_file, const char *point,
+	const char **warning)
+{
+	int rc;
+	static const char warn_noexec[] =
+		"ignore_mounts entry %1$s must be mounted noexec - it will be watched";
+	static const char warn_missing[] =
+		"ignore_mounts entry %1$s is not present in %2$s - it will be watched";
+	static const char warn_unknown[] =
+		"Cannot determine mount options for %1$s - it will be watched";
+
+	rc = check_ignore_mount_noexec(mounts_file, point);
+	if (warning)
+		*warning = NULL;
+
+	if (warning && rc != 1) {
+		if (rc == 0)
+			*warning = warn_noexec;
+		else if (rc == -1)
+			*warning = warn_missing;
+		else if (rc < -1)
+			*warning = warn_unknown;
+	}
+
+	return rc;
 }
 
 

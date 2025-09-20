@@ -48,6 +48,10 @@ void file_close(void);
 struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
 int check_ignore_mount_noexec(const char *mounts_file, const char *point);
+int iterate_ignore_mounts(const char *ignore_list,
+	int (*callback)(const char *mount, void *user_data), void *user_data);
+int check_ignore_mount_warning(const char *mounts_file, const char *point,
+	const char **warning);
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 	__attr_access ((__write_only__, 4, 3));
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf)

@@ -68,7 +68,7 @@
 
 // Global program variables
 unsigned int debug_mode = 0, permissive = 0;
-const char* mounts = "/proc/mounts";
+const char* mounts = MOUNTS_FILE;
 
 // Signal handler notifications
 atomic_bool stop = false, hup = false, run_stats = false;
@@ -234,6 +234,29 @@ static fs_data_t *find_filesystem(struct fs_avl *list, const char *f)
 }
 
 /*
+ * add_ignore_mount_entry - callback that validates and stores ignored mounts.
+ * @mount: trimmed ignore_mounts entry.
+ * @unused: unused context pointer.
+ * Returns 0 to continue iterating entries.
+ */
+static int add_ignore_mount_entry(const char *mount,
+	void *unused __attribute__ ((unused)))
+{
+	const char *warning;
+	int rc;
+
+	rc = check_ignore_mount_warning(mounts, mount, &warning);
+	if (warning)
+		msg(LOG_ERR, warning, mount, mounts);
+
+	if (rc == 1) {
+		if (!new_filesystem(&ignored_mounts, mount))
+			msg(LOG_ERR, "Cannot store ignore_mounts entry %s", mount);
+	}
+
+	return 0;
+}
+/*
  * init_ignore_mounts - create the ignored mount AVL tree.
  * @ignore_list: comma separated list of mount points to ignore.
  * Returns nothing.
@@ -245,51 +268,16 @@ static void init_ignore_mounts(const char *ignore_list)
 	if (ignore_list == NULL)
 		return;
 
-	char *ptr, *saved, *tmp = strdup(ignore_list);
-
-	if (tmp == NULL) {
+	if (iterate_ignore_mounts(ignore_list, add_ignore_mount_entry, NULL)) {
 		msg(LOG_ERR, "Cannot duplicate ignore_mounts list");
 		return;
 	}
-
-	ptr = strtok_r(tmp, ",", &saved);
-	while (ptr) {
-		char *mount = fapolicyd_strtrim(ptr);
-
-		if (*mount) {
-			// Confirm the mount point is noexec before tracking it.
-			int rc = check_ignore_mount_noexec(mounts, mount);
-
-			if (rc == 1) {
-				if (!new_filesystem(&ignored_mounts, mount))
-					msg(LOG_ERR,
-						"Cannot store ignore_mounts entry %s",
-						mount);
-			} else {
-				if (rc == 0)
-					msg(LOG_ERR,
-						"ignore_mounts entry %s must be mounted noexec - it will be watched",
-						mount);
-				else if (rc == -1)
-					msg(LOG_ERR,
-						"ignore_mounts entry %s is not present in %s - it will be watched",
-						mount, mounts);
-				else
-					msg(LOG_ERR,
-						"Cannot determine mount options for %s - it will be watched",
-						mount);
-			}
-		}
-		ptr = strtok_r(NULL, ",", &saved);
-	}
-	free(tmp);
 
 	if (ignored_mounts.index.root == NULL) {
 		free((void *)config.ignore_mounts);
 		config.ignore_mounts = NULL;
 	}
 }
-
 /*
  * mount_is_ignored - check if a mount point is in the ignore list.
  * @point: mount point path.

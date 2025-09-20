@@ -25,6 +25,14 @@ Check the trustdb against the files on disk to look for mismatches that will cau
 .B \-\-check-watch_fs
 Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.
 .TP
+.B \-\-check-ignore_mounts[=mount-point]
+Inspect the ignore_mounts list or the provided mount point for potentially
+executable content. The command verifies that each mount exists, confirms the
+presence of the \fBnoexec\fP option, and scans the directory tree for files
+matching the \fB%languages\fP macro. Any matches are reported and a summary per
+mount is displayed. A non-zero status is returned when suspicious files are
+found so automated workflows can gate changes.
+.TP
 .B \-d, \-\-delete-db
 Deletes the trust database. Normally this never needs to be done. But if for some reason the trust database becomes corrupted, then the only method of recovery is to run this command.
 .TP
