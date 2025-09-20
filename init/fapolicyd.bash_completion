@@ -7,7 +7,7 @@ _fapolicydcli()
 	local cur="${COMP_WORDS[COMP_CWORD]}"
 	local prev="${COMP_WORDS[COMP_CWORD-1]}"
 	local opts="--check-config --check-path --check-status --check-trustdb \
-		--check-watch_fs --delete-db --dump-db \
+		--check-watch_fs --check-ignore_mounts --delete-db --dump-db \
 		--file --ftype --help --list --update --reload-rules --test-filter"
 
 	case $prev in
@@ -19,6 +19,16 @@ _fapolicydcli()
 			else    # this is almost as good
 				compopt -o filenames 2>/dev/null
 				COMPREPLY=( $(compgen -f -- ${cur}) )
+				return 0
+			fi
+		;;
+		--check-ignore_mounts)
+			if [ -e /usr/share/bash-completion/bash_completion ] ; then
+				_filedir -d
+				return 0
+			else
+				compopt -o dirnames 2>/dev/null
+				COMPREPLY=( $(compgen -d -- ${cur}) )
 				return 0
 			fi
 		;;

@@ -28,6 +28,8 @@
 #define CONFIG_FILE     "/etc/fapolicyd/fapolicyd.conf"
 #define OLD_RULES_FILE  "/etc/fapolicyd/fapolicyd.rules"
 #define RULES_FILE      "/etc/fapolicyd/compiled.rules"
+#define LANGUAGE_RULES_FILE  "/etc/fapolicyd/rules.d/10-languages.rules"
+#define MOUNTS_FILE     "/proc/mounts"
 #define TRUST_DIR_PATH  "/etc/fapolicyd/trust.d/"
 #define TRUST_FILE_PATH "/etc/fapolicyd/fapolicyd.trust"
 #define DB_DIR          "/var/lib/fapolicyd"
