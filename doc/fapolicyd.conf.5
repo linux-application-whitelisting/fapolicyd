@@ -52,9 +52,21 @@ This is a comma separated list of file systems that should be watched for access
 
 .TP
 .B ignore_mounts
-This is a comma separated list of mount points that should not be watched even when their file system type matches \fBwatch_fs\fP. Each entry must be the absolute path shown in the second column of /proc/mounts. Use this option when a particular mount point produces more activity than fapolicyd needs to monitor, such as very busy caches backed by network storage. Each ignored mount must be mounted with the \fBnoexec\fP option; otherwise the daemon warns that the entry will be monitored instead. Any whitespace around the comma separated entries is ignored.
-
-The '/' mount is always monitored so executables stored under /usr and other core directories remain protected even when additional mount points are ignored. This option cannot be combined with \fBallow_filesystem_mark\fP set to 1. Filesystem marks force submounts to be watched regardless of the ignore list, so when both settings are present the daemon exits with an error to highlight the conflicting configuration.
+.B ignore_mounts
+A comma\-separated list of mount points that fapolicyd must not watch, even when their filesystem type matches
+.BR watch_fs .
+Entries must be absolute paths exactly as shown in the second column of
+.BR /proc/mounts ;
+whitespace around commas is ignored. Each listed mount
+.B must
+be mounted with the
+.BR noexec
+option; otherwise the daemon warns and monitors the mount point instead. The root filesystem
+.B /
+is always monitored. This option cannot be combined with
+.BR allow_filesystem_mark =1 .
+See the discussion in
+.BR "SECURITY CONSIDERATIONS FOR ignore_mounts" .
 
 .TP
 .B trust
@@ -105,6 +117,40 @@ conflict can be corrected before startup.
 .TP
 .B report_interval
 This option specifies a reporting interval, measured in seconds, which fapolicyd uses to schedule a recurring dump of internal performance statistics to the \fBfapolicyd.state\fP file. The default value of 0 disables interval reporting.
+
+.SS SECURITY CONSIDERATIONS FOR ignore_mounts
+Ignoring a mount removes fanotify visibility for that tree. fapolicyd will
+.B not
+evaluate reads/opens that occur on the ignored mount, which reduces load but creates blind spots in policy enforcement.
+
+.IP \[bu] 2
+\fBInterpreters and plugins:\fR Even with \fBnoexec\fR, trusted interpreters (shell, Python, Java, Node.js, etc.) and applications that load plugins, bytecode, or data\-driven modules may read and act on files from the ignored mount. Those accesses bypass fapolicyd because no fanotify mark is placed there.
+.IP \[bu]
+\fBPolicy blind spots:\fR Content copied into the ignored tree is not evaluated while it resides there. Risk may surface only after the content moves to a monitored location.
+.IP \[bu]
+\fBCoverage of system paths:\fR The root filesystem \fB/\fR is always monitored so core paths (e.g., \fI/usr\fR) remain protected. Do not rely on \fBignore_mounts\fR to work around denials for native ELF binaries; it is a performance control, not a permissive toggle.
+
+.PP
+Before adding entries to \fBignore_mounts\fR, administrators should:
+.RS 4
+.IP \[bu] 2
+Ensure each mount is truly \fIdata\-only\fR and is mounted with \fBnoexec\fR.
+.IP \[bu]
+Run the advisory check:
+.nf
+\f[C]
+fapolicyd-cli --check-ignore_mounts[=MOUNT]
+\f[R]
+.fi
+to verify the mount exists, confirm \fBnoexec\fR, and scan for files matching the \fB%languages\fR macro. The command reports findings and returns a non\-zero status when potentially executable content is detected.
+.IP \[bu]
+Reevaluate after workload changes; caches and logging trees evolve over time.
+.RE
+
+.PP
+Matching is by mount point path as shown in
+.BR /proc/mounts ;
+trailing slashes are normalized. Bind/overlay/NFS/FUSE mounts are matched by their mount point path (not device identifiers). When \fBallow_filesystem_mark=1\fR is set together with \fBignore_mounts\fR, the daemon refuses the configuration to avoid conflicting semantics.
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),
