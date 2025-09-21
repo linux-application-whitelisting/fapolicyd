@@ -318,6 +318,44 @@ cause a hash to be calculated on the file being accessed. One trade-off would
 be to use size checking rather than sha256. This is not as secure, but it is
 an option if performance is problematic.
 
+## Use ignore_mounts with great care
+
+Starting with fapolicyd-1.3.8, there is a new performance option, ignore_mounts. ignore_mounts removes selected mount points from fanotify monitoring to reduce overhead on very busy filesystems (for example, cache or logging partitions). This improves performance **at the cost of visibility**: when a mount is ignored, fapolicyd does not see opens/reads from that tree and cannot apply policy decisions there.
+
+### When to consider it
+
++ High-churn **data-only** mounts where monitoring provides little value (e.g. cache directories or dedicated logging partitions).
+
++ Workloads that are **well understood and controlled**, with correct ownership/permissions/SELinux labels and no expectation that content will be treated as code.
+
+### Risks
+
++ **Interpreter and plugin gaps**: Even with noexec, trusted interpreters (shell, Python, Java, Node.js, etc.) and applications that load plugins/bytecode may read and act on files from the ignored mount. Those accesses bypass fapolicyd because the mount is not watched.
+
++ **Policy blind spots**: Content copied into the ignored tree won’t be evaluated while it resides there and may only be detected after it moves to a monitored location.
+
++ **Coverage assumptions**: The root filesystem / is always monitored. Do not use ignore_mounts to work around denials for native ELF binaries; that is not its purpose.
+
+### Required guardrails
+
++ Each ignored mount **must** be mounted with noexec. This prevents direct ELF execve() from that mount. It does not mitigate interpreter/JIT/plugin scenarios.
+
++ **Advisory pre-check** before changing configuration:
+
+```
+    fapolicyd-cli --check-ignore_mounts[=MOUNT]
+```
+
+ This verifies the mount exists, confirms noexec, scans for files matching the %languages macro (interpreter-consumable content), reports findings, and returns non-zero when suspicious files are found so automation can gate configuration changes.
+
++ Add entries exactly as shown in the second column of /proc/mounts. Whitespace around comma-separated entries is ignored.
+
+### Conflicts and notes
+
++ / is always monitored.
+
++ Do not combine this option with allow_filesystem_mark=1; the daemon will refuse the configuration.
+
 
 MEMORY USAGE
 ------------
