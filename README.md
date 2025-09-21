@@ -496,6 +496,7 @@ Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 | --check-status         | Output internal metrics kept by the daemon. (New in 1.1.4)                                                |
 | --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
 | --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
+| --check-ignore_mounts  | Check the configured mounts that are ignored to see that they are mounted noexec and there are no suspicious files in the partition. (New in 1.3.8)                                       |
 
 
 
