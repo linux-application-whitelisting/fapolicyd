@@ -1,6 +1,7 @@
 1.3.8
 - add --check-ignore_mounts option to fapolicyd-cli
 - Fix overlay filesystem detection in fapolicyd-cli --check-watch_fs
+- Fix fapolicyd-cli --check-path so that it properly detects symlinked dirs
 
 1.3.7
 - Refactor queue to unify enqueue and dequeue and make it lockless
