@@ -324,7 +324,7 @@ Starting with fapolicyd-1.3.8, there is a new performance option, ignore_mounts.
 
 ### When to consider it
 
-+ High-churn **data-only** mounts where monitoring provides little value (e.g. cache directories or dedicated logging partitions).
++ High-churn **data-only** mounts where monitoring provides little value (e.g. cache directories, file/content serving directories, or dedicated logging partitions).
 
 + Workloads that are **well understood and controlled**, with correct ownership/permissions/SELinux labels and no expectation that content will be treated as code.
 
