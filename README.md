@@ -338,7 +338,7 @@ Starting with fapolicyd-1.3.8, there is a new performance option, ignore_mounts.
 
 ### Required guardrails
 
-+ Each ignored mount **must** be mounted with noexec. This prevents direct ELF execve() from that mount. It does not mitigate interpreter/JIT/plugin scenarios.
++ Each ignored mount **must** be mounted with noexec. This prevents direct ELF execve() from that mount. If noexec is missing, / is still monitored and the first observed event will be the runtime linker which will trigger the ld_so patterndetection which will deny access. Mounting with noexec does not mitigate interpreter/JIT/plugin scenarios.
 
 + **Advisory pre-check** before changing configuration:
 
