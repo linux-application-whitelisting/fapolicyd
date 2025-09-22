@@ -1303,7 +1303,7 @@ static int check_path(void)
 	char *path = strdup(env_path);
 	ptr = strtok_r(path, ":", &saved);
 	while (ptr) {
-		if (is_link(path))
+		if (is_link(ptr))
 			goto next;
 
 		nftw(ptr, check_file, 1024, FTW_PHYS);
