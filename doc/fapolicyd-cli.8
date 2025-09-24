@@ -56,7 +56,7 @@ This command updates the size and hash of any matching paths in the file trust d
 .B \-\-trust-file trust-file-name
 Use after \fBfile\fP option. Makes every command of \fBfile\fP option operate on a single trust file named \fBtrust-file-name\fP that is located inside trust.d directory. If a trust file with such a name does not exist inside trust.d directory, it is created.
 .TP
-.B --test-filter /path/to/file
+.B \-\-test-filter /path/to/file
 Evaluate FILTER_FILE against the given path and emit a rule-by-rule trace ending with "decision include" or "decision exclude". This let's you know if the file will be included in the trust database or not.
 .TP
 .B \-t, \-\-ftype /path/to/file
@@ -70,6 +70,9 @@ Notifies fapolicyd to perform an update of the trust database.
 .TP
 .B \-r, \-\-reload-rules
 Notifies fapolicyd to perform a reload of the rules.
+.TP
+.B \-\-verbose
+Only for the \-\-check-ignore_mounts, print a list of files that do not pass inspection.
 .SH "SEE ALSO"
 .BR fapolicyd (8),
 .BR fapolicyd.rules (5),

@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <magic.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <getopt.h>
 #include <stdatomic.h>
@@ -58,6 +59,8 @@
 #include "filter.h"
 #endif
 
+bool verbose = false;
+
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "--check-config        Check the daemon config for syntax errors\n"
@@ -66,6 +69,7 @@ static const char *usage =
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
+"--verbose             Enable verbose output for select commands\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
 "-f, --file cmd path   Manage the file trust database\n"
@@ -85,6 +89,7 @@ static struct option long_opts[] =
 	{"check-config",0, NULL,  1 },
 	{"check-watch_fs",0, NULL, 2 },
 	{"check-ignore_mounts", 2, NULL, 7 },
+	{"verbose",     0, NULL, 8 },
 	{"check-trustdb",0, NULL,  3 },
 	{"check-status",0, NULL,  4 },
 	{"check-path",  0, NULL,  5 },
@@ -995,7 +1000,8 @@ static int inspect_mount_file(const char *fpath, const struct stat *sb,
 	};
 
 	if (avl_search(scan_state.languages, &key.avl)) {
-		printf("%s: %s\n", fpath, buf);
+		if (verbose)
+			printf("%s: %s\n", fpath, buf);
 		if (scan_state.count)
 			(*scan_state.count)++;
 	}
@@ -1430,54 +1436,70 @@ static int do_test_filter(const char *path)
 int main(int argc, char * const argv[])
 {
 	int opt, option_index, rc = 1;
+	int orig_argc = argc, arg_count = 0;
+	char *args[orig_argc+1];
 
-	if (argc == 1) {
+	for (unsigned i = 0; i < orig_argc; i++) {
+		if (strcmp(argv[i], "--verbose") == 0) {
+			verbose = true;
+			continue;
+		}
+		args[arg_count++] = argv[i];
+	}
+	args[arg_count] = NULL;
+
+	if (arg_count == 1) {
 		fprintf(stderr, "Too few arguments\n\n");
 		fprintf(stderr, "%s", usage);
 		return rc;
 	}
 
-	opt = getopt_long(argc, argv, "Ddf:ht:lur",
+	optind = 1;
+
+	/* Run getopt_long on the sanitized copy so command parsing behaves
+	 * exactly as before --verbose was introduced. */
+	opt = getopt_long(arg_count, (char * const *)args, "Ddf:ht:lur",
 				 long_opts, &option_index);
+
 	switch (opt) {
 	case 'd':
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		rc = do_delete_db();
 		break;
 	case 'D':
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		rc = do_dump_db();
 		break;
 	case 'f':
-		if (argc > 6)
+		if (arg_count > 6)
 			goto args_err;
 		// fapolicyd-cli, -f, | operation, path ...
 		// skip the first two args
-		rc = do_manage_files(argc-2, argv+2);
+		rc = do_manage_files(arg_count-2, args+2);
 		break;
 	case 'h':
 		printf("%s", usage);
 		rc = 0;
 		break;
 	case 't':
-		if (argc > 3)
+		if (arg_count > 3)
 			goto args_err;
 		rc = do_ftype(optarg);
 		break;
 	case 'l':
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		rc = do_list();
 		break;
 	case 'u':
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		rc = do_reload(DB);
 		break;
 	case 'r':
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		rc = do_reload(RULES);
 		break;
@@ -1486,7 +1508,7 @@ int main(int argc, char * const argv[])
 	case 1: { // --check-config
 		conf_t config;
 
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		set_message_mode(MSG_STDERR, DBG_YES);
 		if (load_daemon_config(&config)) {
@@ -1500,22 +1522,22 @@ int main(int argc, char * const argv[])
 		} }
 		break;
 	case 2: // --check-watch_fs
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		return check_watch_fs();
 		break;
 	case 3: // --check-trustdb
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		return check_trustdb();
 		break;
 	case 4: // --check-status
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		return do_status_report();
 		break;
 	case 5: // --check-path
-		if (argc > 2)
+		if (arg_count > 2)
 			goto args_err;
 		return check_path();
 		break;
@@ -1523,9 +1545,10 @@ int main(int argc, char * const argv[])
 	case 7: { // --check-ignore_mounts
 		const char *override = optarg;
 
-		if (override == NULL && optind < argc && argv[optind][0] != '-')
-			override = argv[optind++];
-		if (optind < argc)
+		if (override == NULL && optind < arg_count &&
+						argv[optind][0] != '-')
+			override = args[optind++];
+		if (optind < arg_count)
 			goto args_err;
 		return check_ignore_mounts(override);
 		}
@@ -1533,7 +1556,7 @@ int main(int argc, char * const argv[])
 
 #ifdef HAVE_LIBRPM
 	case 6: { // --test-filter
-		if (argc > 3)
+		if (arg_count > 3)
 			goto args_err;
 		return do_test_filter(optarg);
 		}
