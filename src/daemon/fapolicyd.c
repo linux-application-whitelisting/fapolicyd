@@ -457,7 +457,7 @@ static int check_mount_entry(const char *point, const char *type)
 	// Some we know we don't want
 	if (strcmp(point, "/run") == 0)
 		return 0;
-	if (strncmp(point, "/sys", 4) == 0)
+	if (strncmp(point, "/sys/", 5) == 0)
 		return 0;
 
 	if (find_filesystem(&filesystems, type))
