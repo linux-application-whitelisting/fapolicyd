@@ -9,6 +9,7 @@
 #ifdef USE_RPM
 unsigned int debug_mode;
 #endif
+atomic_bool stop;
 
 int main(int argc, char* const argv[]) {
   set_message_mode(MSG_STDERR, DBG_YES);
