@@ -388,7 +388,7 @@ static int reload_configuration(void)
 
 	if (new_config.syslog_format &&
 		(!config.syslog_format ||
-		  strcmp(new_config.syslog_format, config.syslog_format) != 0)) {
+		 strcmp(new_config.syslog_format, config.syslog_format) != 0)) {
 		char *new_syslog = strdup(new_config.syslog_format);
 		if (new_syslog) {
 			char *old_syslog;
@@ -405,6 +405,8 @@ static int reload_configuration(void)
 		}
 
 	config.rpm_sha256_only = new_config.rpm_sha256_only;
+
+	// TODO add in more of the config items. The rest are tricky.
 
 	free_daemon_config(&new_config);
 
