@@ -22,6 +22,7 @@
 #include <stdatomic.h>
 
 #include "attr-sets.h"
+#include "conf.h"
 #include "rules.h"
 #include "subject.h"
 #include "object.h"
@@ -37,7 +38,7 @@
 #define VALID_RULES TEST_BASE "/src/tests/fixtures/rules-valid.rules"
 
 /* globals expected by library code */
-atomic_uint permissive = ATOMIC_VAR_INIT(0);
+conf_t config;
 int debug_mode;
 atomic_bool stop;
 

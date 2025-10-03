@@ -68,14 +68,13 @@
 
 // Global program variables
 unsigned int debug_mode = 0;
-atomic_uint permissive = ATOMIC_VAR_INIT(0);
 const char* mounts = MOUNTS_FILE;
 
 // Signal handler notifications
 atomic_bool stop = false, hup = false, run_stats = false;
 
-// Local variables
-static conf_t config;
+// Global configuration state
+conf_t config;
 // This holds info about all file systems to watch
 struct fs_avl {
 	avl_tree_t index;
@@ -369,8 +368,6 @@ static int reload_configuration(void)
 		return 1;
 	}
 
-	atomic_store_explicit(&permissive,
-		new_config.permissive ? 1U : 0U, memory_order_relaxed);
 	config.permissive = new_config.permissive;
 
 	if (setpriority(PRIO_PROCESS, 0, -(int)new_config.nice_val) == -1)
@@ -705,9 +702,7 @@ int main(int argc, const char *argv[])
 		free_daemon_config(&config);
 		msg(LOG_ERR, "Exiting due to bad configuration");
 		return 1;
-	}
-	atomic_store_explicit(&permissive, config.permissive,
-				memory_order_relaxed);
+        }
 
 	// set the debug flags
 	for (int i=1; i < argc; i++) {
@@ -722,8 +717,6 @@ int main(int argc, const char *argv[])
 	// process remaining flags
 	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--permissive") == 0) {
-			atomic_store_explicit(&permissive, 1,
-				memory_order_relaxed);
 			config.permissive = 1;
 		} else if (strcmp(argv[i], "--boost") == 0) {
 			i++;

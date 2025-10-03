@@ -47,6 +47,7 @@
 #include "gcc-attributes.h"
 #include "string-util.h"
 #include "paths.h"
+#include "conf.h"
 
 #define MAX_SYSLOG_FIELDS	21
 #define NGID_LIMIT		32
@@ -74,7 +75,7 @@ static const nv_t table[] = {
 };
 
 extern unsigned int debug_mode;
-extern atomic_uint permissive;
+extern conf_t config;
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
 
@@ -648,7 +649,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 		// If permissive, always allow and honor the audit bit
 		// if not in debug mode
-		if (atomic_load_explicit(&permissive, memory_order_relaxed))
+		if (config.permissive)
 			reply_event(fd, metadata,FAN_ALLOW | (decision & AUDIT),
 					&e);
 		else

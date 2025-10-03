@@ -51,7 +51,7 @@
 
 atomic_bool stop = 0;  // Library needs this
 unsigned int debug_mode = 0;			// Library needs this
-atomic_uint permissive = ATOMIC_VAR_INIT(0);	// Library needs this
+conf_t config;				// Library needs this
 
 
 int do_rpm_init_backend(void);
@@ -67,8 +67,6 @@ int main(int argc, char * const argv[])
 {
 
 	set_message_mode(MSG_STDERR, DBG_YES);
-
-	conf_t config;
 
 	load_daemon_config(&config);
 

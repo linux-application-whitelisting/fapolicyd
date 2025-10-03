@@ -109,7 +109,13 @@ static struct option long_opts[] =
 
 atomic_bool stop = 0;  // Library needs this
 unsigned int debug_mode = 0;			// Library needs this
-atomic_uint permissive = ATOMIC_VAR_INIT(0);	// Library needs this
+conf_t config;				// Library needs this
+
+static void reset_config(void)
+{
+	free_daemon_config(&config);
+	memset(&config, 0, sizeof(config));
+}
 
 typedef enum _reload_code { DB, RULES} reload_code;
 
@@ -597,7 +603,6 @@ static int not_watchable(const char *type)
 // Finding unwatched file systems is not considered an error
 static int check_watch_fs(void)
 {
-	conf_t config;
 	char buf[PATH_MAX * 2], device[1025], point[4097];
 	char type[32], mntops[128];
 	int fs_req, fs_passno, fd, found = 0;
@@ -605,12 +610,14 @@ static int check_watch_fs(void)
 	char *ptr, *saved, *tmp;
 
 	set_message_mode(MSG_STDERR, DBG_YES);
+	reset_config();
 	if (load_daemon_config(&config)) {
-		free_daemon_config(&config);
+		reset_config();
 		return 1;
 	}
 	if (config.watch_fs == NULL) {
 		fprintf(stderr, "File systems to watch is empty");
+		reset_config();
 		return 1;
 	}
 	tmp = strdup(config.watch_fs);
@@ -631,7 +638,7 @@ static int check_watch_fs(void)
 	fd = open("/proc/mounts", O_RDONLY);
 	if (fd < 0) {
 		fprintf(stderr, "Unable to open mounts\n");
-		free_daemon_config(&config);
+		reset_config();
 		list_empty(&fs);
 		return 1;
 	}
@@ -639,7 +646,7 @@ static int check_watch_fs(void)
 	fd_fgets_state_t *st = fd_fgets_init();
 	if (!st) {
 		fprintf(stderr, "Failed fd_fgets_init\n");
-		free_daemon_config(&config);
+		reset_config();
 		list_empty(&fs);
 		close(fd);
 		return 1;
@@ -684,7 +691,7 @@ static int check_watch_fs(void)
 		}
 	}
 
-	free_daemon_config(&config);
+	reset_config();
 	list_empty(&fs);
 	list_empty(&mnt);
 	if (found == 0)
@@ -893,10 +900,9 @@ static int is_mount_point(const char *path)
 /*
  * validate_override_mount - verify CLI override path and copy it to config.
  * @override: path supplied by the administrator.
- * @config: daemon configuration that receives ignore_mounts string.
  * Returns 0 on success and 1 on failure.
  */
-static int validate_override_mount(const char *override, conf_t *config)
+static int validate_override_mount(const char *override)
 {
 	char resolved[PATH_MAX];
 	char *rpath;
@@ -923,8 +929,9 @@ static int validate_override_mount(const char *override, conf_t *config)
 		return 1;
 	}
 
-	config->ignore_mounts = strdup(rpath);
-	if (config->ignore_mounts == NULL) {
+	free((void *)config.ignore_mounts);
+	config.ignore_mounts = strdup(rpath);
+	if (config.ignore_mounts == NULL) {
 		fprintf(stderr, "Out of memory\n");
 		return 1;
 	}
@@ -935,16 +942,15 @@ static int validate_override_mount(const char *override, conf_t *config)
 /*
  * load_ignore_mounts_config - populate ignore_mounts field for scanning.
  * @override: optional CLI path override.
- * @config: daemon configuration structure that receives settings.
  * Returns 0 on success and 1 on failure.
  */
-static int load_ignore_mounts_config(const char *override, conf_t *config)
+static int load_ignore_mounts_config(const char *override)
 {
 	if (override)
-		return validate_override_mount(override, config);
+		return validate_override_mount(override);
 
 	set_message_mode(MSG_STDERR, DBG_YES);
-	if (load_daemon_config(config))
+	if (load_daemon_config(&config))
 		return 1;
 
 	return 0;
@@ -1099,7 +1105,6 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
  */
 static int check_ignore_mounts(const char *override)
 {
-	conf_t config;
 	list_t mounts;
 	avl_tree_t languages;
 	int rc = 1;
@@ -1108,12 +1113,12 @@ static int check_ignore_mounts(const char *override)
 	int file_ready = 0;
 	const char *languages_path;
 
-	memset(&config, 0, sizeof(config));
+	reset_config();
 	list_init(&mounts);
 	avl_init(&languages, compare_language_entry);
 
 	/* Load ignore_mounts either from the override path or daemon config. */
-	if (load_ignore_mounts_config(override, &config))
+	if (load_ignore_mounts_config(override))
 		goto finish;
 
 	if (config.ignore_mounts == NULL) {
@@ -1164,7 +1169,7 @@ finish:
 	scan_state.languages = NULL;
 	scan_state.count = NULL;
 	scan_state.had_error = 0;
-	free_daemon_config(&config);
+	reset_config();
 	return (suspicious_total > 0) ? 1 : (errors ? 1 : rc);
 }
 
@@ -1205,17 +1210,17 @@ static int verify_file(const char *path, off_t size, const char *sha)
 
 static int check_trustdb(void)
 {
-	conf_t config;
 	int found = 0;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
+	reset_config();
 	if (load_daemon_config(&config)) {
-		free_daemon_config(&config);
+		reset_config();
 		return 1;
 	}
 	set_message_mode(MSG_QUIET, DBG_NO);
 	int rc = walk_database_start(&config);
-	free_daemon_config(&config);
+	reset_config();
 	if (rc)
 		return 1;
 
@@ -1291,7 +1296,6 @@ static int check_file(const char *fpath,
 
 static int check_path(void)
 {
-	conf_t config;
 	char *ptr, *saved;
 	const char *env_path = getenv("PATH");
 	if (env_path == NULL) {
@@ -1300,8 +1304,9 @@ static int check_path(void)
 	}
 
 	set_message_mode(MSG_STDERR, DBG_NO);
+	reset_config();
 	if (load_daemon_config(&config)) {
-		free_daemon_config(&config);
+		reset_config();
 		return 1;
 	}
 	set_message_mode(MSG_QUIET, DBG_NO);
@@ -1319,7 +1324,7 @@ next:
 	stop = 1; // Need this to terminate update thread
 	free(path);
 	close_database();
-	free_daemon_config(&config);
+	reset_config();
 
 	if (path_found == 0)
 		puts("No problems found");
@@ -1506,18 +1511,18 @@ int main(int argc, char * const argv[])
 
 	// Now the pure long options
 	case 1: { // --check-config
-		conf_t config;
 
 		if (arg_count > 2)
 			goto args_err;
 		set_message_mode(MSG_STDERR, DBG_YES);
+		reset_config();
 		if (load_daemon_config(&config)) {
-			free_daemon_config(&config);
+			reset_config();
 			fprintf(stderr, "Configuration errors reported\n");
 			return 1;
 		} else {
 			printf("Daemon config is OK\n");
-			free_daemon_config(&config);
+			reset_config();
 			return 0;
 		} }
 		break;
