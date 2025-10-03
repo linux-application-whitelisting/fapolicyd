@@ -1341,11 +1341,14 @@ static void *update_thread_main(void *arg)
 
 		if (reload_rules) {
 			reload_rules = false;
-			load_rule_file();
-
-			lock_rule();
-			do_reload_rules(config);
-			unlock_rule();
+			if (load_rule_file()) {
+			    msg(LOG_ERR,
+			      "Rule reload aborted: unable to open rules file");
+			} else {
+				lock_rule();
+				do_reload_rules(config);
+				unlock_rule();
+			}
 		}
 		// got SIGHUP
 		if (reload_db) {
@@ -1442,11 +1445,15 @@ static void *update_thread_main(void *arg)
 						} else if (do_operation == RELOAD_RULES) {
 							do_operation = DB_NO_OP;
 
-							load_rule_file();
-
-							lock_rule();
-							do_reload_rules(config);
-							unlock_rule();
+							if (load_rule_file()) {
+								msg(LOG_ERR,
+			     "Rule reload aborted: unable to open rules file");
+							} else {
+								lock_rule();
+								do_reload_rules(
+									config);
+								unlock_rule();
+							}
 
 							// got "2" -> flush cache
 						} else if (do_operation == FLUSH_CACHE) {
