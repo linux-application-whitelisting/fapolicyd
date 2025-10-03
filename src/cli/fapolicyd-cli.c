@@ -1176,7 +1176,7 @@ finish:
 // Returns 0 = everything is OK, 1 = there is a problem
 static int verify_file(const char *path, off_t size, const char *sha)
 {
-	int fd, warn_size = 0, warn_sha = 0;
+	int fd, warn_sha = 0;
 	struct stat sb;
 
 	fd = open(path, O_RDONLY);
@@ -1189,8 +1189,11 @@ static int verify_file(const char *path, off_t size, const char *sha)
 		close(fd);
 		return 1;
 	}
-	if (sb.st_size != size)
-		warn_size = 1;
+	if (sb.st_size != size) {
+		printf("%s miscompares: file size\n", path);
+		close(fd);
+		return 1;
+	}
 
 	char *sha_buf = get_hash_from_fd2(fd, sb.st_size, 1);
 	close(fd);
@@ -1199,10 +1202,19 @@ static int verify_file(const char *path, off_t size, const char *sha)
 		warn_sha = 1;
 	free(sha_buf);
 
-	if (warn_size || warn_sha) {
-		printf("%s miscompares: %s %s\n", path,
-		   warn_size ? "size" : "",
-		   warn_sha ? (strlen(sha) < 64 ? "is a sha1" : "sha256") : "");
+	if (warn_sha) {
+		const char *sha_desc;
+		size_t sha_len = strlen(sha);
+
+		// For now, only sha256 is supported
+		if (sha_len < 64)
+			sha_desc = "is a sha1";
+		else if (sha_len > 64)
+			sha_desc = "is a sha512";
+		else
+			sha_desc = "sha256";
+
+		printf("%s miscompares: %s\n", path, sha_desc);
 		return 1;
 	}
 	return 0;
