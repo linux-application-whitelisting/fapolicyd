@@ -1343,7 +1343,8 @@ static void *update_thread_main(void *arg)
 			reload_rules = false;
 			if (load_rule_file()) {
 			    msg(LOG_ERR,
-			      "Rule reload aborted: unable to open rules file");
+			      "Rule reload aborted: unable to open rules file (%s)",
+			      strerror(errno));
 			} else {
 				lock_rule();
 				do_reload_rules(config);
@@ -1447,7 +1448,8 @@ static void *update_thread_main(void *arg)
 
 							if (load_rule_file()) {
 								msg(LOG_ERR,
-			     "Rule reload aborted: unable to open rules file");
+			     "Rule reload aborted: unable to open rules file (%s)",
+								strerror(errno));
 							} else {
 								lock_rule();
 								do_reload_rules(
