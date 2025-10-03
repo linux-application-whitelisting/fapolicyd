@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <string.h>
+#include <stdatomic.h>
 
 #include "backend-manager.h"
 #include "conf.h"
