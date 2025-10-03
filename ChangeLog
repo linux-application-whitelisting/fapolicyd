@@ -5,6 +5,7 @@
 - In fapolicyd-cli, add --verbose flag to --check-ignore_mounts
 - Watch the /run partition
 - Update some config items in SIGHUP
+- Clarify warnings for fapolicyd-cli --check-trustdb
 
 1.3.7
 - Refactor queue to unify enqueue and dequeue and make it lockless
