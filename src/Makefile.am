@@ -8,7 +8,7 @@ AM_CPPFLAGS = \
 sbin_PROGRAMS = fapolicyd fapolicyd-cli
 lib_LTLIBRARIES= libfapolicyd.la
 
-fapolicyd_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
+fapolicyd_CFLAGS = -std=gnu11 -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
 fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now  -static
 fapolicyd_LDADD = libfapolicyd.la
 

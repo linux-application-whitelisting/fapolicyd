@@ -35,6 +35,7 @@
 #include <sys/syscall.h>
 #include <sys/timerfd.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <ctype.h>
 #include "policy.h"
 #include "event.h"
@@ -47,7 +48,7 @@
 
 // External variables
 extern atomic_bool stop, run_stats;
-extern unsigned int permissive;
+extern atomic_uint permissive;
 
 // Local variables
 static pid_t our_pid;
@@ -484,7 +485,8 @@ void handle_events(void)
 				"queue is full, please consider tuning q_size "
 				"if issue happens often", metadata->pid);
 					int decision = FAN_DENY;
-					if (permissive)
+					if (atomic_load_explicit(&permissive,
+							memory_order_relaxed))
 						decision = FAN_ALLOW;
 					reply_event(fd, metadata, decision,
 						    NULL);

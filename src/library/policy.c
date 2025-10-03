@@ -28,6 +28,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <stdatomic.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -73,7 +74,7 @@ static const nv_t table[] = {
 };
 
 extern unsigned int debug_mode;
-extern unsigned int permissive;
+extern atomic_uint permissive;
 
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
 
@@ -647,7 +648,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 		// If permissive, always allow and honor the audit bit
 		// if not in debug mode
-		if (permissive)
+		if (atomic_load_explicit(&permissive, memory_order_relaxed))
 			reply_event(fd, metadata,FAN_ALLOW | (decision & AUDIT),
 					&e);
 		else

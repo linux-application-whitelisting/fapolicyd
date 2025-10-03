@@ -37,7 +37,7 @@
 #define VALID_RULES TEST_BASE "/src/tests/fixtures/rules-valid.rules"
 
 /* globals expected by library code */
-int permissive;
+atomic_uint permissive = ATOMIC_VAR_INIT(0);
 int debug_mode;
 atomic_bool stop;
 

@@ -23,6 +23,7 @@ CONFIG_CLEAN_FILES = *.orig *.cur
 check_PROGRAMS = avl_test gid_proc_test uid_proc_test escape_test attr_sets_test rules_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
+AM_CFLAGS = -std=gnu11
 
 avl_test_SOURCES = avl_test.c ${top_srcdir}/src/library/avl.c
 gid_proc_test_SOURCES = gid_proc_test.c
@@ -47,7 +48,7 @@ endif
 if WITH_DEB
 check_PROGRAMS += deb_test
 LIBS += -ldpkg -lmd
-deb_test_CFLAGS = -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE -DLIBDPKG_VOLATILE_API
+deb_test_CFLAGS = -std=gnu11 -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE -DLIBDPKG_VOLATILE_API
 deb_test_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now
 deb_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la -ldpkg -lmd
 deb_test_SOURCES = \

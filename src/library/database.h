@@ -37,6 +37,7 @@ typedef struct {
 
 void lock_update_thread(void);
 void unlock_update_thread(void);
+void set_integrity_mode(integrity_t mode);
 
 const char *lookup_tsource(unsigned int tsource);
 int preconstruct_fifo(const conf_t *config);

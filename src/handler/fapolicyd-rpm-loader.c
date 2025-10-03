@@ -51,7 +51,7 @@
 
 atomic_bool stop = 0;  // Library needs this
 unsigned int debug_mode = 0;			// Library needs this
-unsigned int permissive = 0;			// Library needs this
+atomic_uint permissive = ATOMIC_VAR_INIT(0);	// Library needs this
 
 
 int do_rpm_init_backend(void);

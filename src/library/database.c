@@ -1163,6 +1163,19 @@ void unlock_update_thread(void) {
 }
 
 /*
+ * set_integrity_mode - update the runtime integrity policy setting.
+ * @mode: integrity mode that should be used for future checks.
+ * Returns nothing.
+ */
+void set_integrity_mode(integrity_t mode)
+{
+	lock_update_thread();
+	integrity = mode;
+	unlock_update_thread();
+	msg(LOG_INFO, "fapolicyd integrity is %u", integrity);
+}
+
+/*
  * Lock wrapper for rule mutex
  */
 void lock_rule(void) {

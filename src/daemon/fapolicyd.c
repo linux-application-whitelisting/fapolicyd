@@ -67,7 +67,8 @@
 
 
 // Global program variables
-unsigned int debug_mode = 0, permissive = 0;
+unsigned int debug_mode = 0;
+atomic_uint permissive = ATOMIC_VAR_INIT(0);
 const char* mounts = MOUNTS_FILE;
 
 // Signal handler notifications
@@ -355,16 +356,70 @@ static void usr1_handler(int sig __attribute__((unused)))
 }
 
 /*
- * This function handles the reconfiguration of the daemon
- * after receiving a SIGHUP signal.
+ * reload_configuration - refresh runtime configuration settings.
+ * @void: no arguments are required.
+ * Returns 0 when the configuration was reloaded, non-zero otherwise.
  */
+static int reload_configuration(void)
+{
+	conf_t new_config;
+
+	if (load_daemon_config(&new_config)) {
+		msg(LOG_ERR, "Failed reloading daemon configuration");
+		return 1;
+	}
+
+	atomic_store_explicit(&permissive,
+		new_config.permissive ? 1U : 0U, memory_order_relaxed);
+	config.permissive = new_config.permissive;
+
+	if (setpriority(PRIO_PROCESS, 0, -(int)new_config.nice_val) == -1)
+		msg(LOG_WARNING, "Couldn't adjust priority (%s)",
+		strerror(errno));
+	config.nice_val = new_config.nice_val;
+
+	config.do_stat_report = new_config.do_stat_report;
+	config.detailed_report = new_config.detailed_report;
+
+	if (new_config.integrity != config.integrity) {
+		set_integrity_mode(new_config.integrity);
+		config.integrity = new_config.integrity;
+	}
+
+	if (new_config.syslog_format &&
+		(!config.syslog_format ||
+		  strcmp(new_config.syslog_format, config.syslog_format) != 0)) {
+		char *new_syslog = strdup(new_config.syslog_format);
+		if (new_syslog) {
+			char *old_syslog;
+
+			lock_rule();
+			old_syslog = (char *)config.syslog_format;
+			config.syslog_format = new_syslog;
+			unlock_rule();
+
+			free(old_syslog);
+		} else
+			msg(LOG_ERR,
+				"Failed replacing syslog_format string");
+		}
+
+	config.rpm_sha256_only = new_config.rpm_sha256_only;
+
+	free_daemon_config(&new_config);
+
+	return 0;
+}
+
 static void reconfigure(void)
 {
+	if (reload_configuration())
+		msg(LOG_WARNING,
+			"Continuing with previous configuration settings");
+
 	set_reload_rules();
 
 	set_reload_trust_database();
-
-	// TODO: Update configuration
 }
 
 // This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031
@@ -649,7 +704,8 @@ int main(int argc, const char *argv[])
 		msg(LOG_ERR, "Exiting due to bad configuration");
 		return 1;
 	}
-	permissive = config.permissive;
+	atomic_store_explicit(&permissive, config.permissive,
+				memory_order_relaxed);
 
 	// set the debug flags
 	for (int i=1; i < argc; i++) {
@@ -664,7 +720,8 @@ int main(int argc, const char *argv[])
 	// process remaining flags
 	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--permissive") == 0) {
-			permissive = 1;
+			atomic_store_explicit(&permissive, 1,
+				memory_order_relaxed);
 			config.permissive = 1;
 		} else if (strcmp(argv[i], "--boost") == 0) {
 			i++;
