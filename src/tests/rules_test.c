@@ -54,6 +54,10 @@ static const struct err_case errors[] = {
 	"set 'missing' was not defined before"
 	},
 	{
+	{ "allow perm=any all : path=%missing", NULL },
+	"set 'missing' was not defined before"
+	},
+	{
 	{ "%strs=foo,bar",
 	  "allow perm=any auid=%strs : path=/bin/ls",
 	  NULL },
@@ -211,6 +215,11 @@ int main(void)
 	prep_event(&e, 1001, "/bin/ls");
 	if (evaluate(&l, &e) != ALLOW)
 		error(1, 0, "set rule evaluation failed");
+	free_event(&e);
+
+	prep_event(&e, 1001, "/usr/bin/id");
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "object set evaluation failed");
 	free_event(&e);
 
 	prep_event(&e, 2000, "/bin/ls");

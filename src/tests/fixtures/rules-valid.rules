@@ -1,3 +1,5 @@
 %good=1000,1001
+%paths=/bin/ls,/usr/bin/id
 allow perm=any auid=1000 : path=/bin/ls
 allow perm=any auid=%good : path=/bin/ls
+allow perm=any auid=%good : path=%paths
