@@ -1456,7 +1456,7 @@ int main(int argc, char * const argv[])
 	int orig_argc = argc, arg_count = 0;
 	char *args[orig_argc+1];
 
-	for (unsigned i = 0; i < orig_argc; i++) {
+	for (int i = 0; i < orig_argc; i++) {
 		if (strcmp(argv[i], "--verbose") == 0) {
 			verbose = true;
 			continue;
