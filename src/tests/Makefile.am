@@ -21,7 +21,7 @@
 
 CONFIG_CLEAN_FILES = *.orig *.cur
 check_PROGRAMS = avl_test gid_proc_test uid_proc_test escape_test \
-attr_sets_test elf_file_test rules_test event_test
+attr_sets_test elf_file_test fd_fgets_test rules_test event_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 AM_CFLAGS = -std=gnu11
@@ -37,6 +37,8 @@ attr_sets_test_SOURCES = attr_sets_test.c
 attr_sets_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 elf_file_test_SOURCES = elf_file_test.c
 elf_file_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+fd_fgets_test_SOURCES = fd_fgets_test.c
+fd_fgets_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_SOURCES = rules_test.c
 rules_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
