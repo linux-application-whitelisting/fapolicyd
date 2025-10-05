@@ -70,6 +70,7 @@ unsigned long getAllowed(void);
 unsigned long getDenied(void);
 void policy_no_audit(void);
 void destroy_rules(void);
+unsigned int policy_get_syslog_proc_status_mask(void);
 
 #endif
 

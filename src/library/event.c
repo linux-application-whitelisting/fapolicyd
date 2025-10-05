@@ -442,6 +442,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
 {
 	unsigned int mask = rules_get_proc_status_mask();
+	mask |= policy_get_syslog_proc_status_mask();
 	struct proc_status_info info = {
 		.ppid = -1,
 		.uid = NULL,

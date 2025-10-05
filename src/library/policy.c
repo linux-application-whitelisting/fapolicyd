@@ -1,6 +1,6 @@
 /*
  * policy.c - functions that encapsulate the notion of a policy
- * Copyright (c) 2016,2019-24 Red Hat Inc.
+ * Copyright (c) 2016,2019-25 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -48,6 +48,7 @@
 #include "string-util.h"
 #include "paths.h"
 #include "conf.h"
+#include "process.h"
 
 #define MAX_SYSLOG_FIELDS	21
 #define NGID_LIMIT		32
@@ -56,6 +57,7 @@ static llist rules;
 static unsigned long allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
+static unsigned int syslog_proc_status_mask;
 
 extern atomic_bool stop;
 atomic_bool reload_rules = false;
@@ -127,6 +129,22 @@ static int lookup_field(const char *ptr)
 				msg(LOG_ERR,
 				   "%s cannot be used in syslog_format", ptr);
 			} else {
+				switch (ret_val) {
+				case UID:
+				    syslog_proc_status_mask |= PROC_STAT_UID;
+				    break;
+				case PPID:
+				    syslog_proc_status_mask |= PROC_STAT_PPID;
+				    break;
+				case GID:
+				    syslog_proc_status_mask |= PROC_STAT_GID;
+				    break;
+				case COMM:
+				    syslog_proc_status_mask |= PROC_STAT_COMM;
+				    break;
+				default:
+				    break;
+				}
 				fields[num_fields].name = strdup(ptr);
 				fields[num_fields].item = ret_val;
 				goto success;
@@ -166,6 +184,7 @@ static int parse_syslog_format(const char *syslog_format)
 
 	num_fields = 0;
 	parsing_obj = 0;
+	syslog_proc_status_mask = 0;
 	tformat = strdup(syslog_format);
 
 	// Must be delimited by comma
@@ -323,6 +342,11 @@ void destroy_rules(void)
 	destroy_attr_sets();
 	if (stop)
 		free(working_buffer);
+}
+
+unsigned int policy_get_syslog_proc_status_mask(void)
+{
+	return syslog_proc_status_mask;
 }
 
 void set_reload_rules(void)
