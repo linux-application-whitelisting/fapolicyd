@@ -21,7 +21,7 @@
 
 CONFIG_CLEAN_FILES = *.orig *.cur
 check_PROGRAMS = avl_test gid_proc_test uid_proc_test escape_test \
-attr_sets_test elf_file_test rules_test
+attr_sets_test elf_file_test rules_test event_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 AM_CFLAGS = -std=gnu11
@@ -40,6 +40,17 @@ elf_file_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_SOURCES = rules_test.c
 rules_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
+event_test_SOURCES = event_test.c
+event_test_LDADD = \
+	${top_builddir}/src/library/libfapolicyd_la-event.o \
+	${top_builddir}/src/library/libfapolicyd_la-lru.o \
+	${top_builddir}/src/library/libfapolicyd_la-subject.o \
+	${top_builddir}/src/library/libfapolicyd_la-subject-attr.o \
+	${top_builddir}/src/library/libfapolicyd_la-object.o \
+	${top_builddir}/src/library/libfapolicyd_la-object-attr.o \
+	${top_builddir}/src/library/libfapolicyd_la-attr-sets.o \
+	${top_builddir}/src/library/libfapolicyd_la-avl.o
+event_test_DEPENDENCIES = $(event_test_LDADD)
 
 if WITH_RPM
 check_PROGRAMS += filter_test
