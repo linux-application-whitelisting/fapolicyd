@@ -26,6 +26,7 @@
 #ifndef EVENT_HEADER
 #define EVENT_HEADER
 
+#include "config.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>

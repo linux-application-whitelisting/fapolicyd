@@ -39,10 +39,9 @@
 #include "message.h"
 #include "file.h" // This seems wrong
 #include "database.h"
-
+#include "process.h"
 #include "subject-attr.h"
 #include "object-attr.h"
-
 #include "string-util.h"
 
 //#define DEBUG
@@ -59,11 +58,15 @@
 #define PATTERN_LD_PRELOAD_STR "ld_preload"
 #define PATTERN_LD_PRELOAD_VAL 3
 
+static unsigned int proc_status_mask;
+
 int rules_create(llist *l)
 {
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+
+	proc_status_mask = 0;
 
 	return  0;
 }
@@ -273,6 +276,15 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 
 	sanity_check_node(n, "assign_subject - 1");
 	n->s[i].type = type;
+
+	if (type == UID)
+		proc_status_mask |= PROC_STAT_UID;
+	else if (type == PPID)
+		proc_status_mask |= PROC_STAT_PPID;
+	else if (type == GID)
+		proc_status_mask |= PROC_STAT_GID;
+	else if (type == COMM)
+		proc_status_mask |= PROC_STAT_COMM;
 
 	char *ptr, *saved, *tmp = strdup(ptr2);
 	if (tmp == NULL) {
@@ -1629,4 +1641,19 @@ void rules_clear(llist *l)
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+
+	proc_status_mask = 0;
 }
+
+/*
+ * rules_get_proc_status_mask - Report /proc status fields needed by rules.
+ *
+ * Return: bitmap of PROC_STAT_* values observed while parsing the current
+ * rule set. The mask guides process attribute collection so we only read
+ * /proc/<pid>/status once for all requested fields.
+ */
+unsigned int rules_get_proc_status_mask(void)
+{
+       return proc_status_mask;
+}
+

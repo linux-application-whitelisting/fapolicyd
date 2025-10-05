@@ -39,6 +39,7 @@
 #include "lru.h"
 #include "message.h"
 #include "policy.h"
+#include "rules.h"
 
 #define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
 	FAN_OPEN_EXEC_PERM)
@@ -435,6 +436,54 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 }
 
 /*
+ * This function will fetch all missing attributes and put them
+ * in the subject cache.
+ */
+subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
+{
+	unsigned int mask = rules_get_proc_status_mask();
+	struct proc_status_info info = {
+		.ppid = -1,
+		.uid = NULL,
+		.groups = NULL,
+		.comm = NULL
+	};
+
+	if (read_proc_status(e->pid, mask, &info) != 0)
+		return NULL;
+
+	// Cache everything - sets and comm are malloc'ed. Transfer ownership.
+	// Not checking return of subject_add. Caller needs to check for NULL.
+	if (mask & PROC_STAT_PPID) {
+		subject_attr_t sub;
+		sub.type = PPID;
+		sub.pid = info.ppid;
+		subject_add(e->s, &sub);
+	}
+	if (mask & PROC_STAT_UID) {
+		subject_attr_t sub;
+		sub.type = UID;
+		sub.set = info.uid;
+		subject_add(e->s, &sub);
+	}
+	if (mask & PROC_STAT_GID) {
+	    subject_attr_t sub;
+	    sub.type = GID;
+	    sub.set = info.groups;
+	    subject_add(e->s, &sub);
+	}
+	if (mask & PROC_STAT_COMM) {
+		subject_attr_t sub;
+		sub.type = COMM;
+		sub.str = info.comm;
+		subject_add(e->s, &sub);
+	}
+
+	//return the subject entry
+	return subject_access(e->s, t);
+}
+
+/*
  * This function will search the list for a nv pair of the right type.
  * If not found, it will create the type and return it.
  */
@@ -448,21 +497,24 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 	if (sn)
 		return sn;
 
-	// One not on the list, look it up and make one
+	// The desired attribute is not on the list, look it up and cache it
 	subj.type = t;
 	subj.str = NULL;
 	switch (t) {
 		case AUID:
 			subj.uval = get_program_auid_from_pid(e->pid);
 			break;
+		case PPID:
 		case UID:
+		case GID:
+		case COMM:
 			/*
-			 * UID credentials may differ between the real,
-			 * effective, saved, and filesystem slots.  Cache the
-			 * complete set so the rule engine can evaluate all
+			 * UID/GID credentials may differ between the real,
+			 * effective, saved, and filesystem slots.  Cache all
+			 * but saved so the rule engine can evaluate all
 			 * possible identities during matching.
 			 */
-			subj.set = get_uid_set_from_pid(e->pid);
+			return fetch_proc_status(e, t);
 			break;
 		case SESSIONID:
 			subj.uval = (unsigned int)
@@ -470,21 +522,6 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			break;
 		case PID:
 			subj.pid = e->pid;
-			break;
-		case PPID:
-			subj.pid = get_program_ppid_from_pid(e->pid);
-			break;
-		case GID:
-			subj.set = get_gid_set_from_pid(e->pid);
-			break;
-		case COMM: {
-			char buf[21], *ptr;
-			ptr = get_comm_from_pid(e->pid,	sizeof(buf), buf);
-			if (ptr)
-				subj.str = strdup(buf);
-			else
-				subj.str = strdup("?");
-			}
 			break;
 		// If these 2 ever get separated, update subject_add
 		// and subject_access in subject.c

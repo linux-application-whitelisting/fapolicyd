@@ -37,8 +37,8 @@
 #include <magic.h>
 #include "process.h"
 #include "file.h"
-
-#define BUF_SIZE 8192 // Buffer for reading pid status, mainly for group list
+#include "fd-fgets.h"
+#include "attr-sets.h"
 
 #define BUFSZ 12  // Largest unsigned int is 10 characters long
 /*
@@ -129,39 +129,6 @@ int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
 }
 
 
-char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
-{
-	ssize_t rc;
-	int fd;
-
-	if (blen == 0)
-		return NULL;
-
-	const char *path = proc_path(pid, "/comm");
-	fd = open(path, O_RDONLY|O_CLOEXEC);
-	if (fd >= 0) {
-		char *ptr;
-		rc = read(fd, buf, blen);
-		close(fd);
-		if (rc < 0)
-			return NULL;
-
-		if ((size_t)rc < blen)
-			buf[rc] = 0;
-		else
-			buf[blen-1] = 0;
-
-		// Trim the newline
-		ptr = strchr(buf, 0x0A);
-		if (ptr)
-			*ptr = 0;
-	} else
-		return NULL;
-
-	return buf;
-}
-
-
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	ssize_t path_len;
@@ -172,9 +139,6 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 	const char *path = proc_path(pid, "/exe");
 	path_len = readlink(path, buf, blen - 1);
 	if (path_len <= 0) {
-		if (errno == ENOENT)
-			return get_comm_from_pid(pid, blen, buf);
-
 		snprintf(buf, blen,
 			"Error-getting-exe(errno=%d,pid=%d)",
 			 errno, pid);
@@ -303,149 +267,192 @@ int get_program_sessionid_from_pid(pid_t pid)
 	return -1;
 }
 
-
-pid_t get_program_ppid_from_pid(pid_t pid)
+/*
+ * read_proc_status - Collect selected fields from /proc/<pid>/status.
+ * @pid: identifier of the process to inspect
+ * @fields: bitmap of PROC_STAT_* flags describing desired data
+ * @info: storage describing the results for the requested fields
+ *
+ * The helper parses the status file once and populates @info for every
+ * requested field.  Existing data for the requested fields is released
+ * before new values are recorded.  The function returns 0 on success and
+ * -1 when the status file cannot be processed.
+ */
+int read_proc_status(pid_t pid, unsigned int fields,
+		     struct proc_status_info *info)
 {
-	char buf[128];
-	int ppid = -1;
-	FILE *f;
+	char buf[80];
+	int fd, rc = 0;
+	unsigned int found = 0;
+
+	if (info == NULL || fields == 0)
+		return 0;
+
+	// Initialize info struct
+	if (fields & PROC_STAT_UID) {
+		if (info->uid) {
+			destroy_attr_set(info->uid);
+			free(info->uid);
+			info->uid = NULL;
+		}
+		info->uid = init_standalone_set(UNSIGNED);
+		if (info->uid == NULL)
+			return -1;
+	}
+	if (fields & PROC_STAT_GID) {
+		if (info->groups) {
+			destroy_attr_set(info->groups);
+			free(info->groups);
+			info->groups = NULL;
+
+		}
+		info->groups = init_standalone_set(UNSIGNED);
+		if (info->groups == NULL) {
+			if (fields & PROC_STAT_UID) {
+				destroy_attr_set(info->uid);
+				free(info->uid);
+				info->uid = NULL;
+			}
+			return -1;
+		}
+	}
+	if (fields & PROC_STAT_COMM) {
+		free(info->comm);
+		info->comm = NULL;
+	}
+	if (fields & PROC_STAT_PPID)
+		info->ppid = -1;
 
 	const char *path = proc_path(pid, "/status");
-	f = fopen(path, "rt");
-	if (f) {
-		__fsetlocking(f, FSETLOCKING_BYCALLER);
-		while (fgets(buf, 128, f)) {
-			if (memcmp(buf, "PPid:", 4) == 0) {
-				sscanf(buf, "PPid: %d ", &ppid);
-				break;
-			}
+	fd = open(path, O_RDONLY|O_CLOEXEC);
+	if (fd < 0) {
+		if (fields & PROC_STAT_UID) {
+			destroy_attr_set(info->uid);
+			free(info->uid);
+			info->uid = NULL;
 		}
-		fclose(f);
+		if (fields & PROC_STAT_GID) {
+			destroy_attr_set(info->groups);
+			free(info->groups);
+			info->groups = NULL;
+		}
+		return -1;
 	}
-	return ppid;
-}
 
+	fd_fgets_state_t *st = fd_fgets_init();
 
-/*
- * get_gid_set_from_pid - Gather the credential-related GID set for a process
- * @pid: process identifier whose credentials should be inspected
- *
- * The returned attribute set includes the real, effective, saved, and
- * filesystem GIDs parsed from /proc/<pid>/status along with the auxiliary
- * groups reported in the same file.  The caller takes ownership of the
- * returned set and must release it with destroy_attr_set() and free().
- *
- * Return: initialized attribute set on success, or NULL on allocation failure.
- */
-attr_sets_entry_t *get_gid_set_from_pid(pid_t pid)
-{
-	char buf[BUF_SIZE];
-	gid_t gid = 0;
-	FILE *f;
-	attr_sets_entry_t *set = init_standalone_set(UNSIGNED);
-
-	if (set) {
-		const char *path = proc_path(pid, "/status");
-		f = fopen(path, "rt");
-		if (f) {
-			__fsetlocking(f, FSETLOCKING_BYCALLER);
-			while (fgets(buf, BUF_SIZE, f)) {
-				if (memcmp(buf, "Gid:", 4) == 0) {
-					unsigned int real_gid = 0, eff_gid = 0;
-					unsigned int saved_gid = 0, fs_gid = 0;
-					int fields = sscanf(buf,
-							"Gid: %u %u %u %u",
-							&real_gid, &eff_gid,
-							&saved_gid, &fs_gid);
-					if (fields >= 1)
-						append_int_attr_set(set,
-							(int64_t)real_gid);
-					if (fields >= 2)
-						append_int_attr_set(set,
-							(int64_t)eff_gid);
-					if (fields >= 3)
-						append_int_attr_set(set,
-							(int64_t)saved_gid);
-					if (fields >= 4)
-						append_int_attr_set(set,
-							(int64_t)fs_gid);
-					break;
-				}
+	do {
+		rc = fd_fgets_r(st, buf, sizeof(buf), fd);
+		if (rc == -1)
+			break;
+		else if (rc > 0) {
+			if ((fields & PROC_STAT_COMM) &&
+				    info->comm == NULL &&
+				    memcmp(buf, "Name:", 5) == 0) {
+				char *name = buf + 5;
+				while (*name == ' ' || *name == '\t')
+					name++;
+				char *newline = strchr(name, '\n');
+				if (newline)
+					*newline = '\0';
+				info->comm = strdup(name);
+				if (info->comm == NULL)
+					rc = -1;
+				found |= PROC_STAT_COMM;
+				continue;
 			}
-
-                        char *data;
-                        int offset;
+			if ((fields & PROC_STAT_PPID) &&
+				    info->ppid == -1 &&
+				    memcmp(buf, "PPid:", 5) == 0) {
+				long value;
+				if (sscanf(buf, "PPid: %ld", &value) == 1)
+					info->ppid = (pid_t)value;
+				found |= PROC_STAT_PPID;
+				continue;
+			}
+			/*
+			 * UID/GID credentials may differ between the real,
+			 * effective, saved, and filesystem slots. Cache all
+			 * but saved so the rule engine can evaluate all
+			 * possible identities during matching.
+			 */
+			if ((fields & PROC_STAT_UID) &&
+			    is_attr_set_empty(info->uid) &&
+			    memcmp(buf, "Uid:", 4) == 0) {
+				unsigned int real_uid = 0, eff_uid = 0;
+				unsigned int saved_uid = 0, fs_uid = 0;
+				int fields_read = sscanf(buf,
+						 "Uid: %u %u %u %u",
+						 &real_uid, &eff_uid,
+						 &saved_uid, &fs_uid);
+				if (info->uid) {
+					if (fields_read >= 1)
+						append_int_attr_set(info->uid,
+							(int64_t)real_uid);
+					if (fields_read >= 2)
+						append_int_attr_set(info->uid,
+							(int64_t)eff_uid);
+					if (fields_read >= 4)
+						append_int_attr_set(info->uid,
+							(int64_t)fs_uid);
+				}
+				found |= PROC_STAT_UID;
+				continue;
+			}
+			if ((fields & PROC_STAT_GID) &&
+			    is_attr_set_empty(info->groups) &&
+			    memcmp(buf, "Gid:", 4) == 0) {
+				unsigned int real_gid = 0, eff_gid = 0;
+				unsigned int saved_gid = 0, fs_gid = 0;
+				int fields_read = sscanf(buf,
+						"Gid: %u %u %u %u",
+						&real_gid, &eff_gid,
+						&saved_gid, &fs_gid);
+				if (info->groups) {
+					if (fields_read >= 1)
+					    append_int_attr_set(info->groups,
+							(int64_t)real_gid);
+					if (fields_read >= 2)
+					    append_int_attr_set(info->groups,
+							(int64_t)eff_gid);
+					if (fields_read >= 4)
+					    append_int_attr_set(info->groups,
+							(int64_t)fs_gid);
+				}
+				// Not marking found - wait for supplemental
+				continue;
+			}
 			/*
 			 * The "Groups" line enumerates supplemental group
 			 * memberships as a whitespace separated list; walk the
 			 * tokens in place rather than reallocating buffers.
+			 * Not checking if empty cause it shouldn't be.
 			 */
-			while (fgets(buf, BUF_SIZE, f)) {
-				if (memcmp(buf, "Groups:", 7) == 0) {
-					data = buf + 7;
-					while (sscanf(data, " %u%n", &gid,
-							&offset) == 1) {
-						data += offset;
-						append_int_attr_set(set, (int64_t)gid);
+			if ((fields & PROC_STAT_GID) &&
+			    memcmp(buf, "Groups:", 7) == 0) {
+				if (info->groups) {
+					char *data = buf + 7;
+					int offset;
+					unsigned int gid;
+
+					while (sscanf(data,
+						" %u%n", &gid, &offset) == 1) {
+					      data += offset;
+					      append_int_attr_set(info->groups,
+								(int64_t)gid);
 					}
-					break;
 				}
+				found |= PROC_STAT_GID;
+				continue;
 			}
-			fclose(f);
 		}
-	}
-	return set;
-}
+	// if more text, no errors, and we're not done, loop again
+	} while (!fd_fgets_eof_r(st) && rc > 0 && found != fields);
 
+	fd_fgets_destroy(st);
+	close(fd);
 
-/**
- * get_uid_set_from_pid - Gather the credential-related UID set for a process
- * @pid: process identifier whose credentials should be inspected
- *
- * The returned attribute set includes the real, effective, saved, and
- * filesystem UIDs parsed from /proc/<pid>/status.  The caller takes ownership
- * of the returned set and must release it with destroy_attr_set() and free().
- *
- * Return: initialized attribute set on success, or NULL on allocation failure.
- */
-attr_sets_entry_t *get_uid_set_from_pid(pid_t pid)
-{
-	char buf[BUF_SIZE];
-	FILE *f;
-	attr_sets_entry_t *set = init_standalone_set(UNSIGNED);
-
-	if (set) {
-		const char *path = proc_path(pid, "/status");
-		f = fopen(path, "rt");
-		if (f) {
-			__fsetlocking(f, FSETLOCKING_BYCALLER);
-			while (fgets(buf, BUF_SIZE, f)) {
-				if (memcmp(buf, "Uid:", 4) == 0) {
-					unsigned int real_uid = 0, eff_uid = 0;
-					unsigned int saved_uid = 0, fs_uid = 0;
-					int fields = sscanf(buf,
-							"Uid: %u %u %u %u",
-							&real_uid, &eff_uid,
-							&saved_uid, &fs_uid);
-					if (fields >= 1)
-						append_int_attr_set(set,
-							(int64_t)real_uid);
-					if (fields >= 2)
-						append_int_attr_set(set,
-							(int64_t)eff_uid);
-//					if (fields >= 3)
-//						append_int_attr_set(set,
-//							(int64_t)saved_uid);
-					if (fields >= 4)
-						append_int_attr_set(set,
-							(int64_t)fs_uid);
-					break;
-				}
-			}
-			fclose(f);
-		}
-	}
-	return set;
+	return 0;
 }
 
 

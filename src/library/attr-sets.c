@@ -273,6 +273,20 @@ int append_str_attr_set(attr_sets_entry_t * set, const char * str)
 	return 0;
 }
 
+/*
+ * is_attr_set_empty - Determine if a set has no members
+ * @set: attribute set to check
+ *
+ * Return: true when the set is NULL or contains no entries, false otherwise.
+ */
+bool is_attr_set_empty(attr_sets_entry_t *set)
+{
+	if (!set)
+		return true;
+
+	return set->tree.root == NULL;
+}
+
 int check_int_attr_set(attr_sets_entry_t *set, const int64_t num)
 {
 	avl_int_data_t data;
