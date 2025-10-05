@@ -66,6 +66,24 @@ typedef enum {	STATE_COLLECTING=0,	// initial state - execute
 #define HAS_SHEBANG	0x10000 // script with a leading shebang
 #define TEXT_SCRIPT	0x20000 // likely to be a script
 
+/* Bit mask of fields available in /proc/<pid>/status */
+enum {
+	PROC_STAT_PPID   = 0x0001,
+	PROC_STAT_UID    = 0x0002,
+	PROC_STAT_GID    = 0x0004,
+	PROC_STAT_COMM   = 0x0008,
+};
+
+/*
+ * Results from read_proc_status()
+ */
+struct proc_status_info {
+       pid_t ppid;
+       attr_sets_entry_t *uid;
+       attr_sets_entry_t *groups;
+       char *comm;
+};
+
 // Information we will cache to identify the same executable
 struct proc_info
 {
@@ -82,17 +100,14 @@ struct proc_info
 struct proc_info *stat_proc_entry(pid_t pid) __attr_dealloc_free;
 void clear_proc_info(struct proc_info *info);
 int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2);
-char *get_comm_from_pid(pid_t pid, size_t blen, char *buf)
-	__attr_access ((__write_only__, 3, 2));
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 	__attr_access ((__write_only__, 3, 2));
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 	__attr_access ((__write_only__, 3, 2));
 uid_t get_program_auid_from_pid(pid_t pid);
 int get_program_sessionid_from_pid(pid_t pid);
-pid_t get_program_ppid_from_pid(pid_t pid);
-attr_sets_entry_t *get_uid_set_from_pid(pid_t pid);
-attr_sets_entry_t *get_gid_set_from_pid(pid_t pid);
+int read_proc_status(pid_t pid, unsigned int fields,
+	struct proc_status_info *info);
 int check_environ_from_pid(pid_t pid);
 
 #endif

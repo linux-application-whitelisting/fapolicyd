@@ -27,6 +27,7 @@
 
 #include "stddef.h"
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "avl.h"
 
@@ -80,6 +81,8 @@ int append_str_attr_set(attr_sets_entry_t * set, const char * str);
 int check_int_attr_set(attr_sets_entry_t *set, const int64_t num);
 int check_str_attr_set(attr_sets_entry_t * set, const char * str);
 int check_pstr_attr_set(attr_sets_entry_t * set, const char * str);
+
+bool is_attr_set_empty(attr_sets_entry_t *set);
 
 void print_attr_sets(void);
 void print_attr_set(attr_sets_entry_t * set);

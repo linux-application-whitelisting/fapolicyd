@@ -63,5 +63,6 @@ decision_t rule_evaluate(lnode *r, event_t *e);
 void rules_unsupport_audit(const llist *l);
 void rules_regen_sets(llist* l);
 void rules_clear(llist* l);
+unsigned int rules_get_proc_status_mask(void);
 
 #endif
