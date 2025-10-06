@@ -206,6 +206,48 @@ static void test_mmap_buffer(void)
 }
 
 /*
+ * Keep unread data in place until the working buffer runs out of space.
+ * The first read consumes the entire buffer without seeing a newline, so the
+ * second read must trigger a deferred compaction before pulling in the tail of
+ * the line.
+ */
+static void test_deferred_compaction(void)
+{
+	int fds[2];
+	char buf[64];
+	char custom[33];
+	const char *line =
+		"0123456789abcdef0123456789abcdefQRSTUVWX\n";
+	fd_fgets_state_t *st;
+	size_t line_len = strlen(line);
+	size_t capacity = sizeof(custom) - 1;
+
+	assert(pipe(fds) == 0);
+	st = fd_fgets_init();
+	assert(st);
+	assert(fd_setvbuf_r(st, custom, capacity, MEM_SELF_MANAGED) == 0);
+
+	write_all(fds[1], line);
+	close(fds[1]);
+
+	int len = fd_fgets_r(st, buf, sizeof(buf), fds[0]);
+	assert(len == (int)capacity);
+	assert(strncmp(buf, line, (size_t)len) == 0);
+	assert(fd_fgets_eof_r(st) == 0);
+
+	len = fd_fgets_r(st, buf, sizeof(buf), fds[0]);
+	assert(len == (int)(line_len - capacity));
+	assert(strcmp(buf, line + capacity) == 0);
+
+	len = fd_fgets_r(st, buf, sizeof(buf), fds[0]);
+	assert(len == 0);
+	assert(fd_fgets_eof_r(st) == 1);
+
+	close(fds[0]);
+	fd_fgets_destroy(st);
+}
+
+/*
  * Map README.md directly and parse it without issuing read() calls.  This is
  * the MEM_MMAP_FILE path that the daemon relies on for audit log replay.
  */
@@ -266,6 +308,7 @@ int main(void)
 	test_truncation_resume();
 	test_malloc_buffer();
 	test_mmap_buffer();
+	test_deferred_compaction();
 	test_mmap_file_readme();
 	printf("fd-fgets_r tests: all passed\n");
 	return 0;
