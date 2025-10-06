@@ -430,14 +430,22 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				subject_reset(e->s, EXE_TYPE);
 				subject_reset(e->s, SUBJ_TRUST);
 			}
-		} 
+		}
 	}
 	return 0;
 }
 
 /*
- * This function will fetch all missing attributes and put them
- * in the subject cache.
+ * fetch_proc_status - populate subject cache entries using /proc status
+ * @e: event whose subject cache should be filled
+ * @t: subject attribute type requested by the caller
+ *
+ * The function gathers all configured fields from /proc/<pid>/status for the
+ * process associated with @e.  Each successfully read attribute is added to
+ * the subject cache so subsequent lookups do not need to touch procfs
+ * again.
+ *
+ * Return: pointer to the requested attribute on success, NULL otherwise.
  */
 subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
 {
@@ -485,8 +493,16 @@ subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
 }
 
 /*
- * This function will search the list for a nv pair of the right type.
- * If not found, it will create the type and return it.
+ * get_subj_attr - return a subject attribute, creating it on demand
+ * @e: event describing the subject whose attribute is needed
+ * @t: subject attribute identifier
+ *
+ * The function first looks for @t in the subject cache.  When missing, it
+ * performs the necessary lookup and stores the result for reuse.  Some
+ * attributes are retrieved directly, while UID/GID and credential data
+ * are collected in bulk via fetch_proc_status().
+ *
+ * Return: pointer to the requested attribute, or NULL if acquisition fails.
  */
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 {

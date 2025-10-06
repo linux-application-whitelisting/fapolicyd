@@ -277,6 +277,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	sanity_check_node(n, "assign_subject - 1");
 	n->s[i].type = type;
 
+        // Opportunistically mark the fields that might be needed for
+	// rule evaluation so that we gather them all at once later.
 	if (type == UID)
 		proc_status_mask |= PROC_STAT_UID;
 	else if (type == PPID)

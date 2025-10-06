@@ -129,6 +129,9 @@ static int lookup_field(const char *ptr)
 				msg(LOG_ERR,
 				   "%s cannot be used in syslog_format", ptr);
 			} else {
+				// Opportunistically mark the fields that might
+				// be needed for logging so that we gather
+				// them all at once later.
 				switch (ret_val) {
 				case UID:
 				    syslog_proc_status_mask |= PROC_STAT_UID;
