@@ -1,4 +1,5 @@
 1.3.8
+- Add ignore_mounts option to fapolicyd to not watch some mount points
 - add --check-ignore_mounts option to fapolicyd-cli
 - Fix overlay filesystem detection in fapolicyd-cli --check-watch_fs
 - Fix fapolicyd-cli --check-path so that it properly detects symlinked dirs
