@@ -43,6 +43,7 @@
 #include <signal.h>
 #include <ftw.h>
 #include <mntent.h>
+#include <libgen.h>	// basename
 #include "policy.h"
 #include "database.h"
 #include "file-cli.h"
@@ -1377,7 +1378,7 @@ static int do_status_report(void)
 				reason = "can't read proc file";
 				goto err_out;
 			}
-			if (strcmp(exe_buf, DAEMON_PATH)) {
+			if (strcmp(basename(exe_buf), "fapolicyd")) {
 				reason = "pid file doesn't point to fapolicyd";
 				goto err_out;
 			}
