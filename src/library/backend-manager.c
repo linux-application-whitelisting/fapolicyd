@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <unistd.h>	// close
 #include "conf.h"
 #include "message.h"
 #include "backend-manager.h"
@@ -158,6 +159,13 @@ void backend_close(void)
 {
 	for (backend_entry *be = backend_get_first();
 			be != NULL; be = be->next) {
+		// If we have a memfd, close it
+		if (be->backend->memfd != -1) {
+			close(be->backend->memfd);
+			be->backend->memfd = -1;
+		}
+
+		// drop the linked list
 		be->backend->close();
 	}
 	backend_destroy();

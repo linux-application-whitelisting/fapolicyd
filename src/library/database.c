@@ -640,6 +640,40 @@ static int delete_all_entries_db()
 }
 
 /*
+ * do_memfd_update - Populate the LMDB trust database from a backend memfd.
+ *
+ * Returns 0 when all records write successfully, 1 when the first non-zero
+ * write_db error encountered during the traversal of backend items.
+ */
+int do_memfd_update(int memfd)
+{
+	// FIXME: write the code
+
+	return 0;
+}
+
+/*
+ * do_list_update - Populate the LMDB trust database from a backend linked list.
+ *
+ * Returns 0 when all records write successfully, 1 when the first non-zero
+ * write_db error encountered during the traversal of backend items.
+ */
+int do_list_update(list_t *list)
+{
+	int rc = 0;
+
+	list_item_t *item = list_get_first(list);
+	for (; item != NULL && !stop; item = item->next) {
+		if ((rc = write_db(item->index, item->data)))
+			msg(LOG_ERR,
+			    "Error (%d) writing key=\"%s\" data=\"%s\"",
+			    rc, (const char*)item->index,
+			    (const char*)item->data);
+	}
+	return rc;
+}
+
+/*
  * create_database - Populate the LMDB trust database from loaded backends.
  * @with_sync: Non-zero forces an mdb_env_sync call to flush data immediately
  *             after populating the records. A zero value leaves flushing to
@@ -663,15 +697,12 @@ static int create_database(int with_sync)
 							be = be->next ) {
 		msg(LOG_INFO,"Loading trust data from %s backend",
 							be->backend->name);
+		// Use the memfd if available
+//		if (be->backend->memfd != -1)
+//			rc = do_memfd_update(be->backend->memfd);
+//		else
+			rc = do_list_update(&be->backend->list);
 
-		list_item_t *item = list_get_first(&be->backend->list);
-		for (; item != NULL && !stop; item = item->next) {
-			if ((rc = write_db(item->index, item->data)))
-				msg(LOG_ERR,
-				    "Error (%d) writing key=\"%s\" data=\"%s\"",
-				    rc, (const char*)item->index,
-				    (const char*)item->data);
-		}
 	}
 	if (stop)
 		return 1;
@@ -728,6 +759,47 @@ static int check_data_presence(const char * index, const char * data, int * matc
 	return found;
 }
 
+long backend_added_entries = 0;
+long check_from_memfd(int memfd)
+{
+	long problems = 0;
+
+	// FIXME: Write the code
+
+	return problems;
+}
+
+long check_from_list(list_t *list)
+{
+	long problems = 0;
+
+	list_item_t *item = list_get_first(list);
+	for (; item != NULL && !stop; item = item->next) {
+
+		int matched = 0;
+		int found = check_data_presence(item->index, item->data,
+						&matched);
+
+		if (!found) {
+			problems++;
+			// missing in db
+			// recently added file
+			if (matched == 0) {
+				msg(LOG_DEBUG,"%s is not in the trust database",
+				    (char*)item->index);
+				backend_added_entries++;
+			}
+
+			// updated file
+			// data miscompare
+			if (matched > 0) {
+				msg(LOG_DEBUG, "Trust data miscompare for %s",
+				    (char*)item->index);
+			}
+		}
+	}
+	return problems;
+}
 
 /*
  * This function will compare the backend database against our copy
@@ -737,13 +809,12 @@ static int check_data_presence(const char * index, const char * data, int * matc
 static int check_database_copy(void)
 {
 	msg(LOG_INFO, "Checking if the trust database up to date");
-	long problems = 0;
-
 	if (start_long_term_read_ops())
 		return -1;
 
+	long problems = 0;
 	long backend_total_entries = 0;
-	long backend_added_entries = 0;
+	backend_added_entries = 0;
 
 	for (backend_entry *be = backend_get_first() ; be != NULL && !stop ;
 							be = be->next ) {
@@ -751,32 +822,10 @@ static int check_database_copy(void)
 							be->backend->name);
 
 		backend_total_entries += be->backend->list.count;
-		list_item_t *item = list_get_first(&be->backend->list);
-		for (; item != NULL && !stop; item = item->next) {
-
-			int matched = 0;
-			int found = check_data_presence(item->index,
-							item->data,
-							&matched);
-
-			if (!found) {
-				problems++;
-				// missing in db
-				// recently added file
-				if (matched == 0) {
-					msg(LOG_DEBUG, "%s is not in the trust database",
-					    (char*)item->index);
-					backend_added_entries++;
-				}
-
-				// updated file
-				// data miscompare
-				if (matched > 0) {
-					msg(LOG_DEBUG, "Trust data miscompare for %s",
-					    (char*)item->index);
-				}
-			}
-		}
+//		if (be->backend->memfd != -1)
+//			problems += check_from_memfd(be->backend->memfd);
+//		else
+			problems += check_from_list(&be->backend->list);
 	}
 
 	if (stop) {
@@ -791,16 +840,14 @@ static int check_database_copy(void)
 	if (db_total_entries == -1)
 		return -1;
 
-	msg(	LOG_INFO,
-		"Entries in trust DB: %ld",
-		db_total_entries);
+	msg(LOG_INFO, "Entries in trust DB: %ld", db_total_entries);
 
 	// Check if database is getting full and warn
 	check_db_size();
 
-	msg(	LOG_INFO,
-		"Loaded trust info from all backends(without duplicates): %ld",
-		backend_total_entries);
+	msg(LOG_INFO,
+	    "Loaded trust info from all backends(without duplicates): %ld",
+	    backend_total_entries);
 
 	// do not print 0
 	if (backend_added_entries > 0)
@@ -808,9 +855,9 @@ static int check_database_copy(void)
 		    backend_added_entries);
 
 	// db contains records that are not present in backends anymore
-	long removed = labs(db_total_entries
-			    - (backend_total_entries - backend_added_entries)
-			    );
+	long removed = labs(db_total_entries -
+			    (backend_total_entries - backend_added_entries));
+
 	// do not print 0
 	if (removed > 0)
 		msg(LOG_INFO, "Removed trust database entries: %ld", removed);
