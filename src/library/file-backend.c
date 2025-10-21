@@ -46,6 +46,7 @@ backend file_backend =
 	file_load_list,
 	file_destroy_backend,
 	{ 0, 0, NULL },
+	-1
 };
 
 

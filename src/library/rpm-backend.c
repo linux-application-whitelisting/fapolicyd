@@ -76,6 +76,7 @@ backend rpm_backend =
 	rpm_destroy_backend,
 	/* list initialization */
 	{ 0, 0, NULL },
+	-1
 };
 
 static rpmts ts = NULL;
