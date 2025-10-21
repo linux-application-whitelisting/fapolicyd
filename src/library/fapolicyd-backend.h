@@ -43,6 +43,7 @@ typedef struct _backend
 	int (*close)(void);
 	list_t list;
 	int memfd;
+	long entries;
 } backend;
 
 #endif

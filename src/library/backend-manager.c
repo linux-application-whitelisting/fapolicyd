@@ -163,6 +163,7 @@ void backend_close(void)
 		if (be->backend->memfd != -1) {
 			close(be->backend->memfd);
 			be->backend->memfd = -1;
+			be->backend->entries = -1;
 		}
 
 		// drop the linked list
