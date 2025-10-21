@@ -39,13 +39,14 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 
 #include "database.h"
 #include "message.h"
 #include "llist.h"
 #include "file.h"
 #include "fd-fgets.h"
-
+#include "string-util.h"
 #include "fapolicyd-backend.h"
 #include "backend-manager.h"
 #include "gcc-attributes.h"
@@ -56,7 +57,8 @@
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
 typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops_t;
 #define BUFFER_SIZE 4096
-#define MEGABYTE	(1024*1024)
+#define MEGABYTE    (1024*1024)
+#define MAX_DELIMS  3
 
 // Local variables
 static MDB_env *env;
@@ -645,11 +647,68 @@ static int delete_all_entries_db()
  * Returns 0 when all records write successfully, 1 when the first non-zero
  * write_db error encountered during the traversal of backend items.
  */
-int do_memfd_update(int memfd)
+int do_memfd_update(int memfd, long *entries)
 {
-	// FIXME: write the code
+	int rc = 0;
+	*entries = 0;
+	struct stat sb;
+	char buff[BUFFER_SIZE];
+	fd_fgets_state_t *st = fd_fgets_init();
 
-	return 0;
+	// On any failure, fall back to descriptor based reads
+	lseek(memfd, 0, SEEK_SET); /* rewind in case */
+	if (fstat(memfd, &sb) == 0) {
+		void *base = mmap(NULL, sb.st_size, PROT_READ,
+				  MAP_PRIVATE, memfd, 0);
+		if (base != MAP_FAILED)
+			fd_setvbuf_r(st,base,sb.st_size,MEM_MMAP_FILE);
+	}
+
+	do {
+		int res = fd_fgets_r(st, buff, sizeof(buff), memfd);
+		if (res == -1) {
+			msg(LOG_ERR, "fd_fgets_r on memfd (%s)",
+			    strerror(errno));
+			rc = 1;
+			break;
+		} else if (res > 0) {
+			(*entries)++;
+			char *end = fapolicyd_strnchr(buff, '\n', BUFFER_SIZE);
+			if (end == NULL) {
+				msg(LOG_ERR, "Too long line?");
+				continue;
+			}
+			int size = end - buff;
+			*end = '\0';
+
+			// its better to parse it from the end because
+			// there can be space in file name
+			int delims = 0;
+			char *delim = NULL;
+			for (int i = size-1 ; i >= 0 ; i--) {
+				if (isspace(buff[i])) {
+					delim = &buff[i];
+					delims++;
+				}
+				if (delims >= MAX_DELIMS) {
+					buff[i] = '\0';
+					break;
+				}
+			}
+
+			//            index, data
+			res = write_db(buff, delim + 1);
+			if (res)
+				msg(LOG_ERR,
+				    "Error (%d) writing key=\"%s\" data=\"%s\"",
+				    res, (const char*)buff,
+				    (const char*)delim + 1);
+		}
+	} while (!fd_fgets_eof_r(st) && !stop);
+
+	fd_fgets_destroy(st); // calls munmap, memfd is closed by backend_close
+
+	return rc;
 }
 
 /*
@@ -693,16 +752,16 @@ static int create_database(int with_sync)
 	msg(LOG_INFO, "Creating trust database");
 	int rc = 0;
 
-	for (backend_entry *be = backend_get_first() ; be != NULL && !stop ;
-							be = be->next ) {
-		msg(LOG_INFO,"Loading trust data from %s backend",
+	for (backend_entry *be = backend_get_first(); be != NULL && !stop;
+						      be = be->next ) {
+		msg(LOG_INFO, "Loading trust data from %s backend",
 							be->backend->name);
 		// Use the memfd if available
-//		if (be->backend->memfd != -1)
-//			rc = do_memfd_update(be->backend->memfd);
-//		else
+		if (be->backend->memfd != -1)
+			rc = do_memfd_update(be->backend->memfd,
+					     &be->backend->entries);
+		else
 			rc = do_list_update(&be->backend->list);
-
 	}
 	if (stop)
 		return 1;
@@ -760,11 +819,82 @@ static int check_data_presence(const char * index, const char * data, int * matc
 }
 
 long backend_added_entries = 0;
-long check_from_memfd(int memfd)
+long check_from_memfd(int memfd, long *entries)
 {
+	*entries = 0;
 	long problems = 0;
+	struct stat sb;
+	char buff[BUFFER_SIZE];
+	fd_fgets_state_t *st = fd_fgets_init();
 
-	// FIXME: Write the code
+	// On any failure, fall back to descriptor based reads
+	lseek(memfd, 0, SEEK_SET); /* rewind in case */
+	if (fstat(memfd, &sb) == 0) {
+		void *base = mmap(NULL, sb.st_size, PROT_READ,
+				  MAP_PRIVATE, memfd, 0);
+		if (base != MAP_FAILED)
+			fd_setvbuf_r(st,base,sb.st_size,MEM_MMAP_FILE);
+	}
+
+	do {
+		int res = fd_fgets_r(st, buff, sizeof(buff), memfd);
+		if (res == -1) {
+			msg(LOG_ERR, "fd_fgets_r on memfd (%s)",
+			    strerror(errno));
+			break;
+		} else if (res > 0) {
+			(*entries)++;
+			char *end = fapolicyd_strnchr(buff, '\n', BUFFER_SIZE);
+			if (end == NULL) {
+				msg(LOG_ERR, "Too long line?");
+				continue;
+			}
+			int size = end - buff;
+			*end = '\0';
+
+			// its better to parse it from the end because
+			// there can be space in file name
+			int delims = 0;
+			char *delim = NULL;
+			for (int i = size-1 ; i >= 0 ; i--) {
+				if (isspace(buff[i])) {
+					delim = &buff[i];
+					delims++;
+				}
+				if (delims >= MAX_DELIMS) {
+					buff[i] = '\0';
+					break;
+				}
+			}
+
+			// We have everything, now do the check
+			char *index = buff;
+			char *data = delim + 1;
+			int matched = 0;
+			int found = check_data_presence(index, data, &matched);
+			if (!found) {
+				problems++;
+				// missing in db
+				// recently added file
+				if (matched == 0) {
+					msg(LOG_DEBUG,
+					    "%s is not in the trust database",
+					    index);
+					backend_added_entries++;
+				}
+
+				// updated file
+				// data miscompare
+				if (matched > 0) {
+					msg(LOG_DEBUG,
+					    "Trust data miscompare for %s",
+					    index);
+				}
+			}
+		}
+	} while (!fd_fgets_eof_r(st) && !stop);
+
+	fd_fgets_destroy(st); // calls munmap, memfd is closed by backend_close
 
 	return problems;
 }
@@ -821,11 +951,11 @@ static int check_database_copy(void)
 		msg(LOG_INFO, "Importing trust data from %s backend",
 		    be->backend->name);
 
-//		if (be->backend->memfd != -1) {
-//			problems += check_from_memfd(be->backend->memfd);
-//			backend_total_entries += be->backend->entries;
-//		} else
-		{
+		if (be->backend->memfd != -1) {
+			problems += check_from_memfd(be->backend->memfd,
+						     &be->backend->entries);
+			backend_total_entries += be->backend->entries;
+		} else {
 			problems += check_from_list(&be->backend->list);
 			backend_total_entries += be->backend->list.count;
 		}
@@ -1012,7 +1142,7 @@ int init_database(conf_t *config)
 		}
 	}
 
-	// Conserve memory by dumping the linked lists
+	// Conserve memory by dumping unneeded resources
 	backend_close();
 
 	pthread_create(&update_thread, NULL, update_thread_main, config);
@@ -1427,10 +1557,11 @@ static void *update_thread_main(void *arg)
 	while (!stop) {
 		/*
 		 * The FIFO connected at ffd[0] carries update commands from
-		 * fapolicy-cli and backend helper processes. Commands may be the
-		 * single-character control values defined in paths.h (for example
-		 * RELOAD_TRUSTDB_COMMAND) or full path entries emitted by the
-		 * backend notifier when a package manager changes a file.
+		 * fapolicy-cli and backend helper processes. Commands may be
+		 * the single-character control values defined in paths.h
+		 * (for example RELOAD_TRUSTDB_COMMAND) or full path entries
+		 * emitted by the backend notifier when a package manager
+		 * changes a file.
 		 */
 		rc = poll(ffd, 1, 1000);
 

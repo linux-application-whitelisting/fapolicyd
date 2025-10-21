@@ -30,6 +30,8 @@
 
 #include "string-util.h"
 
+#pragma GCC optimize("O3")
+
 char *fapolicyd_strtrim(char *s)
 {
 	if (!s)
@@ -65,4 +67,17 @@ char *fapolicyd_strcat(const char *s1, const char *s2)
 	strcpy(r, s1);
 	strcat(r, s2);
 	return r;
+}
+
+char *fapolicyd_strnchr(const char *s, int c, size_t len)
+{
+	unsigned char uc = (unsigned char)c;
+
+	for (; len--; ++s) {
+		if ((unsigned char)*s == uc)
+			return (char *)s;
+		if (*s == '\0')
+			break;
+	}
+	return NULL;
 }
