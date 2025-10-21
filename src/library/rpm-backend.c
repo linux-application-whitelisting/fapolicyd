@@ -37,6 +37,7 @@
 #include <unistd.h>
 #include <spawn.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <rpm/rpmlib.h>
 #include <rpm/rpmts.h>
 #include <rpm/rpmmacro.h>
@@ -266,8 +267,23 @@ static int rpm_load_list(const conf_t *conf)
 		int memfd;
 		memcpy(&memfd, CMSG_DATA(c), sizeof memfd);
 
+		// Close any previous snapshot before installing the new one
+		if (rpm_backend.memfd != -1) {
+			close(rpm_backend.memfd);
+			rpm_backend.memfd = -1;
+			rpm_backend.entries = -1;
+		}
+
+		if (fcntl(memfd, F_SETFD, FD_CLOEXEC) == -1) {
+			char err_buff[BUFFER_SIZE];
+			msg(LOG_WARNING,
+			    "Failed to set CLOEXEC on rpm memfd (%s)",
+			    strerror_r(errno, err_buff, BUFFER_SIZE));
+		}
+
 		// Pass the memfd to the backend representation
 		rpm_backend.memfd = memfd;
+		rpm_backend.entries = -1;
 
 		waitpid(pid, NULL, 0);
 	} else
