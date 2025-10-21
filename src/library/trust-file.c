@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
 #include <stddef.h>
@@ -64,6 +65,7 @@
 list_t _list;
 char *_path;
 int _count;
+int _memfd = -1;
 
 struct trust_seen_entry {
 	const char *path;
@@ -174,7 +176,7 @@ int trust_file_append(const char *fpath, list_t *list)
 {
 	list_t content;
 	list_init(&content);
-	int rc = trust_file_load(fpath, &content);
+	int rc = trust_file_load(fpath, &content, -1);
 	// if trust file does not exist, we ignore it as it will be created while writing
 	if (rc == 2) {
 		// exit on parse error, we dont want invalid entries to be autoremoved
@@ -258,7 +260,7 @@ static int parse_line_backwards(char *line, char *path, unsigned long *size, cha
  * @param list Trust file will be loaded into this list
  * @return 0 on success, 1 if file can't be open, 2 on parsing error
  */
-int trust_file_load(const char *fpath, list_t *list)
+int trust_file_load(const char *fpath, list_t *list, int memfd)
 {
 	char buffer[BUFFER_SIZE];
 	int escaped = 0;
@@ -271,7 +273,8 @@ int trust_file_load(const char *fpath, list_t *list)
 		return 1;
 
 	while (fgets(buffer, BUFFER_SIZE, file)) {
-		char name[4097], sha[65], *index = NULL, *data = NULL;
+		char name[4097], sha[65], *index = NULL;
+		char data_buf[BUFFER_SIZE];
 		unsigned long sz;
 		unsigned int tsource = SRC_FILE_DB;
 
@@ -289,19 +292,17 @@ int trust_file_load(const char *fpath, list_t *list)
 			goto out;
 		}
 
-		if (asprintf(&data, DATA_FORMAT, tsource, sz, sha) == -1)
-			data = NULL;
-
-		// if old format unescape
-		index = escaped ? unescape(name) : strdup(name);
-		if (index == NULL) {
-			msg(LOG_ERR, "Could not unescape %s from %s", name, fpath);
-			free(data);
+		int len = snprintf(data_buf, sizeof(data_buf),
+				   DATA_FORMAT, tsource, sz, sha);
+		if (len < 0 || len >= (int)sizeof(data_buf)) {
+			msg(LOG_ERR, "Entry too large in %s", fpath);
 			continue;
 		}
 
-		if (data == NULL) {
-			free(index);
+		/* If the legacy format was used, unescape the stored path. */
+		index = escaped ? unescape(name) : strdup(name);
+		if (index == NULL) {
+			msg(LOG_ERR, "Could not unescape %s from %s", name, fpath);
 			continue;
 		}
 
@@ -311,7 +312,6 @@ int trust_file_load(const char *fpath, list_t *list)
 		if (entry) {
 			msg(LOG_WARNING, "%s contains a duplicate %s", fpath, index);
 			free(index);
-			free(data);
 			continue;
 		}
 
@@ -319,20 +319,18 @@ int trust_file_load(const char *fpath, list_t *list)
 		if (!entry) {
 			msg(LOG_ERR, "Out of memory tracking %s", index);
 			free(index);
-			free(data);
 			rc = 3;
 			goto out;
 		}
 
 		entry->path = index;
-		HASH_ADD_KEYPTR(hh, seen, entry->path, strlen(entry->path), entry);
+		HASH_ADD_KEYPTR(hh, seen, entry->path,
+				strlen(entry->path), entry);
 
-		if (list_append(list, index, data)) {
-			HASH_DEL(seen, entry);
-			free(entry);
-			free(index);
-			free(data);
-		}
+		if (dprintf(memfd, "%s %s\n", index, data_buf) < 0)
+			msg(LOG_ERR,
+			    "dprintf failed writing %s to memfd (%s)",
+			    index, strerror(errno));
 	}
 
 out:
@@ -342,17 +340,20 @@ out:
 
 	HASH_ITER(hh, seen, item, tmp) {
 		HASH_DEL(seen, item);
+		if (memfd >= 0)
+			free((char *)item->path);
 		free(item);
 	}
 
 	return rc;
 }
 
+
 int trust_file_delete_path(const char *fpath, const char *path)
 {
 	list_t list;
 	list_init(&list);
-	int rc = trust_file_load(fpath, &list);
+	int rc = trust_file_load(fpath, &list, -1);
 	switch (rc) {
 	case 1:
 		msg(LOG_ERR, "Cannot open %s", fpath);
@@ -400,7 +401,7 @@ int trust_file_update_path(const char *fpath, const char *path)
 {
 	list_t list;
 	list_init(&list);
-	int rc = trust_file_load(fpath, &list);
+	int rc = trust_file_load(fpath, &list, -1);
 	switch (rc) {
 	case 1:
 		msg(LOG_ERR, "Cannot open %s", fpath);
@@ -434,7 +435,7 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
 {
 	list_t trust_file;
 	list_init(&trust_file);
-	int rc = trust_file_load(fpath, &trust_file);
+	int rc = trust_file_load(fpath, &trust_file, -1);
 	switch (rc) {
 	case 1:
 		msg(LOG_ERR, "Cannot open %s", fpath);
@@ -464,7 +465,7 @@ static int ftw_load(const char *fpath,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
 	if (typeflag == FTW_F)
-		trust_file_load(fpath, &_list);
+		trust_file_load(fpath, &_list, _memfd);
 	return FTW_CONTINUE;
 }
 
@@ -502,12 +503,18 @@ static int ftw_rm_duplicates(const char *fpath,
 
 
 
-void trust_file_load_all(list_t *list)
+void trust_file_load_all(list_t *list, int memfd)
 {
 	list_empty(&_list);
-	trust_file_load(TRUST_FILE_PATH, &_list);
+	_memfd = memfd;
+	/* Populate either the in-memory list or the memfd snapshot. */
+	trust_file_load(TRUST_FILE_PATH, &_list, memfd);
 	nftw(TRUST_DIR_PATH, &ftw_load, FTW_NOPENFD, FTW_FLAGS);
-	list_merge(list, &_list);
+	if (memfd < 0)
+		list_merge(list, &_list);
+	else
+		list_empty(&_list);
+	_memfd = -1;
 }
 
 int trust_file_delete_path_all(const char *path)
