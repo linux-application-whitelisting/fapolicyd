@@ -273,7 +273,7 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		return 1;
 
 	while (fgets(buffer, BUFFER_SIZE, file)) {
-		char name[4097], sha[65], *index = NULL;
+		char name[4097], sha[65], *index = NULL, *data = NULL;
 		char data_buf[BUFFER_SIZE];
 		unsigned long sz;
 		unsigned int tsource = SRC_FILE_DB;
@@ -281,7 +281,8 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		line++;
 
 		if (iscntrl(buffer[0]) || buffer[0] == '#') {
-			if (line == 1 && strncmp(buffer, HEADER_OLD, strlen(HEADER_OLD)) == 0)
+			if (line == 1 &&
+			   strncmp(buffer, HEADER_OLD, strlen(HEADER_OLD)) == 0)
 				escaped = 1;
 			continue;
 		}
@@ -310,7 +311,8 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 
 		HASH_FIND_STR(seen, index, entry);
 		if (entry) {
-			msg(LOG_WARNING, "%s contains a duplicate %s", fpath, index);
+			msg(LOG_WARNING, "%s contains a duplicate %s",
+			    fpath, index);
 			free(index);
 			continue;
 		}
@@ -327,10 +329,28 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		HASH_ADD_KEYPTR(hh, seen, entry->path,
 				strlen(entry->path), entry);
 
-		if (dprintf(memfd, "%s %s\n", index, data_buf) < 0)
-			msg(LOG_ERR,
-			    "dprintf failed writing %s to memfd (%s)",
-			    index, strerror(errno));
+		if (memfd >= 0) {
+			if (dprintf(memfd, "%s %s\n", index, data_buf) < 0)
+				msg(LOG_ERR,
+				    "dprintf failed writing %s to memfd (%s)",
+				    index, strerror(errno));
+		} else {
+			data = strdup(data_buf);
+			if (data == NULL) {
+				msg(LOG_ERR, "Out of memory saving %s", index);
+				HASH_DEL(seen, entry);
+				free(entry);
+				free(index);
+				continue;
+			}
+
+			if (list_append(list, index, data)) {
+				HASH_DEL(seen, entry);
+				free(entry);
+				free(index);
+				free(data);
+			}
+		}
 	}
 
 out:
