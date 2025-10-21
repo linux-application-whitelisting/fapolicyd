@@ -816,16 +816,19 @@ static int check_database_copy(void)
 	long backend_total_entries = 0;
 	backend_added_entries = 0;
 
-	for (backend_entry *be = backend_get_first() ; be != NULL && !stop ;
-							be = be->next ) {
+	for (backend_entry *be = backend_get_first(); be != NULL && !stop;
+						      be = be->next) {
 		msg(LOG_INFO, "Importing trust data from %s backend",
-							be->backend->name);
+		    be->backend->name);
 
-		backend_total_entries += be->backend->list.count;
-//		if (be->backend->memfd != -1)
+//		if (be->backend->memfd != -1) {
 //			problems += check_from_memfd(be->backend->memfd);
-//		else
+//			backend_total_entries += be->backend->entries;
+//		} else
+		{
 			problems += check_from_list(&be->backend->list);
+			backend_total_entries += be->backend->list.count;
+		}
 	}
 
 	if (stop) {
@@ -836,7 +839,7 @@ static int check_database_copy(void)
 	end_long_term_read_ops();
 
 	long db_total_entries = get_number_of_entries();
-	// something wrong
+	// Is something wrong?
 	if (db_total_entries == -1)
 		return -1;
 

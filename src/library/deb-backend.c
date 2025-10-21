@@ -30,7 +30,8 @@ backend deb_backend = {
     deb_destroy_backend,
     /* list initialization */
     {0, 0, NULL},
-    -1
+    -1,
+    -1,
 };
 
 // ================================================================
