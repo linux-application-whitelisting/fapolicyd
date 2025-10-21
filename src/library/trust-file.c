@@ -1,5 +1,5 @@
 /*
- * trust-file.c - Functions for working with trust files 
+ * trust-file.c - Functions for working with trust files
  * Copyright (c) 2020 Red Hat Inc.
  * All Rights Reserved.
  *
@@ -47,6 +47,16 @@
 #include "escape.h"
 #include "paths.h"
 
+/*
+ * fapolicyd-cli relies on this file to materialize trust entries into
+ * linked lists so they can be inspected, deduplicated, and rewritten.
+ * The daemon also calls into the same helpers when it needs an in-memory
+ * snapshot instead of streaming updates through a memfd.  The routines
+ * below therefore serve both the CLI's trust management commands and the
+ * daemon's backend, with the CLI-only helpers called out explicitly in
+ * their documentation.
+ */
+
 #define BUFFER_SIZE 4096+1+1+1+10+1+64+1
 #define FILE_READ_FORMAT  "%4096s %lu %64s" // path size SHA256
 #define FILE_WRITE_FORMAT "%s %lu %s\n"     // path size SHA256
@@ -73,12 +83,13 @@ struct trust_seen_entry {
 };
 
 
-
-/**
- * Take a path and create a string that is ready to be written to the disk.
+/*
+ * make_data_string - Create a trust-file payload for a path.
+ * @path: Absolute path that should be represented in the trust file.
  *
- * @param path Path to create a string from
- * @return Data string ready to be written to the disk or NULL on error
+ * The resulting buffer contains the "source size hash" triplet used when
+ * rewriting trust fragments.  The caller takes ownership of the allocated
+ * string and must free it.  Returns NULL if the file cannot be measured.
  */
 static char *make_data_string(const char *path)
 {
@@ -121,13 +132,14 @@ static char *make_data_string(const char *path)
 	}
 	return line;
 }
-
-/**
- * Write a list into a file
+/*
+ * write_out_list - Persist a linked list of trust entries to disk.
+ * @list: List of entries created by trust_file_load or CLI helpers.
+ * @dest: Destination trust file to be rewritten.
  *
- * @param list List to write into a file
- * @param dest Destination file
- * @return 0 on success, 1 on error
+ * This helper is used exclusively by the CLI trust management commands
+ * after they finish editing an in-memory list.  Returns 0 on success and
+ * 1 when the destination file could not be opened.
  */
 static int write_out_list(list_t *list, const char *dest)
 {
@@ -172,6 +184,16 @@ static int write_out_list(list_t *list, const char *dest)
 	return 0;
 }
 
+/*
+ * trust_file_append - Add entries to a trust file for the CLI.
+ * @fpath: Path to the trust fragment that should be extended.
+ * @list:  List of paths prepared by the CLI for insertion.
+ *
+ * The CLI populates @list with path indexes and this helper computes the
+ * hash/size payloads before merging the new entries into @fpath.  Returns
+ * 0 when the update succeeds and 1 if the existing file could not be
+ * parsed.
+ */
 int trust_file_append(const char *fpath, list_t *list)
 {
 	list_t content;
@@ -195,6 +217,15 @@ int trust_file_append(const char *fpath, list_t *list)
 
 #define DELIM  ' '
 #define MAX_DELIMS 2
+/*
+ * parse_line_backwards - Split a trust-file line into its components.
+ * @line: Buffer containing the raw line (modified in place).
+ * @path: Output buffer for the stored path.
+ * @size: Output parameter for the recorded size.
+ * @sha:  Output buffer for the SHA256 string.
+ *
+ * Returns 0 when parsing succeeds or -1 when the line is malformed.
+ */
 static int parse_line_backwards(char *line, char *path, unsigned long *size, char *sha)
 {
 	if (line == NULL || path == NULL || size == NULL || sha == NULL)
@@ -253,12 +284,15 @@ static int parse_line_backwards(char *line, char *path, unsigned long *size, cha
 
 	return 0;
 }
-/**
- * @brief Load trust file into list
+/*
+ * trust_file_load - Load a trust fragment into a list or memfd.
+ * @fpath: Full path to the trust fragment.
+ * @list:  Destination list when @memfd is negative.
+ * @memfd: File descriptor used for streaming output, or -1 for lists.
  *
- * @param fpath Full path to trust file
- * @param list Trust file will be loaded into this list
- * @return 0 on success, 1 if file can't be open, 2 on parsing error
+ * This helper is shared by the daemon and CLI.  It returns 0 on success,
+ * 1 when the file cannot be opened, 2 on parse errors, and 3 when memory
+ * could not be allocated while tracking duplicates.
  */
 int trust_file_load(const char *fpath, list_t *list, int memfd)
 {
@@ -369,6 +403,15 @@ out:
 }
 
 
+/*
+ * trust_file_delete_path - Remove matching entries from a trust file.
+ * @fpath: Path to the trust fragment being edited.
+ * @path:  Prefix that identifies entries scheduled for removal.
+ *
+ * Used only by the CLI trust management commands.  Returns the number of
+ * entries deleted, 0 when the file could not be opened,
+ * and -1 on parse errors.
+ */
 int trust_file_delete_path(const char *fpath, const char *path)
 {
 	list_t list;
@@ -417,6 +460,15 @@ int trust_file_delete_path(const char *fpath, const char *path)
 	return count;
 }
 
+/*
+ * trust_file_update_path - Refresh hashes for matching entries.
+ * @fpath: Trust fragment that should be rewritten.
+ * @path:  Prefix designating entries that must be re-measured.
+ *
+ * Used only by the CLI trust management commands.  Returns the number of
+ * entries updated, 0 when the file could not be opened,
+ * and -1 when the existing file cannot be parsed.
+ */
 int trust_file_update_path(const char *fpath, const char *path)
 {
 	list_t list;
@@ -451,6 +503,15 @@ int trust_file_update_path(const char *fpath, const char *path)
 	return count;
 }
 
+/*
+ * trust_file_rm_duplicates - Prune CLI additions already present on disk.
+ * @fpath: Trust fragment checked for duplicates.
+ * @list:  Pending CLI additions to compare against existing entries.
+ *
+ * Used only by the CLI trust management commands before appending new
+ * entries.  Returns 0 after pruning,
+ * or -1 when the trust fragment could not be opened or parsed.
+ */
 int trust_file_rm_duplicates(const char *fpath, list_t *list)
 {
 	list_t trust_file;
@@ -479,6 +540,13 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
 
 
 
+/*
+ * ftw_load - nftw callback that aggregates trust fragments.
+ * @fpath: Current file discovered by nftw.
+ * @sb:    (unused) file metadata supplied by nftw.
+ * @typeflag: nftw entry type.
+ * @ftwbuf:   (unused) traversal context from nftw.
+ */
 static int ftw_load(const char *fpath,
 		const struct stat *sb __attribute__ ((unused)),
 		int typeflag,
@@ -489,6 +557,13 @@ static int ftw_load(const char *fpath,
 	return FTW_CONTINUE;
 }
 
+/*
+ * ftw_delete_path - nftw callback that deletes matching entries.
+ * @fpath: Current trust fragment examined by nftw.
+ * @sb:    (unused) file metadata supplied by nftw.
+ * @typeflag: nftw entry type.
+ * @ftwbuf:   (unused) traversal context from nftw.
+ */
 static int ftw_delete_path(const char *fpath,
 		const struct stat *sb __attribute__ ((unused)),
 		int typeflag,
@@ -499,6 +574,13 @@ static int ftw_delete_path(const char *fpath,
 	return FTW_CONTINUE;
 }
 
+/*
+ * ftw_update_path - nftw callback that updates matching entries.
+ * @fpath: Current trust fragment examined by nftw.
+ * @sb:    (unused) file metadata supplied by nftw.
+ * @typeflag: nftw entry type.
+ * @ftwbuf:   (unused) traversal context from nftw.
+ */
 static int ftw_update_path(const char *fpath,
 		const struct stat *sb __attribute__ ((unused)),
 		int typeflag,
@@ -509,6 +591,13 @@ static int ftw_update_path(const char *fpath,
 	return FTW_CONTINUE;
 }
 
+/*
+ * ftw_rm_duplicates - nftw callback removing duplicates from CLI lists.
+ * @fpath: Current trust fragment examined by nftw.
+ * @sb:    (unused) file metadata supplied by nftw.
+ * @typeflag: nftw entry type.
+ * @ftwbuf:   (unused) traversal context from nftw.
+ */
 static int ftw_rm_duplicates(const char *fpath,
 		const struct stat *sb __attribute__ ((unused)),
 		int typeflag,
@@ -523,6 +612,15 @@ static int ftw_rm_duplicates(const char *fpath,
 
 
 
+/*
+ * trust_file_load_all - Aggregate every trust fragment.
+ * @list:  Destination list when @memfd is negative.
+ * @memfd: File descriptor that receives streamed entries, or -1.
+ *
+ * Used by both the daemon and CLI to populate either an in-memory list or
+ * a memfd-backed snapshot covering the primary trust file plus the tree
+ * of per-package fragments.
+ */
 void trust_file_load_all(list_t *list, int memfd)
 {
 	list_empty(&_list);
@@ -537,6 +635,13 @@ void trust_file_load_all(list_t *list, int memfd)
 	_memfd = -1;
 }
 
+/*
+ * trust_file_delete_path_all - Delete matching entries across all files.
+ * @path: Prefix designating entries to remove.
+ *
+ * Used only by the CLI trust management commands to remove a path from
+ * every trust fragment.  Returns the number of entries deleted.
+ */
 int trust_file_delete_path_all(const char *path)
 {
 	_path = strdup(path);
@@ -546,6 +651,13 @@ int trust_file_delete_path_all(const char *path)
 	return _count;
 }
 
+/*
+ * trust_file_update_path_all - Refresh hashes across every trust file.
+ * @path: Prefix designating entries that must be re-measured.
+ *
+ * Used only by the CLI trust management commands.  Returns the number of
+ * entries updated.
+ */
 int trust_file_update_path_all(const char *path)
 {
 	_path = strdup(path);
@@ -555,6 +667,13 @@ int trust_file_update_path_all(const char *path)
 	return _count;
 }
 
+/*
+ * trust_file_rm_duplicates_all - Remove duplicates across trust files.
+ * @list: Pending CLI additions to prune before appending.
+ *
+ * Used only by the CLI trust management commands prior to calling
+ * trust_file_append().
+ */
 void trust_file_rm_duplicates_all(list_t *list)
 {
 	list_empty(&_list);
