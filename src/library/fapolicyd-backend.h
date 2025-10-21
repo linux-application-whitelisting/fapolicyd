@@ -42,6 +42,7 @@ typedef struct _backend
 	int (*load)(const conf_t *);
 	int (*close)(void);
 	list_t list;
+	int memfd;
 } backend;
 
 #endif
