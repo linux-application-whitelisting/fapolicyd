@@ -738,14 +738,16 @@ int do_list_update(list_t *list)
  *             after populating the records. A zero value leaves flushing to
  *             the environment's normal durability policy.
  *
- * Each backend in the manager exposes its cached list via backend_get_first
- * and list_get_first. The function iterates all backend entries, writing every
- * key/value pair gathered from the backend loader into LMDB using write_db.
- * The iteration stops early when the global stop flag becomes true.
+ * Each backend in the manager exposes its cached data either through a memfd
+ * snapshot or a linked list. The function iterates over every backend entry
+ * and imports records using do_memfd_update or do_list_update depending on
+ * the available transport. Processing stops early when the global stop flag
+ * becomes true.
  *
- * Returns 0 when all records write successfully, 1 when the stop flag aborts
- * processing, or the first non-zero write_db error encountered during the
- * traversal of backend items.
+ * Returns 0 when no backend reports an error and stop is not signaled.
+ * Non-zero indicates that processing was interrupted or that a helper
+ * reported a failure while storing records. Helper routines log detailed
+ * errors.
  */
 static int create_database(int with_sync)
 {
@@ -777,9 +779,15 @@ static int create_database(int with_sync)
 }
 
 
-// 1 -> data match
-// 0 -> not found
-// matched -> returns index of the matched duplicate
+/*
+ * check_data_presence - Look up an LMDB record and compare its stored data.
+ * @index: Key used for the LMDB lookup.
+ * @data: Data string expected to be present for the key.
+ * @matched: Updated with the number of duplicate records inspected.
+ *
+ * Returns 1 when an exact match is discovered, or 0 if the supplied data
+ * cannot be located. Errors encountered by lt_read_db are logged separately.
+ */
 static int check_data_presence(const char * index, const char * data, int * matched)
 {
 	int found = 0;
@@ -819,6 +827,16 @@ static int check_data_presence(const char * index, const char * data, int * matc
 }
 
 long backend_added_entries = 0;
+/*
+ * check_from_memfd - Compare backend memfd contents with the LMDB database.
+ * @memfd: File descriptor providing newline-delimited backend records.
+ * @entries: Location where the number of processed records is stored.
+ *
+ * Returns the number of discrepancies discovered between backend data and
+ * the local LMDB copy while incrementing backend_added_entries for newly
+ * observed records. Logs diagnostic information for missing or mismatched
+ * entries.
+ */
 long check_from_memfd(int memfd, long *entries)
 {
 	*entries = 0;
@@ -899,6 +917,15 @@ long check_from_memfd(int memfd, long *entries)
 	return problems;
 }
 
+/*
+ * check_from_list - Compare backend list contents with the LMDB database.
+ * @list: Linked list populated by the backend loader.
+ *
+ * Returns the number of discrepancies discovered between backend data and
+ * the local LMDB copy while incrementing backend_added_entries for newly
+ * observed records. Logs diagnostic information for missing or mismatched
+ * entries.
+ */
 long check_from_list(list_t *list)
 {
 	long problems = 0;
@@ -932,9 +959,14 @@ long check_from_list(list_t *list)
 }
 
 /*
- * This function will compare the backend database against our copy
- * of the database. It returns a 1 if they do not match, 0 if they do
- * match, and -1 if there is an error.
+ * check_database_copy - Validate LMDB contents against backend snapshots.
+ *
+ * Iterates each backend and invokes check_from_memfd or check_from_list to
+ * compare the cached backend view with the local LMDB store. Summaries of
+ * the totals and detected discrepancies are logged for diagnostics.
+ *
+ * Returns 0 when the databases agree, 1 when differences or an early stop are
+ * encountered, and -1 when an unrecoverable error occurs.
  */
 static int check_database_copy(void)
 {
