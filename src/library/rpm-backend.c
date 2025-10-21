@@ -266,6 +266,10 @@ static int rpm_load_list(const conf_t *conf)
 		int memfd;
 		memcpy(&memfd, CMSG_DATA(c), sizeof memfd);
 
+		// Pass the memfd to the backend representation
+		rpm_backend.memfd = memfd;
+
+		// Do the linked list in the meantime
 		char buff[BUFFER_SIZE];
 		fd_fgets_state_t *st = fd_fgets_init();
 
@@ -327,6 +331,7 @@ static int rpm_load_list(const conf_t *conf)
 
 		fd_fgets_destroy(st); // calls munmap
 		close(memfd);
+		// End linked list - keep below this
 		waitpid(pid, NULL, 0);
 	} else {
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
