@@ -330,9 +330,15 @@ static char *path_to_hash(const char *path, const size_t path_len)
 
 
 /*
- * path - key
- * status, file size, sha256 hash - data
- * status means if data is confirmed: unknown, yes, no
+ * write_db - Persist a single trust record into the LMDB database.
+ * @idx: Path string used as the key for the record. When the path exceeds
+ *       the LMDB key size limit the function hashes the path before storage.
+ * @data: Serialized metadata for the path. The buffer contains the integrity
+ *        status, file size, and SHA256 hash sourced from the backend loaders.
+ *
+ * Returns 0 on success, or an error code describing the stage that failed:
+ * 1 when the transaction cannot start, 2 on dbi open failure, 3 if mdb_put
+ * reports an error, 4 if mdb_txn_commit fails, and 5 when key hashing fails.
  */
 static int write_db(const char *idx, const char *data)
 {
@@ -633,7 +639,21 @@ static int delete_all_entries_db()
 	return 0;
 }
 
-
+/*
+ * create_database - Populate the LMDB trust database from loaded backends.
+ * @with_sync: Non-zero forces an mdb_env_sync call to flush data immediately
+ *             after populating the records. A zero value leaves flushing to
+ *             the environment's normal durability policy.
+ *
+ * Each backend in the manager exposes its cached list via backend_get_first
+ * and list_get_first. The function iterates all backend entries, writing every
+ * key/value pair gathered from the backend loader into LMDB using write_db.
+ * The iteration stops early when the global stop flag becomes true.
+ *
+ * Returns 0 when all records write successfully, 1 when the stop flag aborts
+ * processing, or the first non-zero write_db error encountered during the
+ * traversal of backend items.
+ */
 static int create_database(int with_sync)
 {
 	msg(LOG_INFO, "Creating trust database");
@@ -1248,6 +1268,15 @@ static int update_database(conf_t *config)
 	return 0;
 }
 
+/*
+ * handle_record - Process a single update command received from the FIFO.
+ * @buffer: Raw line of text read from the update pipe. For file updates the
+ *          buffer contains a path, file size, and SHA256 hash separated by
+ *          whitespace.
+ *
+ * Returns 0 after successfully storing the record, 1 when processing should
+ * stop due to malformed data or a shutdown request.
+ */
 static int handle_record(const char * buffer)
 {
 	char path[2048+1];
@@ -1346,7 +1375,13 @@ static void *update_thread_main(void *arg)
 	ffd[0].events = POLLIN;
 
 	while (!stop) {
-
+		/*
+		 * The FIFO connected at ffd[0] carries update commands from
+		 * fapolicy-cli and backend helper processes. Commands may be the
+		 * single-character control values defined in paths.h (for example
+		 * RELOAD_TRUSTDB_COMMAND) or full path entries emitted by the
+		 * backend notifier when a package manager changes a file.
+		 */
 		rc = poll(ffd, 1, 1000);
 
 		if (stop)
@@ -1416,6 +1451,12 @@ static void *update_thread_main(void *arg)
 						*end = '\0';
 
 						for (int i = 0 ; i < count ; i++) {
+							/*
+							 * Identify the requested action by scanning
+							 * the buffer. Control characters map directly
+							 * to db_ops_t values while a leading slash
+							 * indicates a file path update.
+							 */
 							if (stop)
 								break;
 							// assume file name
@@ -1454,9 +1495,18 @@ static void *update_thread_main(void *arg)
 
 						// got "1" -> reload db
 						if (do_operation == RELOAD_DB) {
+							/*
+							 * A RELOAD_TRUSTDB_COMMAND triggers a
+							 * complete rebuild from all configured
+							 * backends.
+							 */
 							do_operation = DB_NO_OP;
 							do_reload_db(config);
 						} else if (do_operation == RELOAD_RULES) {
+							/*
+							 * The rules command instructs the
+							 * daemon to re-parse policy files.
+							 */
 							do_operation = DB_NO_OP;
 
 							if (load_rule_file()) {
@@ -1472,9 +1522,19 @@ static void *update_thread_main(void *arg)
 
 							// got "2" -> flush cache
 						} else if (do_operation == FLUSH_CACHE) {
+							/*
+							 * Cache flushes originate from helper
+							 * tools needing clients to drop cached
+							 * trust decisions.
+							 */
 							do_operation = DB_NO_OP;
 							needs_flush = true;
 						} else if (do_operation == ONE_FILE) {
+							/*
+							 * Backend helpers send path/size/hash
+							 * tuples for individual files that
+							 * changed on disk.
+							 */
 							do_operation = DB_NO_OP;
 							if (handle_record(buff))
 								continue;
