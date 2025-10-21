@@ -26,7 +26,12 @@
 
 #include "config.h"
 
+#include <errno.h>
 #include <stddef.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #include "fapolicyd-backend.h"
 #include "llist.h"
@@ -56,7 +61,31 @@ static int file_load_list(const conf_t *conf)
 {
 	msg(LOG_DEBUG, "Loading file backend");
 	list_empty(&file_backend.list);
-	trust_file_load_all(&file_backend.list);
+
+	/* Close any previous snapshot before rebuilding the backend view. */
+	if (file_backend.memfd != -1) {
+		close(file_backend.memfd);
+		file_backend.memfd = -1;
+		file_backend.entries = -1;
+	}
+
+	int memfd = memfd_create("file_snapshot",
+				 MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	if (memfd < 0) {
+		msg(LOG_WARNING, "memfd_create failed for file backend (%s)",
+		    strerror(errno));
+		return 1;
+	}
+
+	trust_file_load_all(&file_backend.list, memfd);
+
+	/* Seal the snapshot so readers see a stable view. */
+	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |
+		  F_SEAL_GROW | F_SEAL_WRITE) == -1)
+		msg(LOG_WARNING, "Failed to seal file backend memfd (%s)",
+		    strerror(errno));
+	file_backend.memfd = memfd;
+
 	return 0;
 }
 
