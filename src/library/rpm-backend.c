@@ -213,7 +213,6 @@ struct _hash_record {
 #define MAX_DELIMS 3
 static int rpm_load_list(const conf_t *conf)
 {
-
 	// before the spawn
 	int sv[2];
 	if (socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv) < 0) {
@@ -270,80 +269,11 @@ static int rpm_load_list(const conf_t *conf)
 		// Pass the memfd to the backend representation
 		rpm_backend.memfd = memfd;
 
-		// Do the linked list in the meantime
-		char buff[BUFFER_SIZE];
-		fd_fgets_state_t *st = fd_fgets_init();
-
-		// On any failure, fall back to descriptor based reads
-		struct stat sb;
-		if (fstat(memfd, &sb) == 0) {
-			void *base = mmap(NULL, sb.st_size, PROT_READ,
-					  MAP_PRIVATE, memfd, 0);
-
-			if (base != MAP_FAILED)
-				fd_setvbuf_r(st,base,sb.st_size,MEM_MMAP_FILE);
-		}
-
-		do {
-			int res = fd_fgets_r(st, buff, sizeof(buff), memfd);
-			if (res == -1) {
-				msg(LOG_ERR, "fd_fgets_r on memfd");
-				break;
-			} else if (res > 0) {
-				char *end  = strchr(buff, '\n');
-
-				if (end == NULL) {
-					msg(LOG_ERR, "Too long line?");
-					continue;
-				}
-
-				int size = end - buff;
-				*end = '\0';
-
-				// its better to parse it from the end because
-				// there can be space in file name
-				int delims = 0;
-				char *delim = NULL;
-				for (int i = size-1 ; i >= 0 ; i--) {
-					if (isspace(buff[i])) {
-						delim = &buff[i];
-						delims++;
-					}
-					if (delims >= MAX_DELIMS) {
-						buff[i] = '\0';
-						break;
-					}
-				}
-
-				char *index = strdup(buff);
-				char *data = strdup(delim + 1);
-				if (!index || !data) {
-					free(index);
-					free(data);
-					continue;
-				}
-
-				if (list_append(&rpm_backend.list, index, data)) {
-					free(index);
-					free(data);
-				}
-			}
-		} while(!fd_fgets_eof_r(st));
-
-		fd_fgets_destroy(st); // calls munmap
-		close(memfd);
-		// End linked list - keep below this
 		waitpid(pid, NULL, 0);
-	} else {
+	} else
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
-	}
 
 	posix_spawn_file_actions_destroy(&actions);
-
-	if (rpm_backend.list.count == 0) {
-		msg(LOG_DEBUG, "Recieved 0 files from rpmdb loader");
-		return 1;
-	}
 
 	return 0;
 }

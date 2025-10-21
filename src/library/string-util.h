@@ -39,4 +39,7 @@ char *fapolicyd_strtrim(char *s);
  */
 char *fapolicyd_strcat(const char *s1, const char *s2) __attr_dealloc_free;
 
+char *fapolicyd_strnchr(const char *s, int c, size_t len)
+	__attr_access ((__read_only__, 1, 3));
+
 #endif
