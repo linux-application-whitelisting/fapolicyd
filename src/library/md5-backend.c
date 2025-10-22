@@ -132,19 +132,21 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 		HASH_FIND_STR(*hashtable, key, rcd);
 
 		if (!rcd) {
-			rcd = (struct _hash_record *)malloc(sizeof(struct _hash_record));
+			rcd = (struct _hash_record *)malloc(
+						sizeof(struct _hash_record));
 			rcd->key = strdup(key);
 			HASH_ADD_KEYPTR(hh, *hashtable, rcd->key,
 					strlen(rcd->key), rcd);
-			char *dup = strdup(path);
-			if (!dup || list_append(&dstbackend->list, dup, data)) {
-				free(dup);
+			if (dprintf(dstbackend->memfd, "%s %s\n",
+				    path, data) < 0) {
+				msg(LOG_ERR,
+				    "dprintf failed writing %s to memfd (%s)",
+				    path, strerror(errno));
 				free((void *)data);
 				return 1;
 			}
-		} else {
-			free((void *)data);
 		}
+		free((void *)data);
 		return 0;
 	}
 	return 1;

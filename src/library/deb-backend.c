@@ -7,7 +7,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <sys/types.h>
+
 #include <uthash.h>
 
 #include "conf.h"
@@ -124,7 +126,6 @@ static int do_deb_load_list(const conf_t *conf)
 {
   const char *control_file = "md5sums";
 
-  list_empty(&deb_backend.list);
   struct _hash_record *hashtable = NULL;
   struct _hash_record **hashtable_ptr = &hashtable;
 
@@ -133,6 +134,8 @@ static int do_deb_load_list(const conf_t *conf)
 
   msg(LOG_INFO, "Computing hashes for %d packages.", array.n_pkgs);
   fsys_hash_reset();
+
+  int rc = 0;
 
   for (int i = 0; i < array.n_pkgs; i++) {
     struct pkginfo *package = array.pkgs[i];
@@ -167,13 +170,17 @@ static int do_deb_load_list(const conf_t *conf)
                              ? namenode->divert->useinstead->name
                              : namenode->name;
       if (hash != NULL) {
-        add_file_to_backend_by_md5(path, hash, hashtable_ptr, SRC_DEB,
-				   &deb_backend);
+        if (add_file_to_backend_by_md5(path, hash, hashtable_ptr, SRC_DEB,
+				   &deb_backend) != 0) {
+	  rc = 1;
+	  goto out;
+	}
       }
       file = file->next;
     }
   }
 
+out:
   struct _hash_record *item, *tmp;
   HASH_ITER(hh, hashtable, item, tmp) {
     HASH_DEL(hashtable, item);
@@ -182,7 +189,7 @@ static int do_deb_load_list(const conf_t *conf)
   }
 
   pkg_array_destroy(&array);
-  return 0;
+  return rc;
 }
 
 static int deb_load_list(const conf_t *conf)
@@ -190,7 +197,7 @@ static int deb_load_list(const conf_t *conf)
         msg(LOG_DEBUG, "Loading debian backend");
 
 	/* Close any previous snapshot before rebuilding the backend view. */
-/*	if (deb_backend.memfd != -1) {
+	if (deb_backend.memfd != -1) {
 		close(deb_backend.memfd);
 		deb_backend.memfd = -1;
 		deb_backend.entries = -1;
@@ -203,16 +210,22 @@ static int deb_load_list(const conf_t *conf)
 		    strerror(errno));
 		return 1;
 	}
-*/
-	do_deb_load_list(conf); // FIXME: pass memfd
+
+	deb_backend.memfd = memfd;
+	deb_backend.entries = -1;
+
+	if (do_deb_load_list(conf) != 0) {
+		close(memfd);
+		deb_backend.memfd = -1;
+		return 1;
+	}
 
 	/* Seal the snapshot so readers see a stable view. */
-/*	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |
+	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |
 		  F_SEAL_GROW | F_SEAL_WRITE) == -1)
 		msg(LOG_WARNING, "Failed to seal debian backend memfd (%s)",
 		    strerror(errno));
-	deb_backend.memfd = memfd;
-*/
+
 	return 0;
 }
 
