@@ -993,12 +993,9 @@ static int check_database_copy(void)
 		}
 	}
 
-	if (stop) {
-		end_long_term_read_ops();
-		return 1;
-	}
-
 	end_long_term_read_ops();
+	if (stop)
+		return 1;
 
 	long db_total_entries = get_number_of_entries();
 	// Is something wrong?
@@ -1011,7 +1008,7 @@ static int check_database_copy(void)
 	check_db_size();
 
 	msg(LOG_INFO,
-	    "Loaded trust info from all backends(without duplicates): %ld",
+	    "Loaded trust info from all backends (without duplicates): %ld",
 	    backend_total_entries);
 
 	// do not print 0
@@ -1312,9 +1309,8 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 	int retval = 0, error;
 	int res;
 
-	// this function is going to be used from decision_thread
-	// that means we need to be sure database won't change under
-	// our hands
+	// this function is going to be used from decision_thread that means
+	// we need to be sure database won't change under our hands.
 	lock_update_thread();
 
 	if (start_long_term_read_ops()) {
@@ -1437,12 +1433,6 @@ static int update_database(conf_t *config)
 	/*
 	 * backend loading/reloading should be done in upper level
 	 */
-	/*
-	   if ((rc = backend_load(config))) {
-	   msg(LOG_ERR, "Cannot open the backend database (%d)", rc);
-	   return rc;
-	   }*/
-
 	if (stop)
 		return 1;
 
@@ -1529,7 +1519,8 @@ void set_reload_trust_database(void)
 
 static void do_reload_db(conf_t* config)
 {
-	msg(LOG_INFO,"It looks like there was an update of the system... Syncing DB.");
+	msg(LOG_INFO,
+	    "It looks like there was an update of the system... Syncing DB.");
 
 	int rc;
 	backend_close();
