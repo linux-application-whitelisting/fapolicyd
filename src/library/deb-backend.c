@@ -120,7 +120,7 @@ void parse_filehash2(struct pkginfo *pkg, struct pkgbin *pkgbin)
 // End of functions copied from dpkg.
 // =======================================================================
 
-static int deb_load_list(const conf_t *conf)
+static int do_deb_load_list(const conf_t *conf)
 {
   const char *control_file = "md5sums";
 
@@ -183,6 +183,37 @@ static int deb_load_list(const conf_t *conf)
 
   pkg_array_destroy(&array);
   return 0;
+}
+
+static int deb_load_list(const conf_t *conf)
+{
+        msg(LOG_DEBUG, "Loading debian backend");
+
+	/* Close any previous snapshot before rebuilding the backend view. */
+/*	if (deb_backend.memfd != -1) {
+		close(deb_backend.memfd);
+		deb_backend.memfd = -1;
+		deb_backend.entries = -1;
+	}
+
+	int memfd = memfd_create("deb_snapshot",
+                                 MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	if (memfd < 0) {
+		msg(LOG_WARNING, "memfd_create failed for debian backend (%s)",
+		    strerror(errno));
+		return 1;
+	}
+*/
+	do_deb_load_list(conf); // FIXME: pass memfd
+
+	/* Seal the snapshot so readers see a stable view. */
+/*	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |
+		  F_SEAL_GROW | F_SEAL_WRITE) == -1)
+		msg(LOG_WARNING, "Failed to seal debian backend memfd (%s)",
+		    strerror(errno));
+	deb_backend.memfd = memfd;
+*/
+	return 0;
 }
 
 static int deb_init_backend(void)
