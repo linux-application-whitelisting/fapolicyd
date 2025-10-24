@@ -696,6 +696,9 @@ int do_memfd_update(int memfd, long *entries)
 				}
 			}
 
+			if (delim == NULL) //bad line ? should never happen
+				continue;
+
 			//            index, data
 			res = write_db(buff, delim + 1);
 			if (res)

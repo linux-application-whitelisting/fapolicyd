@@ -835,7 +835,7 @@ static int parse_set_line(const char * line, int lineno)
 		val_ptr = strtok_r(NULL, ",", &val_saved);
 	}
 
-	if (!numeric_found && type != STRING)
+	if (!numeric_found)
 		type = STRING;
 
 	free(values);
@@ -896,7 +896,6 @@ static int parse_set_line(const char * line, int lineno)
 	return -1;
 
  free_and_error:
-	free(values);
 	free(l);
 	return 1;
 }

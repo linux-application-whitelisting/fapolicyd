@@ -85,8 +85,10 @@ struct queue *q_open(size_t num_entries)
 	atomic_store_explicit(&q->queue_length, 0, memory_order_relaxed);
 	max_depth = 0;
 
-	if (sem_init(&q->sem, 0, 0) == -1)
+	if (sem_init(&q->sem, 0, 0) == -1) {
+		free(q->events);
 		goto err;
+	}
 
 	return q;
 

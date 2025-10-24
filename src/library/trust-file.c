@@ -360,10 +360,10 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		}
 
 		entry->path = index;
-		HASH_ADD_KEYPTR(hh, seen, entry->path,
-				strlen(entry->path), entry);
 
 		if (memfd >= 0) {
+			HASH_ADD_KEYPTR(hh, seen, entry->path,
+					strlen(entry->path), entry);
 			if (dprintf(memfd, "%s %s\n", index, data_buf) < 0)
 				msg(LOG_ERR,
 				    "dprintf failed writing %s to memfd (%s)",
@@ -371,28 +371,29 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		} else {
 			data = strdup(data_buf);
 			if (data == NULL) {
-				msg(LOG_ERR, "Out of memory saving %s", index);
-				HASH_DEL(seen, entry);
-				free(entry);
 				free(index);
+				free(entry);
 				continue;
 			}
 
 			if (list_append(list, index, data)) {
-				HASH_DEL(seen, entry);
-				free(entry);
 				free(index);
 				free(data);
-			}
+				free(entry);
+			} else // Add it after successfully stored on the list
+				HASH_ADD_KEYPTR(hh, seen, entry->path,
+						strlen(entry->path), entry);
+
 		}
 	}
 
 out:
 	fclose(file);
 
-	struct trust_seen_entry *item, *tmp;
+	struct trust_seen_entry *item;
 
-	HASH_ITER(hh, seen, item, tmp) {
+	while (seen) {
+		item = seen;
 		HASH_DEL(seen, item);
 		if (memfd >= 0)
 			free((char *)item->path);

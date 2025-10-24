@@ -68,7 +68,11 @@ int main(int argc, char * const argv[])
 
 	set_message_mode(MSG_STDERR, DBG_YES);
 
-	load_daemon_config(&config);
+	if (load_daemon_config(&config)) {
+		free_daemon_config(&config);
+		msg(LOG_ERR, "Exiting due to bad configuration");
+		return 1;
+	}
 
 	int memfd = memfd_create("rpm_snapshot", MFD_CLOEXEC|MFD_ALLOW_SEALING);
 	if (memfd < 0) {

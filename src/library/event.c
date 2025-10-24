@@ -588,11 +588,9 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		return sn;
 	}
 
-	// free .str/set only when it was really used
+	// free .str only when it was really used
 	// otherwise invalid free is possible
-	if (t == GID)
-		destroy_attr_set(subj.set);
-	else if (t >= COMM)
+	if (t >= COMM)
 		free(subj.str);
 	return NULL;
 }

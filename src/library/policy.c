@@ -427,10 +427,9 @@ static char *format_value(int item, unsigned int num, decision_t results,
 				str = tmp;
 			}
 
-			if (asprintf(&out, "%s", str ? str : "??") < 0) {
+			if (asprintf(&out, "%s", str ? str : "??") < 0)
 				out = NULL;
-				free(tmp);
-			}
+
 			free(tmp);
 		} else
 		    if (asprintf(&out, "%d", obj ? (obj->val ? 1 : 0) : 9) < 0)

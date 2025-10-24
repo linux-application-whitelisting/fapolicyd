@@ -364,6 +364,7 @@ static int reload_configuration(void)
 	conf_t new_config;
 
 	if (load_daemon_config(&new_config)) {
+		free_daemon_config(&new_config);
 		msg(LOG_ERR, "Failed reloading daemon configuration");
 		return 1;
 	}
@@ -479,10 +480,13 @@ static int become_daemon(void)
 			}
 			if (dup2(fd, 1) < 0) {
 				close(fd);
+				close(0);
 				return -1;
 			}
 			if (dup2(fd, 2) < 0) {
 				close(fd);
+				close(0);
+				close(1);
 				return -1;
 			}
 			close(fd);

@@ -63,6 +63,8 @@ static list_item_t * create_item(const char *index, const char *data)
 int list_prepend(list_t *list, const char *index, const char *data)
 {
 	list_item_t *item = create_item(index, data);
+	if (item == NULL)
+	    return 1;
 
 	item->next = list->first;
 	list->first = item;

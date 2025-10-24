@@ -152,7 +152,7 @@ static char *get_sha256_rpm(int *len)
 
 	// This gets the binary form of the hash.
 	digest = rpmfiFDigest(fi, NULL, &tlen);
-	if (digest && len) // clip to sha512 size.
+	if (digest && tlen) // clip to sha512 size.
 		bytes2hex(sha, digest, tlen > SHA512_LEN ? SHA512_LEN : tlen);
 	else
 		sha[0] = 0;
