@@ -166,7 +166,7 @@ void backend_close(void)
 			be->backend->entries = -1;
 		}
 
-		// drop the linked list
+		// allow the backend to release any resources
 		be->backend->close();
 	}
 	backend_destroy();

@@ -43,7 +43,6 @@
 
 #include "database.h"
 #include "message.h"
-#include "llist.h"
 #include "file.h"
 #include "fd-fgets.h"
 #include "string-util.h"
@@ -715,36 +714,14 @@ int do_memfd_update(int memfd, long *entries)
 }
 
 /*
- * do_list_update - Populate the LMDB trust database from a backend linked list.
- *
- * Returns 0 when all records write successfully, 1 when the first non-zero
- * write_db error encountered during the traversal of backend items.
- */
-int do_list_update(list_t *list)
-{
-	int rc = 0;
-
-	list_item_t *item = list_get_first(list);
-	for (; item != NULL && !stop; item = item->next) {
-		if ((rc = write_db(item->index, item->data)))
-			msg(LOG_ERR,
-			    "Error (%d) writing key=\"%s\" data=\"%s\"",
-			    rc, (const char*)item->index,
-			    (const char*)item->data);
-	}
-	return rc;
-}
-
-/*
  * create_database - Populate the LMDB trust database from loaded backends.
  * @with_sync: Non-zero forces an mdb_env_sync call to flush data immediately
  *             after populating the records. A zero value leaves flushing to
  *             the environment's normal durability policy.
  *
- * Each backend in the manager exposes its cached data either through a memfd
- * snapshot or a linked list. The function iterates over every backend entry
- * and imports records using do_memfd_update or do_list_update depending on
- * the available transport. Processing stops early when the global stop flag
+ * Each backend in the manager exposes its cached data through a memfd
+ * snapshot. The function iterates over every backend entry and imports records
+ * using do_memfd_update. Processing stops early when the global stop flag
  * becomes true.
  *
  * Returns 0 when no backend reports an error and stop is not signaled.
@@ -762,11 +739,14 @@ static int create_database(int with_sync)
 		msg(LOG_INFO, "Loading trust data from %s backend",
 							be->backend->name);
 		// Use the memfd if available
-		if (be->backend->memfd != -1)
+		if (be->backend->memfd != -1) {
 			rc = do_memfd_update(be->backend->memfd,
 					     &be->backend->entries);
-		else
-			rc = do_list_update(&be->backend->list);
+			if (rc)
+				msg(LOG_ERR,
+				    "Failed to import trust data from %s backend",
+				    be->backend->name);
+		}
 	}
 	if (stop)
 		return 1;
@@ -921,52 +901,11 @@ long check_from_memfd(int memfd, long *entries)
 }
 
 /*
- * check_from_list - Compare backend list contents with the LMDB database.
- * @list: Linked list populated by the backend loader.
- *
- * Returns the number of discrepancies discovered between backend data and
- * the local LMDB copy while incrementing backend_added_entries for newly
- * observed records. Logs diagnostic information for missing or mismatched
- * entries.
- */
-long check_from_list(list_t *list)
-{
-	long problems = 0;
-
-	list_item_t *item = list_get_first(list);
-	for (; item != NULL && !stop; item = item->next) {
-
-		int matched = 0;
-		int found = check_data_presence(item->index, item->data,
-						&matched);
-
-		if (!found) {
-			problems++;
-			// missing in db
-			// recently added file
-			if (matched == 0) {
-				msg(LOG_DEBUG,"%s is not in the trust database",
-				    (char*)item->index);
-				backend_added_entries++;
-			}
-
-			// updated file
-			// data miscompare
-			if (matched > 0) {
-				msg(LOG_DEBUG, "Trust data miscompare for %s",
-				    (char*)item->index);
-			}
-		}
-	}
-	return problems;
-}
-
-/*
  * check_database_copy - Validate LMDB contents against backend snapshots.
  *
- * Iterates each backend and invokes check_from_memfd or check_from_list to
- * compare the cached backend view with the local LMDB store. Summaries of
- * the totals and detected discrepancies are logged for diagnostics.
+ * Iterates each backend and invokes check_from_memfd to compare the cached
+ * backend view with the local LMDB store. Summaries of the totals and
+ * detected discrepancies are logged for diagnostics.
  *
  * Returns 0 when the databases agree, 1 when differences or an early stop are
  * encountered, and -1 when an unrecoverable error occurs.
@@ -991,8 +930,10 @@ static int check_database_copy(void)
 						     &be->backend->entries);
 			backend_total_entries += be->backend->entries;
 		} else {
-			problems += check_from_list(&be->backend->list);
-			backend_total_entries += be->backend->list.count;
+			msg(LOG_ERR,
+			    "%s backend does not provide a memfd snapshot",
+			    be->backend->name);
+			problems++;
 		}
 	}
 

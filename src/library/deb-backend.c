@@ -15,7 +15,6 @@
 #include "conf.h"
 #include "fapolicyd-backend.h"
 #include "file.h"
-#include "llist.h"
 #include "message.h"
 #include "md5-backend.h"
 
@@ -30,8 +29,6 @@ backend deb_backend = {
     deb_init_backend,
     deb_load_list,
     deb_destroy_backend,
-    /* list initialization */
-    {0, 0, NULL},
     -1,
     -1,
 };
@@ -196,33 +193,29 @@ static int deb_load_list(const conf_t *conf)
 {
         msg(LOG_DEBUG, "Loading debian backend");
 
-	/* Close any previous snapshot before rebuilding the backend view. */
-	if (deb_backend.memfd != -1) {
-		close(deb_backend.memfd);
-		deb_backend.memfd = -1;
-		deb_backend.entries = -1;
-	}
-
 	int memfd = memfd_create("deb_snapshot",
                                  MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	deb_backend.memfd = memfd;
+	deb_backend.entries = -1;
 	if (memfd < 0) {
-		msg(LOG_WARNING, "memfd_create failed for debian backend (%s)",
+		msg(LOG_ERR, "memfd_create failed for debian backend (%s)",
 		    strerror(errno));
 		return 1;
 	}
 
-	deb_backend.memfd = memfd;
-	deb_backend.entries = -1;
-
 	if (do_deb_load_list(conf) != 0) {
 		close(memfd);
 		deb_backend.memfd = -1;
+		deb_backend.entries = -1;
+		msg(LOG_WARNING,
+		    "Failed making debian backend snapshot due to load error");
 		return 1;
 	}
 
 	/* Seal the snapshot so readers see a stable view. */
 	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |
 		  F_SEAL_GROW | F_SEAL_WRITE) == -1)
+		// Not a fatal error
 		msg(LOG_WARNING, "Failed to seal debian backend memfd (%s)",
 		    strerror(errno));
 
@@ -232,7 +225,6 @@ static int deb_load_list(const conf_t *conf)
 static int deb_init_backend(void)
 {
   dpkg_program_init(kDebBackend);
-  list_init(&deb_backend.list);
 
   msg(LOG_INFO, "Loading debdb backend");
 
@@ -249,7 +241,6 @@ static int deb_init_backend(void)
 static int deb_destroy_backend(void)
 {
   dpkg_program_done();
-  list_empty(&deb_backend.list);
   modstatdb_shutdown();
   return 0;
 }

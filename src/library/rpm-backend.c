@@ -53,7 +53,6 @@
 #include "gcc-attributes.h"
 #include "fd-fgets.h"
 #include "fapolicyd-backend.h"
-#include "llist.h"
 
 #include "filter.h"
 #include "file.h"
@@ -62,7 +61,7 @@
 extern atomic_bool stop;
 
 int do_rpm_init_backend(void);
-int do_rpm_load_list(const conf_t *);
+int do_rpm_load_list(const conf_t *, int memfd);
 int do_rpm_destroy_backend(void);
 
 static int rpm_init_backend(void);
@@ -75,8 +74,6 @@ backend rpm_backend =
 	rpm_init_backend,
 	rpm_load_list,
 	rpm_destroy_backend,
-	/* list initialization */
-	{ 0, 0, NULL },
 	-1,
 	-1,
 };
@@ -267,12 +264,8 @@ static int rpm_load_list(const conf_t *conf)
 		int memfd;
 		memcpy(&memfd, CMSG_DATA(c), sizeof memfd);
 
-		// Close any previous snapshot before installing the new one
-		if (rpm_backend.memfd != -1) {
-			close(rpm_backend.memfd);
-			rpm_backend.memfd = -1;
-			rpm_backend.entries = -1;
-		}
+		// Mark entries unknown until a fresh snapshot is available.
+		rpm_backend.entries = -1;
 
 		if (fcntl(memfd, F_SETFD, FD_CLOEXEC) == -1) {
 			char err_buff[BUFFER_SIZE];
@@ -283,7 +276,6 @@ static int rpm_load_list(const conf_t *conf)
 
 		// Pass the memfd to the backend representation
 		rpm_backend.memfd = memfd;
-		rpm_backend.entries = -1;
 
 		waitpid(pid, NULL, 0);
 	} else
@@ -296,17 +288,20 @@ static int rpm_load_list(const conf_t *conf)
 
 // this function is used in fapolicyd-rpm-loader
 extern unsigned int debug_mode;
-int do_rpm_load_list(const conf_t *conf)
+int do_rpm_load_list(const conf_t *conf, int memfd)
 {
 	int rc;
 	unsigned int msg_count = 0;
 	unsigned int tsource = SRC_RPM;
 
-	// empty list before loading
-	list_empty(&rpm_backend.list);
-
 	// hash table
 	struct _hash_record *hashtable = NULL;
+	long entries = 0;
+
+	if (memfd < 0) {
+		msg(LOG_ERR, "Invalid memfd supplied to rpm loader");
+		return 1;
+	}
 
 	msg(LOG_INFO, "Loading rpmdb backend");
 	if ((rc = init_rpm())) {
@@ -368,8 +363,8 @@ int do_rpm_load_list(const conf_t *conf)
 				}
 			}
 
-			// We use asprintf here because the linked list
-			// takes custody of the memory and frees it later.
+			// We use asprintf here so that we can reuse existing
+			// cleanup paths and avoid manual buffer management.
 			if (asprintf(	&data,
 					DATA_FORMAT,
 					tsource,
@@ -388,17 +383,26 @@ int do_rpm_load_list(const conf_t *conf)
 
 				if (!rcd) {
 					rcd = (struct _hash_record*)
-					    malloc(sizeof(struct _hash_record));
+					     malloc(sizeof(struct _hash_record));
 					rcd->key = strdup(key);
 					HASH_ADD_KEYPTR( hh, hashtable,
 							 rcd->key,
 							 strlen(rcd->key),
-							 rcd );
-					if (list_append(&rpm_backend.list,
-							file_name, data)) {
+							  rcd );
+					if (dprintf(memfd, "%s %s\n",
+						    file_name, data) < 0) {
+						msg(LOG_ERR,
+						    "dprintf failed writing %s to memfd (%s)",
+						    file_name,
+						    strerror(errno));
 						free((void*)file_name);
 						free((void*)data);
+						rc = 1;
+						goto out;
 					}
+					entries++;
+					free((void*)file_name);
+					free((void*)data);
 				} else {
 					free((void*)file_name);
 					free((void*)data);
@@ -409,23 +413,26 @@ int do_rpm_load_list(const conf_t *conf)
 		}
 	}
 
+	rc = 0;
+out:
 	close_rpm();
 
 	// cleaning up
 	struct _hash_record *item, *tmp;
 	HASH_ITER( hh, hashtable, item, tmp) {
-		HASH_DEL( hashtable, item );
+		   HASH_DEL( hashtable, item );
 		free((void*)item->key);
 		free((void*)item);
 	}
 
-	return 0;
+	if (rc == 0)
+		rpm_backend.entries = entries;
+
+	return rc;
 }
 
 static int rpm_init_backend(void)
 {
-	list_init(&rpm_backend.list);
-
 	return 0;
 }
 
@@ -441,21 +448,17 @@ int do_rpm_init_backend(void)
 		return 1;
 	}
 
-	list_init(&rpm_backend.list);
-
 	return 0;
 }
 
 static int rpm_destroy_backend(void)
 {
-	list_empty(&rpm_backend.list);
 	return 0;
 }
 
 // this function is used in fapolicyd-rpm-loader
 int do_rpm_destroy_backend(void)
 {
-	list_empty(&rpm_backend.list);
 	filter_destroy();
 	return 0;
 }

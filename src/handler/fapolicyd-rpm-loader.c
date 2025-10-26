@@ -45,7 +45,6 @@
 #include "backend-manager.h"
 #include "daemon-config.h"
 #include "message.h"
-#include "llist.h"
 #include "fd-fgets.h"
 #include "paths.h"
 
@@ -55,7 +54,7 @@ conf_t config;				// Library needs this
 
 
 int do_rpm_init_backend(void);
-int do_rpm_load_list(conf_t * conf);
+int do_rpm_load_list(conf_t * conf, int memfd);
 int do_rpm_destroy_backend(void);
 
 extern backend rpm_backend;
@@ -81,14 +80,12 @@ int main(int argc, char * const argv[])
 	}
 
 	do_rpm_init_backend();
-	do_rpm_load_list(&config);
-
-	msg(LOG_INFO, "Loaded files %ld", rpm_backend.list.count);
-
-	list_item_t *item = list_get_first(&rpm_backend.list);
-	for (; item != NULL; item = item->next) {
-		dprintf(memfd, "%s %s\n", (const char*)item->index, (const char*)item->data);
+	if (do_rpm_load_list(&config, memfd)) {
+		msg(LOG_ERR, "Failed to populate rpm backend snapshot");
+		exit(1);
 	}
+
+	msg(LOG_INFO, "Loaded files %ld", rpm_backend.entries);
 
 	fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE);
 	lseek(memfd, 0, SEEK_SET);            /* rewind – not strictly needed */

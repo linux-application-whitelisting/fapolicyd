@@ -629,9 +629,10 @@ void trust_file_load_all(list_t *list, int memfd)
 	/* Populate either the in-memory list or the memfd snapshot. */
 	trust_file_load(TRUST_FILE_PATH, &_list, memfd);
 	nftw(TRUST_DIR_PATH, &ftw_load, FTW_NOPENFD, FTW_FLAGS);
-	if (memfd < 0)
-		list_merge(list, &_list);
-	else
+	if (memfd < 0) {
+		if (list)
+			list_merge(list, &_list);
+	} else
 		list_empty(&_list);
 	_memfd = -1;
 }

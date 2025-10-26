@@ -34,7 +34,6 @@
 #include <unistd.h>
 
 #include "fapolicyd-backend.h"
-#include "llist.h"
 #include "message.h"
 #include "trust-file.h"
 
@@ -50,7 +49,6 @@ backend file_backend =
 	file_init_backend,
 	file_load_list,
 	file_destroy_backend,
-	{ 0, 0, NULL },
 	-1,
 	-1,
 };
@@ -60,43 +58,35 @@ backend file_backend =
 static int file_load_list(const conf_t *conf)
 {
 	msg(LOG_DEBUG, "Loading file backend");
-	list_empty(&file_backend.list);
-
-	/* Close any previous snapshot before rebuilding the backend view. */
-	if (file_backend.memfd != -1) {
-		close(file_backend.memfd);
-		file_backend.memfd = -1;
-		file_backend.entries = -1;
-	}
 
 	int memfd = memfd_create("file_snapshot",
 				 MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	file_backend.memfd = memfd;
+	file_backend.entries = -1;
 	if (memfd < 0) {
-		msg(LOG_WARNING, "memfd_create failed for file backend (%s)",
+		msg(LOG_ERR, "memfd_create failed for file backend (%s)",
 		    strerror(errno));
 		return 1;
 	}
 
-	trust_file_load_all(&file_backend.list, memfd);
+	trust_file_load_all(NULL, memfd);
 
 	/* Seal the snapshot so readers see a stable view. */
 	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |
 		  F_SEAL_GROW | F_SEAL_WRITE) == -1)
+		// Not a fatal error
 		msg(LOG_WARNING, "Failed to seal file backend memfd (%s)",
 		    strerror(errno));
-	file_backend.memfd = memfd;
 
 	return 0;
 }
 
 static int file_init_backend(void)
 {
-	list_init(&file_backend.list);
 	return 0;
 }
 
 static int file_destroy_backend(void)
 {
-	list_empty(&file_backend.list);
 	return 0;
 }
