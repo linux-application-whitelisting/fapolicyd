@@ -343,7 +343,7 @@ Starting with fapolicyd-1.3.8, there is a new performance option, ignore_mounts.
 + **Advisory pre-check** before changing configuration:
 
 ```
-    fapolicyd-cli --check-ignore_mounts[=MOUNT]
+    fapolicyd-cli --check-ignore_mounts[=MOUNT] [--verbose]
 ```
 
  This verifies the mount exists, confirms noexec, scans for files matching the %languages macro (interpreter-consumable content), reports findings, and returns non-zero when suspicious files are found so automation can gate configuration changes.
@@ -496,7 +496,7 @@ Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 | --check-status         | Output internal metrics kept by the daemon. (New in 1.1.4)                                                |
 | --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
 | --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
-| --check-ignore_mounts  | Check the configured mounts that are ignored to see that they are mounted noexec and there are no suspicious files in the partition. (New in 1.3.8)                                       |
+| --check-ignore_mounts  | Check the configured mounts that are ignored to see that they are mounted noexec and there are no suspicious files in the partition. (New in 1.4)                                       |
 | --test-filter          | Test a path to a file against the filter rules to determine if a file will be trusted. (New in 1.3.7)     |
 
 
