@@ -256,11 +256,16 @@ static char *get_line(FILE *f, char *buf, unsigned size, int *lineno,
 			too_long = 0;
 			*lineno = *lineno + 1;
 		} else {
-			// If a line is too long skip it.
-			// Only output 1 warning
-			if (!too_long)
+			if (!too_long) {
+				if (feof(f)) {
+					// last line without trailing newline
+					return buf;
+				}
+				// If a line is too long skip it.
+				// Only output 1 warning
 				msg(LOG_ERR, "Skipping line %d in %s: too long",
 					*lineno, file);
+			}
 			too_long = 1;
 		}
 	}
