@@ -1,6 +1,8 @@
 Userspace
 =========
 * add db_max_size = auto
+* support sha-512 hashes in rpms
+* fix hard limit nesting depth of filter_check
 * Allow rules to express paths using globbing (fnmatch)
 
 Improve reconfigure via SIGHUP to update configuration
