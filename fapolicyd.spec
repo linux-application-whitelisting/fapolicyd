@@ -304,5 +304,5 @@ fi
 %endif
 
 %changelog
-* Wed Oct 29 2025 Petr Lautrbach <lautrbach@redhat.com> - 1.4.1-1
+* Fri Oct 31 2025 Petr Lautrbach <lautrbach@redhat.com> - 1.4.1-1
 - New release
