@@ -43,6 +43,7 @@
 #include <stdatomic.h>
 #include <limits.h>        /* PATH_MAX */
 #include <locale.h>
+#include <pthread.h>
 #ifndef HAVE_GETTID
 #include <sys/syscall.h>
 #endif
@@ -89,6 +90,9 @@ static struct fs_avl ignored_mounts;
 
 // List of mounts being watched
 static mlist *m = NULL;
+
+// Reconfiguration
+static atomic_bool reconfig_running = false;
 
 static void usage(void) NORETURN;
 
@@ -420,6 +424,60 @@ static void reconfigure(void)
 	set_reload_rules();
 
 	set_reload_trust_database();
+}
+
+/*
+ * reconfigure_thread_main - run configuration reload outside event loop.
+ * @arg: unused pointer.
+ * Returns NULL.
+ */
+static void *reconfigure_thread_main(void *arg  __attribute__ ((unused)))
+{
+	sigset_t sigs;
+
+	/* This is a worker thread. Don't handle external signals. */
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGTERM);
+	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGUSR1);
+	sigaddset(&sigs, SIGINT);
+	sigaddset(&sigs, SIGQUIT);
+	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
+
+	reconfigure();
+	atomic_store(&reconfig_running, false);
+	return NULL;
+}
+
+/*
+ * maybe_start_reconfigure_thread - start a reconfigure thread when requested
+ * and prevent a second one running until first finishes.
+ * @void: no arguments are required.
+ * Returns nothing.
+ */
+static void maybe_start_reconfigure_thread(void)
+{
+	int rc;
+	bool expected = false;
+
+	// Make sure one is not runnning since it is detached
+	if (!atomic_compare_exchange_strong(&reconfig_running, &expected, true))
+		return;
+
+	// OK to start up the thread
+	pthread_t tid;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	rc = pthread_create(&tid, &attr,
+			reconfigure_thread_main, NULL);
+	if (rc) {
+		msg(LOG_ERR, "Failed starting reconfigure thread (%s)",
+			strerror(rc));
+		atomic_store(&reconfig_running, false);
+	}
+	pthread_attr_destroy(&attr);
 }
 
 // This is a workaround for https://bugzilla.redhat.com/show_bug.cgi?id=643031
@@ -908,7 +966,7 @@ int main(int argc, const char *argv[])
 		if (hup) {
 			hup = false;
 			msg(LOG_DEBUG, "Got SIGHUP");
-			reconfigure();
+			maybe_start_reconfigure_thread();
 		}
 		rc = poll(pfd, 2, -1);
 
