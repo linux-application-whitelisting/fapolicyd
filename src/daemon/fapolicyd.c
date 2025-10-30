@@ -408,7 +408,28 @@ static int reload_configuration(void)
 
 	config.rpm_sha256_only = new_config.rpm_sha256_only;
 
-	// TODO add in more of the config items. The rest are tricky.
+	if (new_config.trust && (!config.trust ||
+				strcmp(new_config.trust, config.trust) != 0)) {
+		char *new_trust = strdup(new_config.trust);
+		if (new_trust) {
+			char *old_trust = (char *)config.trust;
+			config.trust = new_trust;
+			free(old_trust);
+		} else
+			msg(LOG_ERR,
+			    "Failed replacing trust backend list");
+	}
+
+	/*
+	 * Remaining daemon_config fields require restart-time changes:
+	 * q_size, subj_cache_size, and obj_cache_size are consumed when the
+	 * event queue and caches are created. uid/gid, allow_filesystem_mark,
+	 * watch_fs, and ignore_mounts are applied while fanotify marks are
+	 * installed. db_max_size fixes the LMDB map when the database opens,
+	 * and report_interval is bound to the decision thread's timer. None
+	 * of these components support resizing in-place yet, so their
+	 * configuration stays static.
+	 */
 
 	free_daemon_config(&new_config);
 
