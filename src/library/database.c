@@ -868,6 +868,12 @@ long check_from_memfd(int memfd, long *entries)
 				}
 			}
 
+			if (delim == NULL) {
+				msg(LOG_ERR, "Malformed backend record: %s",
+				    buff);
+				continue;
+			}
+
 			// We have everything, now do the check
 			char *index = buff;
 			char *data = delim + 1;
