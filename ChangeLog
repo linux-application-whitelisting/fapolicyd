@@ -1,3 +1,6 @@
+1.4.1
+- Fix deadlock on reconfigure
+
 1.4
 - Add ignore_mounts option to fapolicyd to not watch some mount points
 - add --check-ignore_mounts option to fapolicyd-cli
