@@ -197,7 +197,7 @@ void fanotify_update(mlist *m)
 	mnode *cur = m->head, *prev = NULL, *temp;
 
 	while (cur) {
-		if (cur->status == ADD) {
+		if (cur->status == MNT_ADD) {
 			// We will trust that the mask was set correctly
 			if (fanotify_mark(fd, FAN_MARK_ADD | mark_flag,
 					mask, -1, cur->path) == -1) {
@@ -211,7 +211,7 @@ void fanotify_update(mlist *m)
 		}
 
 		// Now remove the deleted mount point
-		if (cur->status == DELETE) {
+		if (cur->status == MNT_DELETE) {
 			msg(LOG_DEBUG, "Deleted %s mount point", cur->path);
 			temp = cur->next;
 

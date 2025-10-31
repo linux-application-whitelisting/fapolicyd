@@ -458,6 +458,7 @@ int filter_load_file(const char *path)
 	int res = 0;
 	FILE *stream;
 
+	msg(LOG_DEBUG, "Loading filter");
 	if (path == NULL) {
 		stream = fopen(OLD_FILTER_FILE, "r");
 

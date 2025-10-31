@@ -65,7 +65,9 @@
 #include "avl.h"
 #include "paths.h"
 #include "string-util.h"
-
+#ifdef USE_RPM
+#include "filter.h"
+#endif
 
 // Global program variables
 unsigned int debug_mode = 0;
@@ -441,7 +443,13 @@ static void reconfigure(void)
 	if (reload_configuration())
 		msg(LOG_WARNING,
 			"Continuing with previous configuration settings");
-
+#ifdef USE_RPM
+	filter_destroy();
+	if (filter_init())
+		msg(LOG_ERR, "Failed initializing filter configuration");
+	else if (filter_load_file(NULL))
+		msg(LOG_ERR, "Failed reloading filter configuration");
+#endif
 	set_reload_rules();
 
 	set_reload_trust_database();
@@ -633,7 +641,7 @@ static void handle_mounts(int fd)
 				// Can we find it in the old list?
 				if (mlist_find(m, point)) {
 					// Mark no change
-					m->cur->status = NO_CHANGE;
+					m->cur->status = MNT_NO_CHANGE;
 				} else
 					mlist_append(m, point);
 			}

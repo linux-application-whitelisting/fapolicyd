@@ -62,7 +62,7 @@ int mlist_append(mlist *m, const char *p)
 		if (newnode == NULL)
 			return 1;
 		newnode->path = strdup(p);
-		newnode->status = ADD;
+		newnode->status = MNT_ADD;
 	} else
 		return 1;
 
@@ -105,7 +105,7 @@ void mlist_mark_all_deleted(mlist *m)
 {
 	register mnode *n = m->head;
 	while (n) {
-		n->status = DELETE;
+		n->status = MNT_DELETE;
 		n = n->next;
 	}
 }

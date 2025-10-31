@@ -25,7 +25,7 @@
 #ifndef MOUNTS_HEADER
 #define MOUNTS_HEADER
 
-typedef enum { NO_CHANGE, ADD, DELETE } change_t;
+typedef enum { MNT_NO_CHANGE, MNT_ADD, MNT_DELETE } change_t;
 
 typedef struct _mnode{
 	const char *path;
