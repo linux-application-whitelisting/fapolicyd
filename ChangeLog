@@ -1,5 +1,6 @@
 1.4.1
 - Fix deadlock on reconfigure
+- On reconfigure, update the trust list and reload the rpm filter
 
 1.4
 - Add ignore_mounts option to fapolicyd to not watch some mount points
