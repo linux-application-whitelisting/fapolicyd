@@ -1148,6 +1148,14 @@ static int check_dirs(unsigned int i, const char *path)
  *
  *    This means only first two can be counted on. Looking for ld.so.cache
  *    is no good because its almost the last option.
+ *
+ * kworker:
+ *    exe=kworker/u130:6 : path=/usr/bin/cat
+ *    exe=kworker/u130:6 : path=/usr/lib64/ld-linux-x86-64.so.2
+ *    exe=/usr/bin/cat : path=/etc/ld.so.cache
+ *    exe=/usr/bin/cat : path=/usr/lib64/libc.so.6
+ *
+ *    Springs to life without ever being an object. Becomes STATE_NORMAL.
  */
 
 // Returns 0 if no match, 1 if a match, -1 on error

@@ -128,6 +128,16 @@ int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
 	return 0;
 }
 
+/*
+ * Check for the existance of an exe file. This is needed to help identify
+ * kworker threads. return 1 if exists and is readable and 0 if not.
+ */
+int does_exe_exist(pid_t pid)
+{
+	const char *path = proc_path(pid, "/exe");
+	return access(path, R_OK) == 0;
+}
+
 
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 {

@@ -57,6 +57,7 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf);
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf);
 uid_t get_program_auid_from_pid(pid_t pid);
 int get_program_sessionid_from_pid(pid_t pid);
+int does_exe_exist(pid_t pid);
 int check_trust_database(const char *exe, const char *digest, int mode);
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
@@ -185,6 +186,15 @@ int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2)
 	if (p1->time.tv_nsec != p2->time.tv_nsec)
 		return 1;
 	return 0;
+}
+
+/*
+ * Pretend every stubbed process has an executable symlink available.
+ */
+int does_exe_exist(pid_t pid)
+{
+	(void)pid;
+	return 1;
 }
 
 /*

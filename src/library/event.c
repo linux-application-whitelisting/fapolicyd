@@ -40,6 +40,7 @@
 #include "message.h"
 #include "policy.h"
 #include "rules.h"
+#include "process.h"
 
 #define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
 	FAN_OPEN_EXEC_PERM)
@@ -224,6 +225,14 @@ void destroy_event_system(void)
 	destroy_lru(obj_cache);
 }
 
+static inline void reset_subject_attributes(s_array *s)
+{
+	subject_reset(s, EXE);
+	subject_reset(s, COMM);
+	subject_reset(s, EXE_TYPE);
+	subject_reset(s, SUBJ_TRUST);
+}
+
 // Return 0 on success and 1 on error
 int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
@@ -291,10 +300,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				skip_path = 1;
 			}
 			evict = 0;
-			subject_reset(s, EXE);
-			subject_reset(s, COMM);
-			subject_reset(s, EXE_TYPE);
-			subject_reset(s, SUBJ_TRUST);
+			reset_subject_attributes(s);
 		}
 		// Static has to sequence through a state machine to get to
 		// the point where we can do a full subject reset. Still
@@ -425,10 +431,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				// procfs is concerned. Reset things that could
 				// change based on the new process name.
 				pinfo->state = STATE_FULL;
-				subject_reset(e->s, EXE);
-				subject_reset(e->s, COMM);
-				subject_reset(e->s, EXE_TYPE);
-				subject_reset(e->s, SUBJ_TRUST);
+				reset_subject_attributes(s);
 			}
 		}
 	}
@@ -545,14 +548,26 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		case EXE:
 		case EXE_DIR: {
 			char buf[PATH_MAX+1], *ptr;
-			ptr = get_program_from_pid(e->pid,
+
+			if (does_exe_exist(e->pid)) {
+				ptr = get_program_from_pid(e->pid,
 						sizeof(buf), buf);
-			if (ptr)
-				subj.str = strdup(buf);
-			else
-				subj.str = strdup("?");
+				if (ptr)
+					subj.str = strdup(buf);
+				else
+					subj.str = strdup("?");
+			} else {
+				/* kworkers have no exe entry, use comm */
+				sn = subject_access(s, COMM);
+				if (!sn)
+					sn = fetch_proc_status(e, COMM);
+				if (sn)
+					subj.str = strdup(sn->str);
+				else
+					subj.str = strdup("?");
 			}
-			break;
+		}
+		break;
 		case EXE_TYPE: {
 			char buf[128], *ptr;
 			ptr = get_type_from_pid(e->pid, sizeof(buf), buf);
