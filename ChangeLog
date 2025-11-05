@@ -1,4 +1,5 @@
 1.4.2
+- Correct identification of kworker threads
 
 1.4.1
 - Fix deadlock on reconfigure
