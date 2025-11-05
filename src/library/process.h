@@ -100,7 +100,6 @@ struct proc_info
 struct proc_info *stat_proc_entry(pid_t pid) __attr_dealloc_free;
 void clear_proc_info(struct proc_info *info);
 int compare_proc_infos(const struct proc_info *p1, const struct proc_info *p2);
-int does_exe_exist(pid_t pid);
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 	__attr_access ((__write_only__, 3, 2));
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)

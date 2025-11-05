@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <time.h>
+#include <errno.h>
 
 #include "event.h"
 #include "database.h"
@@ -549,14 +550,9 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		case EXE_DIR: {
 			char buf[PATH_MAX+1], *ptr;
 
-			if (does_exe_exist(e->pid)) {
-				ptr = get_program_from_pid(e->pid,
-						sizeof(buf), buf);
-				if (ptr)
-					subj.str = strdup(buf);
-				else
-					subj.str = strdup("?");
-			} else {
+			errno = 0;
+			ptr = get_program_from_pid(e->pid, sizeof(buf), buf);
+			if (errno == ENOENT) {
 				/* kworkers have no exe entry, use comm */
 				sn = subject_access(s, COMM);
 				if (!sn)
@@ -565,7 +561,10 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 					subj.str = strdup(sn->str);
 				else
 					subj.str = strdup("?");
-			}
+			} else if (ptr)
+				subj.str = strdup(buf);
+			else
+				subj.str = strdup("?");
 		}
 		break;
 		case EXE_TYPE: {
