@@ -33,11 +33,20 @@
 // Supported digest algorithms for file content measurement
 typedef enum {
 	FILE_HASH_ALG_NONE = 0,
+	FILE_HASH_ALG_MD5,       // Legacy support for MD5-based trust sources
 	FILE_HASH_ALG_SHA1,
 	FILE_HASH_ALG_SHA256,
 	FILE_HASH_ALG_SHA512,
-	FILE_HASH_ALG_MD5,       // Legacy support for MD5-based trust sources
 } file_hash_alg_t;
+
+#define MD5_LEN		16
+#define SHA1_LEN	20
+#define SHA256_LEN	32
+#define SHA512_LEN	64
+
+// Longest printable digest string expected - includes algorithm prefix and NUL
+#define FILE_DIGEST_STRING_MAX ((SHA512_LEN * 2) + 8)
+#define FILE_DIGEST_STRING_WIDTH (FILE_DIGEST_STRING_MAX - 1)
 
 // Information we will cache to identify the same executable
 struct file_info
@@ -50,16 +59,15 @@ struct file_info
 	file_hash_alg_t digest_alg;
 };
 
-#define SHA1_LEN	20
-#define SHA256_LEN	32
-#define SHA512_LEN	64
-
 void file_init(void);
 void file_close(void);
 struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
 void file_info_reset_digest(struct file_info *info);
+file_hash_alg_t file_hash_alg(const char *digest);
 void file_info_cache_digest(struct file_info *info, file_hash_alg_t alg);
 size_t file_hash_length(file_hash_alg_t alg);
+const char *file_hash_alg_name(file_hash_alg_t alg);
+file_hash_alg_t file_hash_name_alg(const char *name);
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
 int check_ignore_mount_noexec(const char *mounts_file, const char *point);
 int iterate_ignore_mounts(const char *ignore_list,

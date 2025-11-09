@@ -126,18 +126,41 @@ void file_close(void)
 size_t file_hash_length(file_hash_alg_t alg)
 {
 	switch (alg) {
+	case FILE_HASH_ALG_MD5:
+		return MD5_LEN;
 	case FILE_HASH_ALG_SHA1:
 		return SHA1_LEN;
 	case FILE_HASH_ALG_SHA256:
 		return SHA256_LEN;
 	case FILE_HASH_ALG_SHA512:
 		return SHA512_LEN;
-	case FILE_HASH_ALG_MD5:
-		return MD5_DIGEST_LENGTH;
 	default:
 		break;
 	}
 	return 0;
+}
+
+
+/*
+ * file_hash_alg - return the algorith for the digest size.
+ * @digest: the digest string to query.
+ * Returns the digest algorithm.
+ */
+file_hash_alg_t file_hash_alg(const char *digest)
+{
+	// Ordered most probable to least likely
+	size_t len = strlen(digest);
+	switch (len) {
+	case SHA256_LEN * 2:
+		return FILE_HASH_ALG_SHA256;
+	case SHA512_LEN * 2:
+		return FILE_HASH_ALG_SHA512;
+	case MD5_LEN * 2:
+		return FILE_HASH_ALG_MD5;
+	case SHA1_LEN * 2:
+		return FILE_HASH_ALG_SHA1;
+	}
+	return FILE_HASH_ALG_NONE;
 }
 
 
@@ -167,6 +190,39 @@ void file_info_cache_digest(struct file_info *info, file_hash_alg_t alg)
 		return;
 
 	info->digest_alg = alg;
+}
+
+static const char *hash_prefixes[] =
+{
+	NULL,		// FILE_HASH_ALG_NONE
+	"md5",
+	"sha1",
+	"sha256",
+	"sha512",
+};
+
+const char *file_hash_alg_name(file_hash_alg_t alg)
+{
+	unsigned value = alg;
+	if (alg > FILE_HASH_ALG_SHA512)
+		return NULL;
+	return hash_prefixes[value];
+}
+
+file_hash_alg_t file_hash_name_alg(const char *name)
+{
+	if (name == NULL || name[0] == 0)
+		return FILE_HASH_ALG_NONE;
+
+	if (name[0] == 'm')
+	    return FILE_HASH_ALG_MD5;
+	if (name[3] == '1')
+		return FILE_HASH_ALG_SHA1;
+	if (name[3] == '2')
+		return FILE_HASH_ALG_SHA256;
+	if (name[3] == '5')
+		return FILE_HASH_ALG_SHA512;
+	return FILE_HASH_ALG_NONE;
 }
 
 
@@ -609,7 +665,6 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 
 	return len;
 }
-
 
 /*
  * get_hash_from_fd2 - calculate the requested file digest.
