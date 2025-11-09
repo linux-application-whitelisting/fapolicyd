@@ -252,7 +252,7 @@ static FILE *open_file(void)
 	return NULL;
     }
 
-    char *sha_buf = get_hash_from_fd2(fd, sb.st_size, 1);
+    char *sha_buf = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
     if (sha_buf) {
 	msg(LOG_INFO, "Ruleset identity: %s", sha_buf);
 	free(sha_buf);

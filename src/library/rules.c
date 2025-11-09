@@ -672,7 +672,7 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 	case PATH:
 	case DEVICE:
 	case FTYPE:
-	case SHA256HASH:
+	case FILE_HASH:
 	case FMODE: {
 		if (add_attr_set(name, STRING, &index)) {
 			goto free_and_error;
@@ -1472,12 +1472,12 @@ static decision_t check_object(lnode *r, event_t *e)
 		// fall through
 
 		case DEVICE:
-		case SHA256HASH:
+		case FILE_HASH:
 		case FMODE: {
 
 			if (!obj->o) {
-				// Treat errors as a denial for sha256
-				if (type == SHA256HASH)
+			// Treat errors as a denial for file hash lookups
+			if (type == FILE_HASH)
 					return 0;
 				break;
 			}

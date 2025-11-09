@@ -30,6 +30,15 @@
 #include <sys/stat.h>
 #include "gcc-attributes.h"
 
+// Supported digest algorithms for file content measurement
+typedef enum {
+	FILE_HASH_ALG_NONE = 0,
+	FILE_HASH_ALG_SHA1,
+	FILE_HASH_ALG_SHA256,
+	FILE_HASH_ALG_SHA512,
+	FILE_HASH_ALG_MD5,       // Legacy support for MD5-based trust sources
+} file_hash_alg_t;
+
 // Information we will cache to identify the same executable
 struct file_info
 {
@@ -38,14 +47,19 @@ struct file_info
 	mode_t   mode;
 	off_t    size;
 	struct timespec time;
+	file_hash_alg_t digest_alg;
 };
 
+#define SHA1_LEN	20
 #define SHA256_LEN	32
 #define SHA512_LEN	64
 
 void file_init(void);
 void file_close(void);
 struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
+void file_info_reset_digest(struct file_info *info);
+void file_info_cache_digest(struct file_info *info, file_hash_alg_t alg);
+size_t file_hash_length(file_hash_alg_t alg);
 int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
 int check_ignore_mount_noexec(const char *mounts_file, const char *point);
 int iterate_ignore_mounts(const char *ignore_list,
@@ -63,7 +77,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	__attr_access ((__write_only__, 5, 4));
 char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
 	__attr_access ((__read_only__, 2, 3));
-char *get_hash_from_fd2(int fd, size_t size, int is_sha) __attr_dealloc_free;
+char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
+	__attr_dealloc_free;
 int get_ima_hash(int fd, char *sha);
 uint32_t gather_elf(int fd, off_t size);
 

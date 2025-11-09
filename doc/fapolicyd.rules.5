@@ -137,7 +137,10 @@ This option matches against the mime type of the file being accessed. See \fBfty
 .B trust
 This is a boolean describing whether it is required for the object to be in the trust database or not. A value of 1 means its required while 0 means its not. Trust checking is extended by the integrity setting in fapolicyd.conf.
 .TP
+.B filehash
+(the legacy keyword
 .B sha256hash
+is still accepted)
 This option matches against the sha256 hash of the file being accessed. The hash in the rules should be all lowercase letters and do NOT start with 0x. Lowercase is the default output of sha256sum.
 .RE
 

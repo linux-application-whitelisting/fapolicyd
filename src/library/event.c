@@ -664,9 +664,19 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 				obj.o = strdup("?");
 			}
 			break;
-		case SHA256HASH:
-			obj.o = get_hash_from_fd2(e->fd, o->info->size, 1);
-			break;
+		case FILE_HASH: {
+			/* Record which algorithm backs the cached digest. */
+			obj.o = get_hash_from_fd2(e->fd, o->info->size,
+						  FILE_HASH_ALG_SHA256);
+			if (o->info) {
+				if (obj.o) {
+					file_info_cache_digest(o->info,
+						  FILE_HASH_ALG_SHA256);
+				} else
+					file_info_reset_digest(o->info);
+			}
+		}
+		break;
 		case OBJ_TRUST: {
 			object_attr_t *path =  get_obj_attr(e, PATH);
 

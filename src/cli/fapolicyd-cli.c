@@ -1196,7 +1196,7 @@ static int verify_file(const char *path, off_t size, const char *sha)
 		return 1;
 	}
 
-	char *sha_buf = get_hash_from_fd2(fd, sb.st_size, 1);
+	char *sha_buf = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
 	close(fd);
 
 	if (sha_buf == NULL || strcmp(sha, sha_buf))
