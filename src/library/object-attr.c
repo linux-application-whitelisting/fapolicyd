@@ -36,7 +36,7 @@ static const nv_t table[] = {
 {	DEVICE,		"device" },
 {	FTYPE,		"ftype" },
 {	OBJ_TRUST,	"trust"},
-{	SHA256HASH,	"sha256hash" },
+{	FILE_HASH,	"filehash" },
 {	FMODE,		"mode" },
 };
 
@@ -44,6 +44,10 @@ static const nv_t table[] = {
 
 int obj_name_to_val(const char *name)
 {
+	// Accept the legacy name for compatibility with older rule sets.
+	if (strcmp(name, "sha256hash") == 0)
+		return FILE_HASH;
+
 	unsigned int i = 0;
 	while (i < MAX_OBJECTS) {
 		if (strcmp(name, table[i].name) == 0)

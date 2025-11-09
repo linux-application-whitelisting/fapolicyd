@@ -118,6 +118,63 @@ void file_close(void)
 }
 
 
+/*
+ * file_hash_length - return the binary digest size for the algorithm.
+ * @alg: file digest algorithm to query.
+ * Returns the digest length in bytes, or 0 when the algorithm is unknown.
+ */
+size_t file_hash_length(file_hash_alg_t alg)
+{
+	switch (alg) {
+	case FILE_HASH_ALG_SHA1:
+		return SHA1_LEN;
+	case FILE_HASH_ALG_SHA256:
+		return SHA256_LEN;
+	case FILE_HASH_ALG_SHA512:
+		return SHA512_LEN;
+	case FILE_HASH_ALG_MD5:
+		return MD5_DIGEST_LENGTH;
+	default:
+		break;
+	}
+	return 0;
+}
+
+
+/*
+ * file_info_reset_digest - clear cached digest metadata for a file record.
+ * @info: cached file entry to sanitize.
+ */
+void file_info_reset_digest(struct file_info *info)
+{
+	if (info == NULL)
+		return;
+
+	info->digest_alg = FILE_HASH_ALG_NONE;
+}
+
+
+/*
+ * file_info_cache_digest - persist digest metadata alongside cached files.
+ * @info: cached file entry to update.
+ * @alg: algorithm used to generate the cached digest.
+ * The binary digest length can be derived from file_hash_length(@alg) on
+ * demand, so it is not cached alongside the algorithm selection.
+ */
+void file_info_cache_digest(struct file_info *info, file_hash_alg_t alg)
+{
+	if (info == NULL)
+		return;
+
+	info->digest_alg = alg;
+}
+
+
+/*
+ * stat_file_entry - populate a cached description of an open descriptor.
+ * @fd: descriptor to stat for cache metadata.
+ * Returns an allocated struct file_info on success, otherwise NULL.
+ */
 struct file_info *stat_file_entry(int fd)
 {
 	struct stat sb;
@@ -143,6 +200,7 @@ struct file_info *stat_file_entry(int fd)
 			info->time.tv_nsec = sb.st_mtim.tv_nsec;
 		else
 			info->time.tv_nsec = sb.st_ctim.tv_nsec;
+		file_info_reset_digest(info);
 		return info;
 	}
 	return NULL;
@@ -155,6 +213,7 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2)
 	if (p1 == NULL || p2 == NULL)
 		return 1;
 
+	/* Digest metadata is advisory and excluded from equality checks. */
 	// Compare in the order to find likely mismatch first
 //msg(LOG_DEBUG, "inode %ld %ld", p1->inode, p2->inode);
 	if (p1->inode != p2->inode) {
@@ -553,45 +612,80 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 
 
 /*
- * Given a fd, calculate the hash by accessing size bytes of the file.
- * Calculate SHA256 by default or compute MD5.
- * Returns a char pointer of the hash which the caller must free.
- * If a size of 0 is passed, it will return a NULL pointer.
- * If there is an error with mmap, it will also return a NULL pointer.
+ * get_hash_from_fd2 - calculate the requested file digest.
+ * @fd: open descriptor whose contents should be measured.
+ * @size: number of bytes to include in the digest calculation.
+ * @alg: digest algorithm to use for the measurement.
+ * Returns a heap-allocated hex string on success or NULL when hashing fails.
  */
-static const char *degenerate_hash_sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-static const char *degenerate_hash_md5 = "d41d8cd98f00b204e9800998ecf8427e";
-char *get_hash_from_fd2(int fd, size_t size, const int is_sha)
+static const char *degenerate_hash_sha1 =
+	"da39a3ee5e6b4b0d3255bfef95601890afd80709";
+static const char *degenerate_hash_sha256 =
+	"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+static const char *degenerate_hash_sha512 =
+	"cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"
+	"47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
+static const char *degenerate_hash_md5 =
+	"d41d8cd98f00b204e9800998ecf8427e";
+char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 {
 	unsigned char *mapped;
 	char *digest = NULL;
+	size_t digest_length;
 
 	if (size == 0) {
-		if (is_sha)
-			return strdup(degenerate_hash_sha);
-		return strdup(degenerate_hash_md5);
+		switch (alg) {
+		case FILE_HASH_ALG_SHA1:
+			return strdup(degenerate_hash_sha1);
+		case FILE_HASH_ALG_SHA256:
+			return strdup(degenerate_hash_sha256);
+		case FILE_HASH_ALG_SHA512:
+			return strdup(degenerate_hash_sha512);
+		case FILE_HASH_ALG_MD5:
+			return strdup(degenerate_hash_md5);
+		default:
+			return NULL;
+		}
 	}
+
+	digest_length = file_hash_length(alg);
+	if (digest_length == 0)
+		return NULL;
 
 	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
-		const int digest_length = is_sha ? SHA256_DIGEST_LENGTH : 16;
-		// Just use the larger one as buffer.
-		unsigned char hptr[SHA256_DIGEST_LENGTH];
+		unsigned char hptr[SHA512_DIGEST_LENGTH];
+		int computed = 0;
 
-		if (is_sha) {
-			SHA256(mapped, size, (unsigned char *)&hptr);
-		} else {
+		switch (alg) {
+		case FILE_HASH_ALG_SHA1:
+			SHA1(mapped, size, hptr);
+			computed = 1;
+			break;
+		case FILE_HASH_ALG_SHA256:
+			SHA256(mapped, size, hptr);
+			computed = 1;
+			break;
+		case FILE_HASH_ALG_SHA512:
+			SHA512(mapped, size, hptr);
+			computed = 1;
+			break;
+		case FILE_HASH_ALG_MD5:
 #ifdef USE_DEB
-			MD5(mapped, size, (unsigned char *)&hptr);
-#else
-			;
+			MD5(mapped, size, hptr);
+			computed = 1;
 #endif
+			break;
+		default:
+			break;
 		}
 		munmap(mapped, size);
-		digest = malloc((SHA256_LEN * 2) + 1);
 
-		// Convert to ASCII string
-		bytes2hex(digest, hptr, digest_length);
+		if (computed) {
+			digest = malloc((digest_length * 2) + 1);
+			if (digest)
+				bytes2hex(digest, hptr, digest_length);
+		}
 	}
 	return digest;
 }

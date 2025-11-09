@@ -108,7 +108,7 @@ static char *make_data_string(const char *path)
 	}
 
 	// Get the hash
-	char *hash = get_hash_from_fd2(fd, sb.st_size, 1);
+	char *hash = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
 	close(fd);
 	if (!hash) {
 		msg(LOG_ERR, "Cannot hash %s", path);

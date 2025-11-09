@@ -60,8 +60,8 @@ int get_program_sessionid_from_pid(pid_t pid);
 int check_trust_database(const char *exe, const char *digest, int mode);
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
-			    size_t blen, char *buf);
-char *get_hash_from_fd2(int fd, size_t size, int is_sha);
+			     size_t blen, char *buf);
+char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg);
 
 struct stub_proc_record {
 	pid_t pid;
@@ -125,6 +125,53 @@ static const struct stub_file_record *find_file(int fd)
 		if (file_table[i].fd == fd)
 			return &file_table[i];
 	return NULL;
+}
+
+/*
+ * file_hash_length - return digest lengths for the unit test stubs.
+ * @alg: digest algorithm requested by the event code under test.
+ * Returns a constant binary length for the supported algorithms.
+ */
+size_t file_hash_length(file_hash_alg_t alg)
+{
+	switch (alg) {
+	case FILE_HASH_ALG_SHA1:
+		return SHA1_LEN;
+	case FILE_HASH_ALG_SHA256:
+		return SHA256_LEN;
+	case FILE_HASH_ALG_SHA512:
+		return SHA512_LEN;
+	case FILE_HASH_ALG_MD5:
+		return 16;
+	default:
+		return 0;
+	}
+}
+
+/*
+ * file_info_reset_digest - clear cached digest metadata for unit tests.
+ * @info: cached file entry supplied by the test harness.
+ */
+void file_info_reset_digest(struct file_info *info)
+{
+	if (info == NULL)
+		return;
+
+	info->digest_alg = FILE_HASH_ALG_NONE;
+}
+
+/*
+ * file_info_cache_digest - store digest metadata for unit test file entries.
+ * @info: cached file entry supplied by the test harness.
+ * @alg: algorithm associated with the cached digest string.
+ * Tests derive digest length with file_hash_length(@alg) when necessary.
+ */
+void file_info_cache_digest(struct file_info *info, file_hash_alg_t alg)
+{
+	if (info == NULL)
+		return;
+
+	info->digest_alg = alg;
 }
 
 /*
@@ -208,6 +255,7 @@ struct file_info *stat_file_entry(int fd)
 	info->size = rec->size;
 	info->time.tv_sec = 0;
 	info->time.tv_nsec = rec->nsec;
+	file_info_reset_digest(info);
 	return info;
 }
 
@@ -358,13 +406,12 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 /*
  * Produce a fake digest string so new_event() can populate hash attributes.
  */
-char *get_hash_from_fd2(int fd, size_t size, int is_sha)
+char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 {
-	(void)is_sha;
-	char *out = malloc(32);
+	char *out = malloc(64);
 	if (out == NULL)
 		return NULL;
-	snprintf(out, 32, "hash-%d-%zu", fd, (size_t)size);
+	snprintf(out, 64, "hash-%d-%zu-%d", fd, (size_t)size, (int)alg);
 	return out;
 }
 

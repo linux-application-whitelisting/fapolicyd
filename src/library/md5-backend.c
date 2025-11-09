@@ -93,7 +93,8 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 	msg(LOG_DEBUG, "\tFile size: %zu", file_size);
 	#endif
 
-	char *md5_digest = get_hash_from_fd2(fd, file_size, 0);
+	char *md5_digest = get_hash_from_fd2(fd, file_size,
+		FILE_HASH_ALG_MD5);
 	if (md5_digest == NULL) {
 		close(fd);
 		msg(LOG_ERR, "MD5 digest returned NULL");
@@ -109,7 +110,8 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 	free(md5_digest);
 
 	// It's OK so create a sha256 of the file
-	char *sha_digest = get_hash_from_fd2(fd, file_size, 1);
+	char *sha_digest = get_hash_from_fd2(fd, file_size,
+		FILE_HASH_ALG_SHA256);
 	close(fd);
 
 	if (sha_digest == NULL) {
