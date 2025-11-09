@@ -336,7 +336,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			int expected = (type == PID || type == PPID) ? SIGNED : UNSIGNED;
 			if (set->type != expected) {
 				msg(LOG_ERR, "rules: line:%d: assign_subject: "
-					"cannot assign %%%s which has %s type to %s (%s expected)",
+					"cannot assign %%%s which has %s type "
+					"to %s (%s expected)",
 					lineno, defined_set,
 					data_type_to_name(set->type),
 					subj_val_to_name(type, RULE_FMT_COLON),
@@ -347,7 +348,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 
 		if (type >= COMM && set->type != STRING) {
 			msg(LOG_ERR, "rules: line:%d: assign_subject: "
-				"cannot assign %%%s which has %s type to %s (STRING expected)",
+				"cannot assign %%%s which has %s type to %s "
+				"(STRING expected)",
 				lineno, defined_set,
 				data_type_to_name(set->type),
 				subj_val_to_name(type, RULE_FMT_COLON));
@@ -378,7 +380,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	case GID:
 	case PID:
 	case PPID: {
-		int set_type = (n->s[i].type == PID || n->s[i].type == PPID) ? SIGNED : UNSIGNED;
+		int set_type = (n->s[i].type == PID ||
+				n->s[i].type == PPID) ? SIGNED : UNSIGNED;
 
 		if (add_attr_set(name, set_type, &index)) {
 			goto free_and_error;
@@ -414,7 +417,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 							"rules: line:%d: assign_subject: "
 							"negative value %s not allowed for %s",
 							lineno, ptr,
-							subj_val_to_name(type, RULE_FMT_COLON));
+							subj_val_to_name(type,
+							    RULE_FMT_COLON));
 						goto free_and_error;
 					}
 					unsigned long val = strtoul(ptr, NULL, 10);
@@ -1464,7 +1468,8 @@ static decision_t check_object(lnode *r, event_t *e)
 		  // skip if fall through
 		  if (type == PATH) {
 			if (r->s[cnt].type == EXE || r->s[cnt].type == EXE_DIR)
-				if (check_str_attr_set(r->s[cnt].set, "untrusted"))
+				if (check_str_attr_set(r->s[cnt].set,
+						       "untrusted"))
 					if (is_obj_trusted(e))
 						return 0;
 		}
@@ -1476,8 +1481,8 @@ static decision_t check_object(lnode *r, event_t *e)
 		case FMODE: {
 
 			if (!obj->o) {
-			// Treat errors as a denial for file hash lookups
-			if (type == FILE_HASH)
+				// Treat errors as denial for file hash lookups
+				if (type == FILE_HASH)
 					return 0;
 				break;
 			}
