@@ -245,25 +245,25 @@ static FILE *open_file(void)
 		}
 	}
 
-    struct stat sb;
-    if (fstat(fd, &sb)) {
-	msg(LOG_ERR, "Failed to stat rule file %s", strerror(errno));
-	close(fd);
-	return NULL;
-    }
+	struct stat sb;
+	if (fstat(fd, &sb)) {
+		msg(LOG_ERR, "Failed to stat rule file %s", strerror(errno));
+		close(fd);
+		return NULL;
+	}
 
-    char *sha_buf = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
-    if (sha_buf) {
-	msg(LOG_INFO, "Ruleset identity: %s", sha_buf);
-	free(sha_buf);
-    } else {
-	msg(LOG_WARNING, "Failed to hash rule identity %s", strerror(errno));
-    }
+	char *sha_buf = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
+	if (sha_buf) {
+		msg(LOG_INFO, "Ruleset identity: %s", sha_buf);
+		free(sha_buf);
+	} else {
+		msg(LOG_WARNING, "Failed to hash rule identity %s",
+		    strerror(errno));
+	}
 
-    f = fdopen(fd, "r");
+	f = fdopen(fd, "r");
 	if (f == NULL) {
-		msg(LOG_ERR, "Error - fdopen failed (%s)",
-			strerror(errno));
+		msg(LOG_ERR, "Error - fdopen failed (%s)", strerror(errno));
 	}
 
 	return f;
