@@ -607,6 +607,10 @@ GUI
 ---
 If you need a GUI to create policy, manage trust, analyze policy, test policy, and deploy rules, you might want to checkout the [fapolicy-analyzer](https://github.com/ctc-oss/fapolicy-analyzer) project. RPM packages are in Fedora and EPEL.
 
+More Information
+----------------
+There are documents and unsupported tools that can help you understand fapolicyd and the fanotify API it depends on over in the [fapolicyd-extras repo](https://github.com/linux-application-whitelisting/fapolicyd-extras).
+
 FAQ
 ---
 1) Can this work with other distributions?
