@@ -131,9 +131,30 @@ int init_fanotify(const conf_t *conf, mlist *m)
 
 	// Start decision thread so its ready when first event comes
 	rpt_interval = conf->report_interval;
-	pthread_create(&decision_thread, NULL, decision_thread_main, NULL);
-	pthread_create(&deadmans_switch_thread, NULL,
-			deadmans_switch_thread_main, NULL);
+	int rc = pthread_create(&decision_thread, NULL,
+				decision_thread_main, NULL);
+	if (rc) {
+		msg(LOG_ERR, "Failed to create decision thread (%s)",
+			strerror(rc));
+		close(fd);
+		q_close(q);
+		exit(1);
+	}
+
+	rc = pthread_create(&deadmans_switch_thread, NULL,
+			    deadmans_switch_thread_main, NULL);
+	if (rc) {
+		msg(LOG_ERR, "Failed to create deadman's switch thread (%s)",
+		    strerror(rc));
+		atomic_store(&stop, true);
+		q_shutdown(q);
+		pthread_join(decision_thread, NULL);
+		if (rpt_timer_fd != -1)
+			close(rpt_timer_fd);
+		close(fd);
+		q_close(q);
+		exit(1);
+	}
 
 	mask = FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM;
 

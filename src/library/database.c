@@ -654,6 +654,11 @@ int do_memfd_update(int memfd, long *entries)
 	char buff[BUFFER_SIZE];
 	fd_fgets_state_t *st = fd_fgets_init();
 
+	if (st == NULL) {
+		msg(LOG_ERR, "Failed to initialize buffered memfd reader");
+		return 1;
+	}
+
 	// On any failure, fall back to descriptor based reads
 	lseek(memfd, 0, SEEK_SET); /* rewind in case */
 	if (fstat(memfd, &sb) == 0) {
@@ -827,6 +832,11 @@ long check_from_memfd(int memfd, long *entries)
 	struct stat sb;
 	char buff[BUFFER_SIZE];
 	fd_fgets_state_t *st = fd_fgets_init();
+
+	if (st == NULL) {
+		msg(LOG_ERR, "Failed to initialize buffered memfd reader");
+		return 1;
+	}
 
 	// On any failure, fall back to descriptor based reads
 	lseek(memfd, 0, SEEK_SET); /* rewind in case */
@@ -1581,8 +1591,12 @@ static void *update_thread_main(void *arg)
 			continue;
 		} else {
 			if (ffd[0].revents & POLLIN) {
-
 				fd_fgets_state_t *st = fd_fgets_init();
+				if (st == NULL) {
+					msg(LOG_ERR,
+				  "Failed to initialize buffered FIFO reader");
+					break;
+				}
 				do {
 					if (stop)
 						break;
