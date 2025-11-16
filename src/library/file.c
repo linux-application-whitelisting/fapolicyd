@@ -601,7 +601,9 @@ int get_ima_hash(int fd, char *sha)
 {
 	unsigned char tmp[34];
 
-	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 0) {
+	// Make sure at least 2 are returned or we have uninitialized access
+	// at tmp[1] below.
+	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 2) {
 		msg(LOG_DEBUG, "Can't read ima xattr");
 		return 0;
 	}
