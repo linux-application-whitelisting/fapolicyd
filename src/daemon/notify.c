@@ -316,7 +316,10 @@ static void *deadmans_switch_thread_main(void *arg)
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	do {
-		// Are you alive decision thread?
+		// Are you alive decision thread? The idea of triggering
+		// on 5 is that if it's less than 5 it's still alive and
+		// processing, although maybe running behind sometimes.
+		// But if we are over 5, we are losing the battle.
 		if (!alive && !stop && q_queue_length(q) > 5) {
 			msg(LOG_ERR,
 				"Deadman's switch activated...killing process");
