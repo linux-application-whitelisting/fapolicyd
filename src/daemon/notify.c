@@ -56,7 +56,7 @@ static pid_t our_pid;
 static struct queue *q = NULL;
 static pthread_t decision_thread;
 static pthread_t deadmans_switch_thread;
-static atomic_int alive = 1;
+static atomic_bool alive = true;
 static int fd = -1;
 static int rpt_timer_fd = -1;
 static uint64_t mask;
@@ -296,13 +296,13 @@ static void *deadmans_switch_thread_main(void *arg)
 
 	do {
 		// Are you alive decision thread?
-		if (alive == 0 && !stop && q_queue_length(q) > 5) {
+		if (!alive && !stop && q_queue_length(q) > 5) {
 			msg(LOG_ERR,
 				"Deadman's switch activated...killing process");
 			raise(SIGKILL);
 		}
 		// OK, prove it again.
-		alive = 0;
+		alive = false;
 		sleep(3);
 	} while (!stop);
 	return NULL;
@@ -436,9 +436,9 @@ static void *decision_thread_main(void *arg)
 			}
 		}
 
-		alive = 1;
+		alive = true;
 		rpt_is_stale = 1;
-		alive = 1;
+		alive = true;
 		make_policy_decision(&metadata, fd, mask);
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");

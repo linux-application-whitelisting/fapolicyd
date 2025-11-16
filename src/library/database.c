@@ -69,7 +69,7 @@ static const char *db = DB_NAME;
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static integrity_t integrity;
-static atomic_int reload_db = 0;
+static atomic_bool reload_db = false;
 
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
@@ -1464,7 +1464,7 @@ static int handle_record(const char * buffer)
 
 void set_reload_trust_database(void)
 {
-	reload_db = 1;
+	reload_db = true;
 }
 
 static void do_reload_db(conf_t* config)
@@ -1555,7 +1555,7 @@ static void *update_thread_main(void *arg)
 		}
 		// got SIGHUP
 		if (reload_db) {
-			reload_db = 0;
+			reload_db = false;
 			do_reload_db(config);
 		}
 

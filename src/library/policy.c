@@ -54,7 +54,7 @@
 #define NGID_LIMIT		32
 
 static llist rules;
-static unsigned long allowed = 0, denied = 0;
+static atomic_ulong allowed = 0, denied = 0;
 static nvlist_t fields[MAX_SYSLOG_FIELDS];
 static unsigned int num_fields;
 static unsigned int syslog_proc_status_mask;
@@ -664,9 +664,9 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 	}
 
 	if ((decision & DENY) == DENY)
-		denied++;
+		atomic_fetch_add_explicit(&denied, 1, memory_order_relaxed);
 	else
-		allowed++;
+		atomic_fetch_add_explicit(&allowed, 1, memory_order_relaxed);
 
 	if (metadata->mask & mask) {
 		// if in debug mode, do not allow audit events
@@ -687,13 +687,13 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 unsigned long getAllowed(void)
 {
-	return allowed;
+	return atomic_load_explicit(&allowed, memory_order_relaxed);
 }
 
 
 unsigned long getDenied(void)
 {
-	return denied;
+	return atomic_load_explicit(&denied, memory_order_relaxed);
 }
 
 
