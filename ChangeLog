@@ -1,5 +1,6 @@
 1.4.2
 - Correct identification of kworker threads
+- Fix various threading, initialization, and function attribute issues
 
 1.4.1
 - Fix deadlock on reconfigure
