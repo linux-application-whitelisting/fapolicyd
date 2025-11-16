@@ -459,7 +459,6 @@ static void *decision_thread_main(void *arg)
 
 		alive = true;
 		rpt_is_stale = 1;
-		alive = true;
 		make_policy_decision(&metadata, fd, mask);
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");
