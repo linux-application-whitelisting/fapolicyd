@@ -78,6 +78,7 @@ static pthread_mutex_t rule_lock;
 // Local functions
 static void *update_thread_main(void *arg);
 static int update_database(conf_t *config);
+static int write_db(const char *idx, const char *data) __wur;
 
 // External variables
 extern atomic_bool stop;

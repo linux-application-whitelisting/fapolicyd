@@ -17,6 +17,15 @@
 #ifndef __attribute_malloc__
 #  define __attribute_malloc__
 #endif
+#ifndef __attribute_const__
+#  define __attribute_const__
+#endif
+#ifndef __attribute_pure__
+#  define __attribute_pure__
+#endif
+#ifndef __nonnull
+#  define __nonnull(params)
+#endif
 #ifndef __wur
 # define __wur
 #endif

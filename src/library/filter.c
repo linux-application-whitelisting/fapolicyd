@@ -75,6 +75,8 @@ void filter_set_trace(FILE *stream)
 
 static filter_t *filter_create_obj(void);
 static void filter_destroy_obj(filter_t *_filter);
+static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
+			    int _level, int _offset, filter_t *_filter);
 
 /*
  * filter_init - initialize module and global filter tree
@@ -394,9 +396,7 @@ filter_rc_t filter_check(const char *_path)
 						goto end;
 					}
 				}
-
 			}
-
 		}
 
 		if (filter->type != NONE) {

@@ -43,6 +43,7 @@
 #include "subject-attr.h"
 #include "object-attr.h"
 #include "string-util.h"
+#include "gcc-attributes.h"
 
 //#define DEBUG
 #define UNUSED 0xFF
@@ -59,6 +60,11 @@
 #define PATTERN_LD_PRELOAD_VAL 3
 
 static unsigned int proc_status_mask;
+
+static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
+	__wur;
+static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
+	__wur;
 
 int rules_create(llist *l)
 {

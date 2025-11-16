@@ -29,6 +29,7 @@
 #include <lmdb.h>
 #include "conf.h"
 #include "file.h"
+#include "gcc-attributes.h"
 
 typedef struct {
 	MDB_val path;
@@ -39,21 +40,22 @@ void lock_update_thread(void);
 void unlock_update_thread(void);
 void set_integrity_mode(integrity_t mode);
 
-const char *lookup_tsource(unsigned int tsource);
-int preconstruct_fifo(const conf_t *config);
-int init_database(conf_t *config);
-int check_trust_database(const char *path, struct file_info *info, int fd);
+const char *lookup_tsource(unsigned int tsource) __attribute_const__;
+int preconstruct_fifo(const conf_t *config) __nonnull ((1));
+int init_database(conf_t *config) __nonnull ((1));
+int check_trust_database(const char *path, struct file_info *info, int fd)
+	__nonnull ((1));
 void set_reload_trust_database(void);
 void close_database(void);
 void database_report(FILE *f);
-int unlink_db(void);
+int unlink_db(void) __wur;
 void unlink_fifo(void);
 
 void lock_rule(void);
 void unlock_rule(void);
 
 // Database verification functions
-int walk_database_start(conf_t *config);
+int walk_database_start(conf_t *config) __nonnull ((1));
 walkdb_entry_t *walk_database_get_entry(void);
 int walk_database_next(void);
 void walk_database_finish(void);

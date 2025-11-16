@@ -100,6 +100,9 @@ static char *working_buffer = NULL;
 
 // This function returns 1 on success and 0 on failure
 static int parsing_obj;
+static void *fmemccpy(void* restrict dst, const void* restrict src, ssize_t n)
+	__attr_access((__write_only__, 1, 3))
+	__attr_access((__read_only__, 2, 3));
 static int lookup_field(const char *ptr)
 {
 	if (strcmp("rule", ptr) == 0) {
