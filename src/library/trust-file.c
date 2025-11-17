@@ -341,8 +341,8 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		 * printable hex length and binary digest sizes in sync with
 		 * upstream algorithm support.
 		 */
-		file_hash_alg_t alg = file_hash_alg(sha);
 		size_t digest_len = strlen(sha);
+		file_hash_alg_t alg = file_hash_alg(len);
 		size_t expected_len = file_hash_length(alg) * 2;
 
 		if (expected_len == 0 || digest_len != expected_len) {
