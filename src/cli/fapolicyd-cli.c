@@ -155,6 +155,8 @@ static int do_delete_db(void)
 
 // This function opens the trust db and iterates over the entries.
 // It returns a 0 on success and non-zero on failure
+static int verify_file(const char *path, off_t size, const char *sha,
+		        unsigned int tsource);
 static int do_dump_db(void)
 {
 	int rc;
@@ -219,7 +221,7 @@ static int do_dump_db(void)
 		goto txn_abort;
 	}
 	do {
-		char *path = NULL, *data = NULL, sha[65];
+		char *path = NULL, *data = NULL, sha[FILE_DIGEST_STRING_MAX];
 		unsigned int tsource;
 		off_t size;
 		const char *source;
@@ -1175,10 +1177,30 @@ finish:
 }
 
 // Returns 0 = everything is OK, 1 = there is a problem
-static int verify_file(const char *path, off_t size, const char *sha)
+static int verify_file(const char *path, off_t size, const char *sha,
+		        unsigned int tsource)
 {
 	int fd, warn_sha = 0;
 	struct stat sb;
+	file_hash_alg_t alg;
+	size_t digest_len, expected_len;
+	const char *alg_name;
+
+	alg = file_hash_alg(sha);
+	digest_len = strlen(sha);
+	expected_len = file_hash_length(alg) * 2;
+
+	if (expected_len == 0 || digest_len != expected_len) {
+		printf("%s miscompares: cannot infer digest algorithm\n", path);
+		return 1;
+	}
+
+	/* File and Debian backends only store SHA256 digests. */
+	if (tsource != SRC_RPM && alg != FILE_HASH_ALG_SHA256) {
+		printf("%s miscompares: unsupported %s digest\n", path,
+		       file_hash_alg_name(alg));
+		return 1;
+	}
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
@@ -1196,7 +1218,7 @@ static int verify_file(const char *path, off_t size, const char *sha)
 		return 1;
 	}
 
-	char *sha_buf = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
+	char *sha_buf = get_hash_from_fd2(fd, sb.st_size, alg);
 	close(fd);
 
 	if (sha_buf == NULL || strcmp(sha, sha_buf))
@@ -1204,18 +1226,9 @@ static int verify_file(const char *path, off_t size, const char *sha)
 	free(sha_buf);
 
 	if (warn_sha) {
-		const char *sha_desc;
-		size_t sha_len = strlen(sha);
-
-		// For now, only sha256 is supported
-		if (sha_len < 64)
-			sha_desc = "is a sha1";
-		else if (sha_len > 64)
-			sha_desc = "is a sha512";
-		else
-			sha_desc = "sha256";
-
-		printf("%s miscompares: %s\n", path, sha_desc);
+		alg_name = file_hash_alg_name(alg);
+		printf("%s miscompares: %s\n", path,
+		       alg_name ? alg_name : "digest");
 		return 1;
 	}
 	return 0;
@@ -1238,9 +1251,9 @@ static int check_trustdb(void)
 		return 1;
 
 	do {
-		unsigned int tsource; // unused
+		unsigned int tsource;
 		off_t size;
-		char sha[65];
+		char sha[FILE_DIGEST_STRING_MAX];
 		char path[448];
 		char data[80];
 
@@ -1254,8 +1267,8 @@ static int check_trustdb(void)
 			fprintf(stderr, "%s data entry is corrupted\n", path);
 			continue;
 		}
-		if (verify_file(path, size, sha))
-			found =1 ;
+		if (verify_file(path, size, sha, tsource))
+			found = 1;
 	} while (walk_database_next());
 
 	walk_database_finish();
