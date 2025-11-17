@@ -57,6 +57,7 @@ struct file_info
 	off_t    size;
 	struct timespec time;
 	file_hash_alg_t digest_alg;
+	char digest[FILE_DIGEST_STRING_MAX];
 };
 
 void file_init(void);
@@ -84,10 +85,10 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf)
 	__attr_access ((__write_only__, 5, 4));
 char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
-	__attr_access ((__read_only__, 2, 3));
+	 __attr_access ((__read_only__, 2, 3));
 char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 	__attr_dealloc_free;
-int get_ima_hash(int fd, char *sha);
+int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha);
 uint32_t gather_elf(int fd, off_t size);
 
 #endif

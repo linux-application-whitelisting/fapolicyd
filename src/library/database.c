@@ -70,6 +70,13 @@ static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static integrity_t integrity;
 static atomic_bool reload_db = false;
+/*
+ * IMA mismatch logging policy: five LOG_ERR entries, five LOG_CRIT entries,
+ * one silence notice, then suppression to protect syslog from floods.
+ */
+static unsigned int ima_mismatch_err_budget = 5;
+static unsigned int ima_mismatch_crit_budget = 5;
+static int ima_mismatch_silenced;
 
 static pthread_t update_thread;
 static pthread_mutex_t update_lock;
@@ -353,6 +360,43 @@ static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
 	return 0;
 }
 
+/*
+ * log_ima_mismatch - Rate-limit diagnostics when IMA measurements disagree.
+ * @path: file path associated with the mismatch.
+ * @record_alg: algorithm stored in metadata backing the trust database.
+ * @ima_alg: algorithm parsed from the security.ima digest-ng header.
+ */
+static void log_ima_mismatch(const char *path, file_hash_alg_t record_alg,
+			      file_hash_alg_t ima_alg)
+{
+	const char *meta = file_hash_alg_name(record_alg);
+	const char *ima = file_hash_alg_name(ima_alg);
+
+	if (ima_mismatch_silenced)
+		return;
+
+	if (ima_mismatch_err_budget) {
+		ima_mismatch_err_budget--;
+		msg(LOG_ERR,
+			"IMA digest mismatch for %s (metadata %s, xattr %s)",
+			path, meta ? meta : "unknown",
+			ima ? ima : "unknown");
+		return;
+	}
+
+	if (ima_mismatch_crit_budget) {
+		ima_mismatch_crit_budget--;
+		msg(LOG_CRIT,
+		    "IMA digest mismatch for %s (metadata %s, xattr %s)",
+		    path, meta ? meta : "unknown",
+		    ima ? ima : "unknown");
+		return;
+	}
+
+	msg(LOG_NOTICE,
+	    "IMA digest mismatch logging silenced after repeated reports");
+	ima_mismatch_silenced = 1;
+}
 
 /*
  * Convert path to a hash value. Used when the path exceeds the LMDB key
@@ -1262,19 +1306,52 @@ retry_res:
 
 		} else if (integrity == IN_IMA) {
 			int rc = 1;
+			char *hash = NULL;
+			file_hash_alg_t ima_alg = FILE_HASH_ALG_NONE;
 
 			// read xattr only the first time
 			if (retry == 1)
-				rc = get_ima_hash(fd, sha_xattr);
+				rc = get_ima_hash(fd, &ima_alg, sha_xattr);
 
 			if (rc) {
 				if ((record.size == info->size) &&
-					(strcmp(record.digest,
-						sha_xattr) == 0)) {
+				(strcmp(record.digest,
+				sha_xattr) == 0)) {
+					file_info_cache_digest(info, ima_alg);
+					strncpy(info->digest, sha_xattr,
+						FILE_DIGEST_STRING_MAX-1);
+					info->digest[FILE_DIGEST_STRING_MAX-1]=0;
 					return 1;
+				} else if (retry == 1 &&
+						ima_alg != FILE_HASH_ALG_NONE) {
+				/*
+				 * Rehash using the IMA algorithm to separate
+				 * metadata drift from content changes. This maps
+				 * the enum to the hashing helper and caches the
+				 * result for the FILE_HASH attribute to avoid
+				 * repeating the costly recomputation.
+				 */
+				hash = get_hash_from_fd2(fd, info->size, ima_alg);
+				if (hash) {
+					strncpy(calc_digest, hash,
+					FILE_DIGEST_STRING_MAX-1);
+					calc_digest[FILE_DIGEST_STRING_MAX-1]=0;
+					free(hash);
+					file_info_cache_digest(info, ima_alg);
+					strncpy(info->digest, calc_digest,
+						FILE_DIGEST_STRING_MAX-1);
+					info->digest[FILE_DIGEST_STRING_MAX-1]=0;
+					if ((record.size == info->size) &&
+					(strcmp(record.digest, calc_digest)==0))
+						return 1;
 				} else {
-					goto retry_res;
+					*error = 1;
+					return 0;
 				}
+				}
+
+				log_ima_mismatch(path, record.alg, ima_alg);
+				goto retry_res;
 
 			} else {
 				*error = 1;
@@ -1296,13 +1373,16 @@ retry_res:
 					if (digest_len <
 							FILE_DIGEST_STRING_MAX)
 						calc_digest[digest_len] = 0;
-					free(hash);
-					file_info_cache_digest(info,
-							       record.alg);
-				} else {
-					*error = 1;
-					return 0;
-				}
+				free(hash);
+				file_info_cache_digest(info,
+						       record.alg);
+				strncpy(info->digest, calc_digest,
+					FILE_DIGEST_STRING_MAX-1);
+				info->digest[FILE_DIGEST_STRING_MAX-1] = 0;
+			} else {
+				*error = 1;
+				return 0;
+			}
 			}
 
 			if ((record.size == info->size) &&

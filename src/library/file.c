@@ -174,6 +174,7 @@ void file_info_reset_digest(struct file_info *info)
 		return;
 
 	info->digest_alg = FILE_HASH_ALG_NONE;
+	info->digest[0] = 0;
 }
 
 
@@ -200,6 +201,42 @@ static const char *hash_prefixes[] =
 	"sha256",
 	"sha512",
 };
+
+/*
+ * ima_algo_desc - Associate kernel IMA identifiers with local hashing enums.
+ * @ima_alg: Algorithm identifier stored in the IMA digest-ng header.
+ * @alg:     Local file hashing algorithm used when recomputing the digest.
+ * @digest_len: Binary digest length for @alg.
+ */
+struct ima_algo_desc {
+	uint8_t ima_alg;
+	file_hash_alg_t alg;
+	size_t digest_len;
+};
+
+static const struct ima_algo_desc ima_algo_map[] = {
+	{ HASH_ALGO_MD5, FILE_HASH_ALG_MD5, MD5_LEN },
+	{ HASH_ALGO_SHA1, FILE_HASH_ALG_SHA1, SHA1_LEN },
+	{ HASH_ALGO_SHA256, FILE_HASH_ALG_SHA256, SHA256_LEN },
+	{ HASH_ALGO_SHA512, FILE_HASH_ALG_SHA512, SHA512_LEN },
+};
+
+/*
+ * ima_lookup_algo - Translate an IMA digest-ng algorithm id to local metadata.
+ * @ima_id: Numeric algorithm encoded in the xattr header.
+ * Returns a pointer to the mapped description, or NULL when unsupported.
+ */
+static const struct ima_algo_desc *ima_lookup_algo(uint8_t ima_id)
+{
+	unsigned int i;
+
+	for (i = 0; i < (sizeof(ima_algo_map)/sizeof(ima_algo_map[0])); i++) {
+		if (ima_algo_map[i].ima_alg == ima_id)
+			return &ima_algo_map[i];
+	}
+
+	return NULL;
+}
 
 const char *file_hash_alg_name(file_hash_alg_t alg)
 {
@@ -746,29 +783,53 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 }
 
 // This function returns 0 on error and 1 if successful
-int get_ima_hash(int fd, char *sha)
+/*
+ * get_ima_hash - Decode the IMA digest-ng xattr and expose the measurement.
+ * @fd: open file descriptor backed by an IMA measurement.
+ * @alg: output parameter updated with the parsed algorithm, may be NULL.
+ * @sha: caller supplied buffer large enough for FILE_DIGEST_STRING_MAX.
+ * Returns 1 when a supported digest is parsed successfully, or 0 on failure.
+ */
+int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
 {
-	unsigned char tmp[34];
+	const struct ima_algo_desc *desc;
+	unsigned char tmp[2 + SHA512_LEN];
+	ssize_t len;
 
-	// Make sure at least 2 are returned or we have uninitialized access
-	// at tmp[1] below.
-	if (fgetxattr(fd, "security.ima", tmp, sizeof(tmp)) < 2) {
+	if (alg)
+		*alg = FILE_HASH_ALG_NONE;
+
+	/*
+	 * digest-ng places the format type in byte 0 and the hash algorithm in
+	 * byte 1. The remaining bytes hold the binary digest whose length depends
+	 * on the algorithm chosen by the policy, so we size the buffer for the
+	 * largest algorithm we support.
+	 */
+	len = fgetxattr(fd, "security.ima", tmp, sizeof(tmp));
+	if (len < 2) {
 		msg(LOG_DEBUG, "Can't read ima xattr");
 		return 0;
 	}
 
-	// Let's check what we got
 	if (tmp[0] != IMA_XATTR_DIGEST_NG) {
 		msg(LOG_DEBUG, "Wrong ima xattr type");
 		return 0;
 	}
-	if (tmp[1] != HASH_ALGO_SHA256) {
-		msg(LOG_DEBUG, "Wrong ima hash algorithm");
+
+	desc = ima_lookup_algo(tmp[1]);
+	if (desc == NULL) {
+		msg(LOG_DEBUG, "Unsupported ima hash algorithm %u", tmp[1]);
+		return 0;
+	}
+	if (len < (ssize_t)(2 + desc->digest_len)) {
+		msg(LOG_DEBUG, "ima xattr too small for alg %u", tmp[1]);
 		return 0;
 	}
 
-	// Looks like it what we want...
-	bytes2hex(sha, &tmp[2], SHA256_LEN);
+	bytes2hex(sha, &tmp[2], desc->digest_len);
+	if (alg)
+		*alg = desc->alg;
+
 	return 1;
 }
 

@@ -177,6 +177,7 @@ void file_info_reset_digest(struct file_info *info)
 		return;
 
 	info->digest_alg = FILE_HASH_ALG_NONE;
+	info->digest[0] = 0;
 }
 
 /*
