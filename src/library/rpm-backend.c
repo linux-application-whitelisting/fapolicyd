@@ -346,19 +346,15 @@ int do_rpm_load_list(const conf_t *conf, int memfd)
 			const char *sha = get_sha256_rpm(&len);
 			char *data;
 
-			// RPMs may use SHA256 or stronger digests. Filter out
-			// short digests (including SHA1) while accepting
-			// anything 64 characters or longer.
-			if (len < 64) {
-				// Limit this to 5 if production
-				if (debug_mode || msg_count++ < 5) {
-					msg(LOG_WARNING,
-					    "No acceptable digest for %s",
-					    file_name);
-				}
-
-				// skip the entry if there is no acceptable hash
+			// Filter out short digests when rpm_sha256_only is
+			// set. SHA256 and larger are unconditionally accepted.
+			if (len < (SHA256_LEN*2)) {
 				if (conf && conf->rpm_sha256_only) {
+					// Limit this to 5 if production
+					if (debug_mode || msg_count++ < 5)
+						msg(LOG_WARNING,
+						  "No acceptable digest for %s",
+						  file_name);
 					free((void *)file_name);
 					continue;
 				}

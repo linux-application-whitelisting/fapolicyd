@@ -103,8 +103,7 @@ Example:
 
 .TP
 .B rpm_sha256_only
-The option set to 1 forces the daemon to work only with SHA256 hashes. This is useful on the systems where the integrity is set to SHA256 or IMA and some rpms were originally built with e.g. SHA1. The daemon will ignore these SHA1 entries therefore they can be added manually via CLI with correct SHA256 to a trust file later. If set to 0 the daemon stores SHA1 in trustdb as well. This is compatible with older behavior which works with the integrity set to NONE and SIZE. The NONE or SIZE integrity setting considers the files installed via rpm as trusted and it does not care about their hashes at all. On the other hand the integrity set to SHA256 or IMA will never consider a file with SHA1 in trustdb as trusted. The default value is 0.
-The rpm backend records the digest length the package supplies, so systems configured to build or install RPMs with SHA512 store SHA512 values in the trust database unless \fBrpm_sha256_only\fP is set to 1.\^ Leaving the default of 0 accepts both SHA256 and SHA512 rpm content, while enabling the option filters out any digest shorter than SHA256. This setting only affects data imported from the rpm database and does not change hashes supplied by other trust sources.
+When this option is set to 1, it will force the daemon to work only with SHA256 and larger hashes. This is useful on the systems where the integrity is set to SHA256 or IMA and some rpms were originally built with e.g. SHA1. The daemon will ignore these SHA1 entries. If set to 0 the daemon stores SHA1/MD5 in trustdb as well. This is compatible with older behavior which works with the integrity set to NONE and SIZE. The NONE or SIZE integrity setting considers the files installed via rpm as trusted and it does not care about their hashes at all. On the other hand the integrity set to SHA256 or IMA will never consider a file with SHA1 in trustdb as trusted. The default value is 0.
 
 .TP
 .B allow_filesystem_mark
