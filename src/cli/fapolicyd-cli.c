@@ -1189,16 +1189,20 @@ static int verify_file(const char *path, off_t size, const char *sha,
 	alg = file_hash_alg(sha);
 	digest_len = strlen(sha);
 	expected_len = file_hash_length(alg) * 2;
-
-	if (expected_len == 0 || digest_len != expected_len) {
+	
+	/*
+	 * Non-RPM trust fragments historically used SHA256, but newer stores may
+	 * contain longer digests (for example SHA512).  Fall back to SHA256 only
+	 * when the digest length cannot be mapped to a known algorithm so legacy
+	 * entries keep working.
+	 */
+	if (expected_len == 0)
+		expected_len = file_hash_length(FILE_HASH_ALG_SHA256) * 2;
+	if (alg == FILE_HASH_ALG_NONE)
+		alg = FILE_HASH_ALG_SHA256;
+	
+	if (digest_len != expected_len) {
 		printf("%s miscompares: cannot infer digest algorithm\n", path);
-		return 1;
-	}
-
-	/* File and Debian backends only store SHA256 digests. */
-	if (tsource != SRC_RPM && alg != FILE_HASH_ALG_SHA256) {
-		printf("%s miscompares: unsupported %s digest\n", path,
-		       file_hash_alg_name(alg));
 		return 1;
 	}
 

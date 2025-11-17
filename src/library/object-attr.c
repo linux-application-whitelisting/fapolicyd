@@ -25,8 +25,10 @@
 
 #include "config.h"
 #include <stddef.h>	// For NULL
+#include <stdbool.h>
 #include <string.h>
 
+#include "message.h"
 #include "object-attr.h"
 
 static const nv_t table[] = {
@@ -44,6 +46,15 @@ static const nv_t table[] = {
 
 int obj_name_to_val(const char *name)
 {
+	static bool warned;
+
+	/* Announce deprecation once per start while keeping the alias usable. */
+	if (!warned) {
+		msg(LOG_NOTICE,
+		    "SHA256HASH object name is deprecated; use FILE_HASH instead");
+		warned = true;
+	}
+
 	// Accept the legacy name for compatibility with older rule sets.
 	if (strcmp(name, "sha256hash") == 0)
 		return FILE_HASH;
