@@ -75,6 +75,23 @@ static pthread_t update_thread;
 static pthread_mutex_t update_lock;
 static pthread_mutex_t rule_lock;
 
+/*
+ * lmdb_record - Parsed representation of a single LMDB value payload.
+ * @tsource: Trust source identifier stored alongside the record.
+ * @size: Expected file size for integrity verification.
+ * @digest: Hex encoded digest string extracted from the LMDB record.
+ * @digest_len: Cached length of the @digest field for comparisons.
+ * @alg: Inferred digest algorithm. RPM entries may carry multiple algorithms
+ *       while other backends default to SHA256 for backward compatibility.
+ */
+struct lmdb_record {
+	unsigned int tsource;
+	off_t size;
+	char digest[FILE_DIGEST_STRING_MAX];
+	size_t digest_len;
+	file_hash_alg_t alg;
+};
+
 // Local functions
 static void *update_thread_main(void *arg);
 static int update_database(conf_t *config);
@@ -304,6 +321,36 @@ static void abort_transaction(MDB_txn *txn)
 {
 	mdb_txn_abort(txn);
 	dbi_init = 0;
+}
+
+
+/*
+ * parse_lmdb_record - Convert a serialized LMDB entry into structured data.
+ * @record: Raw string pulled from the LMDB value.
+ * @parsed: Output structure populated on success.
+ *
+ * Returns 0 when the record can be decoded, or 1 on parse/validation errors.
+ * RPM entries keep their inferred digest algorithm while other sources default
+ * to SHA256 to preserve compatibility with older backends.
+ */
+static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
+{
+	if (sscanf(record, DATA_FORMAT, &parsed->tsource, &parsed->size,
+					parsed->digest) != 3)
+		return 1;
+
+	parsed->digest_len = strlen(parsed->digest);
+	if (parsed->digest_len >= FILE_DIGEST_STRING_MAX)
+		return 1;
+
+	parsed->alg = file_hash_alg(parsed->digest);
+	if (parsed->tsource != SRC_RPM || parsed->alg == FILE_HASH_ALG_NONE)
+		parsed->alg = FILE_HASH_ALG_SHA256;
+
+	if (file_hash_length(parsed->alg) * 2 != parsed->digest_len)
+		parsed->alg = FILE_HASH_ALG_SHA256;
+
+	return 0;
 }
 
 
@@ -1156,7 +1203,9 @@ static int read_trust_db(const char *path, int *error, struct file_info *info,
 	int do_integrity = 0, mode = READ_TEST_KEY;
 	char *res;
 	int retry = 0;
-	char sha_xattr[65];
+	char sha_xattr[FILE_DIGEST_STRING_MAX];
+	char calc_digest[FILE_DIGEST_STRING_MAX];
+	struct lmdb_record record;
 
 	if (integrity != IN_NONE && info) {
 		do_integrity = 1;
@@ -1185,15 +1234,11 @@ retry_res:
 		free(res);
 		return 1;
 	} else {
-		unsigned int tsource;
-		off_t size;
-		char sha[65];
-
 		// record not found
 		if (res == NULL)
 			return 0;
 
-		if (sscanf(res, DATA_FORMAT, &tsource, &size, sha) != 3) {
+		if (parse_lmdb_record(res, &record)) {
 			free(res);
 			*error = 1;
 			return 1;
@@ -1209,7 +1254,7 @@ retry_res:
 		if (integrity == IN_SIZE) {
 
 			// match!
-			if (size == info->size) {
+			if (record.size == info->size) {
 				return 1;
 			} else {
 				goto retry_res;
@@ -1223,8 +1268,9 @@ retry_res:
 				rc = get_ima_hash(fd, sha_xattr);
 
 			if (rc) {
-				if ((size == info->size) &&
-					(strcmp(sha, sha_xattr) == 0)) {
+				if ((record.size == info->size) &&
+					(strcmp(record.digest,
+						sha_xattr) == 0)) {
 					return 1;
 				} else {
 					goto retry_res;
@@ -1236,24 +1282,31 @@ retry_res:
 			}
 
 		} else if (integrity == IN_SHA256) {
+			size_t digest_len = record.digest_len;
 			char *hash = NULL;
 
 			// Calculate a hash only one time
 			if (retry == 1) {
 				hash = get_hash_from_fd2(fd, info->size,
-					FILE_HASH_ALG_SHA256);
+							 record.alg);
 				if (hash) {
-					strncpy(sha_xattr, hash, 64);
-					sha_xattr[64] = 0;
+					strncpy(calc_digest, hash,
+						FILE_DIGEST_STRING_MAX-1);
+					calc_digest[FILE_DIGEST_STRING_MAX-1]=0;
+					if (digest_len <
+							FILE_DIGEST_STRING_MAX)
+						calc_digest[digest_len] = 0;
 					free(hash);
+					file_info_cache_digest(info,
+							       record.alg);
 				} else {
 					*error = 1;
 					return 0;
 				}
 			}
 
-			if ((size == info->size) &&
-				(strcmp(sha, sha_xattr) == 0))
+			if ((record.size == info->size) &&
+				    (strcmp(record.digest, calc_digest) == 0))
 				return 1;
 			else {
 				goto retry_res;
