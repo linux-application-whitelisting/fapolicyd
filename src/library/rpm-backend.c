@@ -349,7 +349,7 @@ int do_rpm_load_list(const conf_t *conf, int memfd)
 			// RPMs may use SHA256 or stronger digests. Filter out
 			// short digests (including SHA1) while accepting
 			// anything 64 characters or longer.
-			if (len < (SHA256_LEN*2)) {
+			if (len < 64) {
 				// Limit this to 5 if production
 				if (debug_mode || msg_count++ < 5) {
 					msg(LOG_WARNING,

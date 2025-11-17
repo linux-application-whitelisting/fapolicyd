@@ -136,6 +136,8 @@ static const struct stub_file_record *find_file(int fd)
 size_t file_hash_length(file_hash_alg_t alg)
 {
 	switch (alg) {
+	case FILE_HASH_ALG_SHA1:
+		return SHA1_LEN;
 	case FILE_HASH_ALG_SHA256:
 		return SHA256_LEN;
 	case FILE_HASH_ALG_SHA512:
@@ -154,6 +156,8 @@ file_hash_alg_t file_hash_alg(const char *digest)
 	switch (len) {
 	case MD5_LEN * 2:
 		return FILE_HASH_ALG_MD5;
+	case SHA1_LEN * 2:
+		return FILE_HASH_ALG_SHA1;
 	case SHA256_LEN * 2:
 		return FILE_HASH_ALG_SHA256;
 	case SHA512_LEN * 2:
