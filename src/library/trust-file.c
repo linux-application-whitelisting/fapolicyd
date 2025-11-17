@@ -342,7 +342,7 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		 * upstream algorithm support.
 		 */
 		size_t digest_len = strlen(sha);
-		file_hash_alg_t alg = file_hash_alg(len);
+		file_hash_alg_t alg = file_hash_alg(digest_len);
 		size_t expected_len = file_hash_length(alg) * 2;
 
 		if (expected_len == 0 || digest_len != expected_len) {

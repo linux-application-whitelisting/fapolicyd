@@ -149,10 +149,8 @@ size_t file_hash_length(file_hash_alg_t alg)
 	}
 }
 
-file_hash_alg_t file_hash_alg(const char *digest)
+file_hash_alg_t file_hash_alg(unsigned len)
 {
-	size_t len = strlen(digest);
-
 	switch (len) {
 	case MD5_LEN * 2:
 		return FILE_HASH_ALG_MD5;
@@ -462,7 +460,7 @@ static int parse_record(const char *record, struct lmdb_record *parsed)
 		return 1;
 
 	parsed->digest_len = strlen(parsed->digest);
-	parsed->alg = file_hash_alg(parsed->digest);
+	parsed->alg = file_hash_alg(parsed->digest_len);
 
 	expected_len = file_hash_length(parsed->alg) * 2;
 	if (expected_len == 0 || parsed->digest_len != expected_len)
