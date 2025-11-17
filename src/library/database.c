@@ -337,13 +337,14 @@ static void abort_transaction(MDB_txn *txn)
  * @parsed: Output structure populated on success.
  *
  * Returns 0 when the record can be decoded, or 1 on parse/validation errors.
- * RPM entries keep their inferred digest algorithm while other sources default
- * to SHA256 to preserve compatibility with older backends.
+ * The algorithm is inferred from the stored digest length, but legacy
+ * fragments without an algorithm hint still fall back to SHA256 so older
+ * entries remain valid.
  */
 static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
 {
 	if (sscanf(record, DATA_FORMAT, &parsed->tsource, &parsed->size,
-					parsed->digest) != 3)
+		   parsed->digest) != 3)
 		return 1;
 
 	parsed->digest_len = strlen(parsed->digest);
@@ -351,10 +352,11 @@ static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
 		return 1;
 
 	parsed->alg = file_hash_alg(parsed->digest);
-	if (parsed->tsource != SRC_RPM || parsed->alg == FILE_HASH_ALG_NONE)
-		parsed->alg = FILE_HASH_ALG_SHA256;
 
 	if (file_hash_length(parsed->alg) * 2 != parsed->digest_len)
+		parsed->alg = FILE_HASH_ALG_NONE;
+
+	if (parsed->alg == FILE_HASH_ALG_NONE)
 		parsed->alg = FILE_HASH_ALG_SHA256;
 
 	return 0;
@@ -1359,6 +1361,11 @@ retry_res:
 			}
 
 		} else if (integrity == IN_SHA256) {
+			/*
+			 * The name is historical; recomputation follows the stored digest
+			 * algorithm (for example SHA512) while legacy fragments still
+			 * default to SHA256 via parse_lmdb_record().
+			 */
 			size_t digest_len = record.digest_len;
 			char *hash = NULL;
 
