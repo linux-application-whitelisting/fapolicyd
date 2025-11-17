@@ -128,8 +128,6 @@ size_t file_hash_length(file_hash_alg_t alg)
 	switch (alg) {
 	case FILE_HASH_ALG_MD5:
 		return MD5_LEN;
-	case FILE_HASH_ALG_SHA1:
-		return SHA1_LEN;
 	case FILE_HASH_ALG_SHA256:
 		return SHA256_LEN;
 	case FILE_HASH_ALG_SHA512:
@@ -157,8 +155,6 @@ file_hash_alg_t file_hash_alg(const char *digest)
 		return FILE_HASH_ALG_SHA512;
 	case MD5_LEN * 2:
 		return FILE_HASH_ALG_MD5;
-	case SHA1_LEN * 2:
-		return FILE_HASH_ALG_SHA1;
 	}
 	return FILE_HASH_ALG_NONE;
 }
@@ -197,7 +193,6 @@ static const char *hash_prefixes[] =
 {
 	NULL,		// FILE_HASH_ALG_NONE
 	"md5",
-	"sha1",
 	"sha256",
 	"sha512",
 };
@@ -216,7 +211,6 @@ struct ima_algo_desc {
 
 static const struct ima_algo_desc ima_algo_map[] = {
 	{ HASH_ALGO_MD5, FILE_HASH_ALG_MD5, MD5_LEN },
-	{ HASH_ALGO_SHA1, FILE_HASH_ALG_SHA1, SHA1_LEN },
 	{ HASH_ALGO_SHA256, FILE_HASH_ALG_SHA256, SHA256_LEN },
 	{ HASH_ALGO_SHA512, FILE_HASH_ALG_SHA512, SHA512_LEN },
 };
@@ -253,8 +247,6 @@ file_hash_alg_t file_hash_name_alg(const char *name)
 
 	if (name[0] == 'm')
 	    return FILE_HASH_ALG_MD5;
-	if (name[3] == '1')
-		return FILE_HASH_ALG_SHA1;
 	if (name[3] == '2')
 		return FILE_HASH_ALG_SHA256;
 	if (name[3] == '5')
@@ -710,15 +702,13 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
  * @alg: digest algorithm to use for the measurement.
  * Returns a heap-allocated hex string on success or NULL when hashing fails.
  */
-static const char *degenerate_hash_sha1 =
-	"da39a3ee5e6b4b0d3255bfef95601890afd80709";
+static const char *degenerate_hash_md5 =
+	"d41d8cd98f00b204e9800998ecf8427e";
 static const char *degenerate_hash_sha256 =
 	"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 static const char *degenerate_hash_sha512 =
 	"cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"
 	"47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
-static const char *degenerate_hash_md5 =
-	"d41d8cd98f00b204e9800998ecf8427e";
 char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 {
 	unsigned char *mapped;
@@ -727,8 +717,6 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 
 	if (size == 0) {
 		switch (alg) {
-		case FILE_HASH_ALG_SHA1:
-			return strdup(degenerate_hash_sha1);
 		case FILE_HASH_ALG_SHA256:
 			return strdup(degenerate_hash_sha256);
 		case FILE_HASH_ALG_SHA512:
@@ -750,10 +738,6 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 		int computed = 0;
 
 		switch (alg) {
-		case FILE_HASH_ALG_SHA1:
-			SHA1(mapped, size, hptr);
-			computed = 1;
-			break;
 		case FILE_HASH_ALG_SHA256:
 			SHA256(mapped, size, hptr);
 			computed = 1;
