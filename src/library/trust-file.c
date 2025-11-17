@@ -57,7 +57,7 @@
  * their documentation.
  */
 
-#define BUFFER_SIZE 4096+1+1+1+10+1+64+1
+#define BUFFER_SIZE (4096+1+1+1+10+1+FILE_DIGEST_STRING_WIDTH+1)
 #define FILE_READ_FORMAT  "%4096s %lu %64s" // path size SHA256
 #define FILE_WRITE_FORMAT "%s %lu %s\n"     // path size SHA256
 #define FTW_NOPENFD 1024
@@ -107,7 +107,11 @@ static char *make_data_string(const char *path)
 		return NULL;
 	}
 
-	// Get the hash
+	/*
+	 * Non-RPM (file/DEB) trust fragments have always carried SHA256 digests
+	 * only. Keep generating that format even though loading now understands
+	 * multiple algorithms for RPM-provided fragments.
+	 */
 	char *hash = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
 	close(fd);
 	if (!hash) {
@@ -222,11 +226,12 @@ int trust_file_append(const char *fpath, list_t *list)
  * @line: Buffer containing the raw line (modified in place).
  * @path: Output buffer for the stored path.
  * @size: Output parameter for the recorded size.
- * @sha:  Output buffer for the SHA256 string.
+ * @sha:  Output buffer for the digest string.
  *
  * Returns 0 when parsing succeeds or -1 when the line is malformed.
  */
-static int parse_line_backwards(char *line, char *path, unsigned long *size, char *sha)
+static int parse_line_backwards(char *line, char *path, unsigned long *size,
+				 char *sha, size_t sha_size)
 {
 	if (line == NULL || path == NULL || size == NULL || sha == NULL)
 		return -1;
@@ -262,11 +267,11 @@ static int parse_line_backwards(char *line, char *path, unsigned long *size, cha
 
 	// save sha to arg
 	// right from the last delimiter to the end of the line
-	size_t sha_size = &line[len-1] - delims[0]+1;
-	if (sha_size > 65)
-		sha_size = 65;
-	memcpy(sha, delims[0]+1, sha_size);
-	sha[65-1] = '\0';
+	size_t sha_width = &line[len-1] - delims[0];
+	if (sha_width >= sha_size)
+		sha_width = sha_size - 1;
+	memcpy(sha, delims[0] + 1, sha_width);
+	sha[sha_width] = '\0';
 
 	// save size to arg
 	char number[1024];
@@ -284,6 +289,7 @@ static int parse_line_backwards(char *line, char *path, unsigned long *size, cha
 
 	return 0;
 }
+
 /*
  * trust_file_load - Load a trust fragment into a list or memfd.
  * @fpath: Full path to the trust fragment.
@@ -307,7 +313,8 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		return 1;
 
 	while (fgets(buffer, BUFFER_SIZE, file)) {
-		char name[4097], sha[65], *index = NULL, *data = NULL;
+		char name[4097], sha[FILE_DIGEST_STRING_MAX], *index = NULL,
+			*data = NULL;
 		char data_buf[BUFFER_SIZE];
 		unsigned long sz;
 		unsigned int tsource = SRC_FILE_DB;
@@ -321,8 +328,40 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 			continue;
 		}
 
-		if (parse_line_backwards(buffer, name, &sz, sha)) {
+		if (parse_line_backwards(buffer, name, &sz, sha,
+					 sizeof(sha))) {
 			msg(LOG_WARNING, "Can't parse %s", buffer);
+			rc = 2;
+			goto out;
+		}
+
+		/*
+		 * Infer the algorithm from the digest width instead of trusting
+		 * the source.  The helpers in file.c keep the mapping between
+		 * printable hex length and binary digest sizes in sync with
+		 * upstream algorithm support.
+		 */
+		file_hash_alg_t alg = file_hash_alg(sha);
+		size_t digest_len = strlen(sha);
+		size_t expected_len = file_hash_length(alg) * 2;
+
+		if (expected_len == 0 || digest_len != expected_len) {
+			msg(LOG_WARNING, "Cannot infer digest algorithm for %s",
+			    name);
+			rc = 2;
+			goto out;
+		}
+
+		/*
+		 * Non-RPM trust fragments historically persisted SHA256
+		 * digests only. RPM database ingestion is the only path
+		 * that mirrors multiple upstream algorithms, so seeing
+		 * anything but SHA256 here likely means the on-disk format
+		 * has changed unexpectedly.
+		 */
+		if (alg != FILE_HASH_ALG_SHA256) {
+			msg(LOG_WARNING,"Unsupported digest algorithm %s in %s",
+			    file_hash_alg_name(alg), fpath);
 			rc = 2;
 			goto out;
 		}
@@ -333,6 +372,7 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 			msg(LOG_ERR, "Entry too large in %s", fpath);
 			continue;
 		}
+
 
 		/* If the legacy format was used, unescape the stored path. */
 		index = escaped ? unescape(name) : strdup(name);
