@@ -599,8 +599,9 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 				int fd = open("/bin/sh", O_RDONLY);
 				if (fd >= 0) {
 					char sha[65];
+					file_hash_alg_t alg;
 
-					int rc = get_ima_hash(fd, sha);
+					int rc = get_ima_hash(fd, &alg, sha);
 					close(fd);
 					if (rc == 0) {
 						msg(LOG_ERR,
