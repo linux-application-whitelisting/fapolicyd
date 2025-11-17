@@ -12,6 +12,7 @@
 #include "process.h"
 #include "object.h"
 #include "subject.h"
+#include "fapolicyd-backend.h"
 
 /*
  * Test doubles
@@ -145,6 +146,24 @@ size_t file_hash_length(file_hash_alg_t alg)
 		return 16;
 	default:
 		return 0;
+	}
+}
+
+file_hash_alg_t file_hash_alg(const char *digest)
+{
+	size_t len = strlen(digest);
+
+	switch (len) {
+	case MD5_LEN * 2:
+		return FILE_HASH_ALG_MD5;
+	case SHA1_LEN * 2:
+		return FILE_HASH_ALG_SHA1;
+	case SHA256_LEN * 2:
+		return FILE_HASH_ALG_SHA256;
+	case SHA512_LEN * 2:
+		return FILE_HASH_ALG_SHA512;
+	default:
+		return FILE_HASH_ALG_NONE;
 	}
 }
 
@@ -425,9 +444,85 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 		} \
 	} while (0)
 
-/*
- * Configure the event system with predictable cache sizes for each scenario.
- */
+struct lmdb_record {
+	unsigned int tsource;
+	off_t size;
+	char digest[FILE_DIGEST_STRING_MAX];
+	size_t digest_len;
+	file_hash_alg_t alg;
+};
+
+static int parse_record(const char *record, struct lmdb_record *parsed)
+{
+	size_t expected_len;
+
+	if (sscanf(record, DATA_FORMAT, &parsed->tsource, &parsed->size,
+		parsed->digest) != 3)
+		return 1;
+
+	parsed->digest_len = strlen(parsed->digest);
+	parsed->alg = file_hash_alg(parsed->digest);
+
+	expected_len = file_hash_length(parsed->alg) * 2;
+	if (expected_len == 0 || parsed->digest_len != expected_len)
+		return 2;
+
+	if (parsed->tsource != SRC_RPM && parsed->alg != FILE_HASH_ALG_SHA256)
+		return 2;
+
+	return 0;
+}
+
+static int test_rpm_accepts_sha512(void)
+{
+	struct lmdb_record parsed;
+	char record[256];
+	const char *sha512 =
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+	snprintf(record, sizeof(record), DATA_FORMAT, SRC_RPM, 8192UL,
+		 sha512);
+	CHECK(parse_record(record, &parsed) == 0, 40,
+	      "[ERROR:40] parse failed for RPM SHA512 digest");
+	CHECK(parsed.alg == FILE_HASH_ALG_SHA512, 41,
+	      "[ERROR:41] RPM digest algorithm not inferred as SHA512");
+	CHECK(parsed.digest_len == strlen(sha512), 42,
+	      "[ERROR:42] RPM digest length not preserved");
+	return 0;
+}
+
+static int test_filedb_rejects_sha512(void)
+{
+	struct lmdb_record parsed;
+	char record[256];
+	const char *sha512 =
+		"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+		"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
+	snprintf(record, sizeof(record), DATA_FORMAT, SRC_FILE_DB, 4096UL,
+		 sha512);
+	CHECK(parse_record(record, &parsed) != 0, 50,
+	      "[ERROR:50] filedb SHA512 digest unexpectedly accepted");
+	return 0;
+}
+
+static int test_filedb_accepts_sha256(void)
+{
+	struct lmdb_record parsed;
+	char record[256];
+	const char *sha256 =
+		"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+	snprintf(record, sizeof(record), DATA_FORMAT, SRC_FILE_DB, 1024UL,
+		 sha256);
+	CHECK(parse_record(record, &parsed) == 0, 60,
+	      "[ERROR:60] filedb SHA256 digest rejected");
+	CHECK(parsed.alg == FILE_HASH_ALG_SHA256, 61,
+	      "[ERROR:61] filedb digest algorithm not forced to SHA256");
+	return 0;
+}
+
 static int init_caches(unsigned int subj_size, unsigned int obj_size)
 {
 	conf_t cfg = { 0 };
@@ -449,6 +544,7 @@ static int test_reopen_skip_path(void)
 	event_t first = { 0 };
 	event_t reopen = { 0 };
 	object_attr_t *path;
+	object_attr_t *digest;
 
 	CHECK(init_caches(4, 4) == 0, 1, "[ERROR:1] init_event_system failed");
 
@@ -473,6 +569,11 @@ static int test_reopen_skip_path(void)
 	      "[ERROR:10] subject path1 not captured");
 	CHECK(first.s->info->state == STATE_COLLECTING, 11,
 	      "[ERROR:11] initial state mutated");
+
+	digest = get_obj_attr(&first, FILE_HASH);
+	CHECK(digest != NULL, 17, "[ERROR:17] missing digest attribute");
+	CHECK(first.o->info->digest_alg == FILE_HASH_ALG_SHA256, 18,
+	      "[ERROR:18] digest algorithm not cached as SHA256");
 
 	meta.mask = FAN_OPEN_PERM;
 	CHECK(new_event(&meta, &reopen) == 0, 12,
@@ -564,6 +665,18 @@ int main(void)
 {
 	int rc;
 
+	rc = test_rpm_accepts_sha512();
+	if (rc)
+		return rc;
+
+	rc = test_filedb_rejects_sha512();
+	if (rc)
+		return rc;
+
+	rc = test_filedb_accepts_sha256();
+	if (rc)
+		return rc;
+
 	rc = test_reopen_skip_path();
 	if (rc)
 		return rc;
@@ -578,3 +691,4 @@ int main(void)
 
 	return 0;
 }
+
