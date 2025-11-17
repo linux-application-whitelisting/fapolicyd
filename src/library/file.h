@@ -34,11 +34,13 @@
 typedef enum {
 	FILE_HASH_ALG_NONE = 0,
 	FILE_HASH_ALG_MD5,       // Legacy support for MD5-based trust sources
+	FILE_HASH_ALG_SHA1,
 	FILE_HASH_ALG_SHA256,
 	FILE_HASH_ALG_SHA512,
 } file_hash_alg_t;
 
 #define MD5_LEN		16
+#define SHA1_LEN	20
 #define SHA256_LEN	32
 #define SHA512_LEN	64
 
