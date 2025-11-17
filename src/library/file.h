@@ -64,7 +64,7 @@ void file_init(void);
 void file_close(void);
 struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
 void file_info_reset_digest(struct file_info *info);
-file_hash_alg_t file_hash_alg(const char *digest);
+file_hash_alg_t file_hash_alg(unsigned len);
 void file_info_cache_digest(struct file_info *info, file_hash_alg_t alg);
 size_t file_hash_length(file_hash_alg_t alg);
 const char *file_hash_alg_name(file_hash_alg_t alg);

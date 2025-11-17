@@ -143,13 +143,12 @@ size_t file_hash_length(file_hash_alg_t alg)
 
 /*
  * file_hash_alg - return the algorith for the digest size.
- * @digest: the digest string to query.
+ * @len: the digest length to query.
  * Returns the digest algorithm.
  */
-file_hash_alg_t file_hash_alg(const char *digest)
+file_hash_alg_t file_hash_alg(unsigned len)
 {
 	// Ordered most probable to least likely
-	size_t len = strlen(digest);
 	switch (len) {
 	case SHA256_LEN * 2:
 		return FILE_HASH_ALG_SHA256;

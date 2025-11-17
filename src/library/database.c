@@ -351,7 +351,7 @@ static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
 	if (parsed->digest_len >= FILE_DIGEST_STRING_MAX)
 		return 1;
 
-	parsed->alg = file_hash_alg(parsed->digest);
+	parsed->alg = file_hash_alg(parsed->digest_len);
 
 	if (file_hash_length(parsed->alg) * 2 != parsed->digest_len)
 		parsed->alg = FILE_HASH_ALG_NONE;
@@ -1362,9 +1362,10 @@ retry_res:
 
 		} else if (integrity == IN_SHA256) {
 			/*
-			 * The name is historical; recomputation follows the stored digest
-			 * algorithm (for example SHA512) while legacy fragments still
-			 * default to SHA256 via parse_lmdb_record().
+			 * The name is historical; recomputation follows the
+			 * stored digest algorithm (for example SHA512) while
+			 * legacy fragments still default to SHA256 via
+			 * parse_lmdb_record().
 			 */
 			size_t digest_len = record.digest_len;
 			char *hash = NULL;
@@ -1377,27 +1378,25 @@ retry_res:
 					strncpy(calc_digest, hash,
 						FILE_DIGEST_STRING_MAX-1);
 					calc_digest[FILE_DIGEST_STRING_MAX-1]=0;
-					if (digest_len <
-							FILE_DIGEST_STRING_MAX)
+					if (digest_len < FILE_DIGEST_STRING_MAX)
 						calc_digest[digest_len] = 0;
-				free(hash);
-				file_info_cache_digest(info,
-						       record.alg);
-				strncpy(info->digest, calc_digest,
-					FILE_DIGEST_STRING_MAX-1);
-				info->digest[FILE_DIGEST_STRING_MAX-1] = 0;
-			} else {
-				*error = 1;
-				return 0;
-			}
+					free(hash);
+					file_info_cache_digest(info,
+							       record.alg);
+					strncpy(info->digest, calc_digest,
+						FILE_DIGEST_STRING_MAX-1);
+				     info->digest[FILE_DIGEST_STRING_MAX-1] = 0;
+				} else {
+					*error = 1;
+					return 0;
+				}
 			}
 
 			if ((record.size == info->size) &&
 				    (strcmp(record.digest, calc_digest) == 0))
 				return 1;
-			else {
+			else
 				goto retry_res;
-			}
 		}
 	}
 
