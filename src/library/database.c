@@ -342,7 +342,7 @@ static void abort_transaction(MDB_txn *txn)
  */
 static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
 {
-	if (sscanf(record, DATA_FORMAT, &parsed->tsource, &parsed->size,
+	if (sscanf(record, DATA_FORMAT_IN, &parsed->tsource, &parsed->size,
 		   parsed->digest) != 3)
 		return 1;
 

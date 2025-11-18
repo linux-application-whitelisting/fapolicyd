@@ -31,8 +31,14 @@
 typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
 
 // source, size, sha
-// do not pad the hash value so SHA1 and SHA256 digests parse correctly
-#define DATA_FORMAT "%u %lu %s"
+// Do not pad the hash value so SHA1 and SHA256 digests parse correctly
+// The reason for in and out is they mean different things for printf
+// and scanf. For scanf, it limits the buffer. For printf, its the minimum
+// bytes to write.  helper: stringify macro value
+#define STR_IMPL(x) #x
+#define STR(x) STR_IMPL(x)
+#define DATA_FORMAT "%u %zu %s"
+#define DATA_FORMAT_IN "%u %zu %" STR(FILE_DIGEST_STRING_MAX - 1) "s"
 
 typedef struct _backend
 {
