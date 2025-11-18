@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,7 @@
 #include "trust-file.h"
 #include "escape.h"
 #include "paths.h"
+#include "filter.h"
 
 /*
  * fapolicyd-cli relies on this file to materialize trust entries into
@@ -75,6 +77,7 @@
 list_t _list;
 char *_path;
 int _count;
+bool _use_filter;
 int _memfd = -1;
 
 struct trust_seen_entry {
@@ -510,7 +513,7 @@ int trust_file_delete_path(const char *fpath, const char *path)
  * entries updated, 0 when the file could not be opened,
  * and -1 when the existing file cannot be parsed.
  */
-int trust_file_update_path(const char *fpath, const char *path)
+int trust_file_update_path(const char *fpath, const char *path, bool use_filter)
 {
 	list_t list;
 	list_init(&list);
@@ -531,6 +534,16 @@ int trust_file_update_path(const char *fpath, const char *path)
 
 	for (list_item_t *lptr = list.first; lptr; lptr = lptr->next) {
 		if (!strncmp(lptr->index, path, path_len)) {
+			if (use_filter) {
+				filter_rc_t f_res = filter_check(lptr->index);
+				if (f_res != FILTER_ALLOW) {
+					if (f_res == FILTER_ERR_DEPTH) {
+						list_empty(&list);
+						return -1;
+					}
+					continue;
+				}
+			}
 			free((char *)lptr->data);
 			lptr->data = make_data_string(lptr->index);
 			++count;
@@ -628,7 +641,7 @@ static int ftw_update_path(const char *fpath,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
 	if (typeflag == FTW_F)
-		_count += trust_file_update_path(fpath, _path);
+		_count += trust_file_update_path(fpath, _path, _use_filter);
 	return FTW_CONTINUE;
 }
 
@@ -700,12 +713,14 @@ int trust_file_delete_path_all(const char *path)
  * Used only by the CLI trust management commands.  Returns the number of
  * entries updated.
  */
-int trust_file_update_path_all(const char *path)
+int trust_file_update_path_all(const char *path, bool use_filter)
 {
 	_path = strdup(path);
-	_count = trust_file_update_path(TRUST_FILE_PATH, path);
+	_use_filter = use_filter;
+	_count = trust_file_update_path(TRUST_FILE_PATH, path, _use_filter);
 	nftw(TRUST_DIR_PATH, &ftw_update_path, FTW_NOPENFD, FTW_FLAGS);
 	free(_path);
+	_use_filter = false;
 	return _count;
 }
 

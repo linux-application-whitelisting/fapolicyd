@@ -27,6 +27,8 @@
 #ifndef FILE_CLI_H
 #define FILE_CLI_H
 
+#include <stdbool.h>
+
 /**
  * Append a path into the file trust database
  *
@@ -34,10 +36,12 @@
  * @param fname Filename where \p path should be written. If NULL, then
  *     \p path is written into fapolicyd.trust file. Otherwise,
  *     write \p path into file \p fname within the trust.d directory
+ * @param use_filter When true, apply the filter configuration to the list of
+ *     files gathered from \p path before writing anything
  * @return 0 on success, -1 on error and 1 if \p path already exists in
  *     the file trust database
  */
-int file_append(const char *path, const char *fname);
+int file_append(const char *path, const char *fname, bool use_filter);
 
 /**
  * Delete a path from the file trust database.
@@ -61,8 +65,10 @@ int file_delete(const char *path, const char *fname);
  * @param fname Filename in which \p path should be updated. If NULL, then
  *     \p path is updated in fapolicyd.trust file. Otherwise,
  *     updates \p path in file \p fname within the trust.d directory
+ * @param use_filter When true, apply the filter configuration to the list of
+ *     files being updated so that filtered paths are skipped
  * @return 0 on success, non-zero if nothing got updated
  */
-int file_update(const char *path, const char *fname);
+int file_update(const char *path, const char *fname, bool use_filter);
 
 #endif

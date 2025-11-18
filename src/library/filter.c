@@ -449,6 +449,58 @@ end:
 }
 
 /*
+ * filter_prune_list - Remove list entries that do not pass the filter.
+ * @list: List of paths to be checked.
+ * @path: Optional configuration file path, defaults to FILTER_FILE.
+ *
+ * Initializes the filter module, loads the configuration, and walks the
+ * supplied list. Any entry that is not allowed by the filter is removed.
+ * Returns 0 on success and 1 if initialization, loading, or evaluation fails.
+ */
+int filter_prune_list(list_t *list, const char *path)
+{
+	if (list == NULL)
+		return 1;
+
+	if (filter_init())
+		return 1;
+	if (filter_load_file(path)) {
+		filter_destroy();
+	return 1;
+	}
+
+	list_item_t *lptr = list->first, *prev = NULL;
+
+	while (lptr) {
+		list_item_t *next = lptr->next;
+		filter_rc_t res = filter_check(lptr->index);
+		if (res == FILTER_ALLOW) {
+			prev = lptr;
+			lptr = next;
+			continue;
+		}
+
+		if (res == FILTER_ERR_DEPTH) {
+			filter_destroy();
+			return 1;
+		}
+
+		if (prev)
+			prev->next = lptr->next;
+		else
+			list->first = lptr->next;
+		if (!lptr->next)
+			list->last = prev;
+		list_destroy_item(&lptr);
+		--list->count;
+		lptr = next;
+	}
+
+	filter_destroy();
+	return 0;
+}
+
+/*
  * filter_load_file - load filter configuration and build tree
  * @path: optional configuration file path, defaults to FILTER_FILE
  * Returns 0 on success and 1 on error.

@@ -26,6 +26,7 @@
 
 #include <fcntl.h>
 #include <ftw.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -36,6 +37,7 @@
 #include "message.h"
 #include "string-util.h"
 #include "trust-file.h"
+#include "filter.h"
 
 
 
@@ -108,13 +110,18 @@ static int add_list_load_path(const char *path)
 	return rc ? 1 : 0;
 }
 
-int file_append(const char *path, const char *fname)
+int file_append(const char *path, const char *fname, bool use_filter)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
 
 	list_init(&add_list);
 	if (add_list_load_path(path))
 		return -1;
+
+	if (use_filter && filter_prune_list(&add_list, NULL)) {
+		list_empty(&add_list);
+		return -1;
+	}
 
 	trust_file_rm_duplicates_all(&add_list);
 
@@ -160,21 +167,37 @@ int file_delete(const char *path, const char *fname)
 	return !count;
 }
 
-int file_update(const char *path, const char *fname)
+int file_update(const char *path, const char *fname, bool use_filter)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
 	int count = 0;
+	bool filter_ready = false;
+
+	if (use_filter) {
+		if (filter_init())
+			return -1;
+		if (filter_load_file(NULL)) {
+			filter_destroy();
+			return -1;
+		}
+		filter_ready = true;
+	}
 
 	if (fname) {
 		char *file = fapolicyd_strcat(TRUST_DIR_PATH, fname);
 		if (file) {
-			count = trust_file_update_path(file, path);
+			count = trust_file_update_path(file, path, use_filter);
 			free(file);
 		}
 	} else {
-		count = trust_file_update_path_all(path);
+		count = trust_file_update_path_all(path, use_filter);
 	}
 
+	if (filter_ready)
+		filter_destroy();
+
+	if (count < 0)
+		return -1;
 	if (count == 0)
 		msg(LOG_ERR, "%s is not in the trust database", path);
 

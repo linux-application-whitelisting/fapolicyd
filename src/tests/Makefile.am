@@ -59,6 +59,10 @@ check_PROGRAMS += filter_test
 filter_test_SOURCES = filter_test.c
 filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
+check_PROGRAMS += file_filter_test
+file_filter_test_SOURCES = file_filter_test.c
+file_filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+file_filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 endif
 
 if WITH_DEB

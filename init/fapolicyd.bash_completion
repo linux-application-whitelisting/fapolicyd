@@ -8,7 +8,7 @@ _fapolicydcli()
 	local prev="${COMP_WORDS[COMP_CWORD-1]}"
 	local opts="--check-config --check-path --check-status --check-trustdb \
 		--check-watch_fs --check-ignore_mounts --delete-db --dump-db \
-		--file --ftype --help --list --update --reload-rules --test-filter"
+		--file --filter --ftype --help --list --update --reload-rules --test-filter"
 
 	case $prev in
 		--ftype|--test-filter)
@@ -35,6 +35,20 @@ _fapolicydcli()
 		--file) # missing support to suggest files or dirs after these
 			# but it's better than nothing
 			COMPREPLY=($(compgen -W 'add delete update' -- "$cur"))
+			return 0
+		;;
+		add|update)
+			COMPREPLY=($(compgen -W '--filter --trust-file' -- "$cur"))
+			[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
+			return 0
+		;;
+		--filter)
+			if [ -e /usr/share/bash-completion/bash_completion ] ; then
+				_filedir
+			else
+				compopt -o filenames 2>/dev/null
+				COMPREPLY=( $(compgen -f -- ${cur}) )
+			fi
 			return 0
 		;;
 	esac

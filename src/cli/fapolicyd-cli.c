@@ -56,9 +56,7 @@
 #include "avl.h"
 #include "fd-fgets.h"
 #include "paths.h"
-#ifdef HAVE_LIBRPM
 #include "filter.h"
-#endif
 
 bool verbose = false;
 
@@ -81,6 +79,7 @@ static const char *usage =
 #ifdef HAVE_LIBRPM
 "--test-filter path    Test FILTER_FILE against path and trace to stdout\n"
 #endif
+"--filter             Use FILTER_FILE for --file add or update\n"
 "--trust-file file     Use after --file to specify trust file\n"
 "-u, --update          Notifies fapolicyd to perform update of database\n"
 ;
@@ -266,23 +265,56 @@ env_close:
 	return rc;
 }
 
+static int parse_file_args(int argc, char * const argv[],
+			    const char **path, const char **trust_file,
+			    bool *use_filter, bool path_optional)
+{
+	*path = NULL;
+	*trust_file = NULL;
+	*use_filter = false;
+
+	for (int i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "--filter")) {
+			if (*use_filter)
+				return 2;
+			*use_filter = true;
+			continue;
+		}
+		if (!strcmp(argv[i], "--trust-file")) {
+			if (*trust_file || i + 1 >= argc)
+				return 2;
+			*trust_file = argv[++i];
+			continue;
+		}
+		if (*path == NULL) {
+			*path = argv[i];
+			continue;
+		}
+		return 2;
+	}
+
+	if (!path_optional && *path == NULL)
+		return 2;
+
+	return 0;
+}
+
 static int do_file_add(int argc, char * const argv[])
 {
 	char full_path[PATH_MAX] = { 0 };
+	const char *path = NULL;
+	const char *trust_file = NULL;
+	bool use_filter = false;
 
-	if (argc == 1) {
-		if (!realpath(argv[0], full_path))
-			return 3;
-		return file_append(full_path, NULL);
-	}
-	if (argc == 3) {
-		if (!realpath(argv[0], full_path))
-			return 3;
-		if (strcmp("--trust-file", argv[1]))
-			return 2;
-		return file_append(full_path, argv[2]);
-	}
-	return 2;
+	int rc = parse_file_args(argc, argv, &path, &trust_file,
+				 &use_filter, false);
+	if (rc)
+		return rc;
+
+	if (!realpath(path, full_path))
+		return 3;
+
+	return file_append(full_path, trust_file, use_filter);
 }
 
 static int do_file_delete(int argc, char * const argv[])
@@ -307,34 +339,31 @@ static int do_file_delete(int argc, char * const argv[])
 static int do_file_update(int argc, char * const argv[])
 {
 	char full_path[PATH_MAX] = { 0 };
+	const char *path = NULL;
+	const char *trust_file = NULL;
+	bool use_filter = false;
 
-	if (argc == 0)
-		return file_update("/", NULL);
-	if (argc == 1) {
-		if (!realpath(argv[0], full_path))
+	int rc = parse_file_args(argc, argv, &path, &trust_file,
+				 &use_filter, true);
+	if (rc)
+		return rc;
+
+	if (path) {
+		if (!realpath(path, full_path))
 			return 3;
-		return file_update(full_path, NULL);
+		path = full_path;
+	} else {
+		path = "/";
 	}
-	if (argc == 2) {
-		if (strcmp("--trust-file", argv[0]))
-			return 2;
-		return file_update("/", argv[1]);
-	}
-	if (argc == 3) {
-		if (!realpath(argv[0], full_path))
-			return 3;
-		if (strcmp("--trust-file", argv[1]))
-			return 2;
-		return file_update(full_path, argv[2]);
-	}
-	return 2;
+
+	return file_update(path, trust_file, use_filter);
 }
 
 static int do_manage_files(int argc, char * const argv[])
 {
 	int rc = 0;
 
-	if (argc < 1 || argc > 4) {
+	if (argc < 1 || argc > 5) {
 		fprintf(stderr, "Wrong number of arguments\n");
 		fprintf(stderr, "\n%s", usage);
 		return 1;
@@ -1508,7 +1537,7 @@ int main(int argc, char * const argv[])
 		rc = do_dump_db();
 		break;
 	case 'f':
-		if (arg_count > 6)
+		if (arg_count > 7)
 			goto args_err;
 		// fapolicyd-cli, -f, | operation, path ...
 		// skip the first two args
