@@ -4,19 +4,20 @@ _fapolicydcli()
 {
 	local cur prev opts
 	COMPREPLY=()
-	local cur="${COMP_WORDS[COMP_CWORD]}"
-	local prev="${COMP_WORDS[COMP_CWORD-1]}"
-	local opts="--check-config --check-path --check-status --check-trustdb \
+	cur="${COMP_WORDS[COMP_CWORD]}"
+	prev="${COMP_WORDS[COMP_CWORD-1]}"
+	opts="--check-config --check-path --check-status --check-trustdb \
 		--check-watch_fs --check-ignore_mounts --delete-db --dump-db \
-		--file --filter --ftype --help --list --update --reload-rules --test-filter"
+		--file --filter --ftype --help --list --update --reload-rules \
+		--test-filter --trust-file --verbose -h -d -D -f -t -l -u -r"
 
 	case $prev in
-		--ftype|--test-filter)
+		--ftype|-t|--test-filter)
 			# If bash completions is installed, use it
 			if [ -e /usr/share/bash-completion/bash_completion ] ; then
 				_filedir
 				return 0
-			else    # this is almost as good
+			else	# this is almost as good
 				compopt -o filenames 2>/dev/null
 				COMPREPLY=( $(compgen -f -- ${cur}) )
 				return 0
@@ -32,17 +33,26 @@ _fapolicydcli()
 				return 0
 			fi
 		;;
-		--file) # missing support to suggest files or dirs after these
+		--file|-f) # missing support to suggest files or dirs after these
 			# but it's better than nothing
 			COMPREPLY=($(compgen -W 'add delete update' -- "$cur"))
 			return 0
 		;;
-		add|update)
+		add|update|delete)
 			COMPREPLY=($(compgen -W '--filter --trust-file' -- "$cur"))
 			[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
 			return 0
 		;;
 		--filter)
+			if [ -e /usr/share/bash-completion/bash_completion ] ; then
+				_filedir
+			else
+				compopt -o filenames 2>/dev/null
+				COMPREPLY=( $(compgen -f -- ${cur}) )
+			fi
+			return 0
+		;;
+		--trust-file)
 			if [ -e /usr/share/bash-completion/bash_completion ] ; then
 				_filedir
 			else
@@ -66,10 +76,23 @@ _fapolicyd()
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--debug --debug-deny --help --no-details --permissive"
+	opts="--debug --debug-deny --help --mounts --no-details --permissive"
+
+	case ${prev} in
+		--mounts)
+			if [ -e /usr/share/bash-completion/bash_completion ] ; then
+				_filedir
+			else
+				compopt -o filenames 2>/dev/null
+				COMPREPLY=( $(compgen -f -- ${cur}) )
+			fi
+			return 0
+		;;
+	esac
 
 	if [[ ${cur} == -* ]] ; then
 		COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+		[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
 		return 0
 	fi
 }
