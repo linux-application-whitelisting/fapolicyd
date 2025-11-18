@@ -26,6 +26,7 @@
 #define FAPOLICYD_BACKEND_HEADER
 
 #include "conf.h"
+#include "file.h"
 
 // If this gets extended, please put the new items at the end.
 typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
@@ -38,7 +39,7 @@ typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
 #define STR_IMPL(x) #x
 #define STR(x) STR_IMPL(x)
 #define DATA_FORMAT "%u %zu %s"
-#define DATA_FORMAT_IN "%u %zu %" STR(FILE_DIGEST_STRING_MAX - 1) "s"
+#define DATA_FORMAT_IN "%u %zu %" STR(FILE_DIGEST_STRING_WIDTH) "s"
 
 typedef struct _backend
 {

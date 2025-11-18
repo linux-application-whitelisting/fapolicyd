@@ -45,8 +45,9 @@ typedef enum {
 #define SHA512_LEN	64
 
 // Longest printable digest string expected - includes algorithm prefix and NUL
-#define FILE_DIGEST_STRING_MAX ((SHA512_LEN * 2) + 8)
-#define FILE_DIGEST_STRING_WIDTH (FILE_DIGEST_STRING_MAX - 1)
+// (SHA512_LEN * 2) + 8 = 136 bytes including the terminating NUL
+#define FILE_DIGEST_STRING_MAX 136
+#define FILE_DIGEST_STRING_WIDTH 135
 
 // Information we will cache to identify the same executable
 struct file_info
