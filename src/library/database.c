@@ -95,7 +95,6 @@ struct lmdb_record {
 	unsigned int tsource;
 	off_t size;
 	char digest[FILE_DIGEST_STRING_MAX];
-	size_t digest_len;
 	file_hash_alg_t alg;
 };
 
@@ -347,17 +346,14 @@ static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
 		   parsed->digest) != 3)
 		return 1;
 
-	parsed->digest_len = strlen(parsed->digest);
-	if (parsed->digest_len >= FILE_DIGEST_STRING_MAX)
-		return 1;
-
-	parsed->alg = file_hash_alg(parsed->digest_len);
-
-	if (file_hash_length(parsed->alg) * 2 != parsed->digest_len)
-		parsed->alg = FILE_HASH_ALG_NONE;
-
+	/* Fast-path: identify the algorithm without a full-string strlen */
+	parsed->alg = file_hash_alg_fast(parsed->digest);
 	if (parsed->alg == FILE_HASH_ALG_NONE)
-		parsed->alg = FILE_HASH_ALG_SHA256;
+		parsed->alg = FILE_HASH_ALG_SHA256;     /* legacy fallback */
+
+	size_t digest_len = file_hash_length(parsed->alg) * 2;
+	if (digest_len == 0 || digest_len >= FILE_DIGEST_STRING_MAX)
+		return 1;
 
 	return 0;
 }
@@ -451,7 +447,8 @@ static int write_db(const char *idx, const char *data)
 		return 2;
 	}
 
-	len = strlen(idx);
+	// Only scan enough to make a decision
+	len = strnlen(idx, MDB_maxkeysize+1);
 	if (len > MDB_maxkeysize) {
 		hash = path_to_hash(idx, len);
 		if (hash == NULL) {
@@ -576,7 +573,8 @@ static char *lt_read_db(const char *index, int operation, int *error)
 	*error = 1; // Assume an error
 
 	// If the path is too long, convert to a hash
-	len = strlen(index);
+	// Only scan enough to make a decision
+	len = strnlen(index, MDB_maxkeysize+1);
 	if (len > MDB_maxkeysize) {
 		hash = path_to_hash(index, len);
 		if (hash == NULL)
@@ -1367,7 +1365,8 @@ retry_res:
 			 * legacy fragments still default to SHA256 via
 			 * parse_lmdb_record().
 			 */
-			size_t digest_len = record.digest_len;
+			size_t digest_len = file_hash_length(record.alg) * 2;
+
 			char *hash = NULL;
 
 			// Calculate a hash only one time

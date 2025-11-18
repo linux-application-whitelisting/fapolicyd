@@ -162,6 +162,36 @@ file_hash_alg_t file_hash_alg(unsigned len)
 	return FILE_HASH_ALG_NONE;
 }
 
+/*
+ * file_hash_alg_fast - return the algorith for the digest size
+ * O(1) – no strlen, no scanning
+ * @digest: the digest to query.
+ * Returns the digest algorithm.
+ */
+file_hash_alg_t file_hash_alg_fast(const char *digest)
+{
+    /* cautious access: check shorter offsets first */
+    if (!digest)
+	return FILE_HASH_ALG_NONE;
+
+    /* MD5 is 32 hex chars */
+    if (!digest[MD5_LEN*2])
+	return FILE_HASH_ALG_MD5;
+
+    /* SHA1 is 40 hex chars */
+    if (!digest[SHA1_LEN*2])
+	return FILE_HASH_ALG_SHA1;
+
+    /* SHA-256 is 64 hex chars */
+    if (!digest[SHA256_LEN*2])
+	return FILE_HASH_ALG_SHA256;
+
+    /* SHA-512 is 128 hex chars */
+    if (!digest[SHA512_LEN*2])
+	return FILE_HASH_ALG_SHA512;
+
+    return FILE_HASH_ALG_NONE;
+}
 
 /*
  * file_info_reset_digest - clear cached digest metadata for a file record.
