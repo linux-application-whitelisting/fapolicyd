@@ -3,6 +3,7 @@
 - Fix various threading, initialization, and function attribute issues
 - Add support for SHA512, replace SHA256HASH with FILE_HASH
 - Add --filter option to fapolicyd-cli --file
+- Update bash completions for new options
 
 1.4.1
 - Fix deadlock on reconfigure
