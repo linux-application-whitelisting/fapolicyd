@@ -1288,7 +1288,7 @@ static int check_trustdb(void)
 		off_t size;
 		char sha[FILE_DIGEST_STRING_MAX];
 		char path[448];
-		char data[80];
+		char data[TRUSTDB_DATA_BUFSZ];
 
 		// Get the entry and format it for use.
 		walkdb_entry_t *entry = walk_database_get_entry();

@@ -48,6 +48,7 @@ typedef enum {
 // (SHA512_LEN * 2) + 8 = 136 bytes including the terminating NUL
 #define FILE_DIGEST_STRING_MAX 136
 #define FILE_DIGEST_STRING_WIDTH 135
+#define TRUSTDB_DATA_BUFSZ (FILE_DIGEST_STRING_MAX + 64)
 
 // Information we will cache to identify the same executable
 struct file_info
