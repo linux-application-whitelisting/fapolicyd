@@ -69,13 +69,13 @@ libfapolicyd_la_SOURCES = \
 	library/string-util.c \
 	library/string-util.h \
 	library/trust-file.c \
-	library/trust-file.h
+	library/trust-file.h \
+	library/filter.c \
+	library/filter.h
 
 if WITH_RPM
 libfapolicyd_la_SOURCES += \
-	library/rpm-backend.c \
-	library/filter.c \
-	library/filter.h
+	library/rpm-backend.c
 
 bin_PROGRAMS = fapolicyd-rpm-loader
 
