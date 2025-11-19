@@ -66,13 +66,12 @@ atomic_bool needs_flush = false;
  */
 static void subject_evict_warn(s_array *s)
 {
-	int pid = -1;
+	if (s && s->info && s->info->state < STATE_FULL) {
+		early_subj_cache_evictions++;
 
-	if (early_subj_cache_evictions >= 5)
+	if (early_subj_cache_evictions > 5)
 		return;
 
-	if (s && s->info)
-		pid = s->info->pid;
 	if (s && s->info && s->info->state < STATE_FULL) {
 		/*
 		 * Normal interpreter re-exec replaces the process image
@@ -86,8 +85,7 @@ static void subject_evict_warn(s_array *s)
 			    "pid %d in state %d (%s) is being evicted from the "
 			    "subject cache before pattern detection completes: "
 			    "increase subj_cache_size",
-			    pid, s->info->state, s->info->path1);
-			early_subj_cache_evictions++;
+			    s->info->pid, s->info->state, s->info->path1);
 		}
 	}
 }
