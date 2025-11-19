@@ -66,7 +66,7 @@ atomic_bool needs_flush = false;
  */
 static void subject_evict_warn(s_array *s)
 {
-	if (s && s->info && s->info->state < STATE_FULL) {
+	if (s && s->info && s->info->state < STATE_FULL)
 		early_subj_cache_evictions++;
 
 	if (early_subj_cache_evictions > 5)
