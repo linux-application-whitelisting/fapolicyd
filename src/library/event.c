@@ -838,7 +838,7 @@ void run_usage_report(const conf_t *config, FILE *f)
 void do_cache_reports(FILE *f)
 {
 	print_queue_stats(f, subj_cache);
-	fprintf(f, "early subject cache evictions: %u\n",
+	fprintf(f, "Early subject cache evictions: %u\n",
 		early_subj_cache_evictions);
 	print_queue_stats(f, obj_cache);
 }
