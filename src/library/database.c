@@ -40,6 +40,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <ctype.h>	/* isspace() */
 
 #include "database.h"
 #include "message.h"
@@ -329,6 +330,58 @@ static void abort_transaction(MDB_txn *txn)
 	dbi_init = 0;
 }
 
+/*
+ * Fast parser for one LMDB record line: "<tsource> <size> <hex-digest>".
+ * Returns 0 on success, 1 on malformed input or overflow.
+ */
+static int lmdb_scan_record(const char *rec, unsigned int *tsource,
+			    off_t *size, char *digest)
+{
+	const char *p = rec;
+	char *end;
+
+	/* --- tsource -------------------------------------------------- */
+	errno = 0;
+	unsigned long v = strtoul(p, &end, 10);
+	if (end == p || errno == ERANGE)
+		return 1;
+	*tsource = (unsigned int)v;
+
+	/* skip whitespace */
+	p = end;
+	while (isspace((unsigned char)*p))
+		p++;
+
+	/* --- size ----------------------------------------------------- */
+	errno = 0;
+#if SIZE_MAX >= (1ULL << 32)
+	unsigned long long sval = strtoull(p, &end, 10);
+	if (end == p || errno == ERANGE)
+		return 1;
+	*size = (off_t)sval;
+#else
+	unsigned long sval = strtoul(p, &end, 10);
+	if (end == p || errno == ERANGE)
+		return 1;
+	*size = (off_t)sval;
+#endif
+
+	/* skip whitespace */
+	p = end;
+	while (isspace((unsigned char)*p))
+		p++;
+
+	/* --- digest --------------------------------------------------- */
+	size_t len = 0;
+	while (p[len] && !isspace((unsigned char)p[len]))
+		len++;
+	if (len == 0 || len >= FILE_DIGEST_STRING_MAX)
+		return 1;
+
+	memcpy(digest, p, len);
+	digest[len] = '\0';
+	return 0;
+}
 
 /*
  * parse_lmdb_record - Convert a serialized LMDB entry into structured data.
@@ -342,8 +395,8 @@ static void abort_transaction(MDB_txn *txn)
  */
 static int parse_lmdb_record(const char *record, struct lmdb_record *parsed)
 {
-	if (sscanf(record, DATA_FORMAT_IN, &parsed->tsource, &parsed->size,
-		   parsed->digest) != 3)
+	if (lmdb_scan_record(record, &parsed->tsource,
+			     &parsed->size, parsed->digest))
 		return 1;
 
 	/* Fast-path: identify the algorithm without a full-string strlen */
