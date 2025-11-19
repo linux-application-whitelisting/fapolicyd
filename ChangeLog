@@ -4,6 +4,7 @@
 - Add support for SHA512, replace SHA256HASH with FILE_HASH
 - Add --filter option to fapolicyd-cli --file
 - Update bash completions for new options
+- Add an early subject cache evictions counter to the state report
 
 1.4.1
 - Fix deadlock on reconfigure
