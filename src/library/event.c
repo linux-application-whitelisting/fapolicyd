@@ -48,7 +48,8 @@
 
 static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
-static bool obj_cache_warned = false, subj_cache_warned = false;
+static bool obj_cache_warned = false;
+static unsigned int early_subj_cache_evictions = 0;
 
 atomic_bool needs_flush = false;
 
@@ -67,7 +68,7 @@ static void subject_evict_warn(s_array *s)
 {
 	int pid = -1;
 
-	if (subj_cache_warned)
+	if (early_subj_cache_evictions >= 5)
 		return;
 
 	if (s && s->info)
@@ -86,7 +87,7 @@ static void subject_evict_warn(s_array *s)
 			    "subject cache before pattern detection completes: "
 			    "increase subj_cache_size",
 			    pid, s->info->state, s->info->path1);
-			subj_cache_warned = true;
+			early_subj_cache_evictions++;
 		}
 	}
 }
@@ -212,11 +213,12 @@ void destroy_event_system(void)
 {
 	/* We're intentionally clearing the caches; disable warnings */
 	if (subj_cache)
-	        subj_cache->evict_cb = NULL;
-	if (subj_cache_warned)
+		subj_cache->evict_cb = NULL;
+	if (early_subj_cache_evictions)
 		msg(LOG_WARNING,
 		   "Processes are being evicted from the subject cache before "
-		   "pattern detection completes: increase subj_cache_size");
+		   "pattern detection completes: increase subj_cache_size "
+		   "(total early evictions: %u)", early_subj_cache_evictions);
 	if (obj_cache)
 		obj_cache->evict_cb = NULL;
 	if (obj_cache_warned)
@@ -836,6 +838,8 @@ void run_usage_report(const conf_t *config, FILE *f)
 void do_cache_reports(FILE *f)
 {
 	print_queue_stats(f, subj_cache);
+	fprintf(f, "early subject cache evictions: %u\n",
+		early_subj_cache_evictions);
 	print_queue_stats(f, obj_cache);
 }
 
