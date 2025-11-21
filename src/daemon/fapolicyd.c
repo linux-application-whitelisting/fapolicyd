@@ -659,7 +659,7 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
-		"[--no-details]\n");
+		"[--no-details] [--version]\n");
 	exit(1);
 }
 
@@ -786,8 +786,14 @@ int main(int argc, const char *argv[])
 
 	setlocale(LC_TIME, "");
 
-	if (argc > 1 && strcmp(argv[1], "--help") == 0)
-		usage();
+	for (int i=1; i < argc; i++) {
+		if (strcmp(argv[i], "--help") == 0)
+			usage();
+		else if (strcmp(argv[i], "--version") == 0) {
+			printf("fapolicyd %s\n", VERSION);
+			return 0;
+		}
+	}
 	set_message_mode(MSG_STDERR, debug_mode);
 	if (load_daemon_config(&config)) {
 		free_daemon_config(&config);

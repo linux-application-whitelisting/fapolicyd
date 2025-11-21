@@ -140,7 +140,7 @@ _fapolicyd()
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--debug --debug-deny --help --mounts --no-details --permissive"
+	opts="--debug --debug-deny --help --mounts --no-details --permissive --version"
 
 	case ${prev} in
 		--mounts)
