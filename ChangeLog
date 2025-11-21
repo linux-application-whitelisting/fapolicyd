@@ -5,6 +5,7 @@
 - Add --filter option to fapolicyd-cli --file
 - Update bash completions for new options
 - Add an early subject cache evictions counter to the state report
+- Add CPU cores to the state report
 
 1.4.1
 - Fix deadlock on reconfigure
