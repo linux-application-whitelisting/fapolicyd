@@ -64,8 +64,8 @@ char *fapolicyd_strcat(const char *s1, const char *s2)
 	char *r = malloc(s1_len + s2_len + 1);
 	if (r == NULL)
 		return NULL;
-	strcpy(r, s1);
-	strcat(r, s2);
+	memcpy(r, s1, s1_len);
+	memcpy(r + s1_len, s2, s2_len + 1);  // includes null terminator
 	return r;
 }
 
