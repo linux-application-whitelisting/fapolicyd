@@ -339,6 +339,8 @@ int read_proc_status(pid_t pid, unsigned int fields,
 	}
 
 	fd_fgets_state_t *st = fd_fgets_init();
+	if (st == NULL)
+		return -1;
 
 	do {
 		rc = fd_fgets_r(st, buf, sizeof(buf), fd);

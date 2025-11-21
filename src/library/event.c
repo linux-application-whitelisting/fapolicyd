@@ -679,10 +679,9 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 					obj.o = strdup(o->info->digest);
 					break;
 				}
-			}
 
-			obj.o = get_hash_from_fd2(e->fd, o->info->size, alg);
-			if (o->info) {
+				obj.o = get_hash_from_fd2(e->fd,
+							  o->info->size, alg);
 				if (obj.o) {
 					file_info_cache_digest(o->info, alg);
 					strncpy(o->info->digest, obj.o,
