@@ -63,7 +63,7 @@ typedef struct _stack_item
 #define MAX_FILTER_DEPTH 64
 #endif
 
-/* filter_check return codes */
+/* filter_check return codes (depth errors exclude the path) */
 typedef enum {
 	FILTER_DENY = 0,
 	FILTER_ALLOW = 1,

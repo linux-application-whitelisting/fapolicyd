@@ -332,10 +332,10 @@ int do_rpm_load_list(const conf_t *conf, int memfd)
 			// should we drop a path?
 			filter_rc_t f_res = filter_check(tmp);
 			if (f_res != FILTER_ALLOW) {
-				if (f_res == FILTER_ERR_DEPTH) {
-					rc = FILTER_ERR_DEPTH;
-					goto out;
-				}
+				if (f_res == FILTER_ERR_DEPTH)
+					msg(LOG_WARNING,
+					    "filter nesting exceeds MAX_FILTER_DEPTH for %s; excluding",
+					    tmp);
 				continue;
 			}
 

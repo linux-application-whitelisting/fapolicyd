@@ -239,7 +239,8 @@ static void stack_pop_all_reset(stack_t *_stack, int *sp)
  * filter_check - compare path against loaded filters
  * @_path: full path of file to test
  * Returns FILTER_ALLOW if file should be kept, FILTER_DENY if it should be
- * dropped, or FILTER_ERR_DEPTH if MAX_FILTER_DEPTH is exceeded.
+ * dropped, or FILTER_ERR_DEPTH if MAX_FILTER_DEPTH is exceeded (treated the
+ * same as a deny by callers to keep processing other paths).
  */
 filter_rc_t filter_check(const char *_path)
 {
@@ -479,10 +480,10 @@ int filter_prune_list(list_t *list, const char *path)
 			continue;
 		}
 
-		if (res == FILTER_ERR_DEPTH) {
-			filter_destroy();
-			return 1;
-		}
+		if (res == FILTER_ERR_DEPTH)
+			msg(LOG_WARNING,
+			    "filter nesting exceeds MAX_FILTER_DEPTH for %s; excluding",
+			    lptr->index);
 
 		if (prev)
 			prev->next = lptr->next;
