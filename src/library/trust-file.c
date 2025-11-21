@@ -540,7 +540,7 @@ int trust_file_update_path(const char *fpath, const char *path, bool use_filter)
 					if (f_res == FILTER_ERR_DEPTH)
 						msg(LOG_WARNING,
 						    "filter nesting exceeds MAX_FILTER_DEPTH for %s; excluding",
-						    lptr->index);
+						    (char *)lptr->index);
 					continue;
 				}
 			}

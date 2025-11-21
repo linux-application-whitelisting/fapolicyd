@@ -483,7 +483,7 @@ int filter_prune_list(list_t *list, const char *path)
 		if (res == FILTER_ERR_DEPTH)
 			msg(LOG_WARNING,
 			    "filter nesting exceeds MAX_FILTER_DEPTH for %s; excluding",
-			    lptr->index);
+			    (char *)lptr->index);
 
 		if (prev)
 			prev->next = lptr->next;
