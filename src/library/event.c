@@ -66,12 +66,7 @@ atomic_bool needs_flush = false;
  */
 static void subject_evict_warn(s_array *s)
 {
-	if (s && s->info && s->info->state < STATE_FULL)
-		early_subj_cache_evictions++;
-
-	if (early_subj_cache_evictions > 5)
-		return;
-
+	int warn = 0;
 	if (s && s->info && s->info->state < STATE_FULL) {
 		/*
 		 * Normal interpreter re-exec replaces the process image
@@ -81,12 +76,20 @@ static void subject_evict_warn(s_array *s)
 		 */
 		if (!((s->info->state == STATE_REOPEN) &&
 		      (s->info->elf_info & (HAS_SHEBANG|TEXT_SCRIPT))) ) {
-			msg(LOG_WARNING,
-			    "pid %d in state %d (%s) is being evicted from the "
-			    "subject cache before pattern detection completes: "
-			    "increase subj_cache_size",
-			    s->info->pid, s->info->state, s->info->path1);
+			warn = 1;
+			early_subj_cache_evictions++;
 		}
+	}
+
+	if (early_subj_cache_evictions > 5)
+		return;
+
+	if (warn) {
+		msg(LOG_WARNING,
+		    "pid %d in state %d (%s) is being evicted from the "
+		    "subject cache before pattern detection completes: "
+		    "increase subj_cache_size",
+		    s->info->pid, s->info->state, s->info->path1);
 	}
 }
 
