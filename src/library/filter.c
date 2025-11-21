@@ -346,9 +346,8 @@ filter_rc_t filter_check(const char *_path)
 				if (count && *(filter_old_lim+1) == '\0')
 					*(path_old_lim+1) = tmp;
 
-				if (matched) {
-					offset = path_old_lim - path+offset;
-				}
+				if (matched)
+					offset = (path_old_lim - path) + offset;
 			} else {
 				// match normal path or just specific part of it
 				matched = !strncmp(path+offset, filter->path,
@@ -363,7 +362,7 @@ filter_rc_t filter_check(const char *_path)
 
 				// if matched we need ot push descendants
 				// to the stack
-				list_item_t *item = list_get_first(&filter->list);
+				list_item_t *item=list_get_first(&filter->list);
 
 				// if there are no descendants and it is
 				// a wildcard then it's a match

@@ -128,13 +128,12 @@ static int get_next_file_rpm(void)
 	return 1;
 }
 
-static const char *get_file_name_rpm(void)
-{	// Copy is made because the linked list takes custody of it
-	// FIXME: if the linked list ever goes away, remove strdup
-	return strdup(rpmfiFN(fi));
+static inline const char *get_file_name_rpm(void)
+{
+	return rpmfiFN(fi);
 }
 
-static rpm_loff_t get_file_size_rpm(void)
+static inline rpm_loff_t get_file_size_rpm(void)
 {
 	return rpmfiFSize(fi);
 }
@@ -328,18 +327,21 @@ int do_rpm_load_list(const conf_t *conf, int memfd)
 				continue;
 
 			// Get specific file information
-			const char *file_name = get_file_name_rpm();
-			if (file_name == NULL)
-				continue;
+			const char *tmp = get_file_name_rpm();
 
 			// should we drop a path?
-			filter_rc_t f_res = filter_check(file_name);
+			filter_rc_t f_res = filter_check(tmp);
 			if (f_res != FILTER_ALLOW) {
-				free((void *)file_name);
-				if (f_res == FILTER_ERR_DEPTH)
-					return FILTER_ERR_DEPTH;
+				if (f_res == FILTER_ERR_DEPTH) {
+					rc = FILTER_ERR_DEPTH;
+					goto out;
+				}
 				continue;
 			}
+
+			const char *file_name = strdup(tmp);
+			if (file_name == NULL)
+				continue;
 
 			rpm_loff_t sz = get_file_size_rpm();
 			int len;
