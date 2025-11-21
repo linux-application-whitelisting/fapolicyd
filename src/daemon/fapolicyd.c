@@ -695,6 +695,7 @@ static void close_memory_report(void)
 void do_stat_report(FILE *f, int shutdown)
 {
 	fprintf(f, "Permissive: %s\n", config.permissive ? "true" : "false");
+	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "q_size: %u\n", config.q_size);
 	q_report(f);
 	decision_report(f);
