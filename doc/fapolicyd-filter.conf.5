@@ -2,17 +2,14 @@
 .SH NAME
 fapolicyd-filter.conf \- fapolicyd filter configuration file
 .SH DESCRIPTION
-The file
-.I /etc/fapolicyd/fapolicyd-filter.conf
-contains configuration of the filter for the application allowlisting daemon. This filter specifies an allow or exclude list of files from a trust source. Valid line starts with character '+', '-' or '#' for comments. The rest of the line contains a path specification. Space can be used as indentation to add more specific filters to the previous one. Note, that only one space is required for one level of an indent. If  there are multiple specifications on the same indentation level they extend the previous line with lower indentation, usually a directory.  The path may be specified using the glob pattern. A directory specification has to end with a slash ‘/’.
 
-The filters are processed as follows: Starting from the up the to bottom while in case of a match the result (+/-) is set unless there is an indented block which describes more detailed specification of the parent level match. The same processing logic is applied to the inner filters definitions. If there is no match, the parent’s result is set. If there is no match at all, the default result is minus (-). Filters are stored internally as a tree of path fragments marked to keep or drop. The evaluator walks that tree iteratively (no recursion) using a stack that tracks the current depth and offset into the path being inspected. This keeps memory usage predictable even when filters are deeply nested. Real-world policy relies on shallow nesting, but the implementation will refuse to load filters that nest more than 64 directory levels to prevent runaway stacks. Any path that would exceed that limit during evaluation is treated as excluded while processing of the remaining files continues.
+The filter controls which files from a trust source are added to the TrustDB. Rules are processed from top to bottom, with indentation narrowing the scope of the parent rule. A matching plus (+) rule causes a file to be included; a minus (-) rule excludes it. If no rule matches, the file is excluded by default. The filter is consulted only when trust data is imported: during system updates and when the daemon starts and rebuilds its database. Runtime policy decisions use the TrustDB itself, not the filter, so changes to the filter affect new or rebuilt trust entries rather than live access checks.
+
+Valid line starts with character '+', '-' or '#' for comments. The rest of the line contains a path specification. Space can be used as indentation to add more specific filters to the previous one. Note, that only one space is required for one level of an indent. If  there are multiple specifications on the same indentation level they extend the previous line with lower indentation, usually a directory.  The path may be specified using the glob pattern. A directory specification has to end with a slash ‘/’.
 
 If the result was a plus (+), the respective file from a trust source is imported to the TrustDB. Vice versa, if the result was a minus (-), the respective file is not imported.
 
 From a performance point of view it is better to design an indented filter because in the ideal situation each component of the path is compared only once. In contrast to it, a filter without any indentation has to contain a full path which makes the pattern more complicated and thus slower to process. The motivation behind this is to have a flexible configuration and keep the TrustDB as small as possible to make the look-ups faster.
-
-
 
 .nf
 .B # this is simple allow list
@@ -59,6 +56,9 @@ The filter configuration is parsed into a tree where each node represents a path
 .SH TESTING FILTERS
 .PP
 Administrators can validate how a change to \fIfapolicyd-filter.conf\fP behaves before rebuilding the trust database. Use \fBfapolicyd-cli --test-filter /path/to/file\fP to trace how the configuration is applied to a specific path and see the final include/exclude decision. When adding or updating trust entries, combine \fB--file add\fP or \fB--file update\fP with \fB--filter\fP so only paths that survive the filter are processed; this is useful when pointing the tool at directories to ensure the filter omits unwanted content while you test.
+
+.SH FILES
+.B /etc/fapolicyd/fapolicyd-filter.conf
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),
