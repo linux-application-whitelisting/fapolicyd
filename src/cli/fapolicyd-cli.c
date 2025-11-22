@@ -422,9 +422,7 @@ static int do_ftype(const char *path)
 		close(fd);
 		return 1;
 	}
-	if (magic_load(magic_cookie,
-			"/usr/share/fapolicyd/fapolicyd-magic.mgc:"
-			"/usr/share/misc/magic.mgc") != 0) {
+	if (magic_load(magic_cookie, MAGIC_PATHS) != 0) {
 		fprintf(stderr, "Unable to load magic database");
 		close(fd);
 		magic_close(magic_cookie);

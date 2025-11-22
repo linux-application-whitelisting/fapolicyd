@@ -100,8 +100,7 @@ void file_init(void)
 		exit(1);
 	}
 	// Load our overrides and the default magic definitions
-	if (magic_load(magic_cookie,
-	  "/usr/share/fapolicyd/fapolicyd-magic.mgc:/usr/share/misc/magic.mgc")
+	if (magic_load(magic_cookie, MAGIC_PATHS)
 									!= 0) {
 		msg(LOG_ERR, "Unable to load magic database");
 		exit(1);
