@@ -185,6 +185,15 @@ static int is_config_rpm(void)
 	return 0;
 }
 
+/* Files with checksum excluded from %verify should be ignored */
+static int is_checksum_ignored_rpm(void)
+{
+	if (rpmfiVFlags(fi) & RPMVERIFY_FILEDIGEST) {
+		return 0;
+	}
+	return 1;
+}
+
 static void close_rpm(void)
 {
 	rpmfiFree(fi);
@@ -326,6 +335,10 @@ int do_rpm_load_list(const conf_t *conf, int memfd)
 			if (is_config_rpm())
 				continue;
 
+			// We do not want any files excluded from verifying checksum in database
+			if (is_checksum_ignored_rpm()) {
+				continue;
+			}
 			// Get specific file information
 			const char *tmp = get_file_name_rpm();
 
