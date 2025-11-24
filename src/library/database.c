@@ -60,6 +60,7 @@ typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops
 #define MEGABYTE    (1024*1024)
 #define MAX_DELIMS  3
 #define DEFAULT_DB_MAX_SIZE_MB 100
+#define WRITE_DB_MAP_FULL 6
 
 // Local variables
 static MDB_env *env;
@@ -275,6 +276,34 @@ static int autosize_database(conf_t *config)
 
 	mdb_env_close(tmp_env);
 	return changed;
+}
+
+/* Grow the live LMDB map after encountering MDB_MAP_FULL during rebuilds.
+ * @config: active daemon configuration updated in place on success
+ * Returns 0 when the map was expanded, otherwise 1.
+ */
+static int grow_map_after_full(conf_t *config)
+{
+	unsigned long old_mb = config->db_max_size;
+	unsigned long new_mb = old_mb + (old_mb / 4);
+
+	if (new_mb <= old_mb)
+		new_mb++;
+
+	int rc = mdb_env_set_mapsize(env, new_mb * MEGABYTE);
+	if (rc) {
+		msg(LOG_ERR,
+		    "autosize: failed to grow trust DB to %lu MiB (%s)",
+		    new_mb, mdb_strerror(rc));
+		return 1;
+	}
+
+	config->db_max_size = new_mb;
+	msg(LOG_INFO,
+	    "autosize: trust DB full at %lu MiB – grew to %lu MiB, retrying rebuild",
+	    old_mb, new_mb);
+
+	return 0;
 }
 
 
@@ -613,13 +642,13 @@ static int write_db(const char *idx, const char *data)
 	if ((rc = mdb_put(txn, dbi, &key, &value, 0))) {
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
 		abort_transaction(txn);
-		ret_val = 3;
+		ret_val = (rc == MDB_MAP_FULL) ? WRITE_DB_MAP_FULL : 3;
 		goto out;
 	}
 
 	if ((rc = mdb_txn_commit(txn))) {
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
-		ret_val = 4;
+		ret_val = (rc == MDB_MAP_FULL) ? WRITE_DB_MAP_FULL : 4;
 		goto out;
 	}
 
@@ -943,11 +972,16 @@ int do_memfd_update(int memfd, long *entries)
 
 			//            index, data
 			res = write_db(buff, delim + 1);
-			if (res)
+			if (res) {
 				msg(LOG_ERR,
 				    "Error (%d) writing key=\"%s\" data=\"%s\"",
 				    res, (const char*)buff,
 				    (const char*)delim + 1);
+				if (rc == 0)
+					rc = res;
+				if (res == WRITE_DB_MAP_FULL)
+					break;
+			}
 		}
 	} while (!fd_fgets_eof_r(st) && !stop);
 
@@ -972,25 +1006,40 @@ int do_memfd_update(int memfd, long *entries)
  * reported a failure while storing records. Helper routines log detailed
  * errors.
  */
-static int create_database(int with_sync, const conf_t *config)
+static int create_database(int with_sync, conf_t *config)
 {
 	msg(LOG_INFO, "Creating trust database");
 	int rc = 0;
+	int retries = 0;
 
-	for (backend_entry *be = backend_get_first(); be != NULL && !stop;
-						      be = be->next ) {
-		msg(LOG_INFO, "Loading trust data from %s backend",
-							be->backend->name);
-		// Use the memfd if available
-		if (be->backend->memfd != -1) {
-			rc = do_memfd_update(be->backend->memfd,
-					     &be->backend->entries);
-			if (rc)
-				msg(LOG_ERR,
-				    "Failed to import trust data from %s backend",
-				    be->backend->name);
+	for (;;) {
+		for (backend_entry *be = backend_get_first();
+		     be != NULL && !stop; be = be->next ) {
+			msg(LOG_INFO, "Loading trust data from %s backend",
+			    be->backend->name);
+			if (be->backend->memfd != -1) {
+				rc = do_memfd_update(be->backend->memfd,
+				     &be->backend->entries);
+				if (rc)
+					msg(LOG_ERR,
+					    "Failed to import trust data from %s backend",
+					    be->backend->name);
+			}
 		}
+
+		if (rc == WRITE_DB_MAP_FULL &&
+		    config->do_audit_db_sizing && retries == 0) {
+			if (grow_map_after_full(config) == 0 &&
+			    delete_all_entries_db() == 0) {
+				retries++;
+				rc = 0;
+				continue;
+			}
+		}
+
+		break;
 	}
+
 	if (stop)
 		return 1;
 
