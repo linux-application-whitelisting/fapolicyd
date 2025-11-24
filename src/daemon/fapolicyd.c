@@ -95,6 +95,8 @@ static mlist *m = NULL;
 
 // Reconfiguration
 static atomic_bool reconfig_running = false;
+// Mount handling
+static atomic_bool mounts_running = false;
 
 static void usage(void) NORETURN;
 
@@ -654,6 +656,78 @@ static void handle_mounts(int fd)
 	fanotify_update(m);
 }
 
+/*
+ * handle_mounts_thread_main - run mount processing outside event loop.
+ * @arg: pointer to a heap-allocated file descriptor integer.
+ * Returns NULL.
+ */
+static void *handle_mounts_thread_main(void *arg)
+{
+	int fd;
+	sigset_t sigs;
+
+	/* This is a worker thread. Don't handle external signals. */
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGTERM);
+	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGUSR1);
+	sigaddset(&sigs, SIGINT);
+	sigaddset(&sigs, SIGQUIT);
+	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
+
+	if (arg == NULL) {
+		atomic_store(&mounts_running, false);
+		return NULL;
+	}
+
+	fd = *((int *)arg);
+	free(arg);
+
+	handle_mounts(fd);
+	atomic_store(&mounts_running, false);
+
+	return NULL;
+}
+
+/*
+ * maybe_start_mounts_thread - start a detached mounts thread when needed.
+ * @fd: /proc/mounts file descriptor.
+ * Returns nothing.
+ */
+static void maybe_start_mounts_thread(int fd)
+{
+	int rc;
+	bool expected = false;
+	int *arg;
+
+	// Make sure one is not runnning since it is detached
+	if (!atomic_compare_exchange_strong(&mounts_running, &expected, true))
+		return;
+
+	arg = malloc(sizeof(int));
+	if (arg == NULL) {
+		msg(LOG_ERR, "Failed allocating mount thread arg");
+		atomic_store(&mounts_running, false);
+		return;
+	}
+	*arg = fd;
+
+	pthread_t tid;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	rc = pthread_create(&tid, &attr,
+		handle_mounts_thread_main, arg);
+	if (rc) {
+		msg(LOG_ERR, "Failed starting mount thread (%s)",
+				strerror(rc));
+		atomic_store(&mounts_running, false);
+		free(arg);
+	}
+	pthread_attr_destroy(&attr);
+}
+
 
 static void usage(void)
 {
@@ -1026,7 +1100,7 @@ int main(int argc, const char *argv[])
 			}
 			if (pfd[0].revents & POLLPRI) {
 				msg(LOG_DEBUG, "Mount change detected");
-				handle_mounts(pfd[0].fd);
+				maybe_start_mounts_thread(pfd[0].fd);
 			}
 
 			// This will always need to be here as long as we
