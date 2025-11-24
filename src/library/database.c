@@ -413,10 +413,16 @@ static void check_db_size(const conf_t *config)
 			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
 			   "might want to increase db_max_size setting",
 			   percent);
-	} else if (percent < 65)
-		msg(LOG_WARNING, "Trust database at %lu%% capacity - "
-		    "might consider shrinking the size to save space",
-		    percent);
+	} else if (percent < 65) {
+		if (config->do_audit_db_sizing)
+			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
+			    "map will shrink automatically on next rebuild",
+			    percent);
+		else
+			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
+			    "might consider shrinking the size to save space",
+			    percent);
+	}
 }
 
 void database_report(FILE *f)
