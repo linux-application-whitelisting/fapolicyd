@@ -59,6 +59,7 @@ typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops
 #define BUFFER_SIZE 4096
 #define MEGABYTE    (1024*1024)
 #define MAX_DELIMS  3
+#define DEFAULT_DB_MAX_SIZE_MB 100
 
 // Local variables
 static MDB_env *env;
@@ -194,6 +195,88 @@ int preconstruct_fifo(const conf_t *config)
 	return 0;
 }
 
+unsigned get_default_db_max_size(void)
+{
+	return DEFAULT_DB_MAX_SIZE_MB; /* 100 MiB baseline */
+}
+
+/* autosize_database – compute new map size when utilisation drifts
+ * @config: active daemon configuration, db_max_size is updated in‑place
+ * Returns 1 when the map size was modified, 0 otherwise.  On error the
+ * function leaves db_max_size untouched and logs a single warning. */
+static int autosize_database(conf_t *config)
+{
+	MDB_env   *tmp_env = NULL;
+	MDB_envinfo info;
+	MDB_stat    stat;
+	int         changed = 0;
+
+	/* Open the existing env read‑only so stats reflect current use */
+	if (mdb_env_create(&tmp_env) || mdb_env_set_maxdbs(tmp_env, 2) ||
+				mdb_env_open(tmp_env, DB_DIR, MDB_RDONLY, 0)) {
+		        msg(LOG_WARNING,
+			    "autosize: could not inspect LMDB – keeping %u MiB",
+			    config->db_max_size);
+			if (tmp_env)
+				mdb_env_close(tmp_env);
+		return 0;
+	}
+
+	if (mdb_env_info(tmp_env, &info) || mdb_env_stat(tmp_env, &stat)) {
+		msg(LOG_WARNING,
+		    "autosize: mdb_env_info/stat failed – keeping %u MiB",
+		    config->db_max_size);
+		mdb_env_close(tmp_env);
+		return 0;
+	}
+
+	unsigned long page_sz = stat.ms_psize; /* LMDB page size */
+	unsigned long used_pg = stat.ms_branch_pages + stat.ms_leaf_pages +
+				stat.ms_overflow_pages;
+	unsigned long max_pg = info.me_mapsize / page_sz;
+	unsigned long util_pct = max_pg ? (100 * used_pg) / max_pg : 0;
+
+	/* Empty DB or stat glitch – leave for next start‑up */
+	if (used_pg == 0 || util_pct == 0) {
+		msg(LOG_INFO,
+    "autosize: empty DB – delaying resize until populated (current %u MiB)",
+		    config->db_max_size);
+		mdb_env_close(tmp_env);
+		return 0;
+	}
+
+	/* Calculate target pages for ~75 % utilization */
+	unsigned long target_pg = (used_pg * 100) / 75;
+
+	/* Determine grow/shrink thresholds (±10 %) */
+	unsigned long grow_thresh   = (max_pg * 85) / 100; /* >85 % */
+	unsigned long shrink_thresh = (max_pg * 65) / 100; /* <65 % */
+
+	if (used_pg > grow_thresh || used_pg < shrink_thresh) {
+	        /* Round to whole LMDB pages and at least +1 page */
+		unsigned long new_pg = target_pg + 1;
+	        size_t new_mapsize   = new_pg * page_sz;
+
+		unsigned new_mb = (new_mapsize + MEGABYTE - 1) / MEGABYTE;
+
+		if (new_mb != config->db_max_size) {
+			msg(LOG_INFO,
+	    "autosize: utilisation %lu%%, resizing map %u→%u MiB (entries=%lu)",
+			    util_pct, config->db_max_size, new_mb,
+			    stat.ms_entries);
+			config->db_max_size = new_mb;
+			changed = 1;
+		}
+	} else {
+		msg(LOG_INFO,
+		  "autosize: utilisation %lu%% within 65‑85 %%, keeping %u MiB",
+		  util_pct, config->db_max_size);
+	}
+
+	mdb_env_close(tmp_env);
+	return changed;
+}
+
 
 static int init_db(const conf_t *config)
 {
@@ -276,7 +359,7 @@ static void close_db(int do_report)
 	mdb_env_close(env);
 }
 
-static void check_db_size(void)
+static void check_db_size(const conf_t *config)
 {
 	MDB_envinfo st;
 
@@ -292,9 +375,19 @@ static void check_db_size(void)
 	mdb_env_info(env, &st);
 	max_pages = st.me_mapsize / size;
 	unsigned long percent = max_pages ? (100*pages)/max_pages : 0;
-	if (percent > 80)
+	if (percent > 85) {
+		if (config->do_audit_db_sizing)
+			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
+			    "map will grow automatically on next rebuild",
+			    percent);
+		else
+			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
+			   "might want to increase db_max_size setting",
+			   percent);
+	} else if (percent < 65)
 		msg(LOG_WARNING, "Trust database at %lu%% capacity - "
-		   "might want to increase db_max_size setting", percent);
+		    "might consider shrinking the size to save space",
+		    percent);
 }
 
 void database_report(FILE *f)
@@ -879,7 +972,7 @@ int do_memfd_update(int memfd, long *entries)
  * reported a failure while storing records. Helper routines log detailed
  * errors.
  */
-static int create_database(int with_sync)
+static int create_database(int with_sync, const conf_t *config)
 {
 	msg(LOG_INFO, "Creating trust database");
 	int rc = 0;
@@ -906,7 +999,7 @@ static int create_database(int with_sync)
 		mdb_env_sync(env, 1);
 
 	// Check if database is getting full and warn
-	check_db_size();
+	check_db_size(config);
 
 	return rc;
 }
@@ -1071,7 +1164,7 @@ long check_from_memfd(int memfd, long *entries)
  * Returns 0 when the databases agree, 1 when differences or an early stop are
  * encountered, and -1 when an unrecoverable error occurs.
  */
-static int check_database_copy(void)
+static int check_database_copy(const conf_t *config)
 {
 	msg(LOG_INFO, "Checking if the trust database up to date");
 	if (start_long_term_read_ops())
@@ -1110,7 +1203,7 @@ static int check_database_copy(void)
 	msg(LOG_INFO, "Entries in trust DB: %ld", db_total_entries);
 
 	// Check if database is getting full and warn
-	check_db_size();
+	check_db_size(config);
 
 	msg(LOG_INFO,
 	    "Loaded trust info from all backends (without duplicates): %ld",
@@ -1238,6 +1331,11 @@ int init_database(conf_t *config)
 	if (migrate_database())
 		return 1;
 
+	/* One‑shot utilisation‑driven sizing */
+	if (config->do_audit_db_sizing && autosize_database(config))
+		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
+		    config->db_max_size);
+
 	if ((rc = init_db(config))) {
 		msg(LOG_ERR, "Cannot open the trust database, init_db() (%d)",
 		    rc);
@@ -1258,7 +1356,7 @@ int init_database(conf_t *config)
 
 	rc = database_empty();
 	if (rc > 0) {
-		if ((rc = create_database(/*with_sync*/1))) {
+		if ((rc = create_database(/*with_sync*/1, config))) {
 			msg(LOG_ERR,
 			"Failed to create trust database, create_database() (%d)",
 			   rc);
@@ -1267,7 +1365,7 @@ int init_database(conf_t *config)
 		}
 	} else {
 		// check if our internal database is synced
-		rc = check_database_copy();
+		rc = check_database_copy(config);
 		if (rc > 0) {
 			rc = update_database(config);
 			if (rc)
@@ -1603,7 +1701,7 @@ static int update_database(conf_t *config)
 	}
 
 	if (!stop)
-		rc = create_database(/*with_sync*/0);
+		rc = create_database(/*with_sync*/0, config);
 	else
 		rc = 1;
 

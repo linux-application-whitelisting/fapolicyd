@@ -25,6 +25,7 @@
 #define CONF_H
 
 #include <pwd.h>
+#include <stdbool.h>
 
 typedef enum { IN_NONE, IN_SIZE, IN_IMA, IN_SHA256 } integrity_t;
 
@@ -38,6 +39,7 @@ typedef struct conf
 	unsigned int do_stat_report;
 	unsigned int detailed_report;
 	unsigned int db_max_size;
+	bool do_audit_db_sizing;
 	unsigned int subj_cache_size;
 	unsigned int obj_cache_size;
 	const char *watch_fs;
@@ -47,7 +49,7 @@ typedef struct conf
 	const char *syslog_format;
 	unsigned int rpm_sha256_only;
 	unsigned int allow_filesystem_mark;
-    unsigned int report_interval;
+	unsigned int report_interval;
 } conf_t;
 
 #endif

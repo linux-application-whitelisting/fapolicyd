@@ -28,6 +28,7 @@
 #include "daemon-config.h"
 #include "message.h"
 #include "file.h"
+#include "database.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -135,6 +136,7 @@ static void clear_daemon_config(conf_t *config)
 	config->do_stat_report = 1;
 	config->detailed_report = 1;
 	config->db_max_size = 100;
+	config->do_audit_db_sizing = false;
 	config->subj_cache_size = 4099;
 	config->obj_cache_size = 8191;
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
@@ -494,6 +496,14 @@ static int detailed_report_parser(const struct nv_pair *nv, int line,
 static int db_max_size_parser(const struct nv_pair *nv, int line,
 		conf_t *config)
 {
+	// "auto" triggers utilisation‑based sizing, anything else
+	// remains the legacy integer in MiB.
+	if (strcmp(nv->value, "auto") == 0) {
+		config->do_audit_db_sizing = true;
+		config->db_max_size = get_default_db_max_size();
+		return 0;
+	}
+
 	return unsigned_int_parser(&(config->db_max_size), nv->value, line);
 }
 
