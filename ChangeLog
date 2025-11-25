@@ -6,6 +6,8 @@
 - Update bash completions for new options
 - Add an early subject cache evictions counter to the state report
 - Add CPU cores to the state report
+- Move mounts update to it's own thread to prevent deadlocks with LUKS
+- Add db_max_size = auto support so db size is managed by the daemon
 
 1.4.1
 - Fix deadlock on reconfigure
