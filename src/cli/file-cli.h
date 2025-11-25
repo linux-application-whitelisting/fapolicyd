@@ -29,6 +29,19 @@
 
 #include <stdbool.h>
 
+enum cli_exit_status {
+	CLI_EXIT_SUCCESS = 0,
+	CLI_EXIT_GENERIC = 1,
+	CLI_EXIT_USAGE = 2,
+	CLI_EXIT_PATH_CONFIG = 3,
+	CLI_EXIT_DB_ERROR = 4,
+	CLI_EXIT_RULE_FILTER = 5,
+	CLI_EXIT_DAEMON_IPC = 6,
+	CLI_EXIT_IO = 7,
+	CLI_EXIT_INTERNAL = 8,
+	CLI_EXIT_NOOP = 9,
+};
+
 /**
  * Append a path into the file trust database
  *
@@ -38,8 +51,9 @@
  *     write \p path into file \p fname within the trust.d directory
  * @param use_filter When true, apply the filter configuration to the list of
  *     files gathered from \p path before writing anything
- * @return 0 on success, -1 on error and 1 if \p path already exists in
- *     the file trust database
+ * @return CLI_EXIT_SUCCESS on success, CLI_EXIT_NOOP when no new entries are
+ *     added, CLI_EXIT_RULE_FILTER for filter failures, CLI_EXIT_INTERNAL on
+ *     allocation failures, and CLI_EXIT_IO for filesystem errors.
  */
 int file_append(const char *path, const char *fname, bool use_filter);
 
@@ -52,7 +66,9 @@ int file_append(const char *path, const char *fname, bool use_filter);
  * @param fname Filename from which \p path should be deleted. If NULL, then
  *     \p path is deleted from fapolicyd.trust file. Otherwise,
  *     deletes \p path from file \p fname within the trust.d directory
- * @return 0 on success, non-zero if nothing got deleted
+ * @return CLI_EXIT_SUCCESS on success, CLI_EXIT_NOOP when nothing is removed,
+ *     CLI_EXIT_IO for filesystem errors, and CLI_EXIT_PATH_CONFIG when trust
+ *     files cannot be parsed.
  */
 int file_delete(const char *path, const char *fname);
 
@@ -67,7 +83,10 @@ int file_delete(const char *path, const char *fname);
  *     updates \p path in file \p fname within the trust.d directory
  * @param use_filter When true, apply the filter configuration to the list of
  *     files being updated so that filtered paths are skipped
- * @return 0 on success, non-zero if nothing got updated
+ * @return CLI_EXIT_SUCCESS on success, CLI_EXIT_NOOP when nothing is updated,
+ *     CLI_EXIT_RULE_FILTER for filter parsing errors, CLI_EXIT_IO for
+ *     filesystem errors, and CLI_EXIT_PATH_CONFIG when trust files cannot be
+ *     parsed.
  */
 int file_update(const char *path, const char *fname, bool use_filter);
 
