@@ -39,6 +39,7 @@
 #include "string-util.h"
 #include "trust-file.h"
 #include "filter.h"
+#include "file-cli.h"
 
 
 
