@@ -232,6 +232,8 @@ static int autosize_database(conf_t *config)
 	}
 
 	unsigned long page_sz = stat.ms_psize; /* LMDB page size */
+	if (!page_sz)
+		page_sz = 4096;
 	unsigned long used_pg = stat.ms_branch_pages + stat.ms_leaf_pages +
 				stat.ms_overflow_pages;
 	unsigned long max_pg = info.me_mapsize / page_sz;
@@ -256,7 +258,7 @@ static int autosize_database(conf_t *config)
 	if (used_pg > grow_thresh || used_pg < shrink_thresh) {
 	        /* Round to whole LMDB pages and at least +1 page */
 		unsigned long new_pg = target_pg + 1;
-	        size_t new_mapsize   = new_pg * page_sz;
+		size_t new_mapsize   = (size_t)new_pg * (size_t)page_sz;
 
 		unsigned new_mb = (new_mapsize + MEGABYTE - 1) / MEGABYTE;
 
@@ -1829,9 +1831,54 @@ static void do_reload_db(conf_t* config)
 	    "It looks like there was an update of the system... Syncing DB.");
 
 	int rc;
+	unsigned int old_db_max_size = config->db_max_size;
+
 	backend_close();
-	backend_init(config);
-	backend_load(config);
+
+	/* One‑shot utilisation‑driven sizing */
+	if (config->do_audit_db_sizing && autosize_database(config)) {
+		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
+			config->db_max_size);
+
+		if (config->db_max_size < old_db_max_size) {
+			mdb_env_close(env);
+			env = NULL;
+
+			if ((rc = init_db(config))) {
+				msg(LOG_ERR,
+			     "Cannot open the trust database, init_db() (%d)",
+					rc);
+				if (stop)
+					goto out;
+
+				close(ffd[0].fd);
+				backend_close();
+				unlink_fifo();
+				exit(rc);
+			}
+		} else if (config->db_max_size > old_db_max_size) {
+			rc = mdb_env_set_mapsize(env,
+				(size_t)config->db_max_size * MEGABYTE);
+			if (rc) {
+				msg(LOG_ERR,
+					"env_set_mapsize error: %s",
+					mdb_strerror(rc));
+				goto out;
+			}
+		}
+	}
+
+	if ((rc = backend_init(config))) {
+		msg(LOG_ERR, "Failed to load trust data from backend (%d)", rc);
+		close_db(0);
+		goto out;
+	}
+
+	if ((rc = backend_load(config))) {
+		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
+		close_db(0);
+		goto out;
+	}
 
 	if ((rc = update_database(config))) {
 		msg(LOG_ERR,
