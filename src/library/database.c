@@ -207,26 +207,54 @@ unsigned get_default_db_max_size(void)
  * function leaves db_max_size untouched and logs a single warning. */
 static int autosize_database(conf_t *config)
 {
-	MDB_env   *tmp_env = NULL;
-	MDB_envinfo info;
-	MDB_stat    stat;
-	int         changed = 0;
+	MDB_env		*tmp_env = NULL;
+	MDB_envinfo	 info;
+	MDB_stat	 stat;
+	MDB_txn		*txn = NULL;
+	MDB_dbi		 dbi_tmp;
+	int		 changed = 0;
 
 	/* Open the existing env read‑only so stats reflect current use */
 	if (mdb_env_create(&tmp_env) || mdb_env_set_maxdbs(tmp_env, 2) ||
 				mdb_env_open(tmp_env, DB_DIR, MDB_RDONLY, 0)) {
-		        msg(LOG_WARNING,
+			msg(LOG_WARNING,
 			    "autosize: could not inspect LMDB – keeping %u MiB",
 			    config->db_max_size);
 			if (tmp_env)
 				mdb_env_close(tmp_env);
+			return 0;
+	}
+
+	if (mdb_env_info(tmp_env, &info)) {
+		msg(LOG_WARNING,
+		    "autosize: mdb_env_info failed – keeping %u MiB",
+		    config->db_max_size);
+		mdb_env_close(tmp_env);
 		return 0;
 	}
 
-	if (mdb_env_info(tmp_env, &info) || mdb_env_stat(tmp_env, &stat)) {
+	if (mdb_txn_begin(tmp_env, NULL, MDB_RDONLY, &txn)) {
 		msg(LOG_WARNING,
-		    "autosize: mdb_env_info/stat failed – keeping %u MiB",
+		    "autosize: cannot open LMDB transaction – keeping %u MiB",
 		    config->db_max_size);
+		mdb_env_close(tmp_env);
+		return 0;
+	}
+
+	if (mdb_dbi_open(txn, DB_NAME, 0, &dbi_tmp)) {
+		msg(LOG_WARNING,
+		    "autosize: cannot open trust database – keeping %u MiB",
+		    config->db_max_size);
+		mdb_txn_abort(txn);
+		mdb_env_close(tmp_env);
+		return 0;
+	}
+
+	if (mdb_stat(txn, dbi_tmp, &stat)) {
+		msg(LOG_WARNING,
+		    "autosize: mdb_stat failed – keeping %u MiB",
+		    config->db_max_size);
+		mdb_txn_abort(txn);
 		mdb_env_close(tmp_env);
 		return 0;
 	}
@@ -244,6 +272,7 @@ static int autosize_database(conf_t *config)
 		msg(LOG_INFO,
     "autosize: empty DB – delaying resize until populated (current %u MiB)",
 		    config->db_max_size);
+		mdb_txn_abort(txn);
 		mdb_env_close(tmp_env);
 		return 0;
 	}
@@ -256,7 +285,7 @@ static int autosize_database(conf_t *config)
 	unsigned long shrink_thresh = (max_pg * 65) / 100; /* <65 % */
 
 	if (used_pg > grow_thresh || used_pg < shrink_thresh) {
-	        /* Round to whole LMDB pages and at least +1 page */
+		/* Round to whole LMDB pages and at least +1 page */
 		unsigned long new_pg = target_pg + 1;
 		size_t new_mapsize   = (size_t)new_pg * (size_t)page_sz;
 
@@ -276,6 +305,7 @@ static int autosize_database(conf_t *config)
 		  util_pct, config->db_max_size);
 	}
 
+	mdb_txn_abort(txn);
 	mdb_env_close(tmp_env);
 	return changed;
 }
