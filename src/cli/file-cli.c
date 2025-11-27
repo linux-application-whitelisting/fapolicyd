@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <ftw.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -38,6 +39,7 @@
 #include "string-util.h"
 #include "trust-file.h"
 #include "filter.h"
+#include "file-cli.h"
 
 
 
@@ -58,10 +60,13 @@ static int ftw_add_list_append(const char *fpath,
 	if (typeflag == FTW_F) {
 		if (S_ISREG(sb->st_mode)) {
 			char *tmp = strdup(fpath);
-			if (!tmp)
+			if (!tmp) {
+				errno = ENOMEM;
 				return FTW_STOP;
+			}
 			if (list_append(&add_list, tmp, NULL)) {
 				free(tmp);
+				errno = ENOMEM;
 				return FTW_STOP;
 			}
 		} else {
@@ -76,21 +81,22 @@ static int ftw_add_list_append(const char *fpath,
  * loads all regular files within the directory tree
  *
  * @param path Path to load into add_list
- * @return 0 on success, 1 on error
+ * @return CLI_EXIT_SUCCESS on success, CLI_EXIT_IO for filesystem problems,
+ *     and CLI_EXIT_INTERNAL on allocation failures
  */
 static int add_list_load_path(const char *path)
 {
 	int fd = open(path, O_RDONLY|O_NONBLOCK);
 	if (fd < 0) {
 		msg(LOG_ERR, "Cannot open %s", path);
-		return 1;
+		return CLI_EXIT_IO;
 	}
 
 	struct stat sb;
 	if (fstat(fd, &sb)) {
 		msg(LOG_ERR, "Cannot stat %s", path);
 		close(fd);
-		return 1;
+		return CLI_EXIT_IO;
 	}
 	close(fd);
 
@@ -101,26 +107,35 @@ static int add_list_load_path(const char *path)
 	else {
 		char *tmp = strdup(path);
 		if (!tmp)
-			return 1;
+			return CLI_EXIT_INTERNAL;
 		rc = list_append(&add_list, tmp, NULL);
 		if (rc)
 			free(tmp);
 	}
 
-	return rc ? 1 : 0;
+	if (rc) {
+		if (errno == ENOMEM)
+			return CLI_EXIT_INTERNAL;
+		return CLI_EXIT_IO;
+	}
+
+	return CLI_EXIT_SUCCESS;
 }
 
 int file_append(const char *path, const char *fname, bool use_filter)
 {
+	int rc;
+
 	set_message_mode(MSG_STDERR, DBG_NO);
 
 	list_init(&add_list);
-	if (add_list_load_path(path))
-		return -1;
+	rc = add_list_load_path(path);
+	if (rc)
+		return rc;
 
 	if (use_filter && filter_prune_list(&add_list, NULL)) {
 		list_empty(&add_list);
-		return -1;
+		return CLI_EXIT_RULE_FILTER;
 	}
 
 	trust_file_rm_duplicates_all(&add_list);
@@ -128,57 +143,64 @@ int file_append(const char *path, const char *fname, bool use_filter)
 	if (add_list.count == 0) {
 		msg(LOG_ERR,
 		    "After removing duplicates, there is nothing to add");
-		return 1;
+		return CLI_EXIT_NOOP;
 	}
 
 	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) :
 							TRUST_FILE_PATH;
 	if (dest == NULL)
-		return -1;
+		return CLI_EXIT_INTERNAL;
 
-	int rc = trust_file_append(dest, &add_list);
+	rc = trust_file_append(dest, &add_list);
 
 	list_empty(&add_list);
 
 	if (fname)
 		free(dest);
 
-	return rc ? -1 : 0;
+	return rc ? CLI_EXIT_IO : CLI_EXIT_SUCCESS;
 }
 
 int file_delete(const char *path, const char *fname)
 {
+	int count = 0, rc;
+
 	set_message_mode(MSG_STDERR, DBG_NO);
-	int count = 0;
 
 	if (fname) {
 		char *file = fapolicyd_strcat(TRUST_DIR_PATH, fname);
 		if (file) {
 			count = trust_file_delete_path(file, path);
 			free(file);
-		}
+		} else
+			return CLI_EXIT_INTERNAL;
 	} else {
 		count = trust_file_delete_path_all(path);
 	}
 
-	if (count == 0)
+	if (count < 0)
+		rc = CLI_EXIT_PATH_CONFIG;
+	else if (count == 0) {
 		msg(LOG_ERR, "%s is not in the trust database", path);
+		rc = CLI_EXIT_NOOP;
+	} else
+		rc = CLI_EXIT_SUCCESS;
 
-	return !count;
+	return rc;
 }
 
 int file_update(const char *path, const char *fname, bool use_filter)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
-	int count = 0;
+	int count = 0, rc = CLI_EXIT_SUCCESS;
 	bool filter_ready = false;
 
 	if (use_filter) {
 		if (filter_init())
-			return -1;
+			return CLI_EXIT_RULE_FILTER;
 		if (filter_load_file(NULL)) {
 			filter_destroy();
-			return -1;
+			return CLI_EXIT_RULE_FILTER;
 		}
 		filter_ready = true;
 	}
@@ -188,7 +210,8 @@ int file_update(const char *path, const char *fname, bool use_filter)
 		if (file) {
 			count = trust_file_update_path(file, path, use_filter);
 			free(file);
-		}
+		} else
+			count = -1;
 	} else {
 		count = trust_file_update_path_all(path, use_filter);
 	}
@@ -197,9 +220,11 @@ int file_update(const char *path, const char *fname, bool use_filter)
 		filter_destroy();
 
 	if (count < 0)
-		return -1;
-	if (count == 0)
+		rc = CLI_EXIT_PATH_CONFIG;
+	else if (count == 0) {
 		msg(LOG_ERR, "%s is not in the trust database", path);
+		rc = CLI_EXIT_NOOP;
+	}
 
-	return !count;
+	return rc;
 }
