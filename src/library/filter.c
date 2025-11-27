@@ -368,6 +368,13 @@ filter_rc_t filter_check(const char *_path)
 				// if there are no descendants and it is
 				// a wildcard then it's a match
 				if (item == NULL && is_wildcard) {
+					const char *rule = (filter->path &&
+							*filter->path) ?
+							filter->path : "/";
+					FILTER_TRACE("%s %s %s\n",
+						     filter->type == ADD ?
+						     "allow" : "deny",
+						     rule, "match");
 					// if '+' ret 1 and if '-' ret 0
 					res = filter->type == ADD ?
 						FILTER_ALLOW : FILTER_DENY;
@@ -377,6 +384,13 @@ filter_rc_t filter_check(const char *_path)
 				// no descendants, and already compared
 				// whole path string so its a match
 				if (item == NULL && path_len == offset) {
+					const char *rule = (filter->path &&
+							*filter->path) ?
+							filter->path : "/";
+					FILTER_TRACE("%s %s %s\n",
+							filter->type == ADD ?
+							"allow" : "deny",
+							rule, "match");
 					// if '+' ret 1 and if '-' ret 0
 					res = filter->type == ADD ?
 						FILTER_ALLOW : FILTER_DENY;
