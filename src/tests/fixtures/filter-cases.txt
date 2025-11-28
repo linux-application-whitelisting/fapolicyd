@@ -56,4 +56,5 @@ prod /usr/src/kernel123/tools/objtool/run 1
 prod /usr/src/kernel123/tools/objtool2/run 0
 prod /usr/src/kernels/6.17.8-200.fc42.x86_64/arch/x86/kernel/ptrace.c 0
 prod /usr/src/kernels/6.17.8-200.fc42.x86_64/scripts/gendwarfksyms/examples/kabi.h 1
+prod /usr/src/kernels/6.17.6-200.fc42.x86_64/include/linux/memory.h 0
 prod /usr//bin/ls 1
