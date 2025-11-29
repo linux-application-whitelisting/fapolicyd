@@ -156,9 +156,10 @@ static void obj_evict_warn(void *unused)
 
 	if (e_over_m > thr_m || e_over_q > thr_q) {
 		msg(LOG_WARNING,
-		    "object cache eviction ratios high (evict/miss=%lu%%, "
-		    "evict/lookups=%lu%%): increase obj_cache_size",
-		    e_over_m, e_over_q);
+		    "object cache eviction ratios high (occupancy: %u%%, "
+		    "evict/miss=%lu%%, evict/lookups=%lu%%): "
+		    "increase obj_cache_size",
+		    occ, e_over_m, e_over_q);
 		obj_cache_warned = true;
 	}
 }
