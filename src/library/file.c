@@ -665,6 +665,15 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	// libmagic is unpredictable in determining elf files.
 	// We need to do it ourselves for consistency.
 	if (i->mode & S_IFREG) {
+		// If its a regular file (block devices have 0 length, too)
+		// check to see if it's empty to skip doing all of the
+		// expensive checks. Empty files are unexpectedly common.
+		if (i->size == 0) {
+			strncpy(buf, "application/x-empty", blen-1);
+			buf[blen-1] = 0;
+			return buf;
+		}
+
 		uint32_t elf = gather_elf(fd, i->size);
 		if (elf & IS_ELF) {
 			ptr = classify_elf_info(elf, path);
