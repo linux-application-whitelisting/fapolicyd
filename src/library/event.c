@@ -139,24 +139,26 @@ static void obj_evict_warn(void *unused)
 	if (occ >= 85) {
 		// Near-full tables churn; above these levels growth is
 		// usually cheaper than misses.
-		thr_m = 70;
-		thr_q = 30;
+		thr_m = 80;
+		thr_q = 35;
 	} else if (occ >= 75) {
 		// Some churn is expected; beyond this you’re throwing away
 		// too much reuse.
-		thr_m = 40;
-		thr_q = 15;
-	} else if (occ >= 50) {
-		// At half-full, evictions should be rare; higher means
+		thr_m = 55;
+		thr_q = 20;
+	} else if (occ >= 60) {
+		// At this level evictions should be infrequent; higher means
 		// collisions/skew or underprovisioning.
-		thr_m = 20;
-		thr_q = 8;
+		thr_m = 35;
+		thr_q = 12;
 	} else
 		return;
 
 	if (e_over_m > thr_m || e_over_q > thr_q) {
 		msg(LOG_WARNING,
-		  "object cache eviction ratios high: increase obj_cache_size");
+		    "object cache eviction ratios high (evict/miss=%lu%%, "
+		    "evict/lookups=%lu%%): increase obj_cache_size",
+		    e_over_m, e_over_q);
 		obj_cache_warned = true;
 	}
 }
