@@ -283,14 +283,15 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		// because it was collected on perm = execute.
 		if ((s->info->state == STATE_COLLECTING) &&
 			(e->type & FAN_OPEN_PERM) && !rc) {
-			skip_path = 1;
-			s->info->state = STATE_REOPEN;
-
 			// special branch after ld_so exec
 			// next opens will go fall trough
 			if (s->info->path1 &&
 				(strcmp(s->info->path1, SYSTEM_LD_SO) == 0))
 				s->info->state = STATE_DEFAULT_REOPEN;
+			else {
+				skip_path = 1;
+				s->info->state = STATE_REOPEN;
+			}
 		}
 
 		// If not same proc or we detect execution, evict
