@@ -79,7 +79,11 @@ int main(int argc, char * const argv[])
 		exit(1);
 	}
 
-	do_rpm_init_backend();
+	if (do_rpm_init_backend()) {
+		msg(LOG_ERR, "Failed to initialize rpm loader backend");
+		exit(1);
+	}
+
 	if (do_rpm_load_list(&config, memfd)) {
 		msg(LOG_ERR, "Failed to populate rpm backend snapshot");
 		exit(1);

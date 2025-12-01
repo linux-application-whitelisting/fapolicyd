@@ -1,3 +1,6 @@
+1.4.3
+- Fix missing allow decision in fapolicyd-cli --test-filter
+
 1.4.2
 - Correct identification of kworker threads
 - Fix various threading, initialization, and function attribute issues
@@ -8,6 +11,7 @@
 - Add CPU cores to the state report
 - Move mounts update to it's own thread to prevent deadlocks with LUKS
 - Add db_max_size = auto support so db size is managed by the daemon
+- In rpm backend, drop any file from trustdb that doesn't verify size or hash
 
 1.4.1
 - Fix deadlock on reconfigure

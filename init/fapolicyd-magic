@@ -101,3 +101,7 @@
 
 0	belong		0x4d5a9000	Portable executable
 !:mime application/vnd.microsoft.portable-executable
+
+0	string/wt	#!\ /usr/bin/bpftrace	Bpf tracing script text executable
+!:mime	text/x-bpftrace
+

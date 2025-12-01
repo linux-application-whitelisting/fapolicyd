@@ -285,13 +285,24 @@ static int rpm_load_list(const conf_t *conf)
 		// Pass the memfd to the backend representation
 		rpm_backend.memfd = memfd;
 
-		waitpid(pid, NULL, 0);
+		waitpid(pid, &status, 0);
 	} else
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
 
 	posix_spawn_file_actions_destroy(&actions);
 
-	return 0;
+	int exit_rc = status;
+	if (status == 0) {
+		if (WIFEXITED(status))
+			exit_rc = WEXITSTATUS(status);
+		else if (WIFSIGNALED(status))
+			exit_rc = 128 + WTERMSIG(status);
+	}
+
+	if (exit_rc)
+		msg(LOG_ERR, "fapolicyd-rpm-loader exited with rc=%d", exit_rc);
+
+	return exit_rc;
 }
 
 // this function is used in fapolicyd-rpm-loader
