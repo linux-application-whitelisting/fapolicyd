@@ -27,12 +27,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <pthread.h>
 #include "message.h"
 
 /* The message mode refers to where informational messages go
 	0 - stderr, 1 - syslog, 2 - quiet. The default is quiet. */
 static message_t message_mode = MSG_QUIET;
 static debug_message_t debug_message = DBG_NO;
+static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void set_message_mode(message_t mode, debug_message_t debug)
 {
@@ -50,6 +52,7 @@ void msg(int priority, const char *fmt, ...)
 	if (priority == LOG_DEBUG && debug_message == DBG_NO)
 		return;
 
+	pthread_mutex_lock(&msg_lock);
 	va_start(ap, fmt);
 	if (message_mode == MSG_SYSLOG)
 		vsyslog(priority, fmt, ap);
@@ -92,4 +95,5 @@ void msg(int priority, const char *fmt, ...)
 		fflush(stderr);
 	}
 	va_end(ap);
+	pthread_mutex_unlock(&msg_lock);
 }
