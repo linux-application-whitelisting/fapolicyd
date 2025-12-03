@@ -278,6 +278,7 @@ void shutdown_fanotify(mlist *m)
 
 	// Clean up
 	q_close(q);
+	q = NULL;
 	close(rpt_timer_fd);
 	close(fd);
 
@@ -288,7 +289,8 @@ void shutdown_fanotify(mlist *m)
 
 void nudge_queue(void)
 {
-	q_shutdown(q);
+	if (q)
+		q_shutdown(q);
 }
 
 void decision_report(FILE *f)
