@@ -250,11 +250,13 @@ fi
 %doc README.md
 %{!?_licensedir:%global license %%doc}
 %license COPYING
-%attr(755,root,root) %dir %{_datadir}/%{name}
-%attr(755,root,root) %dir %{_datadir}/%{name}/sample-rules
-%attr(644,root,root) %{_datadir}/%{name}/default-ruleset.known-libs
-%attr(644,root,root) %{_datadir}/%{name}/sample-rules/*
-%attr(644,root,root) %{_datadir}/%{name}/fapolicyd-magic.mgc
+%attr(755,root,%{name}) %dir %{_datadir}/%{name}
+%attr(755,root,%{name}) %dir %{_datadir}/%{name}/sample-rules
+%attr(644,root,%{name}) %{_datadir}/%{name}/default-ruleset.known-libs
+%attr(644,root,%{name}) %{_datadir}/%{name}/sample-rules/*
+%attr(644,root,%{name}) %{_datadir}/%{name}/fapolicyd-magic.mgc
+%exclude %{_sysconfdir}/init.d/%{name}
+%exclude %{_sysconfdir}/conf.d/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/trust.d
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/rules.d

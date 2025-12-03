@@ -111,8 +111,19 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 	} else
 		return 1;
 
+	if (a->subj[t - SUBJ_START]) {
+		subject_attr_t *old = a->subj[t - SUBJ_START];
+		if (old->type == GID || old->type == UID) {
+			destroy_attr_set(old->set);
+			free(old->set);
+		} else if (old->type >= COMM)
+			free(old->str);
+		free(old);
+	} else {
+		a->cnt++;
+	}
+
 	a->subj[t - SUBJ_START] = newnode;
-	a->cnt++;
 	sanity_check_array(a, "subject_add 2");
 
 	return 0;

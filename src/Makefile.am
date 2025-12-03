@@ -87,6 +87,12 @@ fapolicyd_rpm_loader_LDFLAGS = $(fapolicyd_LDFLAGS)
 fapolicyd_rpm_loader_LDADD = libfapolicyd.la
 endif
 
+if NEED_MD5
+libfapolicyd_la_SOURCES += \
+	library/md5-backend.c \
+	library/md5-backend.h
+endif
+
 if WITH_DEB
 libfapolicyd_la_SOURCES += library/deb-backend.c
 libfapolicyd_la_LIBADD = -ldpkg -lmd
@@ -94,11 +100,14 @@ fapolicyd_CFLAGS += -DLIBDPKG_VOLATILE_API
 LIBS += -ldpkg -lmd
 endif
 
-if NEED_MD5
-libfapolicyd_la_SOURCES += \
-	library/md5-backend.c \
-	library/md5-backend.h
+if WITH_EBUILD
+libfapolicyd_la_SOURCES += library/ebuild-backend.c \
+	library/filter.c \
+	library/filter.h
 endif
+
+fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
+fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 
 libfapolicyd_la_CFLAGS = $(fapolicyd_CFLAGS)
 libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread

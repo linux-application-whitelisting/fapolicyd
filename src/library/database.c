@@ -35,7 +35,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -133,6 +133,8 @@ const char *lookup_tsource(unsigned int tsource)
 		return "rpmdb";
 	case SRC_DEB:
 		return "debdb";
+	case SRC_EBUILD:
+		return "ebuilddb";
 	case SRC_FILE_DB:
 		return "filedb";
 	}
@@ -618,11 +620,32 @@ static char *path_to_hash(const char *path, const size_t path_len)
 {
 	unsigned char hptr[80];
 	char *digest;
+	unsigned int md_len;
+	EVP_MD_CTX *mdctx;
 
 	if (path_len == 0)
 		return NULL;
 
-	SHA512((unsigned char *)path, path_len, (unsigned char *)&hptr);
+	mdctx = EVP_MD_CTX_new();
+	if (mdctx == NULL)
+		return NULL;
+
+	if (EVP_DigestInit_ex(mdctx, EVP_sha512(), NULL) != 1) {
+		EVP_MD_CTX_free(mdctx);
+		return NULL;
+	}
+
+	if (EVP_DigestUpdate(mdctx, path, path_len) != 1) {
+		EVP_MD_CTX_free(mdctx);
+		return NULL;
+	}
+
+	if (EVP_DigestFinal_ex(mdctx, hptr, &md_len) != 1) {
+		EVP_MD_CTX_free(mdctx);
+		return NULL;
+	}
+	EVP_MD_CTX_free(mdctx);
+
 	digest = malloc((SHA512_LEN * 2) + 1);
 	if (digest == NULL)
 		return digest;

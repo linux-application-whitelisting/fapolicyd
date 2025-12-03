@@ -31,8 +31,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
-#include <openssl/sha.h>
-#include <openssl/md5.h>
+#include <openssl/evp.h>
 #include <magic.h>
 #include <libudev.h>
 #include <elf.h>
@@ -783,30 +782,33 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 
 	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
-		unsigned char hptr[SHA512_DIGEST_LENGTH];
+		unsigned char hptr[EVP_MAX_MD_SIZE];
 		int computed = 0;
+		const EVP_MD *md = NULL;
 
 		switch (alg) {
 		case FILE_HASH_ALG_SHA1:
-			SHA1(mapped, size, hptr);
-			computed = 1;
+			md = EVP_sha1();
 			break;
 		case FILE_HASH_ALG_SHA256:
-			SHA256(mapped, size, hptr);
-			computed = 1;
+			md = EVP_sha256();
 			break;
 		case FILE_HASH_ALG_SHA512:
-			SHA512(mapped, size, hptr);
-			computed = 1;
+			md = EVP_sha512();
 			break;
 		case FILE_HASH_ALG_MD5:
-#ifdef USE_DEB
-			MD5(mapped, size, hptr);
-			computed = 1;
+#ifdef NEED_MD5
+			md = EVP_md5();
 #endif
 			break;
 		default:
 			break;
+		}
+
+		if (md) {
+			unsigned int len = 0;
+			if (EVP_Digest(mapped, size, hptr, &len, md, NULL))
+				computed = 1;
 		}
 		munmap(mapped, size);
 
@@ -1270,4 +1272,3 @@ rewind_out:
 	rewind_fd(fd);
 	return info;
 }
-
