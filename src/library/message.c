@@ -23,11 +23,13 @@
  */
 
 #include "config.h"
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <pthread.h>
+#include <pthread.h>  // for pthread_mutex_lock, pthread_mutex_unlock, PTHREAD_MUTEX_INITIALIZER, pthread_mutex_t
+#include <stdarg.h>   // for va_end, va_list, va_start
+#include <stdio.h>    // for fputs, stderr, fflush, fileno, fputc, vfprintf
+#include <stdlib.h>   // for getenv
+#include <syslog.h>   // for LOG_DEBUG, LOG_ALERT, LOG_CRIT, LOG_EMERG, LOG_ERR, LOG_INFO, LOG_NOTICE, LOG_WARNING, vsyslog
+#include <time.h>     // for localtime_r, strftime, time, time_t, tm
+#include <unistd.h>   // for isatty
 #include "message.h"
 
 /* The message mode refers to where informational messages go
@@ -35,6 +37,7 @@
 static message_t message_mode = MSG_QUIET;
 static debug_message_t debug_message = DBG_NO;
 static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
+static int use_color = -1;
 
 void set_message_mode(message_t mode, debug_message_t debug)
 {
@@ -52,6 +55,16 @@ void msg(int priority, const char *fmt, ...)
 	if (priority == LOG_DEBUG && debug_message == DBG_NO)
 		return;
 
+	if (use_color == -1) {
+		const char *nc = getenv("NO_COLOR");
+		if (nc && nc[0] != '\0')
+			use_color = 0;
+		else if (!isatty(fileno(stderr)))
+			use_color = 0;
+		else
+			use_color = 1;
+	}
+
 	pthread_mutex_lock(&msg_lock);
 	va_start(ap, fmt);
 	if (message_mode == MSG_SYSLOG)
@@ -60,18 +73,35 @@ void msg(int priority, const char *fmt, ...)
 		// For stderr we'll include the log level, use ANSI escape
 		// codes to colourise the it, and prefix lines with the time
 		// and date.
-		const char *color;
+		const char *color = "";
+		const char *reset = "";
 		const char *level;
+
+		if (use_color) {
+			reset = "\x1b[0m";
+			switch (priority) {
+			case LOG_EMERG:	   color = "\x1b[31m"; break; /* Red */
+			case LOG_ALERT:	   color = "\x1b[35m"; break; /* Magenta */
+			case LOG_CRIT:	   color = "\x1b[33m"; break; /* Yellow */
+			case LOG_ERR:	   color = "\x1b[31m"; break; /* Red */
+			case LOG_WARNING:  color = "\x1b[33m"; break; /* Yellow */
+			case LOG_NOTICE:   color = "\x1b[32m"; break; /* Green */
+			case LOG_INFO:	   color = "\x1b[36m"; break; /* Cyan */
+			case LOG_DEBUG:	   color = "\x1b[34m"; break; /* Blue */
+			default:	   color = "\x1b[0m";  break; /* Reset */
+			}
+		}
+
 		switch (priority) {
-		case LOG_EMERG:	   color = "\x1b[31m"; level = "EMERGENCY"; break; /* Red */
-		case LOG_ALERT:	   color = "\x1b[35m"; level = "ALERT"; break; /* Magenta */
-		case LOG_CRIT:	   color = "\x1b[33m"; level = "CRITICAL"; break; /* Yellow */
-		case LOG_ERR:	   color = "\x1b[31m"; level = "ERROR"; break; /* Red */
-		case LOG_WARNING:  color = "\x1b[33m"; level = "WARNING"; break; /* Yellow */
-		case LOG_NOTICE:   color = "\x1b[32m"; level = "NOTICE"; break; /* Green */
-		case LOG_INFO:	   color = "\x1b[36m"; level = "INFO"; break; /* Cyan */
-		case LOG_DEBUG:	   color = "\x1b[34m"; level = "DEBUG"; break; /* Blue */
-		default:	   color = "\x1b[0m";  level = "UNKNOWN"; break; /* Reset */
+		case LOG_EMERG:	   level = "EMERGENCY"; break;
+		case LOG_ALERT:	   level = "ALERT"; break;
+		case LOG_CRIT:	   level = "CRITICAL"; break;
+		case LOG_ERR:	   level = "ERROR"; break;
+		case LOG_WARNING:  level = "WARNING"; break;
+		case LOG_NOTICE:   level = "NOTICE"; break;
+		case LOG_INFO:	   level = "INFO"; break;
+		case LOG_DEBUG:	   level = "DEBUG"; break;
+		default:	   level = "UNKNOWN"; break;
 		}
 
 		time_t rawtime;
@@ -87,7 +117,8 @@ void msg(int priority, const char *fmt, ...)
 
 		fputs(color, stderr);
 		fputs(level, stderr);
-		fputs("\x1b[0m ]: ", stderr);
+		fputs(reset, stderr);
+		fputs(" ]: ", stderr);
 
 		vfprintf(stderr, fmt, ap);
 		fputc('\n', stderr);
