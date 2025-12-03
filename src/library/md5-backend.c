@@ -28,8 +28,6 @@
 #include <stdlib.h>             // for free, malloc
 #include <string.h>             // for strerror, strlen, strcmp, strdup
 #include <unistd.h>             // for close
-#include <openssl/md5.h>        // for MD5
-#include <openssl/sha.h>        // for SHA256
 #include <sys/stat.h>           // for stat, fstat, S_ISREG
 #include <syslog.h>             // for LOG_DEBUG, LOG_ERR, LOG_WARNING
 
