@@ -84,6 +84,7 @@ bin_PROGRAMS = fapolicyd-rpm-loader
 fapolicyd_rpm_loader_SOURCES = \
 	handler/fapolicyd-rpm-loader.c
 
+fapolicyd_CFLAGS += -DBINARYDIR='"$(bindir)"'
 fapolicyd_rpm_loader_CFLAGS = $(fapolicyd_CFLAGS)
 fapolicyd_rpm_loader_LDFLAGS = $(fapolicyd_LDFLAGS)
 fapolicyd_rpm_loader_LDADD = libfapolicyd.la

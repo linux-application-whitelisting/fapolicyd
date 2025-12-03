@@ -238,7 +238,7 @@ static int rpm_load_list(const conf_t *conf)
 	char *custom_env[] = { "FAPO_SOCK_FD=3", NULL };
 
 	pid_t pid = -1;
-	int status = posix_spawn(&pid, "/usr/bin/fapolicyd-rpm-loader",
+	int status = posix_spawn(&pid, BINARYDIR "/fapolicyd-rpm-loader",
 					 &actions, NULL, argv, custom_env);
 	close(sv[1]);  // Parent doesn't write
 
