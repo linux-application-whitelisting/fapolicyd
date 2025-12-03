@@ -1,0 +1,29 @@
+option(
+    'audit',
+    type: 'boolean',
+    value: false,
+    description: 'Enable decision auditing',
+)
+option(
+    'rpm',
+    type: 'feature',
+    value: 'enabled',
+    description: 'Enable RPM backend',
+)
+option(
+    'deb',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Enable Debian backend',
+)
+option(
+    'ebuild',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Enable Ebuild backend',
+)
+option(
+    'ld_so_path',
+    type: 'string',
+    description: 'Ignore detection and use this path to the dynamic linker/loader',
+)
