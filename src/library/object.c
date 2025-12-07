@@ -44,7 +44,7 @@ void object_create(o_array *a)
 }
 
 #ifdef DEBUG
-static void sanity_check_array(o_array *a, const char *id)
+static void sanity_check_array(const o_array *a, const char *id)
 {
 	int i;
 	unsigned int num = 0;
@@ -88,8 +88,14 @@ int object_add(o_array *a, const object_attr_t *obj)
 	} else
 		return 1;
 
+	if (a->obj[obj->type - OBJ_START]) {
+		free(a->obj[obj->type - OBJ_START]->o);
+		free(a->obj[obj->type - OBJ_START]);
+	} else {
+		a->cnt++;
+	}
+
 	a->obj[obj->type - OBJ_START] = newnode;
-	a->cnt++;
 
 	return 0;
 }

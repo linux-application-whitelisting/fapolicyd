@@ -29,7 +29,7 @@
 #include "file.h"
 
 // If this gets extended, please put the new items at the end.
-typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
+typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB, SRC_EBUILD } trust_src_t;
 
 // source, size, sha
 // Do not pad the hash value so SHA1 and SHA256 digests parse correctly

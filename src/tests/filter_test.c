@@ -48,7 +48,7 @@
 #define CASES_FILE TEST_BASE "/src/tests/fixtures/filter-cases.txt"
 #define MIN_CONF  TEST_BASE "/src/tests/fixtures/filter-minimal.conf"
 #define BROKEN_CONF TEST_BASE "/src/tests/fixtures/broken-filter.conf"
-#define PROD_CONF TEST_BASE "/init/fapolicyd-filter.conf"
+#define PROD_CONF TEST_BASE "/init/data/fapolicyd-filter.conf"
 
 extern filter_t *global_filter;
 

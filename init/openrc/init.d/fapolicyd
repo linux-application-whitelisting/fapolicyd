@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+
+name=$RC_SVCNAME
+cfgfile="/etc/$RC_SVCNAME/$RC_SVCNAME.conf"
+command="/usr/sbin/fapolicyd"
+command_args="${fapolicyd_opts}"
+command_user="fapolicyd"
+pidfile="/run/$RC_SVCNAME/$RC_SVCNAME.pid"
+
+# Depend on local disks being mounted
+depend() {
+	need localmount
+}
+
+# Before starting the service update the rulesfile in /etc/fapolicyd
+# from the fragments in /etc/fapolicyd/rules.d
+start_pre() {
+	/usr/sbin/fagenrules
+}
