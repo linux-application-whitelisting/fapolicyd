@@ -693,7 +693,7 @@ const char *classify_device(mode_t mode)
  *
  * Returns: interpreter basename (e.g., "bash", "python3"), or NULL
  */
-static const char *extract_shebang_interpreter(int fd, char *buf, size_t buflen)
+const char *extract_shebang_interpreter(int fd, char *buf, size_t buflen)
 {
 	char line[256];
 	ssize_t n;
@@ -788,7 +788,7 @@ static const char *extract_shebang_interpreter(int fd, char *buf, size_t buflen)
  * - No hardcoded paths (works with /bin, /usr/bin, /nix/store/..., etc.)
  * - Pattern matching catches variants (bash, dash, zsh all end in "sh")
  */
-static const char *mime_from_shebang(const char *interp)
+const char *mime_from_shebang(const char *interp)
 {
 	size_t len;
 
@@ -852,7 +852,7 @@ static const char *mime_from_shebang(const char *interp)
  * Magic number detection for common binary formats
  * These are O(1) checks that can skip libmagic
  */
-static const char *detect_by_magic_number(int fd)
+const char *detect_by_magic_number(int fd)
 {
 	unsigned char hdr[16];
 	ssize_t n = pread(fd, hdr, sizeof(hdr), 0);
@@ -888,7 +888,7 @@ static const char *detect_by_magic_number(int fd)
  * Quick text format detection for text files where we can determine
  * type from first few bytes
  */
-static const char *detect_text_format(int fd)
+const char *detect_text_format(int fd)
 {
 	char hdr[512];
 	ssize_t n = pread(fd, hdr, sizeof(hdr) - 1, 0);
