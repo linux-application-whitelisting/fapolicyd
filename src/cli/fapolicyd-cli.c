@@ -57,6 +57,7 @@
 #include "fd-fgets.h"
 #include "paths.h"
 #include "filter.h"
+#include "file.h"
 
 bool verbose = false;
 
@@ -402,9 +403,10 @@ static int do_manage_files(int argc, char * const argv[])
 static int do_ftype(const char *path)
 {
 	int fd;
-	magic_t magic_cookie;
 	const char *ptr = NULL;
+	char buf[80];
 	struct stat sb;
+	struct file_info i;
 
 	// We need to open in non-blocking mode because if its a
 	// fifo, it will hang the program.
@@ -413,59 +415,25 @@ static int do_ftype(const char *path)
 		fprintf(stderr, "Cannot open %s - %s\n", path, strerror(errno));
 		exit(1);
 	}
-
-	unsetenv("MAGIC");
-	magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
-						  MAGIC_NO_CHECK_ELF);
-	if (magic_cookie == NULL) {
-		fprintf(stderr, "Unable to init libmagic");
-		close(fd);
-		return 1;
-	}
-	if (magic_load(magic_cookie, MAGIC_PATHS) != 0) {
-		fprintf(stderr, "Unable to load magic database");
-		close(fd);
-		magic_close(magic_cookie);
-		return 1;
+	if (fstat(fd, &sb) != 0) {
+		fprintf(stderr, "Cannot stat %s - %s\n", path, strerror(errno));
+		exit(1);
 	}
 
-	// Change it back to blocking
-	if (fcntl(fd, F_SETFL, 0)) {
-		fprintf(stderr, "Unable to make fd blocking");
-		close(fd);
-		magic_close(magic_cookie);
-		return 1;
-	}
+	// Setup file info with bare essentials
+	i.device = sb.st_dev;
+	i.mode = sb.st_mode;
+	i.size = sb.st_size;
 
-	if (fstat(fd, &sb) == 0) {
-		uint32_t elf = 0;
-
-		// Only classify if a regular file
-		if (sb.st_mode & S_IFREG)
-			elf = gather_elf(fd, sb.st_size);
-		if (elf & IS_ELF)
-			ptr = classify_elf_info(elf, path);
-		else {
-			ptr = classify_device(sb.st_mode);
-			if (ptr == NULL)
-				ptr = magic_descriptor(magic_cookie, fd);
-		}
-	} else
-		fprintf(stderr, "Failed fstat (%s)", strerror(errno));
-
-	if (ptr) {
-		char buf[80], *str;
-		strncpy(buf, ptr, 79);
-		buf[79] = 0;
-		str = strchr(buf, ';');
-		if (str)
-			*str = 0;
-		printf("%s\n", buf);
-	} else
-		printf("unknown\n");
-
+	file_init();
+	ptr = get_file_type_from_fd(fd, &i, path, sizeof(buf), buf);
+	file_close();
 	close(fd);
-	magic_close(magic_cookie);
+
+	if (ptr)
+		printf("%s\n", ptr);
+	else
+		printf("unknown\n");
 
 	return 0;
 }

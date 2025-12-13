@@ -180,7 +180,7 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 	fd = open(path, O_RDONLY|O_NOATIME|O_CLOEXEC);
 	if (fd >= 0) {
 		const char *ptr;
-		extern magic_t magic_cookie;
+		extern magic_t magic_full;
 		struct stat sb;
 
 		// Most of the time, the process will be ELF.
@@ -198,7 +198,8 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 			}
 		}
 
-		ptr = magic_descriptor(magic_cookie, fd);
+		// FIXME: Can we use get_file_type_from_fd here?
+		ptr = magic_descriptor(magic_full, fd);
 		close(fd);
 		if (ptr) {
 			char *str;
