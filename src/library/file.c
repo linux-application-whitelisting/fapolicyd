@@ -51,7 +51,7 @@
 
 // Local variables
 static struct udev *udev;
-magic_t magic_cookie;
+magic_t magic_fast, magic_full;
 struct cache { dev_t device; const char *devname; };
 static struct cache c = { 0, NULL };
 
@@ -93,16 +93,41 @@ void file_init(void)
 
 	// Setup libmagic
 	unsetenv("MAGIC");
-	magic_cookie = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
-			MAGIC_NO_CHECK_ELF);
-	if (magic_cookie == NULL) {
+	// Fast magic: minimal rules, all expensive checks disabled
+	magic_fast = magic_open(
+		MAGIC_MIME |
+		MAGIC_ERROR |
+		MAGIC_NO_CHECK_CDF |
+		MAGIC_NO_CHECK_ELF |
+		MAGIC_NO_CHECK_COMPRESS |  /* Don't decompress */
+		MAGIC_NO_CHECK_TAR |
+		MAGIC_NO_CHECK_SOFT |      /* Skip soft magic (text analysis) */
+		MAGIC_NO_CHECK_APPTYPE |
+		MAGIC_NO_CHECK_ENCODING |  /* Skip charset detection */
+		MAGIC_NO_CHECK_TOKENS |    /* Skip text tokens */
+		MAGIC_NO_CHECK_JSON        /* Skip JSON validation */
+		);
+	if (magic_fast == NULL) {
 		msg(LOG_ERR, "Unable to init libmagic");
 		exit(1);
 	}
-	// Load our overrides and the default magic definitions
-	if (magic_load(magic_cookie, MAGIC_PATHS)
-									!= 0) {
-		msg(LOG_ERR, "Unable to load magic database");
+
+	// Load only essential magic rules
+	if (magic_load(magic_fast, MAGIC_PATH) != 0) {
+		msg(LOG_ERR, "Unable to load fast magic database");
+		exit(1);
+	}
+
+	// Full magic: normal operation
+	magic_full = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
+			MAGIC_NO_CHECK_ELF);
+	if (magic_full == NULL) {
+		msg(LOG_ERR, "Unable to init libmagic");
+		exit(1);
+	}
+	// System default
+	if (magic_load(magic_full, NULL) != 0) {
+		msg(LOG_ERR, "Unable to load default magic database");
 		exit(1);
 	}
 }
@@ -112,7 +137,8 @@ void file_init(void)
 void file_close(void)
 {
 	udev_unref(udev);
-	magic_close(magic_cookie);
+	magic_close(magic_fast);
+	magic_close(magic_full);
 	free((void *)c.devname);
 }
 
@@ -654,6 +680,254 @@ const char *classify_device(mode_t mode)
 }
 
 
+/*
+ * Parse shebang line and extract interpreter name
+ *
+ * Handles all variations:
+ *   #!/bin/sh
+ *   #!/usr/bin/bash
+ *   #!/usr/local/bin/python3
+ *   #!/nix/store/abc123-python-3.11/bin/python3
+ *   #!/usr/bin/env python3
+ *   #!/bin/env -S python3 -u
+ *
+ * Returns: interpreter basename (e.g., "bash", "python3"), or NULL
+ */
+static const char *extract_shebang_interpreter(int fd, char *buf, size_t buflen)
+{
+	char line[256];
+	ssize_t n;
+	char *p, *end, *slash;
+	size_t basename_len;
+
+	n = pread(fd, line, sizeof(line) - 1, 0);
+	if (n < 4 || line[0] != '#' || line[1] != '!')
+		return NULL;
+	line[n] = '\0';
+
+	/* Skip #! and whitespace */
+	p = line + 2;
+	while (*p == ' ' || *p == '\t')
+		p++;
+
+	/* Find end of first token (the path) */
+	end = p;
+	while (*end && *end != ' ' && *end != '\t' &&
+				      *end != '\n' && *end != '\r')
+		end++;
+
+	/* Get basename - works for any path format */
+	slash = end - 1;
+	while (slash > p && *slash != '/')
+		slash--;
+	if (*slash == '/')
+		slash++;
+
+	basename_len = end - slash;
+
+	/* Check if this is 'env' (handles /any/path/env) */
+	if (basename_len == 3 && strncmp(slash, "env", 3) == 0) {
+		/* Skip to next token */
+		p = end;
+		while (*p == ' ' || *p == '\t')
+			p++;
+
+		/* Skip env flags like -S, -i, --split-string */
+		while (*p == '-') {
+			while (*p && *p != ' ' && *p != '\t')
+				p++;
+			while (*p == ' ' || *p == '\t')
+				p++;
+		}
+
+		/* Now p points to the interpreter */
+		end = p;
+		while (*end && *end != ' ' && *end != '\t' &&
+					      *end != '\n' && *end != '\r')
+			end++;
+
+		/* Get basename again (env arg might have a path too) */
+		slash = end - 1;
+		while (slash > p && *slash != '/')
+			slash--;
+		if (*slash == '/')
+			slash++;
+
+		basename_len = end - slash;
+	}
+
+	if (basename_len == 0 || basename_len >= buflen)
+		return NULL;
+
+	/* Copy basename, keeping version number but stripping sub-versions
+	 * python3.11.2 -> python3, perl5.32 -> perl5 */
+	size_t i;
+	for (i = 0; i < basename_len && i < buflen - 1; i++) {
+		char ch = slash[i];
+		/* Stop at '.' or second consecutive digit */
+		if (ch == '.')
+			break;
+		if (ch >= '0' && ch <= '9' && i > 0 &&
+			slash[i-1] >= '0' && slash[i-1] <= '9')
+			break;
+		buf[i] = ch;
+	}
+
+	if (i == 0)
+		return NULL;
+	buf[i] = '\0';
+
+	return buf;
+}
+
+
+/*
+ * Get mime type from shebang interpreter using suffix/pattern matching
+ *
+ * This approach handles the path variation problem elegantly:
+ * - No hardcoded paths (works with /bin, /usr/bin, /nix/store/..., etc.)
+ * - Pattern matching catches variants (bash, dash, zsh all end in "sh")
+ */
+static const char *mime_from_shebang(const char *interp)
+{
+	size_t len;
+
+	if (!interp || !*interp)
+		return NULL;
+
+	len = strlen(interp);
+
+	// FIXME: consider doing the btree lookup like audit uses
+
+	/*
+	 * Shell detection - match *sh suffix
+	 * Covers: sh, ash, bash, dash, fish, ksh, mksh, pdksh, zsh, csh, tcsh
+	 * Mirrors magic rule: (a|ba|da|fi|k|mk|pdk|z|c|tc)?sh
+	 */
+	if (len >= 2 && interp[len-2] == 's' && interp[len-1] == 'h')
+		return "text/x-shellscript";
+
+	/* Python - python, python2, python3 */
+	if (len >= 6 && strncmp(interp, "python", 6) == 0)
+		return "text/x-python";
+
+	/* Perl - perl, perl5 */
+	if (len >= 4 && strncmp(interp, "perl", 4) == 0)
+		return "text/x-perl";
+
+	/* Lua */
+	if (len >= 3 && strncmp(interp, "lua", 3) == 0)
+		return "text/x-lua";
+
+	/* AWK - awk, gawk, mawk, nawk (all end in "awk") */
+	if (len >= 3 && strcmp(interp + len - 3, "awk") == 0)
+		return "text/x-awk";
+
+	/* Node.js */
+	if (len >= 4 && strncmp(interp, "node", 4) == 0)
+		return "application/javascript";
+
+	/* R / Rscript */
+	if ((len >= 7 && strncmp(interp, "Rscript", 7) == 0) ||
+					(len == 1 && interp[0] == 'R'))
+		return "text/x-R";
+
+	/* SystemTap */
+	if (len >= 4 && strncmp(interp, "stap", 4) == 0)
+		return "text/x-systemtap";
+
+	/* PHP */
+	if (len >= 3 && strncmp(interp, "php", 3) == 0)
+		return "text/x-php";
+
+	/*
+	 * Unknown interpreter - return NULL to fall through to libmagic.
+	 * Being conservative here avoids misclassifying exotic interpreters.
+	 */
+	return NULL;
+}
+
+
+/*
+ * Magic number detection for common binary formats
+ * These are O(1) checks that can skip libmagic
+ */
+static const char *detect_by_magic_number(int fd)
+{
+	unsigned char hdr[16];
+	ssize_t n = pread(fd, hdr, sizeof(hdr), 0);
+	if (n < 8)
+		return NULL;
+
+	/* PNG */
+	if (hdr[0] == 0x89 && hdr[1] == 'P' && hdr[2] == 'N' && hdr[3] == 'G')
+		return "image/png";
+
+	/* JPEG */
+	if (hdr[0] == 0xFF && hdr[1] == 0xD8 && hdr[2] == 0xFF)
+		return "image/jpeg";
+
+	/* GIF */
+	if (hdr[0] == 'G' && hdr[1] == 'I' && hdr[2] == 'F' && hdr[3] == '8')
+		return "image/gif";
+
+	/* gzip */
+	if (hdr[0] == 0x1F && hdr[1] == 0x8B)
+		return "application/gzip";
+
+	/* Python bytecode - FIXME: Redo this with exact numbers
+	 * Magic varies by version but all start with recognizable pattern */
+	if (n >= 4 && (hdr[2] == '\r' && hdr[3] == '\n'))
+	return "application/x-bytecode.python";
+
+	return NULL;
+}
+
+
+/*
+ * Quick text format detection for text files where we can determine
+ * type from first few bytes
+ */
+static const char *detect_text_format(int fd)
+{
+	char hdr[512];
+	ssize_t n = pread(fd, hdr, sizeof(hdr) - 1, 0);
+	if (n < 4)
+		return NULL;
+	hdr[n] = '\0';
+
+	/* Skip UTF-8 BOM if present */
+	char *p = hdr;
+	if ((unsigned char)hdr[0] == 0xEF &&
+	   (unsigned char)hdr[1] == 0xBB &&
+	   (unsigned char)hdr[2] == 0xBF)
+		p += 3;
+
+	/* Skip leading whitespace */
+	while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+		p++;
+
+	/* HTML */
+	if (strncasecmp(p, "<!DOCTYPE html", 14) == 0 ||
+			strncasecmp(p, "<html", 5) == 0 ||
+			strncasecmp(p, "<!DOCTYPE HTML", 14) == 0)
+		return "text/html";
+
+	/* XML */
+	if (strncmp(p, "<?xml", 5) == 0)
+		return "application/xml";
+
+	/* JSON */
+	if (*p == '{' || *p == '[') {
+		/* Quick validation - look for quote or colon */
+		if (strchr(p, '"') || strchr(p, ':'))
+			return "application/json";
+	}
+
+	return NULL;
+}
+
+
 // This function will determine the mime type of the passed file descriptor.
 // If it returns NULL, then an error of some kind happed. Otherwise it
 // fills in "buf" and returns a pointer to it.
@@ -663,7 +937,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	const char *ptr;
 
 	// libmagic is unpredictable in determining elf files.
-	// We need to do it ourselves for consistency.
+	// We need to do it ourselves for consistency (and speed).
 	if (i->mode & S_IFREG) {
 		// If its a regular file (block devices have 0 length, too)
 		// check to see if it's empty to skip doing all of the
@@ -682,6 +956,38 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			strncpy(buf, ptr, blen-1);
 			buf[blen-1] = 0;
 			return buf;
+		} else if (elf & HAS_SHEBANG) {
+			// See if we can identify the mime-type
+			char interp[64];
+
+			if (extract_shebang_interpreter(fd, interp,
+							sizeof(interp))) {
+				ptr = mime_from_shebang(interp);
+				if (ptr) {
+					strncpy(buf, ptr, blen-1);
+					buf[blen-1] = 0;
+					return buf;
+				}
+			}
+
+		}
+
+		// Quick magic number check for common binary formats
+		ptr = detect_by_magic_number(fd);
+		if (ptr) {
+			strncpy(buf, ptr, blen-1);
+			buf[blen-1] = 0;
+			return buf;
+		}
+
+		// Quick text format detection
+		if (elf & TEXT_SCRIPT) {
+			ptr = detect_text_format(fd);
+			if (ptr) {
+				strncpy(buf, ptr, blen-1);
+				buf[blen-1] = 0;
+				return buf;
+			}
 		}
 	}
 
@@ -693,17 +999,24 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 		return buf;
 	}
 
-	// Do the normal classification
-	ptr = magic_descriptor(magic_cookie, fd);
-	if (ptr) {
-		char *str;
-		strncpy(buf, ptr, blen-1);
-		buf[blen-1] = 0;
-		str = strchr(buf, ';');
-		if (str)
-			*str = 0;
-	} else
-		return NULL;
+	// Do the fast classification
+	rewind_fd(fd);
+	ptr = magic_descriptor(magic_fast, fd);
+	if (ptr == NULL ||
+	    (ptr && (strcmp(ptr, "text/plain") == 0 ||
+		    strcmp(ptr, "application/octet-stream") == 0))) {
+		// Fall back to the whole database lookup
+		rewind_fd(fd);
+		ptr = magic_descriptor(magic_full, fd);
+		if (ptr == NULL)
+			return NULL;
+	}
+	char *str;
+	strncpy(buf, ptr, blen-1);
+	buf[blen-1] = 0;
+	str = strchr(buf, ';');
+	if (str)
+		*str = 0;
 
 	return buf;
 }
