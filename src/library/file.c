@@ -1078,8 +1078,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	rewind_fd(fd);
 	ptr = magic_descriptor(magic_fast, fd);
 	if (ptr == NULL ||
-	    (ptr && (strcmp(ptr, "text/plain") == 0 ||
-		    strcmp(ptr, "application/octet-stream") == 0))) {
+	    (ptr && (strncmp(ptr, "text/plain", 10) == 0 ||
+		    strncmp(ptr, "application/octet-stream", 24) == 0))) {
 		// Fall back to the whole database lookup
 		rewind_fd(fd);
 		ptr = magic_descriptor(magic_full, fd);
