@@ -853,10 +853,14 @@ const char *mime_from_shebang(const char *interp)
 	 * Shell detection - match *sh suffix
 	 * Covers: sh, ash, bash, dash, fish, ksh, mksh, pdksh, zsh, csh, tcsh
 	 * Mirrors magic rule: (a|ba|da|fi|k|mk|pdk|z|c|tc)?sh
-	 * Avoid: wish - which is tcl
+	 * Avoid: wish,tclsh,jimsh - which are tcl
 	 */
 	if (len >= 2 && p[-2] == 's' && p[-1] == 'h') {
 		if (len >= 4 && p[-4] == 'w')
+			return "text/x-tcl";
+		if (len >= 5 &&
+		    ((p[-5] == 't' && p[-4] == 'c' && p[3] == 'l') ||
+		     (p[-5] == 'j' && p[-4] == 'i' && p[3] == 'm')) )
 			return "text/x-tcl";
 		return "text/x-shellscript";
 	}

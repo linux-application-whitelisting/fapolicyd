@@ -13,9 +13,6 @@
 0	string/wt	#!\ /usr/bin/gjs	Gnome Javascript text executable
 !:mime	application/javascript
 
-0	string/wt	#!\ /usr/bin/jimsh	Jim TCL text executable
-!:mime  text/x-tcl
-
 0	belong		0xd1f20d0a	python 2.6 byte-compiled
 !:mime	application/x-bytecode.python
 
@@ -51,9 +48,6 @@
 
 0	string	\223NUMPY			NumPy data file
 !:mime	application/x-numpy-data
-
-0       search/1/wt      #!\ /usr/bin/tclsh     Tcl/Tk script text executable
-!:mime  text/x-tcl
 
 0	string/wt	#!\ /usr/sbin/nft	Netfilter tables script text executable
 !:mime	text/x-nftables
