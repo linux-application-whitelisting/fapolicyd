@@ -681,6 +681,37 @@ const char *classify_device(mode_t mode)
 
 
 /*
+ * Mime Type Detection Overview
+ * ----------------------------
+ *
+ * Determining a file's mime type is expensive when relying solely on libmagic.
+ * Profiling showed libmagic spending ~43% of its time on text encoding
+ * analysis even for files whose type could be determined from their first
+ * few bytes.
+ *
+ * This code implements a tiered detection strategy that tries fast O(1) checks
+ * before falling back to libmagic.  A single pread() loads the file header
+ * once; this buffer is reused across all detection stages:
+ *
+ *  1. Empty files        - size == 0 returns application/x-empty immediately.
+ *  2. ELF detection      - gather_elf() classifies executables and libraries.
+ *  3. Shebang scripts    - extract_shebang_interpreter() + mime_from_shebang()
+ *                          identify shell, python, perl, etc. by interpreter.
+ *  4. Magic numbers      - detect_by_magic_number() matches PNG, JPEG, gzip.
+ *  5. Text formats       - detect_text_format() catches HTML, XML, JSON.
+ *  6. Two-tier libmagic  - magic_fast (minimal rules) then magic_full if needed
+ *
+ * Shebang detection extracts the interpreter basename regardless of path
+ * (/bin/sh, /usr/bin/env bash, /nix/store/.../python3 all work).  Interpreter
+ * matching uses suffix patterns (*sh catches bash/dash/zsh/fish/ksh) rather
+ * than exact names to handle variants across distributions.
+ *
+ * Based on a Fedora system scan, this approach resolves ~98% of files without
+ * a full libmagic lookup: ELF ~75%, shebang scripts ~16%, magic/text ~7%.
+ */
+
+
+/*
  * extract_shebang_interpreter - parse a shebang line to find interpreter
  * @data: pointer to file header data
  * @len: number of bytes available in @data
@@ -792,36 +823,6 @@ const char *extract_shebang_interpreter(const char *data, size_t len,
 	return buf;
 }
 
-
-/*
- * Mime Type Detection Overview
- * ----------------------------
- *
- * Determining a file's mime type is expensive when relying solely on libmagic.
- * Profiling showed libmagic spending ~43% of its time on text encoding
- * analysis even for files whose type could be determined from their first
- * few bytes.
- *
- * This code implements a tiered detection strategy that tries fast O(1) checks
- * before falling back to libmagic.  A single pread() loads the file header
- * once; this buffer is reused across all detection stages:
- *
- *  1. Empty files        - size == 0 returns application/x-empty immediately.
- *  2. ELF detection      - gather_elf() classifies executables and libraries.
- *  3. Shebang scripts    - extract_shebang_interpreter() + mime_from_shebang()
- *                          identify shell, python, perl, etc. by interpreter.
- *  4. Magic numbers      - detect_by_magic_number() matches PNG, JPEG, gzip.
- *  5. Text formats       - detect_text_format() catches HTML, XML, JSON.
- *  6. Two-tier libmagic  - magic_fast (minimal rules) then magic_full if needed
- *
- * Shebang detection extracts the interpreter basename regardless of path
- * (/bin/sh, /usr/bin/env bash, /nix/store/.../python3 all work).  Interpreter
- * matching uses suffix patterns (*sh catches bash/dash/zsh/fish/ksh) rather
- * than exact names to handle variants across distributions.
- *
- * Based on a Fedora system scan, this approach resolves ~98% of files without
- * a full libmagic lookup: ELF ~75%, shebang scripts ~16%, magic/text ~7%.
- */
 
 /*
  * mime_from_shebang - map a shebang interpreter to a mime type
