@@ -889,6 +889,11 @@ const char *mime_from_shebang(const char *interp)
 	if (len >= 3 && memcmp(interp, "php", 3) == 0)
 		return "text/x-php";
 
+	/* R / Rscript */
+	if ((len >= 7 && imemcmp(interp, "Rscript", 7) == 0) ||
+	    (len == 1 && interp[0] == 'R'))
+		return "text/x-R";
+
 	if (len >= 8 && memcmp(interp, "ocamlrun", 8) == 0)
 		return "application/x-bytecode.ocaml";
 
