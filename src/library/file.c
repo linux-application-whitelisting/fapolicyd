@@ -1020,14 +1020,6 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			return buf;
 		}
 
-		header_read = pread(fd, header, sizeof(header) - 1, 0);
-		if (header_read > 0) {
-			header_len = header_read;
-			header[header_len] = '\0';
-		} else {
-			header[0] = '\0';
-		}
-
 		uint32_t elf = gather_elf(fd, i->size);
 		if (elf & IS_ELF) {
 			ptr = classify_elf_info(elf, path);
@@ -1036,7 +1028,17 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			strncpy(buf, ptr, blen-1);
 			buf[blen-1] = 0;
 			return buf;
-		} else if (elf & HAS_SHEBANG) {
+		}
+
+		header_read = pread(fd, header, sizeof(header) - 1, 0);
+		if (header_read > 0) {
+			header_len = header_read;
+			header[header_len] = '\0';
+			rewind_fd(fd);
+		} else
+			header[0] = '\0';
+
+		if (elf & HAS_SHEBANG) {
 			// See if we can identify the mime-type
 			char interp[64];
 
@@ -1081,7 +1083,6 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	}
 
 	// Do the fast classification
-	rewind_fd(fd);
 	ptr = magic_descriptor(magic_fast, fd);
 	if (ptr == NULL ||
 	    (ptr && (memcmp(ptr, "text/plain", 10) == 0 ||
