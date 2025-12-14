@@ -693,14 +693,22 @@ const char *classify_device(mode_t mode)
  *
  * Returns: interpreter basename (e.g., "bash", "python3"), or NULL
  */
-const char *extract_shebang_interpreter(int fd, char *buf, size_t buflen)
+const char *extract_shebang_interpreter(const char *data, size_t len,
+	char *buf, size_t buflen)
 {
 	char line[256];
-	ssize_t n;
+	size_t n;
 	char *p, *end, *slash;
 	size_t basename_len;
 
-	n = pread(fd, line, sizeof(line) - 1, 0);
+	if (len == 0)
+		return NULL;
+
+	if (len > sizeof(line) - 1)
+		len = sizeof(line) - 1;
+
+	n = len;
+	memcpy(line, data, n);
 	if (n < 4 || line[0] != '#' || line[1] != '!')
 		return NULL;
 	line[n] = '\0';
@@ -852,12 +860,10 @@ const char *mime_from_shebang(const char *interp)
  * Magic number detection for common binary formats
  * These are O(1) checks that can skip libmagic
  */
-const char *detect_by_magic_number(int fd)
+const char *detect_by_magic_number(const unsigned char *hdr, size_t len)
 {
-	unsigned char hdr[16];
-	ssize_t n = pread(fd, hdr, sizeof(hdr), 0);
 	// We only access hdr[3] at the most so require at least 4 bytes
-	if (n < 4)
+	if (len < 4)
 		return NULL;
 
 	/* PNG */
@@ -878,8 +884,8 @@ const char *detect_by_magic_number(int fd)
 
 	/* Python bytecode - FIXME: Redo this with exact numbers
 	 * Magic varies by version but all start with recognizable pattern */
-	if (n >= 4 && (hdr[2] == '\r' && hdr[3] == '\n'))
-	return "application/x-bytecode.python";
+	if (len >= 4 && (hdr[2] == '\r' && hdr[3] == '\n'))
+		return "application/x-bytecode.python";
 
 	return NULL;
 }
@@ -889,13 +895,10 @@ const char *detect_by_magic_number(int fd)
  * Quick text format detection for text files where we can determine
  * type from first few bytes
  */
-const char *detect_text_format(int fd)
+const char *detect_text_format(const char *hdr, size_t len)
 {
-	char hdr[512];
-	ssize_t n = pread(fd, hdr, sizeof(hdr) - 1, 0);
-	if (n < 4)
+	if (len < 4)
 		return NULL;
-	hdr[n] = '\0';
 
 	/* Skip UTF-8 BOM if present */
 	char *p = hdr;
@@ -936,6 +939,9 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf)
 {
 	const char *ptr;
+	char header[512 + 1];
+	size_t header_len = 0;
+	ssize_t header_read;
 
 	// libmagic is unpredictable in determining elf files.
 	// We need to do it ourselves for consistency (and speed).
@@ -947,6 +953,14 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			strncpy(buf, "application/x-empty", blen-1);
 			buf[blen-1] = 0;
 			return buf;
+		}
+
+		header_read = pread(fd, header, sizeof(header) - 1, 0);
+		if (header_read > 0) {
+			header_len = header_read;
+			header[header_len] = '\0';
+		} else {
+			header[0] = '\0';
 		}
 
 		uint32_t elf = gather_elf(fd, i->size);
@@ -961,8 +975,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			// See if we can identify the mime-type
 			char interp[64];
 
-			if (extract_shebang_interpreter(fd, interp,
-							sizeof(interp))) {
+			if (extract_shebang_interpreter(header, header_len, interp,
+					sizeof(interp))) {
 				ptr = mime_from_shebang(interp);
 				if (ptr) {
 					strncpy(buf, ptr, blen-1);
@@ -974,7 +988,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 		}
 
 		// Quick magic number check for common binary formats
-		ptr = detect_by_magic_number(fd);
+		ptr = detect_by_magic_number((const unsigned char *)header,
+			header_len);
 		if (ptr) {
 			strncpy(buf, ptr, blen-1);
 			buf[blen-1] = 0;
@@ -983,7 +998,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 
 		// Quick text format detection
 		if (elf & TEXT_SCRIPT) {
-			ptr = detect_text_format(fd);
+			ptr = detect_text_format(header, header_len);
 			if (ptr) {
 				strncpy(buf, ptr, blen-1);
 				buf[blen-1] = 0;
