@@ -856,7 +856,8 @@ const char *detect_by_magic_number(int fd)
 {
 	unsigned char hdr[16];
 	ssize_t n = pread(fd, hdr, sizeof(hdr), 0);
-	if (n < 8)
+	// We only access hdr[3] at the most so require at least 4 bytes
+	if (n < 4)
 		return NULL;
 
 	/* PNG */
