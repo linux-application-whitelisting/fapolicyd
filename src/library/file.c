@@ -890,7 +890,7 @@ const char *mime_from_shebang(const char *interp)
 		return "text/x-php";
 
 	if (len >= 8 && memcmp(interp, "ocamlrun", 8) == 0)
-		return "application/x-bytecode.ocaml"
+		return "application/x-bytecode.ocaml";
 
 	/*
 	 * Unknown interpreter - return NULL to fall through to libmagic.
