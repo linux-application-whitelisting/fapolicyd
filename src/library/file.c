@@ -889,6 +889,9 @@ const char *mime_from_shebang(const char *interp)
 	if (len >= 3 && memcmp(interp, "php", 3) == 0)
 		return "text/x-php";
 
+	if (len >= 8 && memcmp(interp, "ocamlrun", 8) == 0)
+		return "application/x-bytecode.ocaml"
+
 	/*
 	 * Unknown interpreter - return NULL to fall through to libmagic.
 	 * Being conservative here avoids misclassifying exotic interpreters.
