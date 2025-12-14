@@ -711,6 +711,9 @@ const char *classify_device(mode_t mode)
  */
 
 
+// Hot function could benefit from aggressive optimization
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
 /*
  * extract_shebang_interpreter - parse a shebang line to find interpreter
  * @data: pointer to file header data
@@ -822,6 +825,7 @@ const char *extract_shebang_interpreter(const char *data, size_t len,
 
 	return buf;
 }
+#pragma GCC pop_options
 
 
 /*
@@ -834,43 +838,51 @@ const char *extract_shebang_interpreter(const char *data, size_t len,
  */
 const char *mime_from_shebang(const char *interp)
 {
+	const char *p;
 	size_t len;
 
 	if (!interp || !*interp)
 		return NULL;
 
-	len = strlen(interp);
+	/* Find end of string - we need the pointer for suffix check */
+	for (p = interp; *p; p++)
+		;
+	len = p - interp;
 
 	/*
 	 * Shell detection - match *sh suffix
 	 * Covers: sh, ash, bash, dash, fish, ksh, mksh, pdksh, zsh, csh, tcsh
 	 * Mirrors magic rule: (a|ba|da|fi|k|mk|pdk|z|c|tc)?sh
+	 * Avoid: wish - which is tcl
 	 */
-	if (len >= 2 && interp[len-2] == 's' && interp[len-1] == 'h')
+	if (len >= 2 && p[-2] == 's' && p[-1] == 'h') {
+		if (len >= 4 && p[-4] == 'w')
+			return "text/x-tcl";
 		return "text/x-shellscript";
+	}
 
 	/* Python - python, python2, python3 */
-	if (len >= 6 && strncmp(interp, "python", 6) == 0)
+	if (len >= 6 && memcmp(interp, "python", 6) == 0)
 		return "text/x-python";
 
 	/* Perl - perl, perl5 */
-	if (len >= 4 && strncmp(interp, "perl", 4) == 0)
+	if (len >= 4 && memcmp(interp, "perl", 4) == 0)
 		return "text/x-perl";
 
 	/* Lua */
-	if (len >= 3 && strncmp(interp, "lua", 3) == 0)
+	if (len >= 3 && memcmp(interp, "lua", 3) == 0)
 		return "text/x-lua";
 
 	/* Node.js */
-	if (len >= 4 && strncmp(interp, "node", 4) == 0)
+	if (len >= 4 && memcmp(interp, "node", 4) == 0)
 		return "application/javascript";
 
 	/* SystemTap */
-	if (len >= 4 && strncmp(interp, "stap", 4) == 0)
+	if (len >= 4 && memcmp(interp, "stap", 4) == 0)
 		return "text/x-systemtap";
 
 	/* PHP */
-	if (len >= 3 && strncmp(interp, "php", 3) == 0)
+	if (len >= 3 && memcmp(interp, "php", 3) == 0)
 		return "text/x-php";
 
 	/*
@@ -932,7 +944,7 @@ const char *detect_by_magic_number(const unsigned char *hdr, size_t len)
  */
 const char *detect_text_format(const char *hdr, size_t len)
 {
-	if (len < 4)
+	if (len < 5)
 		return NULL;
 
 	/* Skip UTF-8 BOM if present */
