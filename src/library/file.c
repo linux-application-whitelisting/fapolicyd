@@ -977,7 +977,7 @@ const char *detect_text_format(const char *hdr, size_t len)
 
 	/* XML */
 	if (remaining >= 5 && strncmp(p, "<?xml", 5) == 0)
-		return "application/xml";
+		return "text/xml";
 
 	/* JSON */
 	if (*p == '{' || *p == '[') {
