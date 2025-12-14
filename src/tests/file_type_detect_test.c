@@ -5,62 +5,19 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <error.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/mman.h>
 
 #include "file.h"
 
-#ifndef MFD_CLOEXEC
-#define MFD_CLOEXEC 0
-#endif
-
-static int fd_from_buffer(const char *name, const void *buf, size_t len)
-{
-	int fd = memfd_create(name, MFD_CLOEXEC);
-
-	if (fd < 0) {
-		char path[] = "/tmp/fapolicyd-filetype-XXXXXX";
-
-		fd = mkstemp(path);
-		if (fd < 0)
-			return -1;
-		unlink(path);
-	}
-
-	if (write(fd, buf, len) != (ssize_t)len) {
-		int saved = errno;
-
-		close(fd);
-		errno = saved;
-		return -1;
-	}
-
-	if (lseek(fd, 0, SEEK_SET) < 0) {
-		int saved = errno;
-
-		close(fd);
-		errno = saved;
-		return -1;
-	}
-
-	return fd;
-}
-
 static void expect_extract(const char *label, const char *script,
-			    const char *expected)
+	const char *expected)
 {
 	char buf[64];
-	int fd = fd_from_buffer(label, script, strlen(script));
-
-	if (fd < 0)
-		error(1, errno, "%s: unable to obtain descriptor", label);
-
-	const char *got = extract_shebang_interpreter(fd, buf, sizeof(buf));
-	close(fd);
+	size_t len = strlen(script);
+	const char *got = extract_shebang_interpreter(script, len, buf,
+		sizeof(buf));
 
 	if (expected == NULL) {
 		if (got != NULL)
@@ -92,13 +49,7 @@ static void expect_mime(const char *label, const char *interp,
 static void expect_magic(const char *label, const unsigned char *hdr,
 			  size_t len, const char *expected)
 {
-	int fd = fd_from_buffer(label, hdr, len);
-
-	if (fd < 0)
-		error(1, errno, "%s: unable to obtain descriptor", label);
-
-	const char *got = detect_by_magic_number(fd);
-	close(fd);
+	const char *got = detect_by_magic_number(hdr, len);
 
 	if (expected == NULL) {
 		if (got != NULL)
@@ -114,13 +65,15 @@ static void expect_magic(const char *label, const unsigned char *hdr,
 static void expect_text(const char *label, const char *buf, size_t len,
 			 const char *expected)
 {
-	int fd = fd_from_buffer(label, buf, len);
+	char local[513];
 
-	if (fd < 0)
-		error(1, errno, "%s: unable to obtain descriptor", label);
+	if (len >= sizeof(local))
+		error(1, 0, "%s: test buffer too large", label);
 
-	const char *got = detect_text_format(fd);
-	close(fd);
+	memcpy(local, buf, len);
+	local[len] = '\0';
+
+	const char *got = detect_text_format(local, len);
 
 	if (expected == NULL) {
 		if (got != NULL)
@@ -144,7 +97,7 @@ int main(void)
 	expect_extract("bash", "#!/bin/bash\n", "bash");
 	expect_extract("env-python", "#! /usr/bin/env -S python3 -u\n", "python3");
 	expect_extract("env-path", "#!/usr/bin/env /opt/perl5.32/bin/perl5.32\n",
-	"perl5");
+		"perl5");
 	expect_extract("no-shebang", "echo hello\n", NULL);
 
 	expect_mime("shell", "bash", "text/x-shellscript");
@@ -162,9 +115,9 @@ int main(void)
 	strlen("   <!DOCTYPE html><html></html>\n"), "text/html");
 	expect_text("xml", "\n<?xml version=\"1.0\"?><root/>",
 	strlen("\n<?xml version=\"1.0\"?><root/>"),
-	"application/xml");
+		"application/xml");
 	expect_text("json", (const char *)bom_json, sizeof(bom_json),
-	"application/json");
+		"application/json");
 	expect_text("plain", "just some text\n", strlen("just some text\n"), NULL);
 
 	return 0;

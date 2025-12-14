@@ -84,11 +84,11 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 	__attr_access ((__write_only__, 3, 2));
 const char *classify_device(mode_t mode);
 const char *classify_elf_info(uint32_t elf, const char *path);
-const char *extract_shebang_interpreter(int fd, char *buf, size_t buflen)
-	__attr_access ((__write_only__, 2, 3));
+const char *extract_shebang_interpreter(const char *data, size_t len,
+	char *buf, size_t buflen) __attr_access ((__write_only__, 3, 4));
 const char *mime_from_shebang(const char *interp);
-const char *detect_by_magic_number(int fd);
-const char *detect_text_format(int fd);
+const char *detect_by_magic_number(const unsigned char *hdr, size_t len);
+const char *detect_text_format(const char *hdr, size_t len);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf)
 	__attr_access ((__write_only__, 5, 4));
