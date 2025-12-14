@@ -100,7 +100,7 @@ int main(void)
 	expect_extract("no-shebang", "echo hello\n", NULL);
 
 	expect_mime("shell", "bash", "text/x-shellscript");
-	expect_mime("python", "python3", "text/x-python");
+	expect_mime("python", "python3", "text/x-script.python");
 	expect_mime("php", "php", "text/x-php");
 	expect_mime("unknown", "ruby", NULL);
 

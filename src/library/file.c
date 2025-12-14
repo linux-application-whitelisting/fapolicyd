@@ -867,7 +867,7 @@ const char *mime_from_shebang(const char *interp)
 
 	/* Python - python, python2, python3 */
 	if (len >= 6 && memcmp(interp, "python", 6) == 0)
-		return "text/x-python";
+		return "text/x-script.python";
 
 	/* Perl - perl, perl5 */
 	if (len >= 4 && memcmp(interp, "perl", 4) == 0)
