@@ -681,17 +681,21 @@ const char *classify_device(mode_t mode)
 
 
 /*
- * Parse shebang line and extract interpreter name
+ * extract_shebang_interpreter - parse a shebang line to find interpreter
+ * @data: pointer to file header data
+ * @len: number of bytes available in @data
+ * @buf: storage for the interpreter basename
+ * @buflen: size of @buf
  *
- * Handles all variations:
+ * Handles variations like:
  *   #!/bin/sh
  *   #!/usr/bin/bash
  *   #!/usr/local/bin/python3
  *   #!/nix/store/abc123-python-3.11/bin/python3
  *   #!/usr/bin/env python3
  *   #!/bin/env -S python3 -u
- *
- * Returns: interpreter basename (e.g., "bash", "python3"), or NULL
+ * Returns pointer to @buf with the interpreter basename (e.g., "bash",
+ * "python3"), or NULL when no interpreter can be parsed.
  */
 const char *extract_shebang_interpreter(const char *data, size_t len,
 	char *buf, size_t buflen)
@@ -790,11 +794,12 @@ const char *extract_shebang_interpreter(const char *data, size_t len,
 
 
 /*
- * Get mime type from shebang interpreter using suffix/pattern matching
+ * mime_from_shebang - map a shebang interpreter to a mime type
+ * @interp: interpreter basename extracted from the shebang line
  *
- * This approach handles the path variation problem elegantly:
- * - No hardcoded paths (works with /bin, /usr/bin, /nix/store/..., etc.)
- * - Pattern matching catches variants (bash, dash, zsh all end in "sh")
+ * Uses suffix and prefix matching to classify interpreters without
+ * relying on their absolute path. Returns the mime type string for
+ * recognized interpreters or NULL to let libmagic handle unknown ones.
  */
 const char *mime_from_shebang(const char *interp)
 {
@@ -857,8 +862,13 @@ const char *mime_from_shebang(const char *interp)
 
 
 /*
- * Magic number detection for common binary formats
- * These are O(1) checks that can skip libmagic
+ * detect_by_magic_number - detect common binaries from their magic number
+ * @hdr: file header bytes
+ * @len: number of bytes available in @hdr
+ *
+ * Performs O(1) checks for well-known magic numbers so libmagic can be
+ * avoided when the type is obvious. Returns a mime type string or NULL
+ * when no match is found.
  */
 const char *detect_by_magic_number(const unsigned char *hdr, size_t len)
 {
@@ -892,8 +902,13 @@ const char *detect_by_magic_number(const unsigned char *hdr, size_t len)
 
 
 /*
- * Quick text format detection for text files where we can determine
- * type from first few bytes
+ * detect_text_format - determine text subtype from initial bytes
+ * @hdr: file header bytes
+ * @len: number of bytes available in @hdr
+ *
+ * Looks for BOM, leading whitespace, and markup indicators to quickly
+ * classify common text formats. Returns a mime type string or NULL when
+ * further analysis is needed.
  */
 const char *detect_text_format(const char *hdr, size_t len)
 {
