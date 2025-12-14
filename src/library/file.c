@@ -713,7 +713,7 @@ const char *classify_device(mode_t mode)
 
 // Hot function could benefit from aggressive optimization
 #pragma GCC push_options
-#pragma GCC optimize ("O0")
+#pragma GCC optimize ("O3")
 /*
  * extract_shebang_interpreter - parse a shebang line to find interpreter
  * @data: pointer to file header data
