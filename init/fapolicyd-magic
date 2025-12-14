@@ -1,15 +1,3 @@
-# Matches: /bin/sh, /usr/bin/bash, /usr/local/bin/dash, /opt/.../ksh, etc.
-0       string  #!      Shell script (shebang)
->2      regex   [[:space:]]*.*/(a|ba|da|fi|k|mk|pdk)?sh([[:space:]]|$)     POSIX shell script text executable
-!:mime  text/x-shellscript
-
-# Continuation, Matches: /usr/bin/env sh|bash|dash|fish|ksh|mksh|pdksh
-# Also matches: /bin/env, /usr/local/bin/env, /opt/.../env
-# Allows: '#!/usr/bin/env -S bash -e', '#!/usr/bin/env dash', etc.
->2      regex   [[:space:]]*.*/env([[:space:]]+-S)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(a|ba|da|fi|k|mk|pdk)?sh([[:space:]]|$) POSIX shell script text executable (env)
-!:mime  text/x-shellscript
-!:strength +80
-
 0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
 !:mime	text/x-plan9-shellscript
 
