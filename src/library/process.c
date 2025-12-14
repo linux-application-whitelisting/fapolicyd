@@ -34,7 +34,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <magic.h>
 #include "process.h"
 #include "file.h"
 #include "fd-fgets.h"
@@ -180,38 +179,21 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 	fd = open(path, O_RDONLY|O_NOATIME|O_CLOEXEC);
 	if (fd >= 0) {
 		const char *ptr;
-		extern magic_t magic_full;
 		struct stat sb;
+		struct file_info i;
 
-		// Most of the time, the process will be ELF.
-		// We can identify it much faster than libmagic.
+		// We have to wait for stat to finish so we can set file_info values
+		// for get_file_type_from_fd.
 		if (fstat(fd, &sb) == 0) {
-			uint32_t elf = gather_elf(fd, sb.st_size);
-			if (elf & IS_ELF) {
-				ptr = classify_elf_info(elf, path);
-				close(fd);
-				if (ptr == NULL)
-					return (char *)ptr;
-				strncpy(buf, ptr, blen-1);
-				buf[blen-1] = 0;
-				return buf;
-			}
+			i.device = sb.st_dev;
+			i.mode = sb.st_mode;
+			i.size = sb.st_size;
+
+			ptr = get_file_type_from_fd(fd, &i, path, blen, buf);
+			close(fd);
+			return (char *)ptr;
 		}
-
-		// FIXME: Can we use get_file_type_from_fd here?
-		ptr = magic_descriptor(magic_full, fd);
 		close(fd);
-		if (ptr) {
-			char *str;
-			strncpy(buf, ptr, blen);
-			buf[blen-1] = 0;
-			str = strchr(buf, ';');
-			if (str)
-				*str = 0;
-		} else
-			return NULL;
-
-		return buf;
 	}
 
 	return NULL;
