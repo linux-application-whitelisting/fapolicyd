@@ -832,18 +832,9 @@ const char *mime_from_shebang(const char *interp)
 	if (len >= 3 && strncmp(interp, "lua", 3) == 0)
 		return "text/x-lua";
 
-	/* AWK - awk, gawk, mawk, nawk (all end in "awk") */
-	if (len >= 3 && strcmp(interp + len - 3, "awk") == 0)
-		return "text/x-awk";
-
 	/* Node.js */
 	if (len >= 4 && strncmp(interp, "node", 4) == 0)
 		return "application/javascript";
-
-	/* R / Rscript */
-	if ((len >= 7 && strncmp(interp, "Rscript", 7) == 0) ||
-					(len == 1 && interp[0] == 'R'))
-		return "text/x-R";
 
 	/* SystemTap */
 	if (len >= 4 && strncmp(interp, "stap", 4) == 0)
