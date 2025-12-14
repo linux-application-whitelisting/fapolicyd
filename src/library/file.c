@@ -976,15 +976,13 @@ const char *detect_text_format(const char *hdr, size_t len)
 		return "text/html";
 
 	/* XML */
-	if (remaining >= 5 && strncmp(p, "<?xml", 5) == 0)
+	if (remaining >= 5 && strncmp(p, "<?xml", 5) == 0) {
+		/* XML - but check if it's SVG */
+		const char *svg = memmem(p, remaining > 256 ? 256 : remaining,
+					 "<svg", 4);
+		if (svg)
+			return "image/svg+xml";
 		return "text/xml";
-
-	/* JSON */
-	if (*p == '{' || *p == '[') {
-		 size_t scan_len = remaining > 64 ? 64 : remaining;
-		/* Quick validation - look for quote or colon */
-		if (memchr(p, '"', scan_len) || memchr(p, ':', scan_len))
-			return "application/json";
 	}
 
 	return NULL;
