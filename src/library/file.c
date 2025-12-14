@@ -986,7 +986,7 @@ const char *detect_text_format(const char *hdr, size_t len)
 	/* XML */
 	if (remaining >= 5 && strncmp(p, "<?xml", 5) == 0) {
 		/* XML - but check if it's SVG */
-		const char *svg = memmem(p, remaining > 256 ? 256 : remaining,
+		const char *svg = memmem(p, remaining > 384 ? 384 : remaining,
 					 "<svg", 4);
 		if (svg)
 			return "image/svg+xml";
@@ -1040,8 +1040,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			// See if we can identify the mime-type
 			char interp[64];
 
-			if (extract_shebang_interpreter(header, header_len, interp,
-					sizeof(interp))) {
+			if (extract_shebang_interpreter(header, header_len,
+						interp,	sizeof(interp))) {
 				ptr = mime_from_shebang(interp);
 				if (ptr) {
 					strncpy(buf, ptr, blen-1);
@@ -1084,8 +1084,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	rewind_fd(fd);
 	ptr = magic_descriptor(magic_fast, fd);
 	if (ptr == NULL ||
-	    (ptr && (strncmp(ptr, "text/plain", 10) == 0 ||
-		    strncmp(ptr, "application/octet-stream", 24) == 0))) {
+	    (ptr && (memcmp(ptr, "text/plain", 10) == 0 ||
+		    memcmp(ptr, "application/octet-stream", 24) == 0))) {
 		// Fall back to the whole database lookup
 		rewind_fd(fd);
 		ptr = magic_descriptor(magic_full, fd);
