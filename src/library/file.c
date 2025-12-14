@@ -890,7 +890,7 @@ const char *mime_from_shebang(const char *interp)
 		return "text/x-php";
 
 	/* R / Rscript */
-	if ((len >= 7 && imemcmp(interp, "Rscript", 7) == 0) ||
+	if ((len >= 7 && memcmp(interp, "Rscript", 7) == 0) ||
 	    (len == 1 && interp[0] == 'R'))
 		return "text/x-R";
 
