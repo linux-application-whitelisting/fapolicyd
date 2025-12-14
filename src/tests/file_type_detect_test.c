@@ -115,7 +115,7 @@ int main(void)
 	strlen("   <!DOCTYPE html><html></html>\n"), "text/html");
 	expect_text("xml", "\n<?xml version=\"1.0\"?><root/>",
 	strlen("\n<?xml version=\"1.0\"?><root/>"),
-		"application/xml");
+		"text/xml");
 	expect_text("json", (const char *)bom_json, sizeof(bom_json),
 		"application/json");
 	expect_text("plain", "just some text\n", strlen("just some text\n"), NULL);
