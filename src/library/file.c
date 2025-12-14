@@ -907,30 +907,38 @@ const char *detect_text_format(const char *hdr, size_t len)
 		return NULL;
 
 	/* Skip UTF-8 BOM if present */
-	char *p = hdr;
-	if ((unsigned char)hdr[0] == 0xEF &&
+	const char *p = hdr;
+	const char *end = hdr + len;
+	if (len >= 3 &&
+	   (unsigned char)hdr[0] == 0xEF &&
 	   (unsigned char)hdr[1] == 0xBB &&
 	   (unsigned char)hdr[2] == 0xBF)
 		p += 3;
 
 	/* Skip leading whitespace */
-	while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+	while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
 		p++;
 
+	/* Check remaining length before string comparisons */
+	size_t remaining = end - p;
+	if (remaining < 5)
+		return NULL;
+
 	/* HTML */
-	if (strncasecmp(p, "<!DOCTYPE html", 14) == 0 ||
-			strncasecmp(p, "<html", 5) == 0 ||
-			strncasecmp(p, "<!DOCTYPE HTML", 14) == 0)
+	if (remaining >= 14 && strncasecmp(p, "<!DOCTYPE html", 14) == 0)
+		return "text/html";
+	if (remaining >= 5 && strncasecmp(p, "<html", 5) == 0)
 		return "text/html";
 
 	/* XML */
-	if (strncmp(p, "<?xml", 5) == 0)
+	if (remaining >= 5 && strncmp(p, "<?xml", 5) == 0)
 		return "application/xml";
 
 	/* JSON */
 	if (*p == '{' || *p == '[') {
+		 size_t scan_len = remaining > 64 ? 64 : remaining;
 		/* Quick validation - look for quote or colon */
-		if (strchr(p, '"') || strchr(p, ':'))
+		if (memchr(p, '"', scan_len) || memchr(p, ':', scan_len))
 			return "application/json";
 	}
 
