@@ -1,9 +1,6 @@
 0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
 !:mime	text/x-plan9-shellscript
 
-0	string/wb	#!\ /usr/bin/ocamlrun	Ocaml byte-compiled executable 
-!:mime	application/x-bytecode.ocaml
-
 0	string/wt	#!\ /usr/bin/texlua	LuaTex script text executable
 !:mime	text/x-luatex
 
