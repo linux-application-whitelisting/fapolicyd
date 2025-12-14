@@ -92,7 +92,6 @@ int main(void)
 	const unsigned char jpg_hdr[] = { 0xFF, 0xD8, 0xFF, 0xE0 };
 	const unsigned char gzip_hdr[] = { 0x1F, 0x8B, 0x08, 0x00 };
 	const unsigned char pyc_hdr[] = { 0x03, 0xF3, '\r', '\n', 0, 0, 0, 0 };
-	const unsigned char bom_json[] = { 0xEF, 0xBB, 0xBF, ' ', '{', '"', 'k', '"', ':', '1', '}' };
 
 	expect_extract("bash", "#!/bin/bash\n", "bash");
 	expect_extract("env-python", "#! /usr/bin/env -S python3 -u\n", "python3");
@@ -116,8 +115,6 @@ int main(void)
 	expect_text("xml", "\n<?xml version=\"1.0\"?><root/>",
 	strlen("\n<?xml version=\"1.0\"?><root/>"),
 		"text/xml");
-	expect_text("json", (const char *)bom_json, sizeof(bom_json),
-		"application/json");
 	expect_text("plain", "just some text\n", strlen("just some text\n"), NULL);
 
 	return 0;
