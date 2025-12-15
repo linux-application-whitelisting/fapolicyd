@@ -859,8 +859,8 @@ const char *mime_from_shebang(const char *interp)
 		if (len >= 4 && p[-4] == 'w')
 			return "text/x-tcl";
 		if (len >= 5 &&
-		    ((p[-5] == 't' && p[-4] == 'c' && p[3] == 'l') ||
-		     (p[-5] == 'j' && p[-4] == 'i' && p[3] == 'm')) )
+		    ((p[-5] == 't' && p[-4] == 'c' && p[-3] == 'l') ||
+		     (p[-5] == 'j' && p[-4] == 'i' && p[-3] == 'm')) )
 			return "text/x-tcl";
 		return "text/x-shellscript";
 	}
