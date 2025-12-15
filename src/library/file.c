@@ -865,9 +865,11 @@ const char *mime_from_shebang(const char *interp)
 		return "text/x-shellscript";
 	}
 
-	/* Python - python, python2, python3 */
+	/* Python - python, python2, python3
+	 * Note: file-5.47 changes this to 'text/x-script.python'. For
+	 * now, let's keep the old one so we don't break installations. */
 	if (len >= 6 && memcmp(interp, "python", 6) == 0)
-		return "text/x-script.python";
+		return "text/x-python";
 
 	/* Perl - perl, perl5 */
 	if (len >= 4 && memcmp(interp, "perl", 4) == 0)
