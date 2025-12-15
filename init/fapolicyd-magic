@@ -1,23 +1,8 @@
 0	string/wt	#!\ /bin/rc		Plan 9 shell script text executable
 !:mime	text/x-plan9-shellscript
 
-0	string/wt	#!\ /usr/bin/texlua	LuaTex script text executable
-!:mime	text/x-luatex
-
 0	string/wt	#!\ /usr/bin/gjs	Gnome Javascript text executable
 !:mime	application/javascript
-
-0	belong		0xd1f20d0a	python 2.6 byte-compiled
-!:mime	application/x-bytecode.python
-
-0	belong		0x03f30d0a	python 2.7 byte-compiled
-!:mime	application/x-bytecode.python
-
-0	belong		0x330d0d0a	python 3.6 byte-compiled
-!:mime	application/x-bytecode.python
-
-0	belong		0x420d0d0a	python 3.7 byte-compiled
-!:mime	application/x-bytecode.python
 
 0	belong		0x6f0d0d0a	python 3.10 byte-compiled
 !:mime application/x-bytecode.python
@@ -25,23 +10,12 @@
 0	belong		0x2b0e0d0a	python 3.14rc3 byte-compiled
 !:mime application/x-bytecode.python
 
-0	search/1/wt	#!\ /usr/bin/python2	Python script text executable
-!:strength + 15
-!:mime text/x-python
-
-0	search/1/wt	#!\ /usr/bin/env\ python2	Python script text executable
-!:strength + 15
-!:mime text/x-python
-
 0	search/1/wt	#!\ /usr/libexec/platform-python	Python script text executable
 !:strength + 15
 !:mime text/x-python
 
 0	string/wt	#!\ /usr/bin/guile	Guile script text executable
 !:mime  text/x-script.guile
-
-0	string	\223NUMPY			NumPy data file
-!:mime	application/x-numpy-data
 
 0	string/wt	#!\ /usr/sbin/nft	Netfilter tables script text executable
 !:mime	text/x-nftables
