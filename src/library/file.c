@@ -101,9 +101,7 @@ void file_init(void)
 		MAGIC_NO_CHECK_ELF |
 		MAGIC_NO_CHECK_COMPRESS |  /* Don't decompress */
 		MAGIC_NO_CHECK_TAR |
-		MAGIC_NO_CHECK_SOFT |      /* Skip soft magic (text analysis) */
 		MAGIC_NO_CHECK_APPTYPE |
-		MAGIC_NO_CHECK_ENCODING |  /* Skip charset detection */
 		MAGIC_NO_CHECK_TOKENS |    /* Skip text tokens */
 		MAGIC_NO_CHECK_JSON        /* Skip JSON validation */
 		);
