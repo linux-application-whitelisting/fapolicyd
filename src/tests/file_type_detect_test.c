@@ -91,7 +91,6 @@ int main(void)
 	const unsigned char png_hdr[] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n' };
 	const unsigned char jpg_hdr[] = { 0xFF, 0xD8, 0xFF, 0xE0 };
 	const unsigned char gzip_hdr[] = { 0x1F, 0x8B, 0x08, 0x00 };
-	const unsigned char pyc_hdr[] = { 0x03, 0xF3, '\r', '\n', 0, 0, 0, 0 };
 
 	expect_extract("bash", "#!/bin/bash\n", "bash");
 	expect_extract("env-python", "#! /usr/bin/env -S python3 -u\n", "python3");
@@ -100,7 +99,6 @@ int main(void)
 	expect_extract("no-shebang", "echo hello\n", NULL);
 
 	expect_mime("shell", "bash", "text/x-shellscript");
-//	expect_mime("python", "python3", "text/x-script.python"); file-5.47
 	expect_mime("python", "python3", "text/x-python");
 	expect_mime("php", "php", "text/x-php");
 	expect_mime("unknown", "ruby", NULL);
@@ -108,14 +106,10 @@ int main(void)
 	expect_magic("png", png_hdr, sizeof(png_hdr), "image/png");
 	expect_magic("jpeg", jpg_hdr, sizeof(jpg_hdr), "image/jpeg");
 	expect_magic("gzip", gzip_hdr, sizeof(gzip_hdr), "application/gzip");
-	expect_magic("pyc", pyc_hdr, sizeof(pyc_hdr), "application/x-bytecode.python");
 	expect_magic("unknown", (const unsigned char *)"abc", 3, NULL);
 
 	expect_text("html", "   <!DOCTYPE html><html></html>\n",
 	strlen("   <!DOCTYPE html><html></html>\n"), "text/html");
-	expect_text("xml", "\n<?xml version=\"1.0\"?><root/>",
-	strlen("\n<?xml version=\"1.0\"?><root/>"),
-		"text/xml");
 	expect_text("plain", "just some text\n", strlen("just some text\n"), NULL);
 
 	return 0;

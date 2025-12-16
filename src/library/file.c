@@ -936,11 +936,6 @@ const char *detect_by_magic_number(const unsigned char *hdr, size_t len)
 	if (hdr[0] == 0x1F && hdr[1] == 0x8B)
 		return "application/gzip";
 
-	/* Python bytecode - FIXME: Redo this with exact numbers
-	 * Magic varies by version but all start with recognizable pattern */
-	if (len >= 4 && (hdr[2] == '\r' && hdr[3] == '\n'))
-		return "application/x-bytecode.python";
-
 	return NULL;
 }
 
@@ -982,16 +977,6 @@ const char *detect_text_format(const char *hdr, size_t len)
 		return "text/html";
 	if (remaining >= 5 && strncasecmp(p, "<html", 5) == 0)
 		return "text/html";
-
-	/* XML */
-	if (remaining >= 5 && strncmp(p, "<?xml", 5) == 0) {
-		/* XML - but check if it's SVG */
-		const char *svg = memmem(p, remaining > 384 ? 384 : remaining,
-					 "<svg", 4);
-		if (svg)
-			return "image/svg+xml";
-		return "text/xml";
-	}
 
 	return NULL;
 }
