@@ -82,6 +82,7 @@ static unsigned int ima_mismatch_crit_budget = 5;
 static int ima_mismatch_silenced;
 
 static pthread_t update_thread;
+static int update_thread_created;
 static pthread_mutex_t update_lock;
 static pthread_mutex_t rule_lock;
 
@@ -1408,6 +1409,7 @@ static int migrate_database(void)
 int init_database(conf_t *config)
 {
 	int rc;
+	char err_buff[BUFFER_SIZE];
 
 	msg(LOG_INFO, "Initializing the trust database");
 
@@ -1464,7 +1466,15 @@ int init_database(conf_t *config)
 	// Conserve memory by dumping unneeded resources
 	backend_close();
 
-	pthread_create(&update_thread, NULL, update_thread_main, config);
+	if (rc == 0) {
+		rc = pthread_create(&update_thread, NULL, update_thread_main,
+				    config);
+		if (rc == 0)
+			update_thread_created = 1;
+		else
+			msg(LOG_ERR, "Failed to create update thread (%s)",
+			    strerror_r(rc, err_buff, sizeof(err_buff)));
+	}
 
 	return rc;
 }
@@ -1694,7 +1704,10 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 
 void close_database(void)
 {
-	pthread_join(update_thread, NULL);
+	if (update_thread_created) {
+		pthread_join(update_thread, NULL);
+		update_thread_created = 0;
+	}
 
 	// we can close db when we are really sure update_thread does not exist
 	close_db(1);
