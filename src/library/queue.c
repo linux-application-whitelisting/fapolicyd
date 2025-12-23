@@ -148,8 +148,8 @@ int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 	n = atomic_fetch_add_explicit(&q->queue_length, 1,
 				      memory_order_relaxed) + 1;
 	unsigned int old = atomic_load(&max_depth);
-	while (n > old && !atomic_compare_exchange_weak(&max_depth, &old, n)
-	       ;)
+	while (n > old && !atomic_compare_exchange_weak(&max_depth, &old, n))
+		;
 
 	sem_post(&q->sem);
 	return 0;
