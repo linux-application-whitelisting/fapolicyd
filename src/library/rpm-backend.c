@@ -292,7 +292,7 @@ static int rpm_load_list(const conf_t *conf)
 	posix_spawn_file_actions_destroy(&actions);
 
 	int exit_rc = status;
-	if (status == 0) {
+	if (status) {
 		if (WIFEXITED(status))
 			exit_rc = WEXITSTATUS(status);
 		else if (WIFSIGNALED(status))

@@ -1,6 +1,5 @@
 Userspace
 =========
-* add db_max_size = auto
 * Allow rules to express paths using globbing (fnmatch)
 
 Improve reconfigure via SIGHUP to update configuration

@@ -1217,8 +1217,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 			// First thing is ld.so when its used - detected above
 			pinfo->state = STATE_LD_SO;
 		msg(LOG_DEBUG, "pid %d ld.so early path1=%s path2=%s",
-		    pinfo->pid, pinfo->path1 ? pinfo->path1 : "(null)",
-		    pinfo->path2 ? pinfo->path2 : "(null)");
+		    pinfo->pid, pinfo->path1, pinfo->path2);
 		} else    // To get here, pgm matched path1
 			pinfo->state = STATE_NORMAL;
 	}
@@ -1275,6 +1274,7 @@ static int check_access(const lnode *r, const event_t *e)
 
 
 // Returns 0 if no match, 1 if a match, -1 on error
+__attribute__((hot))
 static int check_subject(lnode *r, event_t *e)
 {
 	unsigned int cnt = 0;
@@ -1424,6 +1424,7 @@ static int check_subject(lnode *r, event_t *e)
 
 
 // Returns 0 if no match, 1 if a match
+__attribute__((hot))
 static decision_t check_object(lnode *r, event_t *e)
 {
 	unsigned int cnt = 0;
@@ -1536,6 +1537,7 @@ static decision_t check_object(lnode *r, event_t *e)
 }
 
 
+__attribute__((hot))
 decision_t rule_evaluate(lnode *r, event_t *e)
 {
 	int d;

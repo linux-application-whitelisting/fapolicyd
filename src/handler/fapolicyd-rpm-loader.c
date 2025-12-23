@@ -54,7 +54,7 @@ conf_t config;				// Library needs this
 
 
 int do_rpm_init_backend(void);
-int do_rpm_load_list(conf_t * conf, int memfd);
+int do_rpm_load_list(const conf_t * conf, int memfd);
 int do_rpm_destroy_backend(void);
 
 extern backend rpm_backend;

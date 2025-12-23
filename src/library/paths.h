@@ -41,6 +41,6 @@
 
 #define OLD_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"
 #define FILTER_FILE     "/etc/fapolicyd/fapolicyd-filter.conf"
-#define MAGIC_PATHS     "/usr/share/fapolicyd/fapolicyd-magic.mgc:/usr/share/misc/magic.mgc"
+#define MAGIC_PATH     "/usr/share/fapolicyd/fapolicyd-magic.mgc"
 
 #endif

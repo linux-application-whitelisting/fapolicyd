@@ -1,5 +1,9 @@
 1.4.3
 - Fix missing allow decision in fapolicyd-cli --test-filter
+- Update the trust-db filter rules to add and drop some things
+- Add new magic detections and drop a lot of old rules
+- Performance improvement looking up mime-types
+- Various clode cleanups, hardening, and performance optimizing
 
 1.4.2
 - Correct identification of kworker threads

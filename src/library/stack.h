@@ -34,8 +34,8 @@ void stack_init(stack_t *_stack);
 void stack_destroy(stack_t *_stack);
 void stack_push(stack_t *_stack, void *_data);
 void stack_pop(stack_t *_stack);
-int stack_is_empty(stack_t *_stack);
-const void *stack_top(stack_t *_stack);
+int stack_is_empty(const stack_t *_stack);
+const void *stack_top(const stack_t *_stack);
 
 
 #endif // STACK_H_
