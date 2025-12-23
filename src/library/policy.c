@@ -100,7 +100,7 @@ static char *working_buffer = NULL;
 
 // This function returns 1 on success and 0 on failure
 static int parsing_obj;
-static void *fmemccpy(void* restrict dst, const void* restrict src, ssize_t n)
+static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
 	__attr_access((__write_only__, 1, 3))
 	__attr_access((__read_only__, 2, 3));
 static int lookup_field(const char *ptr)
@@ -494,9 +494,9 @@ static char *format_value(int item, unsigned int num, decision_t results,
 // This is like memccpy except it returns the pointer to the NIL byte so
 // that we are positioned for the next concatenation. Also, since we know
 // we are always looking for NIL, just hard code it.
-static void *fmemccpy(void* restrict dst, const void* restrict src, ssize_t n)
+static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
 {
-	if (n <= 0)
+	if (n == 0)
 		return dst;
 
 	const char *s = src;
@@ -510,11 +510,12 @@ static void *fmemccpy(void* restrict dst, const void* restrict src, ssize_t n)
 }
 
 
-static void log_it2(unsigned int num, decision_t results, event_t *e)
+static void log_it(unsigned int num, decision_t results, event_t *e)
 {
 	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
 	unsigned int i;
-	int dsize;
+	size_t dsize;
+	ptrdiff_t written;
 	char *p1, *p2, *val;
 
 	if (working_buffer == NULL) {
@@ -532,16 +533,30 @@ static void log_it2(unsigned int num, decision_t results, event_t *e)
 		if (dsize < WB_SIZE) {
 			// This is skipped first pass, p1 is initialized below
 			p2 = fmemccpy(p1, " ", dsize);
-			dsize -= p2 - p1;
+			written = p2 - p1;
+			if ((size_t)written > dsize)
+				break;
+			dsize -= (size_t)written;
 		}
 		p1 = fmemccpy(p2, fields[i].name, dsize);
-		dsize -= p1 - p2;
+		written = p1 - p2;
+		if ((size_t)written > dsize)
+			break;
+		dsize -= (size_t)written;
 		if (fields[i].item != F_COLON) {
 			p2 = fmemccpy(p1, "=", dsize);
-			dsize -= p2 - p1;
+			written = p2 - p1;
+			if ((size_t)written > dsize)
+				break;
+			dsize -= (size_t)written;
 			val = format_value(fields[i].item, num, results, e);
 			p1 = fmemccpy(p2, val ? val : "?", dsize);
-			dsize -= p1 - p2;
+			written = p1 - p2;
+			if ((size_t)written > dsize) {
+				free(val);
+				break;
+			}
+			dsize -= (size_t)written;
 			free(val);
 		}
 	}
@@ -571,7 +586,7 @@ decision_t process_event(event_t *e)
 	// Output some information if debugging on or syslogging requested
 	if ( (results & SYSLOG) || (debug_mode == 1) ||
 	     (debug_mode > 1 && (results & DENY)) )
-		log_it2(r ? r->num : 0xFFFFFFFF, results, e);
+		log_it(r ? r->num : 0xFFFFFFFF, results, e);
 
 	// Record which rule (rules are 1 based when listed by the cli tool)
 	if (r)
