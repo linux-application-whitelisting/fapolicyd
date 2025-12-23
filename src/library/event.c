@@ -117,6 +117,7 @@ static void subject_evict_warn(s_array *s)
  * "pathological evictions" and trigger a resize warning only when the cache
  * is turning over too aggressively for its occupancy level.
  */
+__attribute__((cold))
 static void obj_evict_warn(void *unused)
 {
 	unsigned long evicts, miss, hit, lookups, e_over_m, e_over_q;
@@ -515,6 +516,7 @@ subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
  *
  * Return: pointer to the requested attribute, or NULL if acquisition fails.
  */
+__attribute__((hot))
 subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 {
 	subject_attr_t subj;
@@ -622,6 +624,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
  * This function will search the list for a nv pair of the right type.
  * If not found, it will create the type and return it.
  */
+__attribute__((hot))
 object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 {
 	char buf[PATH_MAX+1], *ptr;

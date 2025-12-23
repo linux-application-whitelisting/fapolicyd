@@ -242,6 +242,7 @@ static void stack_pop_all_reset(stack_t *_stack, int *sp)
  * dropped, or FILTER_ERR_DEPTH if MAX_FILTER_DEPTH is exceeded (treated the
  * same as a deny by callers to keep processing other paths).
  */
+__attribute__((hot))
 filter_rc_t filter_check(const char *_path)
 {
 	if (_path == NULL) {

@@ -72,7 +72,7 @@ typedef enum {
 
 int filter_init(void);
 void filter_destroy(void);
-filter_rc_t filter_check(const char *path) __wur;
+__attribute__((hot)) filter_rc_t filter_check(const char *path) __wur;
 int filter_load_file(const char *path) __wur;
 void filter_set_trace(FILE *stream);
 int filter_prune_list(list_t *list, const char *path) __wur;

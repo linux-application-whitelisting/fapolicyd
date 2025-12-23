@@ -1274,6 +1274,7 @@ static int check_access(const lnode *r, const event_t *e)
 
 
 // Returns 0 if no match, 1 if a match, -1 on error
+__attribute__((hot))
 static int check_subject(lnode *r, event_t *e)
 {
 	unsigned int cnt = 0;
@@ -1423,6 +1424,7 @@ static int check_subject(lnode *r, event_t *e)
 
 
 // Returns 0 if no match, 1 if a match
+__attribute__((hot))
 static decision_t check_object(lnode *r, event_t *e)
 {
 	unsigned int cnt = 0;
@@ -1535,6 +1537,7 @@ static decision_t check_object(lnode *r, event_t *e)
 }
 
 
+__attribute__((hot))
 decision_t rule_evaluate(lnode *r, event_t *e)
 {
 	int d;
