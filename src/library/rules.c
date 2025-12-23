@@ -1217,8 +1217,7 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 			// First thing is ld.so when its used - detected above
 			pinfo->state = STATE_LD_SO;
 		msg(LOG_DEBUG, "pid %d ld.so early path1=%s path2=%s",
-		    pinfo->pid, pinfo->path1 ? pinfo->path1 : "(null)",
-		    pinfo->path2 ? pinfo->path2 : "(null)");
+		    pinfo->pid, pinfo->path1, pinfo->path2);
 		} else    // To get here, pgm matched path1
 			pinfo->state = STATE_NORMAL;
 	}
