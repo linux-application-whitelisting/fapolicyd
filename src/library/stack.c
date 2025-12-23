@@ -68,7 +68,7 @@ void stack_pop(stack_t *_stack)
 }
 
 // function returns 1 if stack is emtpy 0 if it's not
-int stack_is_empty(stack_t *_stack)
+int stack_is_empty(const stack_t *_stack)
 {
 	if (_stack == NULL)
 		return -1;
@@ -80,7 +80,7 @@ int stack_is_empty(stack_t *_stack)
 }
 
 // return top of the stack without popping
-const void *stack_top(stack_t *_stack)
+const void *stack_top(const stack_t *_stack)
 {
 	if (_stack == NULL)
 		return NULL;

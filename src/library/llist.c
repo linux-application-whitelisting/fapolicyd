@@ -118,7 +118,7 @@ void list_empty(list_t *list)
 
 
 // Return 1 if the list contains the string, 0 otherwise
-int list_contains(list_t *list, const char *str)
+int list_contains(const list_t *list, const char *str)
 {
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
 		if (!strcmp(str, lptr->index))
