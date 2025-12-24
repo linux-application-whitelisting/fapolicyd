@@ -65,9 +65,7 @@
 #include "avl.h"
 #include "paths.h"
 #include "string-util.h"
-#ifdef USE_RPM
 #include "filter.h"
-#endif
 
 // Global program variables
 unsigned int debug_mode = 0;
@@ -445,15 +443,14 @@ static void reconfigure(void)
 	if (reload_configuration())
 		msg(LOG_WARNING,
 			"Continuing with previous configuration settings");
-#ifdef USE_RPM
+
 	filter_destroy();
 	if (filter_init())
 		msg(LOG_ERR, "Failed initializing filter configuration");
 	else if (filter_load_file(NULL))
 		msg(LOG_ERR, "Failed reloading filter configuration");
-#endif
-	set_reload_rules();
 
+	set_reload_rules();
 	set_reload_trust_database();
 }
 
