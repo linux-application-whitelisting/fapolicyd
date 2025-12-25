@@ -223,7 +223,7 @@ int trust_file_append(const char *fpath, list_t *list)
 }
 
 #define DELIM  ' '
-#define MAX_DELIMS 2
+#define MAX_DELIMS 2 // Trustdb has 3 fields - therefore 2 delimiters
 /*
  * parse_line_backwards - Split a trust-file line into its components.
  * @line: Buffer containing the raw line (modified in place).

@@ -216,7 +216,7 @@ struct _hash_record {
 };
 
 #define BUFFER_SIZE 4096
-#define MAX_DELIMS 3
+#define MAX_DELIMS 3	// Trustdb has 4 fields - therefore 3 delimiters
 static int rpm_load_list(const conf_t *conf)
 {
 	// before the spawn

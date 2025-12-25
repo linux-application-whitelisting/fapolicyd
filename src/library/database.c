@@ -58,7 +58,7 @@ enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
 typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops_t;
 #define BUFFER_SIZE 4096
 #define MEGABYTE    (1024*1024)
-#define MAX_DELIMS  3
+#define MAX_DELIMS  3	// Trustdb has 4 fields - therefore 3 delimiters
 #define DEFAULT_DB_MAX_SIZE_MB 100
 #define WRITE_DB_MAP_FULL 6
 

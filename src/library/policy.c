@@ -50,8 +50,10 @@
 #include "conf.h"
 #include "process.h"
 
-#define MAX_SYSLOG_FIELDS	21
-#define NGID_LIMIT		32
+#define MAX_SYSLOG_FIELDS	21	// Only 20 fields are defined for
+					// decision, permission, obj & subj
+#define NGID_LIMIT		32	// Limit buffer size allocated for
+					// subject to not waste memory
 
 static llist rules;
 static atomic_ulong allowed = 0, denied = 0;
