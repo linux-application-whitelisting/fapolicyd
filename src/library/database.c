@@ -1807,7 +1807,8 @@ static int update_database(conf_t *config)
 
 	// signal that cache need to be flushed
 	if (!stop)
-		needs_flush = true;
+		atomic_store_explicit(&needs_flush, true,
+				      memory_order_release);
 
 	unlock_update_thread();
 	mdb_env_sync(env, 1);
@@ -1865,7 +1866,7 @@ static int handle_record(const char * buffer)
 
 void set_reload_trust_database(void)
 {
-	reload_db = true;
+	atomic_store_explicit(&reload_db, true, memory_order_release);
 }
 
 static void do_reload_db(conf_t* config)
@@ -2000,8 +2001,8 @@ static void *update_thread_main(void *arg)
 			}
 		}
 		// got SIGHUP
-		if (reload_db) {
-			reload_db = false;
+		if (atomic_exchange_explicit(&reload_db, false,
+					     memory_order_acq_rel)) {
 			do_reload_db(config);
 		}
 
@@ -2132,7 +2133,8 @@ static void *update_thread_main(void *arg)
 							 * trust decisions.
 							 */
 							do_operation = DB_NO_OP;
-							needs_flush = true;
+							atomic_store_explicit(&needs_flush, true,
+									      memory_order_release);
 						} else if (do_operation == ONE_FILE) {
 							/*
 							 * Backend helpers send path/size/hash
