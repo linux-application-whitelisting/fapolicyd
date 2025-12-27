@@ -56,6 +56,8 @@ typedef struct Queue
 	const char *name;	// Used for reporting
 	void (*cleanup)(void *); // Function to call when releasing memory
 	void (*evict_cb)(void *); // Optional callback when evicting item
+	QNode *pool;		// Pre-allocated queue nodes
+	QNode *free_list;	// Free list for queue nodes
 } Queue;
 
 void destroy_lru(Queue *queue);

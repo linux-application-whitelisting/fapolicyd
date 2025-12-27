@@ -33,23 +33,8 @@
 
 // Local declarations
 static void dequeue(Queue *queue);
-
-// The Queue Node will store the 'item' being cached
-static QNode *new_QNode(void) __attr_dealloc_free;
-static QNode *new_QNode(void)
-{
-	QNode *temp = malloc(sizeof(QNode));
-	if (temp == NULL)
-		return temp;
-	temp->item = NULL;
-	temp->uses = 1;	// Setting to 1 because its being used
-
-	// Initialize prev and next as NULL
-	temp->prev = temp->next = NULL;
-
-	return temp;
-}
-
+static QNode *qnode_alloc(Queue *queue);
+static void qnode_free(Queue *queue, QNode *node);
 static Hash *create_hash(unsigned int hsize)
 {
 	unsigned int i;
@@ -78,6 +63,47 @@ static void destroy_hash(Hash *hash)
 	free(hash);
 }
 
+/*
+ * qnode_alloc - get a QNode from the pre-allocated pool
+ * @queue: queue managing the pool
+ */
+static QNode *qnode_alloc(Queue *queue)
+{
+	QNode *node;
+
+	if (queue == NULL)
+		return NULL;
+
+	node = queue->free_list;
+	if (node == NULL)
+		return NULL;
+
+	queue->free_list = node->next;
+	node->prev = NULL;
+	node->next = NULL;
+	node->item = NULL;
+	node->uses = 1; // Setting to 1 because its being used
+
+	return node;
+}
+
+/*
+ * qnode_free - return a QNode to the pre-allocated pool
+ * @queue: queue managing the pool
+ * @node: node to return
+ */
+static void qnode_free(Queue *queue, QNode *node)
+{
+	if (queue == NULL || node == NULL)
+		return;
+
+	node->item = NULL;
+	node->uses = 0;
+	node->prev = NULL;
+	node->next = queue->free_list;
+	queue->free_list = node;
+}
+
 static void dump_queue_stats(const Queue *q)
 {
 	msg(LOG_DEBUG, "%s cache size: %u", q->name, q->total);
@@ -91,6 +117,8 @@ static void dump_queue_stats(const Queue *q)
 
 static Queue *create_queue(unsigned int qsize, const char *name)
 {
+	unsigned int i;
+
 	Queue *queue = malloc(sizeof(Queue));
 	if (queue == NULL)
 		return queue;
@@ -109,6 +137,15 @@ static Queue *create_queue(unsigned int qsize, const char *name)
 
 	queue->cleanup = NULL;
 	queue->evict_cb = NULL;
+	queue->free_list = NULL;
+	queue->pool = malloc(qsize * sizeof(QNode));
+	if (queue->pool == NULL) {
+		free(queue);
+		return NULL;
+	}
+
+	for (i = 0; i < qsize; i++)
+		qnode_free(queue, &queue->pool[i]);
 
 	return queue;
 }
@@ -125,6 +162,7 @@ static void destroy_queue(Queue *queue)
 	while (queue->count)
 		dequeue(queue);
 
+	free(queue->pool);
 	free(queue);
 }
 
@@ -266,7 +304,7 @@ static void dequeue(Queue *queue)
 		queue->evict_cb(temp->item);
 	queue->cleanup(temp->item);
 	free(temp->item);
-	free(temp);
+	qnode_free(queue, temp);
 
 	// decrement the total of full slots by 1
 	queue->count--;
@@ -310,7 +348,7 @@ void lru_evict(Queue *queue, unsigned int key)
 		queue->evict_cb(temp->item);
 	queue->cleanup(temp->item);
 	free(temp->item);
-	free(temp);
+	qnode_free(queue, temp);
 
 	// decrement the total of full slots by 1
 	queue->count--;
@@ -333,7 +371,11 @@ static void enqueue(Queue *queue, unsigned int key)
 
 	// Create a new node with given page total,
 	// And add the new node to the front of queue
-	temp = new_QNode();
+	temp = qnode_alloc(queue);
+	if (temp == NULL) {
+		msg(LOG_ERR, "Unable to allocate node for %s", queue->name);
+		return;
+	}
 
 	insert_beginning(queue, temp);
 	hash->array[key] = temp;
