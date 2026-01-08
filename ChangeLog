@@ -3,7 +3,7 @@
 - Update the trust-db filter rules to add and drop some things
 - Add new magic detections and drop a lot of old rules
 - Performance improvement looking up mime-types
-- Various clode cleanups, hardening, and performance optimizing
+- Various code cleanups, hardening, and performance optimizing
 - Classify ELF files with an unknown interpreter as application/x-bad-elf
 - Consolidate the fapolicyd-cli return codes
 

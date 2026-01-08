@@ -1403,7 +1403,7 @@ uint32_t gather_elf(int fd, off_t size)
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
 				uint32_t len;
-				char interp[65];
+				char interp[385];
 				uint32_t filesz = ph_tbl[i].p_filesz;
 				uint32_t offset = ph_tbl[i].p_offset;
 
@@ -1412,7 +1412,7 @@ uint32_t gather_elf(int fd, off_t size)
 								!= offset)
 					goto err_out32;
 
-				len = (filesz < 65 ? filesz : 65);
+				len = (filesz < 385 ? filesz : 385);
 
 				if ((unsigned int) safe_read(fd, (char *)
 						interp, len) != len)
@@ -1558,7 +1558,7 @@ done32_obj:
 			// Obtain program interpreter from ELF object file
 			if (ph_tbl[i].p_type == PT_INTERP) {
 				uint64_t len;
-				char interp[65];
+				char interp[385];
 				uint64_t filesz = ph_tbl[i].p_filesz;
 				uint64_t offset = ph_tbl[i].p_offset;
 
@@ -1567,7 +1567,7 @@ done32_obj:
 								!= offset)
 					goto err_out64;
 
-				len = (filesz < 65 ? filesz : 65);
+				len = (filesz < 385 ? filesz : 385);
 
 				if ((unsigned int) safe_read(fd, (char *)
 						interp, len) != len)
