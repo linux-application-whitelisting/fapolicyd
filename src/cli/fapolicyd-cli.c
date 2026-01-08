@@ -397,7 +397,7 @@ static int do_manage_files(int argc, char * const argv[])
 	default: // file function errors
 		break;
 	}
-	return rc ? rc : CLI_EXIT_GENERIC;
+	return rc;
 }
 
 
@@ -418,6 +418,7 @@ static int do_ftype(const char *path)
 	}
 	if (fstat(fd, &sb) != 0) {
 		fprintf(stderr, "Cannot stat %s - %s\n", path, strerror(errno));
+		close(fd);
 		return CLI_EXIT_IO;
 	}
 
@@ -1188,7 +1189,7 @@ finish:
 	if (suspicious_total > 0)
 		return CLI_EXIT_GENERIC;
 	if (errors)
-		return rc ? rc : CLI_EXIT_GENERIC;
+		return rc;
 	return rc;
 }
 

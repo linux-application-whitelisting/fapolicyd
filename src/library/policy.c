@@ -574,7 +574,7 @@ decision_t process_event(event_t *e)
 	/* populate the event struct and iterate over the rules */
 	rules_first(&rules);
 	lnode *r = rules_get_cur(&rules);
-	int cnt = 0;
+	//int cnt = 0;
 	while (r) {
 		//msg(LOG_INFO, "process_event: rule %d", cnt);
 		results = rule_evaluate(r, e);
@@ -582,7 +582,7 @@ decision_t process_event(event_t *e)
 		if (results != NO_OPINION)
 			break;
 		r = rules_next(&rules);
-		cnt++;
+		//cnt++;
 	}
 
 	// Output some information if debugging on or syslogging requested
