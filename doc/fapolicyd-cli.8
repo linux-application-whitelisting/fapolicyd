@@ -76,6 +76,38 @@ Notifies fapolicyd to perform a reload of the rules.
 .TP
 .B \-\-verbose
 Only for the \-\-check-ignore_mounts, print a list of files that do not pass inspection.
+.SH RETURN CODES
+The following exit status values are used for error reporting and scripting:
+.TP
+.B 0  Success
+Normal completion.
+.TP
+.B 1  Generic/unspecified failure
+Fallback for errors that do not map to a more specific category.
+.TP
+.B 2  CLI/usage error
+Incorrect options or argument counts.
+.TP
+.B 3  Path/configuration error
+Failed \fBrealpath\fP lookups, malformed configuration, or invalid mount overrides.
+.TP
+.B 4  Database/LMDB error
+Trust database operations failed (creation, open, cursor traversal, or deletion).
+.TP
+.B 5  Rule/filter error
+Filter initialization or parsing problems, including \fB%languages\fP handling.
+.TP
+.B 6  Daemon/IPC error
+Communication with the daemon failed (FIFO permissions/shape issues, missing PID, or status report timeouts).
+.TP
+.B 7  Filesystem/I\-O/permission error
+Problems opening, stat'ing, or writing files (including rule files or the trust database on disk).
+.TP
+.B 8  Internal software/OOM
+Allocation failures or other unexpected internal errors.
+.TP
+.B 9  No\-op/Not\-found/Nothing to do
+Operations that completed without making changes, such as attempting to update, delete, or add entries that were not present.
 .SH "SEE ALSO"
 .BR fapolicyd (8),
 .BR fapolicyd.rules (5),

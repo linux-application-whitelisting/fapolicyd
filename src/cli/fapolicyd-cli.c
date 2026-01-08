@@ -148,18 +148,18 @@ static char *get_line(FILE *f, unsigned *lineno)
 static int do_delete_db(void)
 {
 	if (unlink_db())
-		return 1;
-	return 0;
+		return CLI_EXIT_DB_ERROR;
+	return CLI_EXIT_SUCCESS;
 }
 
 
 // This function opens the trust db and iterates over the entries.
-// It returns a 0 on success and non-zero on failure
+// It returns CLI_EXIT_SUCCESS on success and CLI_EXIT_DB_ERROR on failure
 static int verify_file(const char *path, off_t size, const char *sha,
 		        unsigned int tsource);
 static int do_dump_db(void)
 {
-	int rc;
+	int rc, exit_rc = CLI_EXIT_SUCCESS;
 	MDB_env *env;
 	MDB_txn *txn;
 	MDB_dbi dbi;
@@ -171,21 +171,21 @@ static int do_dump_db(void)
 	if (rc) {
 		fprintf(stderr, "mdb_env_create failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		return 1;
+		return CLI_EXIT_DB_ERROR;
 	}
 	mdb_env_set_maxdbs(env, 2);
 	rc = mdb_env_open(env, DB_DIR, MDB_RDONLY|MDB_NOLOCK, 0660);
 	if (rc) {
 		fprintf(stderr, "mdb_env_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = 1;
+		rc = CLI_EXIT_DB_ERROR;
 		goto env_close;
 	}
 	rc = mdb_env_stat(env, &status);
 	if (rc) {
 		fprintf(stderr, "mdb_env_stat failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = 1;
+		rc = CLI_EXIT_DB_ERROR;
 		goto env_close;
 	}
 	if (status.ms_entries == 0) {
@@ -203,21 +203,21 @@ static int do_dump_db(void)
 	if (rc) {
 		fprintf(stderr, "mdb_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = 1;
+		exit_rc = CLI_EXIT_DB_ERROR;
 		goto txn_abort;
 	}
 	rc = mdb_cursor_open(txn, dbi, &cursor);
 	if (rc) {
 		fprintf(stderr, "mdb_cursor_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = 1;
+		exit_rc = CLI_EXIT_DB_ERROR;
 		goto txn_abort;
 	}
 	rc = mdb_cursor_get(cursor, &key, &val, MDB_FIRST);
 	if (rc) {
 		fprintf(stderr, "mdb_cursor_get failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = 1;
+		exit_rc = CLI_EXIT_DB_ERROR;
 		goto txn_abort;
 	}
 	do {
@@ -255,7 +255,8 @@ next_record:
 			rc = mdb_cursor_get(cursor, &key, &val, MDB_NEXT_NODUP);
 	} while (rc == 0);
 
-	rc = 0;
+	if (rc != MDB_NOTFOUND)
+		exit_rc = CLI_EXIT_DB_ERROR;
 	mdb_cursor_close(cursor);
 	mdb_close(env, dbi);
 txn_abort:
@@ -263,7 +264,7 @@ txn_abort:
 env_close:
 	mdb_env_close(env);
 
-	return rc;
+	return exit_rc;
 }
 
 static int parse_file_args(int argc, char * const argv[],
@@ -277,13 +278,13 @@ static int parse_file_args(int argc, char * const argv[],
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--filter")) {
 			if (*use_filter)
-				return 2;
+				return CLI_EXIT_USAGE;
 			*use_filter = true;
 			continue;
 		}
 		if (!strcmp(argv[i], "--trust-file")) {
 			if (*trust_file || i + 1 >= argc)
-				return 2;
+				return CLI_EXIT_USAGE;
 			*trust_file = argv[++i];
 			continue;
 		}
@@ -291,13 +292,13 @@ static int parse_file_args(int argc, char * const argv[],
 			*path = argv[i];
 			continue;
 		}
-		return 2;
+		return CLI_EXIT_USAGE;
 	}
 
 	if (!path_optional && *path == NULL)
-		return 2;
+		return CLI_EXIT_USAGE;
 
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 static int do_file_add(int argc, char * const argv[])
@@ -313,7 +314,7 @@ static int do_file_add(int argc, char * const argv[])
 		return rc;
 
 	if (!realpath(path, full_path))
-		return 3;
+		return CLI_EXIT_PATH_CONFIG;
 
 	return file_append(full_path, trust_file, use_filter);
 }
@@ -324,17 +325,17 @@ static int do_file_delete(int argc, char * const argv[])
 
 	if (argc == 1) {
 		if (!realpath(argv[0], full_path))
-			return 3;
+			return CLI_EXIT_PATH_CONFIG;
 		return file_delete(full_path, NULL);
 	}
 	if (argc == 3) {
 		if (!realpath(argv[0], full_path))
-			return 3;
+			return CLI_EXIT_PATH_CONFIG;
 		if (strcmp("--trust-file", argv[1]))
-			return 2;
+			return CLI_EXIT_USAGE;
 		return file_delete(full_path, argv[2]);
 	}
-	return 2;
+	return CLI_EXIT_USAGE;
 }
 
 static int do_file_update(int argc, char * const argv[])
@@ -351,7 +352,7 @@ static int do_file_update(int argc, char * const argv[])
 
 	if (path) {
 		if (!realpath(path, full_path))
-			return 3;
+			return CLI_EXIT_PATH_CONFIG;
 		path = full_path;
 	} else {
 		path = "/";
@@ -362,12 +363,12 @@ static int do_file_update(int argc, char * const argv[])
 
 static int do_manage_files(int argc, char * const argv[])
 {
-	int rc = 0;
+	int rc = CLI_EXIT_SUCCESS;
 
 	if (argc < 1 || argc > 5) {
 		fprintf(stderr, "Wrong number of arguments\n");
 		fprintf(stderr, "\n%s", usage);
-		return 1;
+		return CLI_EXIT_USAGE;
 	}
 
 	if (!strcmp("add", argv[0]))
@@ -379,24 +380,24 @@ static int do_manage_files(int argc, char * const argv[])
 	else {
 		fprintf(stderr, "%s is not a valid option, choose one of add|delete|update\n", argv[0]);
 		fprintf(stderr, "\n%s", usage);
-		return 1;
+		return CLI_EXIT_USAGE;
 	}
 
 	switch (rc) {
-	case 0: // no error
-		return 0;
-	case 2: // args error
+	case CLI_EXIT_SUCCESS: // no error
+		return CLI_EXIT_SUCCESS;
+	case CLI_EXIT_USAGE: // args error
 		fprintf(stderr, "Wrong number of arguments\n");
-		fprintf(stderr, "\n%s", usage);
-		break;
-	case 3: // realpath error
+                fprintf(stderr, "\n%s", usage);
+                return rc;
+	case CLI_EXIT_PATH_CONFIG: // realpath error
 		fprintf(stderr, "Can't obtain realpath from: %s\n", argv[1]);
 		fprintf(stderr, "\n%s", usage);
-		break;
+		return rc;
 	default: // file function errors
 		break;
 	}
-	return 1;
+	return rc ? rc : CLI_EXIT_GENERIC;
 }
 
 
@@ -413,11 +414,11 @@ static int do_ftype(const char *path)
 	fd = open(path, O_RDONLY|O_NONBLOCK);
 	if (fd < 0) {
 		fprintf(stderr, "Cannot open %s - %s\n", path, strerror(errno));
-		exit(1);
+		return CLI_EXIT_IO;
 	}
 	if (fstat(fd, &sb) != 0) {
 		fprintf(stderr, "Cannot stat %s - %s\n", path, strerror(errno));
-		exit(1);
+		return CLI_EXIT_IO;
 	}
 
 	// Setup file info with bare essentials
@@ -435,7 +436,7 @@ static int do_ftype(const char *path)
 	else
 		printf("unknown\n");
 
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 static int do_list(void)
@@ -449,7 +450,7 @@ static int do_list(void)
 		if (f == NULL) {
 			fprintf(stderr, "Cannot open rules file (%s)\n",
 						strerror(errno));
-			return 1;
+			return CLI_EXIT_IO;
 		}
 	} else {
 		FILE *t = fopen(RULES_FILE, "rm");
@@ -459,7 +460,7 @@ static int do_list(void)
 			fprintf(stderr,
 				"Error - old and new rules file detected. "
 				"Delete one or the other.\n");
-			return 1;
+			return CLI_EXIT_PATH_CONFIG;
 		}
 	}
 
@@ -486,7 +487,7 @@ next_iteration:
 		free(buf);
 	}
 	fclose(f);
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 
@@ -498,20 +499,20 @@ static int do_reload(int code)
 	fd = open(fifo_path, O_WRONLY);
 	if (fd == -1) {
 		fprintf(stderr, "Open: %s -> %s\n", fifo_path, strerror(errno));
-		return 1;
+		return CLI_EXIT_DAEMON_IPC;
 	}
 
 	if (fstat(fd, &s) == -1) {
 		fprintf(stderr, "Stat: %s -> %s\n", fifo_path, strerror(errno));
 		close(fd);
-		return 1;
+		return CLI_EXIT_DAEMON_IPC;
 	} else {
 		if (!S_ISFIFO(s.st_mode)) {
 			fprintf(stderr,
 				"File: %s exists but it is not a pipe!\n",
-				 fifo_path);
+				fifo_path);
 			close(fd);
-			return 1;
+			return CLI_EXIT_DAEMON_IPC;
 		}
 		// we will require pipe to have 0660 permissions
 		mode_t mode = s.st_mode & ~S_IFMT;
@@ -521,7 +522,7 @@ static int do_reload(int code)
 				fifo_path,
 				mode);
 			close(fd);
-			return 1;
+			return CLI_EXIT_DAEMON_IPC;
 		}
 	}
 
@@ -539,16 +540,16 @@ static int do_reload(int code)
 	if (ret == -1) {
 		fprintf(stderr,"Write: %s -> %s\n", fifo_path, strerror(errno));
 		close(fd);
-		return 1;
+		return CLI_EXIT_DAEMON_IPC;
 	}
 
 	if (close(fd)) {
 		fprintf(stderr,"Close: %s -> %s\n", fifo_path, strerror(errno));
-		return 1;
+		return CLI_EXIT_DAEMON_IPC;
 	}
 
 	printf("Fapolicyd was notified\n");
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 static const char *bad_filesystems[] = {
@@ -597,13 +598,13 @@ static int not_watchable(const char *type)
 	return 0;
 }
 
-// Returns 1 on error and 0 on success.
+// Returns CLI_EXIT_SUCCESS on success or other CLI_EXIT_* codes on failure.
 // Finding unwatched file systems is not considered an error
 static int check_watch_fs(void)
 {
 	char buf[PATH_MAX * 2], device[1025], point[4097];
 	char type[32], mntops[128];
-	int fs_req, fs_passno, fd, found = 0;
+	int fs_req, fs_passno, fd, found = 0, alloc_err = 0;
 	list_t fs, mnt;
 	char *ptr, *saved, *tmp;
 
@@ -611,14 +612,18 @@ static int check_watch_fs(void)
 	reset_config();
 	if (load_daemon_config(&config)) {
 		reset_config();
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 	if (config.watch_fs == NULL) {
 		fprintf(stderr, "File systems to watch is empty");
 		reset_config();
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 	tmp = strdup(config.watch_fs);
+	if (tmp == NULL) {
+		reset_config();
+		return CLI_EXIT_INTERNAL;
+	}
 
 	list_init(&fs);
 	ptr = strtok_r(tmp, ",", &saved);
@@ -628,6 +633,7 @@ static int check_watch_fs(void)
 		if (!index || !data || list_append(&fs, index, data)) {
 			free(index);
 			free(data);
+			alloc_err = 1;
 		}
 		ptr = strtok_r(NULL, ",", &saved);
 	}
@@ -638,7 +644,7 @@ static int check_watch_fs(void)
 		fprintf(stderr, "Unable to open mounts\n");
 		reset_config();
 		list_empty(&fs);
-		return 1;
+		return CLI_EXIT_IO;
 	}
 
 	fd_fgets_state_t *st = fd_fgets_init();
@@ -647,7 +653,7 @@ static int check_watch_fs(void)
 		reset_config();
 		list_empty(&fs);
 		close(fd);
-		return 1;
+		return CLI_EXIT_INTERNAL;
 	}
 
 	// Build the list of mount point types
@@ -664,6 +670,7 @@ static int check_watch_fs(void)
 			if (!index || !data || list_append(&mnt, index, data)) {
 				free(index);
 				free(data);
+				alloc_err = 1;
 			}
 		}
 	} while (!fd_fgets_eof_r(st));
@@ -681,7 +688,7 @@ static int check_watch_fs(void)
 			// Remove the file system so that we get 1 report
 			char *tmpfs = strdup(lptr->index);
 			while (list_remove(&mnt, tmpfs))
-				;
+                                ;
 			free(tmpfs);
 
 			// Start from the beginning
@@ -695,7 +702,9 @@ static int check_watch_fs(void)
 	if (found == 0)
 		printf("Nothing appears missing\n");
 
-	return 0;
+	if (alloc_err)
+		return CLI_EXIT_INTERNAL;
+	return CLI_EXIT_SUCCESS;
 }
 
 /*
@@ -910,11 +919,11 @@ static int validate_override_mount(const char *override)
 	rpath = realpath(override, resolved);
 	if (rpath == NULL) {
 		fprintf(stderr, "Cannot resolve %s (%s)\n", override, strerror(errno));
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 	if (stat(rpath, &sb) || S_ISDIR(sb.st_mode) == 0) {
 		fprintf(stderr, "%s is not a directory\n", rpath);
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 
 	mount_rc = is_mount_point(rpath);
@@ -924,17 +933,17 @@ static int validate_override_mount(const char *override)
 		else
 			fprintf(stderr, "Unable to read %s (%s)\n", MOUNTS_FILE,
 				strerror(errno));
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 
 	free((void *)config.ignore_mounts);
 	config.ignore_mounts = strdup(rpath);
 	if (config.ignore_mounts == NULL) {
 		fprintf(stderr, "Out of memory\n");
-		return 1;
+		return CLI_EXIT_INTERNAL;
 	}
 
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 /*
@@ -949,9 +958,9 @@ static int load_ignore_mounts_config(const char *override)
 
 	set_message_mode(MSG_STDERR, DBG_YES);
 	if (load_daemon_config(&config))
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 /*
@@ -1028,7 +1037,7 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 	char *rpath;
 	unsigned long mount_count = 0;
 	struct stat sb;
-	int rc = 0;
+	int rc = CLI_EXIT_SUCCESS;
 	int scanned = 0;
 
 	rpath = realpath(mount, resolved);
@@ -1037,20 +1046,20 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 			strerror(errno));
 		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
 		       mount);
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 
 	if (stat(rpath, &sb)) {
 		fprintf(stderr, "%s does not exist\n", rpath);
 		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
 		       rpath);
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 	if (S_ISDIR(sb.st_mode) == 0) {
 		fprintf(stderr, "%s is not a directory\n", rpath);
 		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
 		       rpath);
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 
 	const char *warning = NULL;
@@ -1065,7 +1074,7 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 
 	// A warning was already printed -  just return
 	if (mount_rc != 1)
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 
 	scan_state.count = &mount_count;
 	scan_state.had_error = 0;
@@ -1074,12 +1083,12 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 			strerror(errno));
 		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
 		       rpath);
-		rc = 1;
+		rc = CLI_EXIT_IO;
 	} else
 		scanned = 1;
 
 	if (scan_state.had_error)
-		rc = 1;
+		rc = CLI_EXIT_IO;
 
 	if (scanned) {
 		printf("Summary for %s: %lu suspicious file(s)\n", rpath,
@@ -1090,7 +1099,7 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 	scan_state.count = NULL;
 
 	if (!scanned)
-		return 1;
+		return rc;
 
 	return rc;
 }
@@ -1099,13 +1108,14 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 /*
  * check_ignore_mounts - validate ignore_mounts entries and scan for matches.
  * @override: optional mount path provided on the command line.
- * Returns 0 when no suspicious files are found and 1 otherwise.
+ * Returns CLI_EXIT_SUCCESS when no suspicious files are found, CLI_EXIT_GENERIC
+ * when suspicious files are detected, and other CLI_EXIT_* codes on error.
  */
 static int check_ignore_mounts(const char *override)
 {
 	list_t mounts;
 	avl_tree_t languages;
-	int rc = 1;
+	int rc = CLI_EXIT_SUCCESS;
 	unsigned long suspicious_total = 0;
 	int errors = 0;
 	int file_ready = 0;
@@ -1116,23 +1126,25 @@ static int check_ignore_mounts(const char *override)
 	avl_init(&languages, compare_language_entry);
 
 	/* Load ignore_mounts either from the override path or daemon config. */
-	if (load_ignore_mounts_config(override))
+	rc = load_ignore_mounts_config(override);
+	if (rc)
 		goto finish;
 
 	if (config.ignore_mounts == NULL) {
 		printf("No ignore_mounts entries configured\n");
-		rc = 0;
+		rc = CLI_EXIT_SUCCESS;
 		goto finish;
 	}
 
 	if (populate_mount_list(config.ignore_mounts, &mounts)) {
 		fprintf(stderr, "Failed to parse ignore_mounts entries\n");
+		rc = CLI_EXIT_INTERNAL;
 		goto finish;
 	}
 
 	if (mounts.first == NULL) {
 		printf("No ignore_mounts entries configured\n");
-		rc = 0;
+		rc = CLI_EXIT_SUCCESS;
 		goto finish;
 	}
 
@@ -1141,6 +1153,7 @@ static int check_ignore_mounts(const char *override)
 		fprintf(stderr,
 			"Unable to load %%languages definitions from %s\n",
 			languages_path);
+		rc = CLI_EXIT_RULE_FILTER;
 		goto finish;
 	}
 
@@ -1151,13 +1164,17 @@ static int check_ignore_mounts(const char *override)
 
 	/* Walk each ignore_mounts entry and flag suspicious MIME matches. */
 	for (list_item_t *lptr = mounts.first; lptr; lptr = lptr->next) {
-		if (scan_mount_entry(lptr->index, &suspicious_total,
-				     override ? 1 : 0))
+		int scan_rc = scan_mount_entry(lptr->index, &suspicious_total,
+					       override ? 1 : 0);
+		if (scan_rc) {
 			errors = 1;
+			if (rc == CLI_EXIT_SUCCESS)
+				rc = scan_rc;
+		}
 	}
 
 	if (errors == 0 && suspicious_total == 0)
-		rc = 0;
+		rc = CLI_EXIT_SUCCESS;
 
 finish:
 	if (file_ready)
@@ -1168,7 +1185,11 @@ finish:
 	scan_state.count = NULL;
 	scan_state.had_error = 0;
 	reset_config();
-	return (suspicious_total > 0) ? 1 : (errors ? 1 : rc);
+	if (suspicious_total > 0)
+		return CLI_EXIT_GENERIC;
+	if (errors)
+		return rc ? rc : CLI_EXIT_GENERIC;
+	return rc;
 }
 
 // Returns 0 = everything is OK, 1 = there is a problem
@@ -1241,13 +1262,13 @@ static int check_trustdb(void)
 	reset_config();
 	if (load_daemon_config(&config)) {
 		reset_config();
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 	set_message_mode(MSG_QUIET, DBG_NO);
 	int rc = walk_database_start(&config);
 	reset_config();
 	if (rc)
-		return 1;
+		return CLI_EXIT_DB_ERROR;
 
 	do {
 		unsigned int tsource;
@@ -1275,7 +1296,7 @@ static int check_trustdb(void)
 	if (found == 0)
 		puts("No problems found");
 
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 static int is_link(const char *path)
@@ -1325,14 +1346,14 @@ static int check_path(void)
 	const char *env_path = getenv("PATH");
 	if (env_path == NULL) {
 		puts("PATH not found");
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 
 	set_message_mode(MSG_STDERR, DBG_NO);
 	reset_config();
 	if (load_daemon_config(&config)) {
 		reset_config();
-		return 1;
+		return CLI_EXIT_PATH_CONFIG;
 	}
 	set_message_mode(MSG_QUIET, DBG_NO);
 	init_database(&config);
@@ -1354,7 +1375,7 @@ next:
 	if (path_found == 0)
 		puts("No problems found");
 
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 
 static int do_status_report(void)
@@ -1363,7 +1384,7 @@ static int do_status_report(void)
 
 	fd_fgets_state_t *st = fd_fgets_init();
 	if (!st)
-		return 1;
+		return CLI_EXIT_INTERNAL;
 
 	// open pid file
 	int pidfd = open(pidfile, O_RDONLY);
@@ -1432,14 +1453,14 @@ retry:
 			reason = "can't read pid file";
 		close(pidfd);
 		fd_fgets_destroy(st);
-		return 0;
+		return CLI_EXIT_SUCCESS;
 	}
 err_out:
 	fd_fgets_destroy(st);
 	if (pidfd >= 0)
 		close(pidfd);
 	printf("Can't find fapolicyd: %s\n", reason);
-	return 1;
+	return CLI_EXIT_DAEMON_IPC;
 }
 
 #ifdef HAVE_LIBRPM
@@ -1450,22 +1471,22 @@ static int do_test_filter(const char *path)
 
 	if (filter_init()) {
 		fprintf(stderr, "filter_init failed\n");
-		return 1;
+		return CLI_EXIT_RULE_FILTER;
 	}
 	if (filter_load_file(FILTER_FILE)) {
 		filter_destroy();
 		fprintf(stderr, "filter_load_file failed\n");
-		return 1;
+		return CLI_EXIT_RULE_FILTER;
 	}
 	filter_check(path);
 	filter_destroy();
-	return 0;
+	return CLI_EXIT_SUCCESS;
 }
 #endif
 
 int main(int argc, char * const argv[])
 {
-	int opt, option_index, rc = 1;
+	int opt, option_index, rc = CLI_EXIT_GENERIC;
 	int orig_argc = argc, arg_count = 0;
 	char *args[orig_argc+1];
 
@@ -1481,7 +1502,7 @@ int main(int argc, char * const argv[])
 	if (arg_count == 1) {
 		fprintf(stderr, "Too few arguments\n\n");
 		fprintf(stderr, "%s", usage);
-		return rc;
+	return CLI_EXIT_USAGE;
 	}
 
 	optind = 1;
@@ -1511,7 +1532,7 @@ int main(int argc, char * const argv[])
 		break;
 	case 'h':
 		printf("%s", usage);
-		rc = 0;
+		rc = CLI_EXIT_SUCCESS;
 		break;
 	case 't':
 		if (arg_count > 3)
@@ -1544,11 +1565,11 @@ int main(int argc, char * const argv[])
 		if (load_daemon_config(&config)) {
 			reset_config();
 			fprintf(stderr, "Configuration errors reported\n");
-			return 1;
+			return CLI_EXIT_PATH_CONFIG;
 		} else {
 			printf("Daemon config is OK\n");
 			reset_config();
-			return 0;
+			return CLI_EXIT_SUCCESS;
 		} }
 		break;
 	case 2: // --check-watch_fs
@@ -1594,13 +1615,13 @@ int main(int argc, char * const argv[])
 #endif
 	default:
 		printf("%s", usage);
-		rc = 1;
+		rc = CLI_EXIT_USAGE;
 	}
 	return rc;
 
 args_err:
 	fprintf(stderr, "Too many arguments\n\n");
 	fprintf(stderr, "%s", usage);
-	return rc;
+	return CLI_EXIT_USAGE;
 }
 
