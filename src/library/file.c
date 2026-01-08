@@ -42,6 +42,7 @@
 #include <mntent.h>
 
 #include "file.h"
+#include "database.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
 #include "string-util.h"
@@ -1283,6 +1284,36 @@ static Elf64_Ehdr *read_header64(int fd, Elf64_Ehdr *ptr)
 }
 
 
+/*
+ * interpreter_is_trusted - verify interpreter exists, is executable, trusted.
+ * @interp: absolute interpreter path from PT_INTERP.
+ * Returns 1 if interpreter exists, is executable, and trusted; 0 otherwise.
+ */
+static int interpreter_is_trusted(const char *interp)
+{
+	struct file_info *info;
+	int fd;
+	int trusted = 0;
+
+	if (interp == NULL || interp[0] == 0)
+		return 0;
+
+	fd = open(interp, O_RDONLY|O_CLOEXEC);
+	if (fd < 0)
+		return 0;
+
+	info = stat_file_entry(fd);
+	if (info && S_ISREG(info->mode) &&
+	    (info->mode & (S_IXUSR|S_IXGRP|S_IXOTH))) {
+		if (check_trust_database(interp, info, fd) == 1)
+			trusted = 1;
+	}
+	free(info);
+
+	close(fd);
+	return trusted;
+}
+
 /**
  * Check interpreter provided as an argument obtained from the ELF against
  * known fixed locations in the file hierarchy.
@@ -1295,6 +1326,11 @@ static int check_interpreter(const char *interp)
 		if (strcmp(interp, interpreters[i]) == 0)
 			return 0;
 	}
+
+	// We fell through the list that we know about.
+	// If it is trusted, allow it.
+	if (interpreter_is_trusted(interp))
+		return 0;
 
 	return 1;
 }
