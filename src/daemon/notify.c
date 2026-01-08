@@ -320,13 +320,15 @@ static void *deadmans_switch_thread_main(void *arg)
 		// on 5 is that if it's less than 5 it's still alive and
 		// processing, although maybe running behind sometimes.
 		// But if we are over 5, we are losing the battle.
-		if (!alive && !stop && q_queue_length(q) > 5) {
+		if (!atomic_load_explicit(&alive, memory_order_relaxed) &&
+		    !atomic_load_explicit(&stop, memory_order_relaxed) &&
+		    q_queue_length(q) > 5) {
 			msg(LOG_ERR,
 				"Deadman's switch activated...killing process");
 			raise(SIGKILL);
 		}
 		// OK, prove it again.
-		alive = false;
+		atomic_store_explicit(&alive, false, memory_order_relaxed);
 		sleep(3);
 	} while (!stop);
 	return NULL;
@@ -460,7 +462,7 @@ static void *decision_thread_main(void *arg)
 			}
 		}
 
-		alive = true;
+		atomic_store_explicit(&alive, true, memory_order_relaxed);
 		rpt_is_stale = 1;
 		make_policy_decision(&metadata, fd, mask);
 	}

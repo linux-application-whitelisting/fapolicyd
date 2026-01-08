@@ -610,7 +610,7 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 {
 	const char *ptr;
 
-	if (elf & HAS_ERROR)
+	if (elf & (HAS_ERROR | HAS_BAD_INTERP))
 		ptr = "application/x-bad-elf";
 	else if (elf & HAS_EXEC)
 		ptr = "application/x-executable";
@@ -643,7 +643,7 @@ const char *classify_elf_info(uint32_t elf, const char *path)
 		} else
 			return NULL;
 	}
-	// TODO: add HAS_BAD_INTERP, HAS_EXE_STACK, HAS_RWE_LOAD to
+	// TODO: add HAS_EXE_STACK and HAS_RWE_LOAD to
 	// classify BAD_ELF based on system policy
 	return ptr;
 }
@@ -890,8 +890,8 @@ const char *mime_from_shebang(const char *interp)
 		return "text/x-php";
 
 	/* R / Rscript */
-	if ((len >= 7 && memcmp(interp, "Rscript", 7) == 0) ||
-	    (len == 1 && interp[0] == 'R'))
+	if ((len >= 7 && memcmp(interp, "Rscript", 7) == 0) || //R-core
+	    (len == 1 && interp[0] == 'r'))	// R-littler
 		return "text/x-R";
 
 	if (len >= 8 && memcmp(interp, "ocamlrun", 8) == 0)

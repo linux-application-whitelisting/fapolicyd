@@ -252,9 +252,9 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	struct proc_info *pinfo;
 	struct file_info *finfo;
 
-	if (needs_flush) {
+	if (atomic_exchange_explicit(&needs_flush, false,
+				     memory_order_acq_rel)) {
 		flush_cache();
-		needs_flush = false;
 	}
 
 	// Transfer things from fanotify structs to ours

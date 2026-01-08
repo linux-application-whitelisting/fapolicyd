@@ -31,7 +31,8 @@
 #include "event.h"
 #include "gcc-attributes.h"
 
-#define MAX_FIELDS 8
+#define MAX_FIELDS 11	// Subject side can have up to 11 attributes.
+			// Object side can have up to 6. 11 covers both.
 
 /* This is one node of the linked list. Any data elements that are per
  * rule goes here. */

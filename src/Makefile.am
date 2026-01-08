@@ -5,6 +5,8 @@ AM_CPPFLAGS = \
 	-I${top_srcdir} \
 	-I${top_srcdir}/src/library
 
+check-recursive: libfapolicyd.la
+
 sbin_PROGRAMS = fapolicyd fapolicyd-cli
 lib_LTLIBRARIES= libfapolicyd.la
 

@@ -524,11 +524,11 @@ static int test_filedb_accepts_sha256(void)
 
 static int init_caches(unsigned int subj_size, unsigned int obj_size)
 {
-	conf_t cfg = { 0 };
+	conf_t cfg = (conf_t){ 0 };
 
 	cfg.subj_cache_size = subj_size;
 	cfg.obj_cache_size = obj_size;
-	needs_flush = false;
+	atomic_store_explicit(&needs_flush, false, memory_order_relaxed);
 	return init_event_system(&cfg);
 }
 
@@ -645,11 +645,12 @@ static int test_needs_flush_resets_object_cache(void)
 	cached_object = first.o;
 	CHECK(cached_object != NULL, 32, "[ERROR:32] object missing");
 
-	needs_flush = true;
+	atomic_store_explicit(&needs_flush, true, memory_order_relaxed);
 	meta.mask = FAN_OPEN_PERM;
 	CHECK(new_event(&meta, &second) == 0, 33,
 	      "[ERROR:33] second new_event failed");
-	CHECK(!needs_flush, 34, "[ERROR:34] needs_flush not cleared");
+	CHECK(!atomic_load_explicit(&needs_flush, memory_order_relaxed), 34,
+	      "[ERROR:34] needs_flush not cleared");
 	CHECK(second.s == first.s, 35,
 	      "[ERROR:35] subject cache should reuse same entry");
 	CHECK(second.o != cached_object, 36,

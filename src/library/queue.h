@@ -70,6 +70,9 @@ int q_dequeue(struct queue *q, struct fanotify_event_metadata *data);
 void q_shutdown(struct queue *q);
 
 /* Return the number of entries in Q. */
-static inline size_t q_queue_length(const struct queue *q) { return q->queue_length; }
+static inline size_t q_queue_length(const struct queue *q)
+{
+	return atomic_load_explicit(&q->queue_length, memory_order_relaxed);
+}
 
 #endif
