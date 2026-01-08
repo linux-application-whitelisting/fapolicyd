@@ -1327,8 +1327,10 @@ static int check_interpreter(const char *interp)
 			return 0;
 	}
 
-	// We fell through the list that we know about.
-	// If it is trusted, allow it.
+	// We fell through the list that we know about. If it is trusted,
+	// allow it. This is an attempt to accomodate other distributions
+	// that may not have the same RHEL/Fedora interpreters. The best
+	// solution is for them to add to the list.
 	if (interpreter_is_trusted(interp))
 		return 0;
 
