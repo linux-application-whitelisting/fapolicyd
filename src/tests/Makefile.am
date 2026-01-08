@@ -28,25 +28,25 @@ AM_CPPFLAGS = -I${top_srcdir}/src/library/
 AM_CFLAGS = -std=gnu11
 
 avl_test_SOURCES = avl_test.c ${top_srcdir}/src/library/avl.c
-gid_proc_test_SOURCES = gid_proc_test.c
+gid_proc_test_SOURCES = gid_proc_test.c test-stubs.c
 gid_proc_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-uid_proc_test_SOURCES = uid_proc_test.c
+uid_proc_test_SOURCES = uid_proc_test.c test-stubs.c
 uid_proc_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-escape_test_SOURCES = escape_test.c
+escape_test_SOURCES = escape_test.c test-stubs.c
 escape_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-attr_sets_test_SOURCES = attr_sets_test.c
+attr_sets_test_SOURCES = attr_sets_test.c test-stubs.c
 attr_sets_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-elf_file_test_SOURCES = elf_file_test.c
+elf_file_test_SOURCES = elf_file_test.c test-stubs.c
 elf_file_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-fd_fgets_test_SOURCES = fd_fgets_test.c
+fd_fgets_test_SOURCES = fd_fgets_test.c test-stubs.c
 fd_fgets_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-file_type_detect_test_SOURCES = file_type_detect_test.c
+file_type_detect_test_SOURCES = file_type_detect_test.c test-stubs.c
 file_type_detect_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_SOURCES = rules_test.c
 rules_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 trustdb_format_test_SOURCES = trustdb_format_test.c
-lru_test_SOURCES = lru_test.c
+lru_test_SOURCES = lru_test.c test-stubs.c
 lru_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 event_test_SOURCES = event_test.c
 event_test_LDADD = \
@@ -63,10 +63,12 @@ event_test_DEPENDENCIES = $(event_test_LDADD)
 if WITH_RPM
 check_PROGRAMS += filter_test
 filter_test_SOURCES = filter_test.c
+filter_test_SOURCES += test-stubs.c
 filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 check_PROGRAMS += file_filter_test
 file_filter_test_SOURCES = file_filter_test.c
+file_filter_test_SOURCES += test-stubs.c
 file_filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 file_filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 endif
