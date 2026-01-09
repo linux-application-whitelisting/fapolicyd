@@ -7,7 +7,7 @@
 #include "config.h"
 #include "message.h"
 
-atomic_bool stop;
+extern atomic_bool stop;
 
 int main(int argc, char* const argv[]) {
   set_message_mode(MSG_STDERR, DBG_YES);
