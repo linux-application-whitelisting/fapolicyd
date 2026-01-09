@@ -6,6 +6,7 @@
 - Various code cleanups, hardening, and performance optimizing
 - Classify ELF files with an unknown interpreter as application/x-bad-elf
 - Consolidate the fapolicyd-cli return codes
+- Add integrity value to state report
 
 1.4.2
 - Correct identification of kworker threads

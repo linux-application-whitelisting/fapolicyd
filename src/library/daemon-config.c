@@ -631,6 +631,13 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+const char *lookup_integrity(unsigned value)
+{
+	if (value > 3)
+		return NULL;
+
+	return integrity_schemes[value].name;
+}
 
 static int syslog_format_parser(const struct nv_pair *nv, int line,
 		conf_t *config)

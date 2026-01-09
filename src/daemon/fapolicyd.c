@@ -765,7 +765,10 @@ static void close_memory_report(void)
 
 void do_stat_report(FILE *f, int shutdown)
 {
+	const char *ptr = lookup_integrity(config.integrity);
+
 	fprintf(f, "Permissive: %s\n", config.permissive ? "true" : "false");
+	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "q_size: %u\n", config.q_size);
 	q_report(f);
