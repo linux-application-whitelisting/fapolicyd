@@ -1253,12 +1253,9 @@ int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
 
 
 static unsigned char e_ident[EI_NIDENT];
-static int read_preliminary_header(int fd)
+static inline ssize_t read_preliminary_header(int fd)
 {
-	ssize_t rc = safe_read(fd, (char *)e_ident, EI_NIDENT);
-	if (rc == EI_NIDENT)
-		return 0;
-	return 1;
+	return safe_read(fd, (char *)e_ident, EI_NIDENT);
 }
 
 
@@ -1356,8 +1353,10 @@ static int looks_like_text_script(int fd)
 uint32_t gather_elf(int fd, off_t size)
 {
 	uint32_t info = 0;
+	ssize_t rc;
 
-	if (read_preliminary_header(fd))
+	rc = read_preliminary_header(fd);
+	if (rc < 2)
 		goto rewind_out;
 
 	/* Detect scripts via shebang before ELF check */
@@ -1365,6 +1364,10 @@ uint32_t gather_elf(int fd, off_t size)
 		info |= HAS_SHEBANG;
 		goto rewind_out;
 	}
+
+	/* Make sure we have the full preliminary header */
+	if (rc < EI_NIDENT)
+		goto rewind_out;
 
 	/* Check ELF magic */
 	if (strncmp((char *)e_ident, ELFMAG, 4)) {
@@ -1688,4 +1691,3 @@ rewind_out:
 	rewind_fd(fd);
 	return info;
 }
-
