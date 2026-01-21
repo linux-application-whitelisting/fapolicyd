@@ -1162,7 +1162,7 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 	if (digest_length == 0)
 		return NULL;
 
-	mapped = mmap(0, size, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, 0);
+	mapped = mmap(0, size, PROT_READ, MAP_SHARED|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
 		unsigned char hptr[SHA512_DIGEST_LENGTH];
 		int computed = 0;
