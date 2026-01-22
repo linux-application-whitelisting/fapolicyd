@@ -236,6 +236,7 @@ int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
 
 void q_shutdown(struct queue *q)
 {
+	if (q == NULL)
+		return;
 	sem_post(&q->sem);
 }
-

@@ -255,6 +255,9 @@ void fanotify_update(mlist *m)
 
 void unmark_fanotify(mlist *m)
 {
+	if (m == NULL)
+		return;
+
 	const char *path = mlist_first(m);
 
 	// Stop the flow of events
