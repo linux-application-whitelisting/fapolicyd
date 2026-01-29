@@ -130,8 +130,10 @@ int file_append(const char *path, const char *fname, bool use_filter)
 
 	list_init(&add_list);
 	rc = add_list_load_path(path);
-	if (rc)
+	if (rc) {
+		list_empty(&add_list); // could be partially populated by nftw
 		return rc;
+	}
 
 	if (use_filter && filter_prune_list(&add_list, NULL)) {
 		list_empty(&add_list);
