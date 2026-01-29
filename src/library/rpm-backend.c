@@ -443,7 +443,7 @@ out:
 	// cleaning up
 	struct _hash_record *item, *tmp;
 	HASH_ITER( hh, hashtable, item, tmp) {
-		   HASH_DEL( hashtable, item );
+		HASH_DEL( hashtable, item );
 		free((void*)item->key);
 		free((void*)item);
 	}
