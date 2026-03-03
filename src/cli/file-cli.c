@@ -28,6 +28,7 @@
 #include <ftw.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -71,6 +72,26 @@ static int ftw_add_list_append(const char *fpath,
 			}
 		} else {
 			msg(LOG_INFO, "Skipping non regular file: %s", fpath);
+		}
+	} else if (typeflag == FTW_SL) {
+		char target[PATH_MAX];
+		ssize_t len = readlink(fpath, target, sizeof (target) - 1);
+		if (len == -1) {
+			msg(LOG_ERR, "Cannot read value of symbolic link %s: %s",
+				fpath, strerror(errno));
+			return FTW_CONTINUE;
+		}
+		target[len] = '\0';
+		struct stat st;
+		if (stat(fpath, &st) == -1) {
+			msg(LOG_WARNING, "Cannot stat symbolic link %s pointing to %s: %s",
+				fpath, target, strerror(errno));
+		} else if (target[0] != '/' && realpath(fpath, target) == NULL) {
+			msg(LOG_WARNING, "Cannot resolve symbolic link %s: %s",
+				fpath, strerror(errno));
+		} else {
+			msg(LOG_INFO, "Skipping symbolic link %s: "
+				"consider adding target %s", fpath, target);
 		}
 	}
 	return FTW_CONTINUE;
