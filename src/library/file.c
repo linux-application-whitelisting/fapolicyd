@@ -1295,7 +1295,8 @@ static int interpreter_is_trusted(const char *interp)
 	if (interp == NULL || interp[0] == 0)
 		return 0;
 
-	fd = open(interp, O_RDONLY|O_CLOEXEC);
+	// Open non-blocking in case it's a fifo
+	fd = open(interp, O_RDONLY|O_CLOEXEC|O_NONBLOCK);
 	if (fd < 0)
 		return 0;
 
