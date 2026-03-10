@@ -43,6 +43,7 @@
 
 #include "file.h"
 #include "database.h"
+#include "paths.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
 #include "string-util.h"
