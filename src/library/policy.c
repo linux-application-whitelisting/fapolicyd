@@ -444,7 +444,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 		if (item == PID || item == PPID) {
 			if (asprintf(&out, "%d", subj ? subj->pid : 0) < 0)
 				out = NULL;
-		} else if (item < GID) {
+		} else if (item < GID && item != UID) {
 			if (asprintf(&out, "%u", subj ? subj->uval : 0) < 0)
 				out = NULL;
 		} else if (item >= COMM) {
@@ -462,7 +462,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 				out = NULL;
 			free(tmp);
 
-		} else { // GID only log first 32
+		} else { // UID/GID only log first 32
 			out = malloc(NGID_LIMIT*12);
 			if (out && subj->set) {
 				char buf[12];
