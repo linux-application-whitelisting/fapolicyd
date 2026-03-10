@@ -50,6 +50,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <fnmatch.h>
+#include <limits.h>
 
 #include "filter.h"
 #include "stack.h"
@@ -251,7 +252,7 @@ filter_rc_t filter_check(const char *_path)
 	}
 
 	filter_t *filter = global_filter;
-	size_t path_len = strlen(_path);
+	size_t path_len = strnlen(_path, PATH_MAX);
 	char *path = alloca(path_len + 1);
 	strcpy(path, _path);
 	/* Reject paths with parent directory references */
