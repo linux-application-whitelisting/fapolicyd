@@ -254,7 +254,8 @@ filter_rc_t filter_check(const char *_path)
 	filter_t *filter = global_filter;
 	size_t path_len = strnlen(_path, PATH_MAX);
 	char *path = alloca(path_len + 1);
-	strcpy(path, _path);
+	strncpy(path, _path, PATH_MAX);
+	path[path_len] = 0;
 	/* Reject paths with parent directory references */
 	if ((path[0] == '.' && path[1] == '.' &&
 		(path[2] == '/' || path[2] == '\0')) ||
