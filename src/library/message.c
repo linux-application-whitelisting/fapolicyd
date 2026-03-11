@@ -79,8 +79,10 @@ void msg(int priority, const char *fmt, ...)
 		// localtime is not threadsafe, use _r version for safety
 		(void) localtime_r(&rawtime, &timeinfo);
 
-		strftime(buffer, sizeof(buffer), "%x %T [ ", &timeinfo);
-		fputs(buffer, stderr);
+		if (strftime(buffer, sizeof(buffer), "%x %T [ ", &timeinfo) == 0)
+			fputs("time unavailable [ ", stderr);
+		else
+			fputs(buffer, stderr);
 
 		fputs(color, stderr);
 		fputs(level, stderr);
