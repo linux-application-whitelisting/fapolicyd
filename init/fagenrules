@@ -41,7 +41,7 @@ trap 'rm -f ${TmpRules}; exit 1' HUP INT QUIT PIPE TERM
 try_load() {
 	pid=$(pidof fapolicyd)
 	if [ $LoadRules -eq 1 ] && [ "x$pid" != "x" ] ; then
-		kill -HUP "$pid"
+		kill -HUP $pid
 		RETVAL=$?
 	fi
 }
