@@ -680,7 +680,7 @@ static int check_watch_fs(void)
 
 
 	// Now search the list we just built
-	for (list_item_t *lptr = mnt.first; lptr; lptr = lptr->next) {
+	for (list_item_t *lptr = mnt.first; lptr; ) {
 		// See if the file system is watched
 		if (list_contains(&fs, lptr->index) == 0) {
 			found = 1;
@@ -694,7 +694,9 @@ static int check_watch_fs(void)
 
 			// Start from the beginning
 			lptr = mnt.first;
+			continue;
 		}
+		lptr = lptr->next;
 	}
 
 	reset_config();
