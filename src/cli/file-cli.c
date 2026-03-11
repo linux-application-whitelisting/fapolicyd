@@ -104,13 +104,16 @@ static int add_list_load_path(const char *path)
 
 	if (S_ISDIR(sb.st_mode))
 		rc = nftw(path, &ftw_add_list_append, FTW_NOPENFD, FTW_FLAGS);
-	else {
+	else if (S_ISREG(sb.st_mode)) {
 		char *tmp = strdup(path);
 		if (!tmp)
 			return CLI_EXIT_INTERNAL;
 		rc = list_append(&add_list, tmp, NULL);
 		if (rc)
 			free(tmp);
+	} else {
+		msg(LOG_INFO, "Skipping non regular file: %s", path);
+		rc = 0;
 	}
 
 	if (rc) {
