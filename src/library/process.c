@@ -171,11 +171,20 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	int fd;
+	const char *type_path;
+	char exe_path[PATH_MAX];
 
 	if (blen == 0)
 		return NULL;
 
 	const char *path = proc_path(pid, "/exe");
+	ssize_t path_len = readlink(path, exe_path, sizeof(exe_path) - 1);
+	if (path_len > 0) {
+		exe_path[path_len] = '\0';
+		type_path = exe_path;
+	} else
+		type_path = path;
+
 	fd = open(path, O_RDONLY|O_NOATIME|O_CLOEXEC);
 	if (fd >= 0) {
 		const char *ptr;
@@ -189,7 +198,7 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 			i.mode = sb.st_mode;
 			i.size = sb.st_size;
 
-			ptr = get_file_type_from_fd(fd, &i, path, blen, buf);
+			ptr = get_file_type_from_fd(fd, &i, type_path, blen, buf);
 			close(fd);
 			return (char *)ptr;
 		}
@@ -470,4 +479,3 @@ int check_environ_from_pid(pid_t pid)
 	}
 	return rc;
 }
-
