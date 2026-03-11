@@ -54,7 +54,7 @@ causes fapolicyd to reload the trust database.
 
 .TP
 .B SIGUSR1
-causes fapolicyd to dump it's internal statistics to /var/run/fapolicyd.state
+causes fapolicyd to dump it's internal statistics to /run/fapolicyd/fapolicyd.state
 
 .SH NOTES
 Whatever you do, DO NOT TRY TO ATTACH WITH PTRACE. Ptrace attachment sends a SIGSTOP which cannot be blocked. Since your whole system depends on fapolicyd approving access to glibc and various critical libraries, that will not happen until SIGCONT is sent. The system can deadlock if the continue signal is not sent.

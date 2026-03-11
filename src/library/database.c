@@ -145,7 +145,7 @@ int preconstruct_fifo(const conf_t *config)
 	int rc;
 	char err_buff[BUFFER_SIZE];
 
-	/* Ensure that the RUN_DIR exists */
+	/* Keep RUN_DIR mode/owner aligned with daemon IPC expectations. */
 	if (mkdir(RUN_DIR, 0770) && errno != EEXIST) {
 		msg(LOG_ERR, "Failed to create a directory %s (%s)", RUN_DIR,
 		    strerror_r(errno, err_buff, BUFFER_SIZE));

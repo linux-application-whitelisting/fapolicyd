@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/timerfd.h>
 #include <stdbool.h>
@@ -69,6 +70,32 @@ void do_stat_report(FILE *f, int shutdown);
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
+
+/*
+ * open_stat_report - open status report file for overwrite without symlinks.
+ * Return codes:
+ * >= 0 - writable file descriptor for STAT_REPORT
+ *  -1 - open or validation failed (errno set)
+ */
+static int open_stat_report(void)
+{
+	struct stat st;
+	int fd;
+
+	fd = open(STAT_REPORT,
+		O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW,
+		0640);
+	if (fd < 0)
+		return -1;
+
+	if (fstat(fd, &st) == -1 || !S_ISREG(st.st_mode)) {
+		close(fd);
+		errno = EINVAL;
+		return -1;
+	}
+
+	return fd;
+}
 
 /*
  * ignore_mounts_configured - determine whether ignore_mounts has entries.
@@ -369,11 +396,25 @@ static void rpt_init(struct timespec *t)
 // write a stat report to file at the standard location
 static void rpt_write(void)
 {
-	FILE *f = fopen(STAT_REPORT, "w");
-	if (f) {
-		do_stat_report(f, 0);
-		fclose(f);
+	int fd = open_stat_report();
+	FILE *f;
+
+	if (fd < 0) {
+		msg(LOG_WARNING, "cannot open %s: %s",
+			STAT_REPORT, strerror(errno));
+		return;
 	}
+
+	f = fdopen(fd, "w");
+	if (!f) {
+		msg(LOG_WARNING, "cannot fdopen %s: %s",
+			STAT_REPORT, strerror(errno));
+		close(fd);
+		return;
+	}
+
+	do_stat_report(f, 0);
+	fclose(f);
 }
 
 static void *decision_thread_main(void *arg)
@@ -529,4 +570,3 @@ void handle_events(void)
 		metadata = FAN_EVENT_NEXT(metadata, len);
 	}
 }
-

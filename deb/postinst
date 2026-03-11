@@ -9,6 +9,7 @@ mkdir -p /run/fapolicyd/
 
 chown -R fapolicyd:fapolicyd /etc/fapolicyd/
 chown fapolicyd:fapolicyd /var/lib/fapolicyd/
-chown fapolicyd:fapolicyd /run/fapolicyd/
+chown root:fapolicyd /run/fapolicyd/
+chmod 0770 /run/fapolicyd/
 
 
