@@ -90,6 +90,7 @@ static struct fs_avl ignored_mounts;
 
 // List of mounts being watched
 static mlist *m = NULL;
+static pthread_mutex_t mlist_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Reconfiguration
 static atomic_bool reconfig_running = false;
@@ -614,6 +615,8 @@ static void handle_mounts(int fd)
 	char type[32], mntops[128];
 	int fs_req, fs_passno;
 
+	pthread_mutex_lock(&mlist_lock);
+
 	if (m == NULL) {
 		m = malloc(sizeof(mlist));
 		mlist_create(m);
@@ -622,8 +625,10 @@ static void handle_mounts(int fd)
 	// Rewind the descriptor
 	lseek(fd, 0, SEEK_SET);
 	fd_fgets_state_t *st = fd_fgets_init();
-	if (!st)
+	if (!st) {
+		pthread_mutex_unlock(&mlist_lock);
 		return;
+	}
 
 	mlist_mark_all_deleted(m);
 	do {
@@ -651,6 +656,7 @@ static void handle_mounts(int fd)
 	fd_fgets_destroy(st);
 	// update marks
 	fanotify_update(m);
+	pthread_mutex_unlock(&mlist_lock);
 }
 
 /*
@@ -781,6 +787,7 @@ void do_stat_report(FILE *f, int shutdown)
 		do_cache_reports(f);
 
 	// Report mounts under fanotify watch
+	pthread_mutex_lock(&mlist_lock);
 	if (m) {
 		const char *path = mlist_first(m);
 		while (path) {
@@ -788,6 +795,7 @@ void do_stat_report(FILE *f, int shutdown)
 			path = mlist_next(m);
 		}
 	}
+	pthread_mutex_unlock(&mlist_lock);
 
 	if (shutdown)
 		fputs("\n", f);
