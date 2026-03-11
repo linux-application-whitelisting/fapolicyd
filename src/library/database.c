@@ -2086,7 +2086,7 @@ static void *update_thread_main(void *arg)
 								break;
 							}
 
-							if (isspace(buff[i]))
+							if (isspace((unsigned char)buff[i]))
 								continue;
 
 							msg(LOG_ERR, "Cannot handle data \"%s\" from pipe", buff);
