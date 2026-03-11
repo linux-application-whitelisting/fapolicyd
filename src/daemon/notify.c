@@ -475,9 +475,9 @@ static void *decision_thread_main(void *arg)
 							run_stats = 0;
 							rpt_is_stale = 0;
 						}
-						// adjust the pthread timeout to
+						// adjust the timed dequeue timeout to
 						// a full interval from now
-						if (clock_gettime(CLOCK_MONOTONIC,
+						if (clock_gettime(CLOCK_REALTIME,
 								&rpt_timeout)) {
 							// gettime errors are
 							// unrecoverable
