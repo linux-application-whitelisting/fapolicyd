@@ -157,7 +157,8 @@ int fd_fgets_r(struct fd_fgets_state *st, char *buf, size_t blen, int fd)
 
 	/* 2) If not, and we still can read more, pull in more data */
 	if (line_end == NULL && !st->eof) {
-		if (st->current == st->eptr && st->buffer != st->orig) {
+		if (st->mem_type != MEM_MMAP_FILE &&
+		    st->current == st->eptr && st->buffer != st->orig) {
 			size_t used = (size_t)(st->current - st->buffer);
 
 			memmove(st->orig, st->buffer, used);

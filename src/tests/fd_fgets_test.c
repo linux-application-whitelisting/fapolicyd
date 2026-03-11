@@ -251,6 +251,53 @@ static void test_deferred_compaction(void)
  * Map README.md directly and parse it without issuing read() calls.  This is
  * the MEM_MMAP_FILE path that the daemon relies on for audit log replay.
  */
+
+/*
+ * Verify MEM_MMAP_FILE parsing on an mmap()ed read-only file that has no
+ * trailing newline. This ensures we never try to compact by writing into the
+ * mapped region after advancing st->buffer.
+ */
+static void test_mmap_file_no_trailing_newline(void)
+{
+	char template[] = "/tmp/fd_fgets_mmap_no_nlXXXXXX";
+	char buf[64];
+	const char *line =
+		"0123456789abcdef0123456789abcdefQRSTUVWX";
+	size_t line_len = strlen(line);
+	int fd;
+	void *base;
+	struct stat sb;
+	fd_fgets_state_t *st;
+
+	fd = mkstemp(template);
+	assert(fd >= 0);
+	assert(unlink(template) == 0);
+	write_all(fd, line);
+	assert(lseek(fd, 0, SEEK_SET) == 0);
+	assert(fstat(fd, &sb) == 0);
+
+	base = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	assert(base != MAP_FAILED);
+
+	st = fd_fgets_init();
+	assert(st);
+	assert(fd_setvbuf_r(st, base, sb.st_size, MEM_MMAP_FILE) == 0);
+
+	int len = fd_fgets_r(st, buf, 33, fd);
+	assert(len == 32);
+	assert(strncmp(buf, line, (size_t)len) == 0);
+
+	len = fd_fgets_r(st, buf, sizeof(buf), fd);
+	assert(len == (int)(line_len - 32));
+	assert(strcmp(buf, line + 32) == 0);
+
+	len = fd_fgets_r(st, buf, sizeof(buf), fd);
+	assert(len == 0);
+	assert(fd_fgets_eof_r(st) == 1);
+
+	fd_fgets_destroy(st);
+	close(fd);
+}
 static void test_mmap_file_readme(void)
 {
 	const char *srcdir = getenv("srcdir");
@@ -309,6 +356,7 @@ int main(void)
 	test_malloc_buffer();
 	test_mmap_buffer();
 	test_deferred_compaction();
+	test_mmap_file_no_trailing_newline();
 	test_mmap_file_readme();
 	printf("fd-fgets_r tests: all passed\n");
 	return 0;
