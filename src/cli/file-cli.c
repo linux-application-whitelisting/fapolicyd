@@ -125,6 +125,26 @@ static int add_list_load_path(const char *path)
 	return CLI_EXIT_SUCCESS;
 }
 
+/**
+ * Validate trust file name provided by the CLI.
+ *
+ * @param fname Name of trust file within trust.d directory
+ * @return true if \p fname is a simple filename, false otherwise
+ */
+static bool trust_file_name_valid(const char *fname)
+{
+	if (fname == NULL || fname[0] == '\0')
+		return false;
+
+	if (strchr(fname, '/'))
+		return false;
+
+	if (strcmp(fname, ".") == 0 || strcmp(fname, "..") == 0)
+		return false;
+
+	return true;
+}
+
 int file_append(const char *path, const char *fname, bool use_filter)
 {
 	int rc;
@@ -151,6 +171,11 @@ int file_append(const char *path, const char *fname, bool use_filter)
 		return CLI_EXIT_NOOP;
 	}
 
+	if (fname && !trust_file_name_valid(fname)) {
+		msg(LOG_ERR, "Invalid trust file name: %s", fname);
+		return CLI_EXIT_USAGE;
+	}
+
 	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) :
 							TRUST_FILE_PATH;
 	if (dest == NULL)
@@ -171,6 +196,11 @@ int file_delete(const char *path, const char *fname)
 	int count = 0, rc;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
+
+	if (fname && !trust_file_name_valid(fname)) {
+		msg(LOG_ERR, "Invalid trust file name: %s", fname);
+		return CLI_EXIT_USAGE;
+	}
 
 	if (fname) {
 		char *file = fapolicyd_strcat(TRUST_DIR_PATH, fname);
@@ -199,6 +229,11 @@ int file_update(const char *path, const char *fname, bool use_filter)
 	set_message_mode(MSG_STDERR, DBG_NO);
 	int count = 0, rc = CLI_EXIT_SUCCESS;
 	bool filter_ready = false;
+
+	if (fname && !trust_file_name_valid(fname)) {
+		msg(LOG_ERR, "Invalid trust file name: %s", fname);
+		return CLI_EXIT_USAGE;
+	}
 
 	if (use_filter) {
 		if (filter_init())
