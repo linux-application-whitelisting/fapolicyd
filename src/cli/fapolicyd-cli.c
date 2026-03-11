@@ -178,14 +178,14 @@ static int do_dump_db(void)
 	if (rc) {
 		fprintf(stderr, "mdb_env_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = CLI_EXIT_DB_ERROR;
+		exit_rc = CLI_EXIT_DB_ERROR;
 		goto env_close;
 	}
 	rc = mdb_env_stat(env, &status);
 	if (rc) {
 		fprintf(stderr, "mdb_env_stat failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = CLI_EXIT_DB_ERROR;
+		exit_rc = CLI_EXIT_DB_ERROR;
 		goto env_close;
 	}
 	if (status.ms_entries == 0) {
@@ -196,7 +196,7 @@ static int do_dump_db(void)
 	if (rc) {
 		fprintf(stderr, "mdb_txn_begin failed, error %d %s\n", rc,
 							mdb_strerror(rc));
-		rc = 1;
+		exit_rc = CLI_EXIT_DB_ERROR;
 		goto env_close;
 	}
 	rc = mdb_dbi_open(txn, DB_NAME, MDB_DUPSORT, &dbi);
@@ -1625,4 +1625,3 @@ args_err:
 	fprintf(stderr, "%s", usage);
 	return CLI_EXIT_USAGE;
 }
-
