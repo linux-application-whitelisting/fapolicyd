@@ -459,17 +459,18 @@ int check_environ_from_pid(pid_t pid)
 	int rc = -1;
 	char *line = NULL;
 	size_t len = 0;
+	ssize_t nread;
 	FILE *f;
 
 	const char *path = proc_path(pid, "/environ");
 	f = fopen(path, "rt");
 	if (f) {
 		__fsetlocking(f, FSETLOCKING_BYCALLER);
-		while (getline(&line, &len, f) != -1) {
-			char *match = strstr(line, "LD_PRELOAD");
-			if (!match)
-				match = strstr(line, "LD_AUDIT");
-			if (match) {
+		while ((nread = getdelim(&line, &len, '\0', f)) != -1) {
+			if (nread < 2)
+				continue;
+			if (strncmp(line, "LD_PRELOAD=", 11) == 0 ||
+			    strncmp(line, "LD_AUDIT=", 9) == 0) {
 				rc = 1;
 				break;
 			}
