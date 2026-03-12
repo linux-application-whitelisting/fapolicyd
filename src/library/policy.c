@@ -666,6 +666,8 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 	response.response = reply;
 	write(fd, &response, sizeof(struct fanotify_response));
 out:
+	// Close this last so that no other thread can reclaim this fd
+	// number before we render a decusion.
 	close(metadata->fd);
 }
 
