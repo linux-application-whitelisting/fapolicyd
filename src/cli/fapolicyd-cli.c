@@ -223,7 +223,7 @@ static int do_dump_db(void)
 	do {
 		char *path = NULL, *data = NULL, sha[FILE_DIGEST_STRING_MAX];
 		unsigned int tsource;
-		off_t size;
+		size_t size;
 		const char *source;
 
 		path = malloc(key.mv_size + 1);
@@ -244,7 +244,7 @@ static int do_dump_db(void)
 			goto next_record;
 
 		source = lookup_tsource(tsource);
-		printf("%s %s %lu %s\n", source, path, size, sha);
+		printf("%s %s %zu %s\n", source, path, size, sha);
 
 next_record:
 		free(data);
