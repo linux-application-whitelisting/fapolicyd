@@ -627,7 +627,6 @@ static int test_info_api(int fd)
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e)
 {
-	close(metadata->fd);
 #ifdef FAN_AUDIT_RULE_NUM
 	static int use_new = 2;
 	if (use_new == 2)
@@ -658,7 +657,7 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		} else
 			f.a.obj_trust = 2;
 		write(fd, &f, sizeof(struct fan_audit_response));
-		return;
+		goto out;
 	}
 #endif
 	struct fanotify_response response;
@@ -666,6 +665,8 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 	response.fd = metadata->fd;
 	response.response = reply;
 	write(fd, &response, sizeof(struct fanotify_response));
+out:
+	close(metadata->fd);
 }
 
 
