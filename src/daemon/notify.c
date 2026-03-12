@@ -80,21 +80,21 @@ static void *deadmans_switch_thread_main(void *arg);
 static int open_stat_report(void)
 {
 	struct stat st;
-	int fd;
+	int sfd;
 
-	fd = open(STAT_REPORT,
+	sfd = open(STAT_REPORT,
 		O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW,
 		0640);
-	if (fd < 0)
+	if (sfd < 0)
 		return -1;
 
-	if (fstat(fd, &st) == -1 || !S_ISREG(st.st_mode)) {
-		close(fd);
+	if (fstat(sfd, &st) == -1 || !S_ISREG(st.st_mode)) {
+		close(sfd);
 		errno = EINVAL;
 		return -1;
 	}
 
-	return fd;
+	return sfd;
 }
 
 /*
