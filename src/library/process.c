@@ -159,8 +159,10 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 
 	// strlen(" deleted") == 10
 	if (len > 10 && buf[len-1] == ')') {
+		struct stat sb;
 
-		if (strcmp(&buf[len - 10], " (deleted)") == 0)
+		if (strcmp(&buf[len - 10], " (deleted)") == 0 &&
+		    stat(buf, &sb) != 0)
 			buf[len - 10] = '\0';
 	}
 
