@@ -207,8 +207,8 @@ int trust_file_append(const char *fpath, list_t *list)
 	list_init(&content);
 	int rc = trust_file_load(fpath, &content, -1);
 	// if trust file does not exist, we ignore it as it will be created while writing
-	if (rc == 2) {
-		// exit on parse error, we dont want invalid entries to be autoremoved
+	if (rc > 1) {
+		// exit on load errors, we dont want invalid entries to be autoremoved
 		return 1;
 	}
 
