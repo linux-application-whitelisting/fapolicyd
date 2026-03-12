@@ -40,6 +40,9 @@ static const char sh_set[] = "\"'`$\\!()| ";
  */
 size_t check_escape_shell(const char *input)
 {
+	if (!input)
+		return 0;
+
 	const char *p = input;
 	size_t size = 0, cnt = 0;
 
