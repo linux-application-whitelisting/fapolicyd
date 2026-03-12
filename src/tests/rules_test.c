@@ -143,6 +143,44 @@ static void prep_event(event_t *e, unsigned int auid, const char *path)
 }
 
 /*
+* prep_macro_event - build an event with explicit subject/object paths
+*
+* e:   event to populate
+* exe: subject executable path
+* obj: object path
+*
+* Returns: none
+*/
+static void prep_macro_event(event_t *e, const char *exe, const char *obj)
+{
+	e->s = malloc(sizeof(s_array));
+	e->o = malloc(sizeof(o_array));
+	if (!e->s || !e->o)
+		error(1, errno, "malloc failed");
+
+	subject_create(e->s);
+	object_create(e->o);
+
+	e->s->info = calloc(1, sizeof(struct proc_info));
+	if (!e->s->info)
+		error(1, errno, "calloc failed");
+
+	subject_attr_t exe_attr = { .type = EXE, .str = strdup(exe) };
+	if (!exe_attr.str)
+		error(1, errno, "strdup failed");
+	if (subject_add(e->s, &exe_attr))
+		error(1, 0, "subject_add failed");
+
+	object_attr_t path_attr = { .type = PATH, .o = strdup(obj) };
+	if (!path_attr.o)
+		error(1, errno, "strdup failed");
+	if (object_add(e->o, &path_attr))
+		error(1, 0, "object_add failed");
+
+	e->type = 0;
+}
+
+/*
 * free_event - release memory from prep_event()
 */
 static void free_event(event_t *e)
@@ -235,6 +273,41 @@ int main(void)
 	rules_clear(&l);
 	destroy_attr_sets();
 
+	/* macro keyword matching on dir attributes */
+	if (init_attr_sets())
+		error(1, 0, "init_attr_sets failed");
+	rules_create(&l);
+
+	rc = append_capture(&l, "allow perm=any dir=execdirs : all", 1,
+		err, sizeof(err));
+	if (rc)
+		error(1, 0, "execdirs subject rule parse failed: %s", err);
+
+	rc = append_capture(&l, "allow perm=any all : dir=systemdirs", 2,
+		err, sizeof(err));
+	if (rc)
+		error(1, 0, "systemdirs object rule parse failed: %s", err);
+
+	rules_regen_sets(&l);
+
+	prep_macro_event(&e, "/usr/bin/bash", "/tmp/xx");
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "execdirs macro subject match failed");
+	free_event(&e);
+
+	prep_macro_event(&e, "/opt/my-tool", "/etc/hosts");
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "systemdirs macro object match failed");
+	free_event(&e);
+
+	prep_macro_event(&e, "/opt/my-tool", "/var/tmp/xx");
+	if (evaluate(&l, &e) != NO_OPINION)
+		error(1, 0, "unexpected macro match");
+	free_event(&e);
+
+	rules_clear(&l);
+	destroy_attr_sets();
+
 	/* negative parsing scenarios */
 	for (i = 0; i < sizeof(errors)/sizeof(errors[0]); i++) {
 		const struct err_case *c = &errors[i];
@@ -262,4 +335,3 @@ int main(void)
 
 	return 0;
 }
-

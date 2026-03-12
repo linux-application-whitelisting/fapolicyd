@@ -1360,20 +1360,33 @@ static int check_subject(lnode *r, event_t *e)
 
 
 		// regular strings -> multiple value
-		// simple presence check
 		case EXE: {
-			if (check_str_attr_set(r->s[cnt].set, "untrusted"))
-				if (is_subj_trusted(e))
-					return 0;
-		} // case
-
-		// fall through
-
-		case COMM:
-		case EXE_TYPE: {
 			if (!subj->str) {
 				break;
 			}
+
+			/*
+			 * "untrusted" is a macro-style match. If requested, and the
+			 * subject is not trusted, this attribute matches immediately.
+			 *
+			 * Otherwise, fall back to exact string match semantics so
+			 * explicit paths in the set continue to work.
+			 */
+			if (check_str_attr_set(r->s[cnt].set, "untrusted") &&
+			    !is_subj_trusted(e))
+				break;
+
+			if (!check_str_attr_set(r->s[cnt].set, subj->str))
+				return 0;
+
+			break;
+		} // case
+
+
+		case COMM:
+		case EXE_TYPE: {
+			if (!subj->str)
+				break;
 
 			if (!check_str_attr_set(r->s[cnt].set, subj->str))
 				return 0;
@@ -1383,6 +1396,7 @@ static int check_subject(lnode *r, event_t *e)
 
 
 		case EXE_DIR: {
+			int macro_match = 0;
 
 			if (!subj->str) {
 				break;
@@ -1390,16 +1404,23 @@ static int check_subject(lnode *r, event_t *e)
 
 			if (check_str_attr_set(r->s[cnt].set, "execdirs"))
 				if (check_dirs(1, subj->str))
-					return 0;
+					macro_match = 1;
 
 			if (check_str_attr_set(r->s[cnt].set, "systemdirs"))
 				if (check_dirs(0, subj->str))
-					return 0;
+					macro_match = 1;
 
 			// DEPRECATED
 			if (check_str_attr_set(r->s[cnt].set, "untrusted"))
-				if (is_subj_trusted(e))
-					return 0;
+				if (!is_subj_trusted(e))
+					macro_match = 1;
+
+			/*
+			 * Macros are alternatives to literal directory prefixes.
+			 * If any macro matched, this attribute is satisfied.
+			 */
+			if (macro_match)
+				break;
 
 			// check partial match (via strncmp)
 			// subdir test
@@ -1496,6 +1517,7 @@ static decision_t check_object(lnode *r, event_t *e)
 
 
 		case ODIR: {
+			int macro_match = 0;
 
 			if (!obj->o) {
 				break;
@@ -1503,16 +1525,23 @@ static decision_t check_object(lnode *r, event_t *e)
 
 			if (check_str_attr_set(r->o[cnt].set, "execdirs"))
 				if (check_dirs(1, obj->o))
-					return 0;
+					macro_match = 1;
 
 			if (check_str_attr_set(r->o[cnt].set, "systemdirs"))
 				if (check_dirs(0, obj->o))
-					return 0;
+					macro_match = 1;
 
 			// DEPRECATED
 			if (check_str_attr_set(r->o[cnt].set, "untrusted"))
-				if (is_obj_trusted(e))
-					return 0;
+				if (!is_obj_trusted(e))
+					macro_match = 1;
+
+			/*
+			 * Keep macro keywords and literal directory prefixes as
+			 * ORed alternatives for dir matching.
+			 */
+			if (macro_match)
+				break;
 
 			// check partial match (via strncmp)
 			// subdir test
@@ -1678,4 +1707,3 @@ unsigned int rules_get_proc_status_mask(void)
 {
        return proc_status_mask;
 }
-
