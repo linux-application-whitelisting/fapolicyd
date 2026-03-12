@@ -1835,13 +1835,13 @@ static int handle_record(const char * buffer)
 {
 	char path[2048+1];
 	char hash[64+1];
-	off_t size;
+	size_t size;
 
 	if (stop)
 		return 1;
 
 	// validating input
-	int res = sscanf(buffer, "%2048s %lu %64s", path, &size, hash);
+	int res = sscanf(buffer, "%2048s %zu %64s", path, &size, hash);
 	msg(LOG_DEBUG, "update_thread: Parsing input buffer: %s", buffer);
 	msg(LOG_DEBUG,
 	    "update_thread: Parsing input words(expected 3): %d",
