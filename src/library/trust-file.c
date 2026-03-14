@@ -544,8 +544,16 @@ int trust_file_update_path(const char *fpath, const char *path, bool use_filter)
 					continue;
 				}
 			}
+			char *new_data = make_data_string(lptr->index);
+			if (!new_data) {
+				msg(LOG_WARNING,
+				    "Cannot refresh %s, keeping previous trust entry",
+				    (char *)lptr->index);
+				continue;
+			}
+
 			free((char *)lptr->data);
-			lptr->data = make_data_string(lptr->index);
+			lptr->data = new_data;
 			++count;
 		}
 	}
