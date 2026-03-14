@@ -332,8 +332,13 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			goto free_and_error;
 		}
 
-		if (type <= PPID) {
-			int expected = (type == PID || type == PPID) ? SIGNED : UNSIGNED;
+		/*
+		 * GID is a numeric subject attribute, but its enum value lives
+		 * below the string attributes after SUBJ_TRUST.
+		 */
+		if (type <= PPID || type == GID) {
+			int expected = (type == PID || type == PPID) ?
+							SIGNED : UNSIGNED;
 			if (set->type != expected) {
 				msg(LOG_ERR, "rules: line:%d: assign_subject: "
 					"cannot assign %%%s which has %s type "

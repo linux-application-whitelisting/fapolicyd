@@ -68,6 +68,12 @@ static const struct err_case errors[] = {
 	  "allow perm=any all : path=%nums",
 	  NULL },
 	"SIGNED set nums to the STRING attribute"
+	},
+	{
+	{ "%strs=wheel,staff",
+	  "allow perm=any gid=%strs : path=/bin/ls",
+	  NULL },
+	"cannot assign %strs which has STRING type to gid (UNSIGNED expected)"
 	}
 };
 
