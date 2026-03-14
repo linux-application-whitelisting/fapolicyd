@@ -555,7 +555,8 @@ void handle_events(void)
 				"queue is full, please consider tuning q_size "
 				"if issue happens often", metadata->pid);
 					int decision = FAN_DENY;
-					if (config.permissive)
+					if (__atomic_load_n(&config.permissive,
+							    __ATOMIC_RELAXED))
 						decision = FAN_ALLOW;
 					reply_event(fd, metadata, decision,
 						    NULL);

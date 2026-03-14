@@ -376,7 +376,8 @@ static int reload_configuration(void)
 		return 1;
 	}
 
-	config.permissive = new_config.permissive;
+	__atomic_store_n(&config.permissive, new_config.permissive,
+			 __ATOMIC_RELAXED);
 
 	if (setpriority(PRIO_PROCESS, 0, -(int)new_config.nice_val) == -1)
 		msg(LOG_WARNING, "Couldn't adjust priority (%s)",
@@ -783,7 +784,9 @@ void do_stat_report(FILE *f, int shutdown)
 {
 	const char *ptr = lookup_integrity(config.integrity);
 
-	fprintf(f, "Permissive: %s\n", config.permissive ? "true" : "false");
+	fprintf(f, "Permissive: %s\n",
+		__atomic_load_n(&config.permissive,
+				__ATOMIC_RELAXED) ? "true" : "false");
 	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "q_size: %u\n", config.q_size);
@@ -907,7 +910,8 @@ int main(int argc, const char *argv[])
 	// process remaining flags
 	for (int i=1; i < argc; i++) {
 		if (strcmp(argv[i], "--permissive") == 0) {
-			config.permissive = 1;
+			__atomic_store_n(&config.permissive, 1,
+					 __ATOMIC_RELAXED);
 		} else if (strcmp(argv[i], "--boost") == 0) {
 			i++;
 			msg(LOG_ERR, "boost value on the command line is"

@@ -698,7 +698,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 		// If permissive, always allow and honor the audit bit
 		// if not in debug mode
-		if (config.permissive)
+		if (__atomic_load_n(&config.permissive, __ATOMIC_RELAXED))
 			reply_event(fd, metadata,FAN_ALLOW | (decision & AUDIT),
 					&e);
 		else
