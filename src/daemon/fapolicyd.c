@@ -412,16 +412,19 @@ static int reload_configuration(void)
 
 	config.rpm_sha256_only = new_config.rpm_sha256_only;
 
-	if (new_config.trust && (!config.trust ||
-				strcmp(new_config.trust, config.trust) != 0)) {
-		char *new_trust = strdup(new_config.trust);
-		if (new_trust) {
-			char *old_trust = (char *)config.trust;
-			config.trust = new_trust;
-			free(old_trust);
-		} else
-			msg(LOG_ERR,
-			    "Failed replacing trust backend list");
+	if (new_config.trust) {
+		lock_update_thread();
+		if (!config.trust || strcmp(new_config.trust, config.trust) != 0) {
+			char *new_trust = strdup(new_config.trust);
+			if (new_trust) {
+				char *old_trust = (char *)config.trust;
+				config.trust = new_trust;
+				free(old_trust);
+			} else
+				msg(LOG_ERR,
+				    "Failed replacing trust backend list");
+		}
+		unlock_update_thread();
 	}
 
 	/*
