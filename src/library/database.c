@@ -397,6 +397,26 @@ static int init_db(const conf_t *config)
 
 static unsigned get_pages_in_use(void);
 static unsigned long pages, max_pages;
+
+/*
+ * close_env - close LMDB env and clear cached handle state
+ * @do_close_dbi: non-zero closes cached dbi before env close
+ *
+ * Returns: none
+ */
+static void close_env(int do_close_dbi)
+{
+	if (env == NULL)
+		return;
+
+	if (do_close_dbi)
+		mdb_close(env, dbi);
+
+	mdb_env_close(env);
+	env = NULL;
+	dbi_init = 0;
+}
+
 static void close_db(int do_report)
 {
 	if (do_report) {
@@ -417,8 +437,7 @@ static void close_db(int do_report)
 	}
 
 	// Now close down
-	mdb_close(env, dbi);
-	mdb_env_close(env);
+	close_env(1);
 }
 
 static void check_db_size(const conf_t *config)
@@ -1885,8 +1904,7 @@ static void do_reload_db(conf_t* config)
 			config->db_max_size);
 
 		if (config->db_max_size < old_db_max_size) {
-			mdb_env_close(env);
-			env = NULL;
+			close_env(0);
 
 			if ((rc = init_db(config))) {
 				msg(LOG_ERR,
