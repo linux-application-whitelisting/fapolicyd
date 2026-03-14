@@ -455,7 +455,7 @@ static int parse_record(const char *record, struct lmdb_record *parsed)
 {
 	size_t expected_len;
 
-	if (sscanf(record, DATA_FORMAT, &parsed->tsource, &parsed->size,
+	if (sscanf(record, DATA_FORMAT_IN, &parsed->tsource, &parsed->size,
 		parsed->digest) != 3)
 		return 1;
 

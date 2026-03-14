@@ -240,7 +240,7 @@ static int do_dump_db(void)
 		memcpy(data, val.mv_data, val.mv_size);
 		data[val.mv_size] = 0;
 
-		if (sscanf(data, DATA_FORMAT, &tsource, &size, sha) != 3)
+		if (sscanf(data, DATA_FORMAT_IN, &tsource, &size, sha) != 3)
 			goto next_record;
 
 		source = lookup_tsource(tsource);
@@ -1286,7 +1286,7 @@ static int check_trustdb(void)
 			(char *) entry->path.mv_data);
 		snprintf(data, sizeof(data), "%.*s", (int) entry->data.mv_size,
 			(char *) entry->data.mv_data);
-		if (sscanf(data, DATA_FORMAT, &tsource, &size, sha) != 3) {
+		if (sscanf(data, DATA_FORMAT_IN, &tsource, &size, sha) != 3) {
 			fprintf(stderr, "%s data entry is corrupted\n", path);
 			continue;
 		}

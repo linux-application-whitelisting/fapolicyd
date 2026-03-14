@@ -21,7 +21,7 @@ int main(void)
 	if (written < 0 || written >= (int)sizeof(data))
 		return 1;
 
-	if (sscanf(data, DATA_FORMAT, &tsource, &size, parsed_digest) != 3)
+	if (sscanf(data, DATA_FORMAT_IN, &tsource, &size, parsed_digest) != 3)
 		return 1;
 
 	if (strcmp(digest, parsed_digest))
