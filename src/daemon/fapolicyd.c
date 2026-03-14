@@ -639,9 +639,16 @@ static void handle_mounts(int fd)
 		int rc = fd_fgets_r(st, buf, sizeof(buf), fd);
 		// Get a line
 		if (rc > 0) {
+			int parsed;
+
 			// Parse it
-			sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
+			parsed = sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
 			    device, point, type, mntops, &fs_req, &fs_passno);
+			if (parsed != 6) {
+				msg(LOG_WARNING,
+				    "Skipping malformed mount (%s)", buf);
+				continue;
+			}
 			unescape_shell(device, strlen(device));
 			unescape_shell(point, strlen(point));
 			// Is this one that we care about?
