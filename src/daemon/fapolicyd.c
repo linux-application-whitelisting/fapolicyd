@@ -731,6 +731,16 @@ static void maybe_start_mounts_thread(int fd)
 	pthread_attr_destroy(&attr);
 }
 
+/*
+ * wait_for_mounts_thread - wait for active mount processing to complete.
+ * Returns nothing.
+ */
+static void wait_for_mounts_thread(void)
+{
+	while (atomic_load(&mounts_running))
+		usleep(1000);
+}
+
 
 static void usage(void)
 {
@@ -1123,6 +1133,7 @@ int main(int argc, const char *argv[])
 		}
 	}
 	msg(LOG_INFO, "shutting down...");
+	wait_for_mounts_thread();
 	shutdown_fanotify(m);
 	close(pfd[0].fd);
 	file_close();
