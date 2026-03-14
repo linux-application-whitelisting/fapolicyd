@@ -348,8 +348,10 @@ void destroy_rules(void)
 	}
 
 	destroy_attr_sets();
-	if (stop)
+	if (stop) {
 		free(working_buffer);
+		working_buffer = NULL;
+	}
 }
 
 unsigned int policy_get_syslog_proc_status_mask(void)
