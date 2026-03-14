@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <sys/stat.h>
 #include "process.h"
 #include "file.h"
@@ -261,8 +262,70 @@ int get_program_sessionid_from_pid(pid_t pid)
 }
 
 /*
- * read_proc_status - Collect selected fields from /proc/<pid>/status.
- * @pid: identifier of the process to inspect
+ * append_group_from_text - Parse one gid token and append it to a set.
+ * @groups: attribute set receiving parsed gids
+ * @text: NUL-terminated text expected to contain one numeric gid
+ *
+ * The helper follows project conversion rules by clearing errno before
+ * strtoul() and checking errno afterward.  Non-numeric or out-of-range
+ * values are ignored.
+ */
+static void append_group_from_text(attr_sets_entry_t *groups, const char *text)
+{
+	char *end = NULL;
+	unsigned long value;
+
+	if (text == NULL || *text == '\0')
+		return;
+
+	errno = 0;
+	value = strtoul(text, &end, 10);
+	if (errno || end == text || *end != '\0' || value > UINT_MAX)
+		return;
+
+	append_int_attr_set(groups, (int64_t)value);
+}
+
+/*
+ * consume_groups_fragment - Parse a fragment from /proc/<pid>/status Groups.
+ * @groups: attribute set receiving parsed gids
+ * @fragment: text fragment containing part (or all) of Groups payload
+ * @line_complete: non-zero when this fragment ends the Groups line
+ * @partial: carry buffer for tokens split across fragments
+ * @partial_len: in/out length of bytes currently stored in @partial
+ *
+ * The helper consumes gid tokens from @fragment while preserving a trailing
+ * partial token when the line is split across read chunks.  Parsed gids are
+ * appended to @groups when complete numeric tokens are seen.
+ */
+static void consume_groups_fragment(attr_sets_entry_t *groups,
+		const char *fragment, int line_complete,
+		char *partial, size_t *partial_len)
+{
+	for (const char *p = fragment; *p && *p != '\n'; p++) {
+		if (isdigit((unsigned char)*p)) {
+			if (*partial_len < 31)
+				partial[(*partial_len)++] = *p;
+			continue;
+		}
+
+		if (*partial_len) {
+			partial[*partial_len] = '\0';
+			append_group_from_text(groups, partial);
+			*partial_len = 0;
+		}
+	}
+
+	if (line_complete && *partial_len) {
+		partial[*partial_len] = '\0';
+		append_group_from_text(groups, partial);
+		*partial_len = 0;
+	}
+}
+
+/*
+ * read_proc_status_fd - Parse selected fields from a status-like stream.
+ * @fd: descriptor positioned at the beginning of proc status content
  * @fields: bitmap of PROC_STAT_* flags describing desired data
  * @info: storage describing the results for the requested fields
  *
@@ -271,12 +334,15 @@ int get_program_sessionid_from_pid(pid_t pid)
  * before new values are recorded.  The function returns 0 on success and
  * -1 when the status file cannot be processed.
  */
-int read_proc_status(pid_t pid, unsigned int fields,
-		     struct proc_status_info *info)
+int read_proc_status_fd(int fd, unsigned int fields,
+		struct proc_status_info *info)
 {
 	char buf[80];
-	int fd, rc = 0;
+	char gid_partial[32];
+	int rc = 0;
+	int in_groups_line = 0;
 	unsigned int found = 0;
+	size_t gid_partial_len = 0;
 
 	if (info == NULL || fields == 0)
 		return 0;
@@ -316,8 +382,6 @@ int read_proc_status(pid_t pid, unsigned int fields,
 	if (fields & PROC_STAT_PPID)
 		info->ppid = -1;
 
-	const char *path = proc_path(pid, "/status");
-	fd = open(path, O_RDONLY|O_CLOEXEC);
 	if (fd < 0) {
 		if (fields & PROC_STAT_UID) {
 			destroy_attr_set(info->uid);
@@ -333,16 +397,28 @@ int read_proc_status(pid_t pid, unsigned int fields,
 	}
 
 	fd_fgets_state_t *st = fd_fgets_init();
-	if (st == NULL) {
-		close(fd);
+	if (st == NULL)
 		return -1;
-	}
 
 	do {
 		rc = fd_fgets_r(st, buf, sizeof(buf), fd);
 		if (rc == -1)
 			break;
 		else if (rc > 0) {
+			int line_complete = buf[rc - 1] == '\n';
+
+			if ((fields & PROC_STAT_GID) && in_groups_line) {
+				if (info->groups)
+					consume_groups_fragment(info->groups, buf,
+						line_complete, gid_partial,
+						&gid_partial_len);
+				if (line_complete) {
+					found |= PROC_STAT_GID;
+					in_groups_line = 0;
+				}
+				continue;
+			}
+
 			if ((fields & PROC_STAT_COMM) &&
 				    info->comm == NULL &&
 				    memcmp(buf, "Name:", 5) == 0) {
@@ -428,18 +504,16 @@ int read_proc_status(pid_t pid, unsigned int fields,
 			if ((fields & PROC_STAT_GID) &&
 			    memcmp(buf, "Groups:", 7) == 0) {
 				if (info->groups) {
-					char *data = buf + 7;
-					int offset;
-					unsigned int gid;
-
-					while (sscanf(data,
-						" %u%n", &gid, &offset) == 1) {
-					      data += offset;
-					      append_int_attr_set(info->groups,
-								(int64_t)gid);
-					}
+					consume_groups_fragment(info->groups, buf + 7,
+						line_complete, gid_partial,
+						&gid_partial_len);
 				}
-				found |= PROC_STAT_GID;
+				if (line_complete)
+					found |= PROC_STAT_GID;
+				else {
+					in_groups_line = 1;
+					continue;
+				}
 				continue;
 			}
 		}
@@ -447,9 +521,32 @@ int read_proc_status(pid_t pid, unsigned int fields,
 	} while (!fd_fgets_eof_r(st) && rc > 0 && found != fields);
 
 	fd_fgets_destroy(st);
-	close(fd);
 
 	return 0;
+}
+
+
+/*
+ * read_proc_status - Open and parse selected fields from /proc/<pid>/status.
+ * @pid: identifier of the process to inspect
+ * @fields: bitmap of PROC_STAT_* flags describing desired data
+ * @info: storage describing the results for the requested fields
+ *
+ * Return: 0 on success, -1 if status cannot be opened or parsed.
+ */
+int read_proc_status(pid_t pid, unsigned int fields,
+		     struct proc_status_info *info)
+{
+	int fd, rc;
+	const char *path = proc_path(pid, "/status");
+
+	fd = open(path, O_RDONLY|O_CLOEXEC);
+	if (fd < 0)
+		return -1;
+
+	rc = read_proc_status_fd(fd, fields, info);
+	close(fd);
+	return rc;
 }
 
 

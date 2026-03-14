@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <error.h>
 #include <string.h>
+#include <fcntl.h>
 #include "attr-sets.h"
 #include "process.h"
 
@@ -20,6 +21,81 @@ static void require_group(attr_sets_entry_t *set, unsigned int gid,
 {
 	if (!check_int_attr_set(set, (int64_t)gid))
 		error(1, 0, "%s group %u not found", label, gid);
+}
+
+
+/*
+ * check_split_groups_status - verify parser consumes fragmented Groups lines
+ *
+ * Return: none; exits through error() if parsing misses expected gids.
+ */
+static void check_split_groups_status(void)
+{
+	char status_template[] = "/tmp/fapolicyd-status-XXXXXX";
+	char long_groups[512];
+	char content[1024];
+	int fd;
+	int len;
+	unsigned int gid_values[] = {
+		1000, 1001, 1002, 1003, 1004,
+		1234567890, 1006, 1007, 1008, 1009,
+		1010, 1011, 1012, 1013, 1014,
+		1015, 1016, 1017, 1018, 1019,
+	};
+	struct proc_status_info info = {
+		.ppid = -1,
+		.uid = NULL,
+		.groups = NULL,
+		.comm = NULL,
+	};
+	attr_sets_entry_t *groups;
+	size_t i;
+
+	len = snprintf(long_groups, sizeof(long_groups),
+		"Groups: 1000 1001 1002 1003 1004 1234567890 "
+		"1006 1007 1008 1009 1010 1011 1012 1013 "
+		"1014 1015 1016 1017 1018 1019\n");
+	if (len < 0 || (size_t)len >= sizeof(long_groups))
+		error(1, 0, "Unable to format Groups line");
+
+	len = snprintf(content, sizeof(content),
+		"Name:	testproc\n"
+		"Gid:	1000 1001 1002 1003\n"
+		"%s",
+		long_groups);
+	if (len < 0 || (size_t)len >= sizeof(content))
+		error(1, 0, "Unable to format synthetic status content");
+
+	fd = mkstemp(status_template);
+	if (fd < 0)
+		error(1, errno, "mkstemp failed");
+
+	if (write(fd, content, (size_t)len) != len)
+		error(1, errno, "write synthetic status failed");
+
+	if (lseek(fd, 0, SEEK_SET) == (off_t)-1)
+		error(1, errno, "lseek synthetic status failed");
+
+	if (read_proc_status_fd(fd, PROC_STAT_GID, &info) != 0)
+		error(1, 0, "Unable to parse synthetic status file");
+
+	close(fd);
+	unlink(status_template);
+
+	groups = info.groups;
+	info.groups = NULL;
+	if (!groups)
+		error(1, 0, "Synthetic gid set not available");
+
+	for (i = 0; i < sizeof(gid_values) / sizeof(gid_values[0]); i++) {
+		if (!check_int_attr_set(groups, (int64_t)gid_values[i])) {
+			error(1, 0, "Synthetic group %u not found",
+				gid_values[i]);
+		}
+	}
+
+	destroy_attr_set(groups);
+	free(groups);
 }
 
 /*
@@ -43,6 +119,8 @@ int main(void)
 	char buf[4096];
 	int saw_gid_line = 0;
 	unsigned int missing_gid;
+
+	check_split_groups_status();
 
 	if (read_proc_status(getpid(), PROC_STAT_GID, &info) != 0)
 		error(1, 0, "Unable to obtain gid set");
