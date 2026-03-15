@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -59,9 +60,7 @@
  * their documentation.
  */
 
-#define BUFFER_SIZE (4096+1+1+1+10+1+FILE_DIGEST_STRING_WIDTH+1)
-#define FILE_READ_FORMAT  "%4096s %lu %64s" // path size SHA256
-#define FILE_WRITE_FORMAT "%s %lu %s\n"     // path size SHA256
+#define BUFFER_SIZE (PATH_MAX+1+1+1+10+1+FILE_DIGEST_STRING_WIDTH+1)
 #define FTW_NOPENFD 1024
 #define FTW_FLAGS (FTW_ACTIONRETVAL | FTW_PHYS)
 
@@ -174,17 +173,15 @@ static int write_out_list(list_t *list, const char *dest)
 	fwrite(HEADER4, hlen, 1, f);
 
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
-		char buf[BUFFER_SIZE + 1];
 		const char *data = (char *)(lptr->data);
 		const char *path = (char *)lptr->index;
 
-		/*
-		 * + 2 because we are omitting source number
-		 * "0 12345 ..."
-		 * 0 -> filedb source
-		 */
-		hlen = snprintf(buf, sizeof(buf), "%s %s\n", path, data + 2);
-		fwrite(buf, hlen, 1, f);
+		// + 2 because we are omitting source number
+		// "0 12345 ..."
+		// 0 -> filedb source
+		// Skip writing out the source (data + 2)
+		if (fprintf(f, "%s %s\n", path, data + 2) < 0)
+			msg(LOG_ERR, "Cannot write entry for %s", path);
 	}
 
 	fclose(f);
@@ -231,62 +228,65 @@ int trust_file_append(const char *fpath, list_t *list)
  * @size: Output parameter for the recorded size.
  * @sha:  Output buffer for the digest string.
  *
+ * Trust-file paths may contain spaces, so we cannot parse from the left
+ * with scanf("%s ...").  Instead, scan from the right and split on the
+ * last two spaces, which are the delimiters before size and digest.
+ *
  * Returns 0 when parsing succeeds or -1 when the line is malformed.
  */
-static int parse_line_backwards(char *line, char *path, unsigned long *size,
+static int parse_line_backwards(char *line, char *path, size_t *size,
 				 char *sha, size_t sha_size)
 {
-	if (line == NULL || path == NULL || size == NULL || sha == NULL)
+	if (line == NULL || path == NULL || size == NULL || sha == NULL ||
+	    *line == 0)
 		return -1;
 
 	size_t len = strlen(line);
-
 	int count = 0;
-	char *delims[MAX_DELIMS] = {0};
+	char *delims[MAX_DELIMS] = { 0 };
 	int stripped = 0;
-	for (int i = len - 1 ; i >= 0 ; i--) {
+	for (int i = len - 1; i >= 0; i--) {
 		if (!stripped) {
 			if (isspace(line[i]))
 				line[i] = '\0';
-			else {
+			else
 				stripped = 1;
-			}
 		}
 
 		if (count == MAX_DELIMS)
 			break;
 
-		if (line[i] == DELIM) {
+		if (line[i] == DELIM)
 			delims[count++] = &line[i];
-		}
 	}
 
 	if (count != MAX_DELIMS)
 		return -1;
 
-	for (int i = 0 ; i < count ; i++) {
+	for (int i = 0; i < count; i++)
 		*(delims[i]) = '\0';
-	}
 
-	// save sha to arg
-	// right from the last delimiter to the end of the line
-	size_t sha_width = &line[len-1] - delims[0];
-	if (sha_width >= sha_size)
-		sha_width = sha_size - 1;
+	// Save SHA from the last delimiter to the end of the line.
+	size_t sha_width = &line[len-1] - (delims[0] + 1);
+	if (sha_width >= sha_size || sha_width != SHA256_LEN*2) {
+		msg(LOG_INFO, "sha_width %u", sha_width);
+		return -1;
+	}
 	memcpy(sha, delims[0] + 1, sha_width);
 	sha[sha_width] = '\0';
 
 	// save size to arg
-	char number[1024];
-	size_t number_size = delims[0] - delims[1]+1;
-	memcpy(number, delims[1]+1, number_size);
 	char *endptr;
-	*size = strtol(number, &endptr, 10);
+	errno = 0;
+	unsigned long long parsed_size = strtoull(delims[1] + 1, &endptr, 10);
+	if (errno || endptr == delims[1] + 1 || *endptr != '\0')
+		return -1;
+	*size = parsed_size;
 
 	// save path to arg
 	size_t path_size = delims[1] - line;
-	if (path_size >= 4097)
-		path_size = 4096;
+	if (path_size > PATH_MAX)
+		return -1;
 	memcpy(path, line, path_size);
 	path[path_size] = '\0';
 
@@ -316,10 +316,10 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		return 1;
 
 	while (fgets(buffer, BUFFER_SIZE, file)) {
-		char name[4097], sha[FILE_DIGEST_STRING_MAX], *index = NULL,
+		char name[PATH_MAX+1], sha[FILE_DIGEST_STRING_MAX], *index = NULL,
 			*data = NULL;
 		char data_buf[BUFFER_SIZE];
-		unsigned long sz;
+		size_t sz;
 		unsigned int tsource = SRC_FILE_DB;
 
 		line++;
