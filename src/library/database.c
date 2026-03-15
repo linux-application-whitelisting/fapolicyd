@@ -768,10 +768,20 @@ static void end_long_term_read_ops(void)
 static unsigned get_pages_in_use(void)
 {
 	MDB_stat st;
+	int rc;
 
-	start_long_term_read_ops();
-	mdb_stat(lt_txn, dbi, &st);
+	if (start_long_term_read_ops()) {
+		pages = 0;
+		return 0;
+	}
+
+	rc = mdb_stat(lt_txn, dbi, &st);
 	end_long_term_read_ops();
+	if (rc) {
+		pages = 0;
+		return 0;
+	}
+
 	pages = st.ms_leaf_pages + st.ms_branch_pages +
 		st.ms_overflow_pages;
 	return st.ms_psize;
@@ -782,10 +792,15 @@ static unsigned get_pages_in_use(void)
 static long get_number_of_entries(void)
 {
 	MDB_stat status;
+	int rc;
 
-	start_long_term_read_ops();
-	mdb_stat(lt_txn, dbi, &status);
+	if (start_long_term_read_ops())
+		return -1;
+
+	rc = mdb_stat(lt_txn, dbi, &status);
 	end_long_term_read_ops();
+	if (rc)
+		return -1;
 
 	return status.ms_entries;
 }
