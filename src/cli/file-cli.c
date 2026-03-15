@@ -28,6 +28,7 @@
 #include <ftw.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -57,7 +58,8 @@ static int ftw_add_list_append(const char *fpath,
 		int typeflag,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
-	if (typeflag == FTW_F) {
+	switch (typeflag) {
+	case FTW_F:
 		if (S_ISREG(sb->st_mode)) {
 			char *tmp = strdup(fpath);
 			if (!tmp) {
@@ -72,6 +74,28 @@ static int ftw_add_list_append(const char *fpath,
 		} else {
 			msg(LOG_INFO, "Skipping non regular file: %s", fpath);
 		}
+		break;
+	case FTW_SL:
+		char target[PATH_MAX];
+		ssize_t len = readlink(fpath, target, sizeof (target) - 1);
+		if (len == -1) {
+			msg(LOG_ERR, "Cannot read value of symbolic link %s: %s",
+				fpath, strerror(errno));
+			break;
+		}
+		target[len] = '\0';
+		struct stat st;
+		if (stat(fpath, &st) == -1)
+			msg(LOG_WARNING, "Cannot stat symbolic link %s pointing to %s: %s",
+				fpath, target, strerror(errno));
+		else if (target[0] == '/')
+			msg(LOG_INFO, "Skipping symbolic link %s: "
+				"consider adding target %s", fpath, target);
+		else
+			msg(LOG_INFO, "Skipping symbolic link %s: "
+				"consider adding target %s/%s",
+				fpath, fpath, target);
+		break;
 	}
 	return FTW_CONTINUE;
 }
