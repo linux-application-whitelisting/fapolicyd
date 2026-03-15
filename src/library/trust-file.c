@@ -269,7 +269,7 @@ static int parse_line_backwards(char *line, char *path, size_t *size,
 	// Save SHA from the last delimiter to the end of the line.
 	size_t sha_width = &line[len-1] - (delims[0] + 1);
 	if (sha_width >= sha_size || sha_width != SHA256_LEN*2) {
-		msg(LOG_INFO, "sha_width %u", sha_width);
+		msg(LOG_INFO, "sha_width %lu", sha_width);
 		return -1;
 	}
 	memcpy(sha, delims[0] + 1, sha_width);
