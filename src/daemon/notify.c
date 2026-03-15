@@ -396,20 +396,20 @@ static void rpt_init(struct timespec *t)
 // write a stat report to file at the standard location
 static void rpt_write(void)
 {
-	int fd = open_stat_report();
+	int sr_fd = open_stat_report();
 	FILE *f;
 
-	if (fd < 0) {
+	if (sr_fd < 0) {
 		msg(LOG_WARNING, "cannot open %s: %s",
 			STAT_REPORT, strerror(errno));
 		return;
 	}
 
-	f = fdopen(fd, "w");
+	f = fdopen(sr_fd, "w");
 	if (!f) {
 		msg(LOG_WARNING, "cannot fdopen %s: %s",
 			STAT_REPORT, strerror(errno));
-		close(fd);
+		close(sr_fd);
 		return;
 	}
 
