@@ -608,7 +608,7 @@ static int integrity_parser(const struct nv_pair *nv, int line,
 			if (config->integrity == IN_IMA) {
 				int fd = open("/bin/sh", O_RDONLY);
 				if (fd >= 0) {
-					char sha[65];
+					char sha[FILE_DIGEST_STRING_MAX];
 					file_hash_alg_t alg;
 
 					int rc = get_ima_hash(fd, &alg, sha);
