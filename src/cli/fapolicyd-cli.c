@@ -1600,7 +1600,7 @@ int main(int argc, char * const argv[])
 		const char *override = optarg;
 
 		if (override == NULL && optind < arg_count &&
-						argv[optind][0] != '-')
+						args[optind][0] != '-')
 			override = args[optind++];
 		if (optind < arg_count)
 			goto args_err;
