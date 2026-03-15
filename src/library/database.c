@@ -105,7 +105,8 @@ struct lmdb_record {
 // Local functions
 static void *update_thread_main(void *arg);
 static int update_database(conf_t *config);
-static int write_db(const char *idx, const char *data) __wur;
+static int write_db(const char *idx, size_t idx_len, const char *data)
+	__attr_access ((__read_only__, 1, 2))  __wur;
 
 // External variables
 extern atomic_bool stop;
@@ -657,6 +658,7 @@ static char *path_to_hash(const char *path, const size_t path_len)
  * write_db - Persist a single trust record into the LMDB database.
  * @idx: Path string used as the key for the record. When the path exceeds
  *       the LMDB key size limit the function hashes the path before storage.
+ * @idx_len: Length hint for @idx. Pass 0 if length unknown.
  * @data: Serialized metadata for the path. The buffer contains the integrity
  *        status, file size, and SHA256 hash sourced from the backend loaders.
  *
@@ -664,12 +666,11 @@ static char *path_to_hash(const char *path, const size_t path_len)
  * 1 when the transaction cannot start, 2 on dbi open failure, 3 if mdb_put
  * reports an error, 4 if mdb_txn_commit fails, and 5 when key hashing fails.
  */
-static int write_db(const char *idx, const char *data)
+static int write_db(const char *idx, size_t idx_len, const char *data)
 {
 	MDB_val key, value;
 	MDB_txn *txn;
 	int rc, ret_val = 0;
-	size_t len;
 	char *hash = NULL;
 
 	if (mdb_txn_begin(env, NULL, 0, &txn))
@@ -680,10 +681,12 @@ static int write_db(const char *idx, const char *data)
 		return 2;
 	}
 
-	// Only scan enough to make a decision
-	len = strnlen(idx, MDB_maxkeysize+1);
-	if (len > MDB_maxkeysize) {
-		hash = path_to_hash(idx, len);
+	// do_memfd_update has the length, handle_record doesn't
+	if (idx_len == 0)
+		idx_len = strlen(idx);
+
+	if (idx_len > MDB_maxkeysize) {
+		hash = path_to_hash(idx, idx_len);
 		if (hash == NULL) {
 			abort_transaction(txn);
 			return 5;
@@ -692,7 +695,7 @@ static int write_db(const char *idx, const char *data)
 		key.mv_size = (SHA512_LEN * 2) + 1;
 	} else {
 		key.mv_data = (void *)idx;
-		key.mv_size = len;
+		key.mv_size = idx_len;
 	}
 	value.mv_data = (void *)data;
 	value.mv_size = strlen(data);
@@ -711,7 +714,7 @@ static int write_db(const char *idx, const char *data)
 	}
 
 out:
-	if (len > MDB_maxkeysize)
+	if (idx_len > MDB_maxkeysize)
 		free(hash);
 
 	return ret_val;
@@ -1043,8 +1046,8 @@ int do_memfd_update(int memfd, long *entries)
 			if (delim == NULL) //bad line ? should never happen
 				continue;
 
-			//            index, data
-			res = write_db(buff, delim + 1);
+			//            index, size, data
+			res = write_db(buff, delim - buff, delim + 1);
 			if (res) {
 				msg(LOG_ERR,
 				    "Error (%d) writing key=\"%s\" data=\"%s\"",
@@ -1892,7 +1895,7 @@ static int handle_record(const char * buffer)
 
 	msg(LOG_DEBUG, "update_thread: Saving %s %s", path, data);
 	lock_update_thread();
-	write_db(path, data);
+	write_db(path, 0, data);
 	unlock_update_thread();
 
 	return 0;
