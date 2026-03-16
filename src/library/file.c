@@ -892,8 +892,8 @@ const char *mime_from_shebang(const char *interp)
 		return "text/x-php";
 
 	/* R / Rscript */
-	if ((len >= 7 && memcmp(interp, "Rscript", 7) == 0) || //R-core
-	    (len == 1 && interp[0] == 'r'))	// R-littler
+	if ((len >= 7 && memcmp(interp, "Rscript", 7) == 0) ||    //R-core
+	    (len == 1 && (interp[0] == 'r' || interp[0] == 'R'))) // R-littler
 		return "text/x-R";
 
 	if (len >= 8 && memcmp(interp, "ocamlrun", 8) == 0)
