@@ -43,6 +43,7 @@ void set_integrity_mode(integrity_t mode);
 const char *lookup_tsource(unsigned int tsource) __attribute_const__;
 int preconstruct_fifo(const conf_t *config) __nonnull ((1));
 int init_database(conf_t *config) __nonnull ((1));
+int do_memfd_update(int memfd, long *entries) __nonnull ((2));
 int check_trust_database(const char *path, struct file_info *info, int fd)
 	__nonnull ((1));
 void set_reload_trust_database(void);
@@ -59,6 +60,11 @@ int walk_database_start(conf_t *config) __nonnull ((1));
 walkdb_entry_t *walk_database_get_entry(void);
 int walk_database_next(void);
 void walk_database_finish(void);
+
+// Functions for unit test use
+int database_set_location(const char *dir, const char *name);
+int database_open_for_tests(conf_t *config) __nonnull ((1));
+void database_close_for_tests(void);
 
 #define RELOAD_TRUSTDB_COMMAND '1'
 #define FLUSH_CACHE_COMMAND '2'

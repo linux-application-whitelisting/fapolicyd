@@ -69,6 +69,8 @@ static int dbi_init = 0;
 static unsigned MDB_maxkeysize;
 static const char *data_dir = DB_DIR;
 static const char *db = DB_NAME;
+static int update_lock_inited;
+static int rule_lock_inited;
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static integrity_t integrity;
@@ -85,6 +87,8 @@ static pthread_t update_thread;
 static int update_thread_created;
 static pthread_mutex_t update_lock;
 static pthread_mutex_t rule_lock;
+static MDB_txn *lt_txn = NULL;
+static MDB_cursor *lt_cursor = NULL;
 
 /*
  * lmdb_record - Parsed representation of a single LMDB value payload.
@@ -194,6 +198,26 @@ int preconstruct_fifo(const conf_t *config)
 			return 1;
 		}
 	}
+
+	return 0;
+}
+
+/*
+ * database_set_location - Override LMDB environment directory and DB name.
+ * @dir: Directory containing LMDB files. When NULL, use default DB_DIR.
+ * @name: Logical LMDB database name. When NULL, use default DB_NAME.
+ *
+ * Returns 0 when values were accepted, or 1 when either argument is empty.
+ */
+int database_set_location(const char *dir, const char *name)
+{
+	if (dir && dir[0] == '\0')
+		return 1;
+	if (name && name[0] == '\0')
+		return 1;
+
+	data_dir = dir ? dir : DB_DIR;
+	db = name ? name : DB_NAME;
 
 	return 0;
 }
@@ -416,6 +440,8 @@ static void close_env(int do_close_dbi)
 	mdb_env_close(env);
 	env = NULL;
 	dbi_init = 0;
+	lt_cursor = NULL;
+	lt_txn = NULL;
 }
 
 static void close_db(int do_report)
@@ -727,8 +753,6 @@ out:
  * a read lock every time and initial a whole transaction. It returns
  * a 0 on success and a 1 on error.
  */
-static MDB_txn *lt_txn = NULL;
-static MDB_cursor *lt_cursor = NULL;
 static int start_long_term_read_ops(void)
 {
 	int rc;
@@ -1453,6 +1477,8 @@ int init_database(conf_t *config)
 	// update_lock is used in update_database()
 	pthread_mutex_init(&update_lock, NULL);
 	pthread_mutex_init(&rule_lock, NULL);
+	update_lock_inited = 1;
+	rule_lock_inited = 1;
 
 	if (migrate_database())
 		return 1;
@@ -1748,11 +1774,58 @@ void close_database(void)
 
 	// we can close db when we are really sure update_thread does not exist
 	close_db(1);
-	pthread_mutex_destroy(&update_lock);
-	pthread_mutex_destroy(&rule_lock);
+	if (update_lock_inited) {
+		pthread_mutex_destroy(&update_lock);
+		update_lock_inited = 0;
+	}
+	if (rule_lock_inited) {
+		pthread_mutex_destroy(&rule_lock);
+		rule_lock_inited = 0;
+	}
 
 	backend_close();
 	unlink_fifo();
+}
+
+/*
+ * database_open_for_tests - Open LMDB for isolated unit test execution.
+ * @config: Configuration providing map size and integrity mode.
+ *
+ * Returns 0 on success or the init_db return code on failure.
+ */
+int database_open_for_tests(conf_t *config)
+{
+	if (!update_lock_inited) {
+		pthread_mutex_init(&update_lock, NULL);
+		update_lock_inited = 1;
+	}
+
+	if (!rule_lock_inited) {
+		pthread_mutex_init(&rule_lock, NULL);
+		rule_lock_inited = 1;
+	}
+
+	return init_db(config);
+}
+
+/*
+ * database_close_for_tests - Close LMDB state opened via test helper API.
+ *
+ * Returns: none.
+ */
+void database_close_for_tests(void)
+{
+	close_db(0);
+
+	if (update_lock_inited) {
+		pthread_mutex_destroy(&update_lock);
+		update_lock_inited = 0;
+	}
+
+	if (rule_lock_inited) {
+		pthread_mutex_destroy(&rule_lock);
+		rule_lock_inited = 0;
+	}
 }
 
 
