@@ -714,6 +714,59 @@ const char *classify_device(mode_t mode)
 // Hot function could benefit from aggressive optimization
 #pragma GCC push_options
 #pragma GCC optimize ("O3")
+
+/*
+ * is_shebang_delim - check if character delimits shebang tokens
+ * @ch: character to test
+ *
+ * Returns 1 if @ch is whitespace/newline used as token delimiter.
+ */
+static int is_shebang_delim(char ch)
+{
+	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
+}
+
+/*
+ * is_env_assignment_token - check whether token is NAME=VALUE
+ * @start: first character of token
+ * @end: one past token end
+ *
+ * Returns 1 if token has '=' after at least one character, else 0.
+ */
+static int is_env_assignment_token(const char *start, const char *end)
+{
+	const char *p;
+
+	for (p = start; p < end; p++)
+		if (*p == '=')
+			return p > start;
+
+	return 0;
+}
+
+/*
+ * env_opt_needs_argument - whether env option consumes next token
+ * @start: first character of token
+ * @end: one past token end
+ *
+ * Returns 1 if the option consumes the next argument token.
+ */
+static int env_opt_needs_argument(const char *start, const char *end)
+{
+	size_t len = end - start;
+
+	if (len == 2 && start[0] == '-' &&
+	    (start[1] == 'u' || start[1] == 'C'))
+		return 1;
+
+	if (len == 7 && memcmp(start, "--unset", 7) == 0)
+		return 1;
+
+	if (len == 7 && memcmp(start, "--chdir", 7) == 0)
+		return 1;
+
+	return 0;
+}
 /*
  * extract_shebang_interpreter - parse a shebang line to find interpreter
  * @data: pointer to file header data
@@ -727,6 +780,7 @@ const char *classify_device(mode_t mode)
  *   #!/usr/local/bin/python3
  *   #!/nix/store/abc123-python-3.11/bin/python3
  *   #!/usr/bin/env python3
+ *   #!/usr/bin/env -S FOO=1 bash -eux
  *   #!/bin/env -S python3 -u
  * Returns pointer to @buf with the interpreter basename (e.g., "bash",
  * "python3"), or NULL when no interpreter can be parsed.
@@ -773,23 +827,55 @@ const char *extract_shebang_interpreter(const char *data, size_t len,
 
 	/* Check if this is 'env' (handles /any/path/env) */
 	if (basename_len == 3 && strncmp(slash, "env", 3) == 0) {
-		/* Skip to next token */
+		int end_of_options = 0;
+
+		/*
+		 * env [OPTION]... [NAME=VALUE]... COMMAND [ARG]...
+		 * Skip options and assignments until COMMAND.
+		 */
 		p = end;
 		while (*p == ' ' || *p == '\t')
 			p++;
 
-		/* Skip env flags like -S, -i, --split-string */
-		while (*p == '-') {
-			while (*p && *p != ' ' && *p != '\t')
-				p++;
+		while (*p) {
+			char *tok = p;
+			int needs_arg = 0;
+
+			end = p;
+			while (*end && !is_shebang_delim(*end))
+				end++;
+
+			if (!end_of_options && end - tok == 2 &&
+			    tok[0] == '-' && tok[1] == '-') {
+				end_of_options = 1;
+			} else if (!end_of_options && tok[0] == '-' &&
+				   !is_env_assignment_token(tok, end)) {
+				needs_arg = env_opt_needs_argument(tok, end);
+			} else if (is_env_assignment_token(tok, end)) {
+				/* NAME=VALUE tokens are not interpreters. */
+			} else {
+				p = tok;
+				break;
+			}
+
+			p = end;
 			while (*p == ' ' || *p == '\t')
 				p++;
+
+			if (needs_arg) {
+				while (*p && !is_shebang_delim(*p))
+					p++;
+				while (*p == ' ' || *p == '\t')
+					p++;
+			}
 		}
+
+		if (!*p)
+			return NULL;
 
 		/* Now p points to the interpreter */
 		end = p;
-		while (*end && *end != ' ' && *end != '\t' &&
-					      *end != '\n' && *end != '\r')
+		while (*end && !is_shebang_delim(*end))
 			end++;
 
 		/* Get basename again (env arg might have a path too) */

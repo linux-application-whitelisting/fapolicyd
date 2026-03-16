@@ -225,6 +225,12 @@ int main(void)
 
 	expect_extract("bash", "#!/bin/bash\n", "bash");
 	expect_extract("env-python", "#! /usr/bin/env -S python3 -u\n", "python3");
+	expect_extract("env-assignment-shell",
+		"#!/usr/bin/env -S FOO=1 BAR=2 bash -eux\n", "bash");
+	expect_extract("env-assignment-path",
+		"#!/usr/bin/env -S HOME=/tmp /usr/bin/dash -e\n", "dash");
+	expect_extract("env-double-dash-assignment",
+		"#!/usr/bin/env -- FOO=1 /bin/bash\n", "bash");
 	expect_extract("env-path", "#!/usr/bin/env /opt/perl5.32/bin/perl5.32\n",
 		"perl5");
 	expect_extract("no-shebang", "echo hello\n", NULL);
