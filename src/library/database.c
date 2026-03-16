@@ -824,8 +824,8 @@ static char *lt_read_db(const char *index, int operation, int *error)
 	*error = 1; // Assume an error
 
 	// If the path is too long, convert to a hash
-	// Only scan enough to make a decision
-	len = strnlen(index, MDB_maxkeysize+1);
+	// Need the whole length so read/write matches
+	len = strlen(index);
 	if (len > MDB_maxkeysize) {
 		hash = path_to_hash(index, len);
 		if (hash == NULL)
