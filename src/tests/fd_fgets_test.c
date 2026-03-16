@@ -41,14 +41,12 @@ static void test_pipe_self_managed(void)
 {
 	int fds[2];
 	char buf[16];
-	char custom[32];
 	fd_fgets_state_t *st;
 
 	assert(pipe(fds) == 0);
 
 	st = fd_fgets_init();
 	assert(st);
-	assert(fd_setvbuf_r(st, custom, sizeof(custom), MEM_SELF_MANAGED) == 0);
 
 	/* Nothing buffered yet. */
 	assert(fd_fgets_more_r(st, sizeof(buf)) == 0);
@@ -215,35 +213,52 @@ static void test_deferred_compaction(void)
 {
 	int fds[2];
 	char buf[64];
-	char custom[33];
+	char *custom;
 	const char *line =
 		"0123456789abcdef0123456789abcdefQRSTUVWX\n";
 	fd_fgets_state_t *st;
 	size_t line_len = strlen(line);
-	size_t capacity = sizeof(custom) - 1;
+	size_t capacity = 33;
 
 	assert(pipe(fds) == 0);
 	st = fd_fgets_init();
 	assert(st);
-	assert(fd_setvbuf_r(st, custom, capacity, MEM_SELF_MANAGED) == 0);
+	custom = malloc(capacity);
+	assert(custom);
+	assert(fd_setvbuf_r(st, custom, capacity, MEM_MALLOC) == 0);
 
 	write_all(fds[1], line);
 	close(fds[1]);
 
 	int len = fd_fgets_r(st, buf, sizeof(buf), fds[0]);
-	assert(len == (int)capacity);
+	assert(len == (int)(capacity - 1));
 	assert(strncmp(buf, line, (size_t)len) == 0);
 	assert(fd_fgets_eof_r(st) == 0);
 
 	len = fd_fgets_r(st, buf, sizeof(buf), fds[0]);
-	assert(len == (int)(line_len - capacity));
-	assert(strcmp(buf, line + capacity) == 0);
+	assert(len == (int)(line_len - (capacity - 1)));
+	assert(strcmp(buf, line + (capacity - 1)) == 0);
 
 	len = fd_fgets_r(st, buf, sizeof(buf), fds[0]);
 	assert(len == 0);
 	assert(fd_fgets_eof_r(st) == 1);
 
 	close(fds[0]);
+	fd_fgets_destroy(st);
+}
+
+/*
+ * MEM_SELF_MANAGED is reserved for the internal default buffer created by
+ * fd_fgets_init(). Supplying external memory with this mode is rejected.
+ */
+static void test_reject_self_managed_override(void)
+{
+	char custom[32];
+	fd_fgets_state_t *st;
+
+	st = fd_fgets_init();
+	assert(st);
+	assert(fd_setvbuf_r(st, custom, sizeof(custom), MEM_SELF_MANAGED) == 1);
 	fd_fgets_destroy(st);
 }
 
@@ -356,9 +371,9 @@ int main(void)
 	test_malloc_buffer();
 	test_mmap_buffer();
 	test_deferred_compaction();
+	test_reject_self_managed_override();
 	test_mmap_file_no_trailing_newline();
 	test_mmap_file_readme();
 	printf("fd-fgets_r tests: all passed\n");
 	return 0;
 }
-

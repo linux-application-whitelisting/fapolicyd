@@ -271,7 +271,11 @@ int fd_fgets(char *buf, size_t blen, int fd)
 int fd_setvbuf_r(struct fd_fgets_state *st, void *buf,
 			size_t buff_size, enum fd_mem how)
 {
-	if (st == NULL || buf == NULL || buff_size == 0)
+	/* MEM_SELF_MANAGED means "use st->internal" and is only configured by
+	 * fd_fgets_state_init(). Rejecting it here avoids mismatched ownership
+	 * when callers pass external buffers. */
+	if (st == NULL || buf == NULL || buff_size == 0 ||
+	    how == MEM_SELF_MANAGED)
 		return 1;
 	st->buffer = buf;
 	st->orig = buf;
@@ -283,7 +287,13 @@ int fd_setvbuf_r(struct fd_fgets_state *st, void *buf,
 		st->current = (char *)buf + buff_size;
 	else
 		st->current = st->buffer;
-	st->eptr = st->buffer + buff_size;
+	/* Reserve one byte for NUL termination when reads append to writable
+	 * caller-supplied buffers. MEM_MMAP_FILE is read-only pre-populated data
+	 * and uses the full mapped span as a content boundary. */
+	if (how == MEM_MALLOC || how == MEM_MMAP)
+		st->eptr = st->buffer + buff_size - 1;
+	else
+		st->eptr = st->buffer + buff_size;
 	st->eof = 0;
 	st->mem_type = how;
 	st->buff_size = buff_size;
@@ -295,4 +305,3 @@ int fd_setvbuf(void *buf, size_t buff_size, enum fd_mem how)
         fd_fgets_ensure_global();
         return fd_setvbuf_r(&global_state, buf, buff_size, how);
 }
-

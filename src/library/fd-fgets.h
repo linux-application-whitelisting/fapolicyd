@@ -29,10 +29,10 @@
 typedef struct fd_fgets_state fd_fgets_state_t;
 
 enum fd_mem {
-	MEM_SELF_MANAGED,
-        MEM_MALLOC,
-        MEM_MMAP,
-        MEM_MMAP_FILE
+	MEM_SELF_MANAGED, /* Internal buffer owned by fd-fgets. */
+	MEM_MALLOC,       /* User-supplied malloc buffer; fd-fgets frees it. */
+	MEM_MMAP,         /* User-supplied mmap buffer; fd-fgets munmaps it. */
+	MEM_MMAP_FILE     /* Read-only mmap file data; fd-fgets never writes. */
 };
 
 void fd_fgets_clear(void);
@@ -56,4 +56,3 @@ int fd_setvbuf_r(fd_fgets_state_t *st, void *buf, size_t buff_size,
 		__attr_access ((__read_only__, 2, 3));
 
 #endif
-
