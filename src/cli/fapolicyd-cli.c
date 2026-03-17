@@ -80,7 +80,7 @@ static const char *usage =
 #ifdef HAVE_LIBRPM
 "--test-filter path    Test FILTER_FILE against path and trace to stdout\n"
 #endif
-"--filter             Use FILTER_FILE for --file add or update\n"
+"--filter              Use FILTER_FILE for --file add or update\n"
 "--trust-file file     Use after --file to specify trust file\n"
 "-u, --update          Notifies fapolicyd to perform update of database\n"
 ;
