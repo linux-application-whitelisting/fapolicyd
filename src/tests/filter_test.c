@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "filter.h"
 
@@ -144,6 +145,87 @@ static int run_cases(const char *cfg, const char *path)
 	return rc;
 }
 
+/*
+ * run_wide_tree_case - verify wide root trees do not hit depth errors
+ * Returns 0 on success and a unique non-zero test code on failure.
+ */
+static int run_wide_tree_case(void)
+{
+	char tmpl[] = "/tmp/fapolicyd-filter-wide-XXXXXX";
+	int fd = mkstemp(tmpl);
+	if (fd < 0) {
+		fprintf(stderr, "[ERROR:8] cannot create temp file\n");
+		return 8;
+	}
+
+	FILE *f = fdopen(fd, "w");
+	if (!f) {
+		close(fd);
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:9] cannot open temp file stream\n");
+		return 9;
+	}
+
+	/*
+	 * Create more than MAX_FILTER_DEPTH sibling rules at the root level.
+	 * The checker pushes root descendants before matching, so this used to
+	 * fail with FILTER_ERR_DEPTH when backed by a fixed-size stack.
+	 */
+	for (int i = 0; i < 80; i++) {
+		if (fprintf(f, "+ /wide-%d\n", i) < 0) {
+			fclose(f);
+			unlink(tmpl);
+			fprintf(stderr, "[ERROR:10] cannot write temp config\n");
+			return 10;
+		}
+	}
+
+	if (fprintf(f, "+ /target\n") < 0) {
+		fclose(f);
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:10] cannot write temp config\n");
+		return 10;
+	}
+
+	if (fclose(f) != 0) {
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:11] cannot close temp config\n");
+		return 11;
+	}
+
+	if (filter_init()) {
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:2] filter_init failed\n");
+		return 2;
+	}
+	if (filter_load_file(tmpl)) {
+		filter_destroy();
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:3] loading wide fixture failed\n");
+		return 3;
+	}
+
+	filter_rc_t res = filter_check("/target");
+	if (!check_tree_reset(global_filter)) {
+		filter_destroy();
+		unlink(tmpl);
+		fprintf(stderr,
+			"[ERROR:7] filter flags not reset after filter_check\n");
+		return 7;
+	}
+
+	filter_destroy();
+	unlink(tmpl);
+
+	if (res != FILTER_ALLOW) {
+		fprintf(stderr,
+			"[ERROR:12] wide tree expected ALLOW got %d\n", res);
+		return 12;
+	}
+
+	return 0;
+}
+
 int main(void)
 {
 	if (!file_exists(MIN_CONF)) {
@@ -181,6 +263,9 @@ int main(void)
 	rc = run_cases("prod", PROD_CONF);
 	if (rc)
 		return rc;
+	rc = run_wide_tree_case();
+	if (rc)
+		return rc;
 
 	struct timespec s, e;
 	clock_gettime(CLOCK_MONOTONIC, &s);
@@ -210,4 +295,3 @@ int main(void)
 
 	return 0;
 }
-

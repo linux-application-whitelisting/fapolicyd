@@ -76,6 +76,10 @@ void filter_set_trace(FILE *stream)
 
 static filter_t *filter_create_obj(void);
 static void filter_destroy_obj(filter_t *_filter);
+static size_t filter_count_nodes(filter_t *root);
+static int stack_push_vars_cap(stack_t *_stack, stack_item_t *buf, int *sp,
+			       size_t cap, int _level, int _offset,
+			       filter_t *_filter);
 static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
 			    int _level, int _offset, filter_t *_filter);
 
@@ -162,16 +166,56 @@ static void filter_destroy_obj(filter_t *_filter)
 }
 
 /*
- * stack_push_vars - create context item & push it to the top of traversal stack
- * Returns 0 on success and -1 if MAX_FILTER_DEPTH would be exceeded.
+ * filter_count_nodes - count filter nodes in a tree
+ * @root: root node of filter tree
+ * Returns number of nodes reachable from @root.
  */
-static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
-			   int _level, int _offset, filter_t *_filter)
+static size_t filter_count_nodes(filter_t *root)
+{
+	size_t count = 0;
+	stack_t stack;
+
+	if (root == NULL)
+		return 0;
+
+	stack_init(&stack);
+	stack_push(&stack, root);
+
+	while (!stack_is_empty(&stack)) {
+		filter_t *filter = (filter_t *)stack_top(&stack);
+		list_item_t *item;
+
+		stack_pop(&stack);
+		count++;
+
+		for (item = list_get_first(&filter->list); item != NULL;
+		     item = item->next)
+			stack_push(&stack, item->data);
+	}
+
+	stack_destroy(&stack);
+	return count;
+}
+
+/*
+ * stack_push_vars_cap - push traversal context with explicit capacity
+ * @_stack: traversal stack
+ * @buf: stack item buffer
+ * @sp: current stack pointer in @buf
+ * @cap: number of entries available in @buf
+ * @_level: current filter nesting level
+ * @_offset: current offset in matched path
+ * @_filter: filter node to push
+ * Returns 0 on success and -1 if @cap would be exceeded.
+ */
+static int stack_push_vars_cap(stack_t *_stack, stack_item_t *buf, int *sp,
+			       size_t cap, int _level, int _offset,
+			       filter_t *_filter)
 {
 	if (_stack == NULL || buf == NULL || sp == NULL)
 		return -1;
-	if (*sp >= MAX_FILTER_DEPTH)
-		return -1; /* TODO: trie rewrite to remove depth limit */
+	if (*sp < 0 || (size_t)*sp >= cap)
+		return -1;
 
 	stack_item_t *item = &buf[(*sp)++];
 	item->level = _level;
@@ -180,6 +224,17 @@ static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
 
 	stack_push(_stack, item);
 	return 0;
+}
+
+/*
+ * stack_push_vars - create context item & push it to the top of traversal stack
+ * Returns 0 on success and -1 if MAX_FILTER_DEPTH would be exceeded.
+ */
+static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
+			   int _level, int _offset, filter_t *_filter)
+{
+	return stack_push_vars_cap(_stack, buf, sp, MAX_FILTER_DEPTH,
+				   _level, _offset, _filter);
 }
 
 /*
@@ -240,8 +295,8 @@ static void stack_pop_all_reset(stack_t *_stack, int *sp)
  * filter_check - compare path against loaded filters
  * @_path: full path of file to test
  * Returns FILTER_ALLOW if file should be kept, FILTER_DENY if it should be
- * dropped, or FILTER_ERR_DEPTH if MAX_FILTER_DEPTH is exceeded (treated the
- * same as a deny by callers to keep processing other paths).
+ * dropped, or FILTER_ERR_DEPTH if traversal state cannot be allocated
+ * (treated the same as a deny by callers to keep processing other paths).
  */
 __attribute__((hot))
 filter_rc_t filter_check(const char *_path)
@@ -267,18 +322,32 @@ filter_rc_t filter_check(const char *_path)
 	/* Create a stack to store the filters that need to be checked */
 	stack_t stack;
 	stack_init(&stack);
-	stack_item_t stack_buf[MAX_FILTER_DEPTH];
+	size_t stack_cap = filter_count_nodes(global_filter);
+	stack_item_t *stack_buf;
 	int sp = 0;
+
+	if (stack_cap == 0) {
+		stack_destroy(&stack);
+		return FILTER_DENY;
+	}
+
+	stack_buf = calloc(stack_cap, sizeof(*stack_buf));
+	if (stack_buf == NULL) {
+		msg(LOG_ERR, "fapolicyd: cannot allocate filter traversal stack");
+		stack_destroy(&stack);
+		return FILTER_ERR_DEPTH;
+	}
 
 	filter_rc_t res = FILTER_DENY;
 	int level = 0;
 
-	if (stack_push_vars(&stack, stack_buf, &sp, level, offset, filter)) {
+	if (stack_push_vars_cap(&stack, stack_buf, &sp, stack_cap,
+				level, offset, filter)) {
 		msg(LOG_WARNING,
-		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
-		    MAX_FILTER_DEPTH);
+		    "fapolicyd: filter traversal stack exhausted\n");
+		free(stack_buf);
 		stack_destroy(&stack);
-		return FILTER_ERR_DEPTH; /* TODO: trie rewrite removes limit */
+		return FILTER_ERR_DEPTH;
 	}
 
 	while(!stack_is_empty(&stack)) {
@@ -292,12 +361,12 @@ filter_rc_t filter_check(const char *_path)
 			// push all the descendants to the stack
 			for (; item != NULL ; item = item->next) {
 				filter_t *next_filter = (filter_t*)item->data;
-				if (stack_push_vars(&stack, stack_buf, &sp,
-						    level+1, offset,
-						    next_filter)) {
+				if (stack_push_vars_cap(&stack, stack_buf, &sp,
+							stack_cap,
+							level+1, offset,
+							next_filter)) {
 					msg(LOG_WARNING,
-		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
-					    MAX_FILTER_DEPTH);
+		    "fapolicyd: filter traversal stack exhausted\n");
 					res = FILTER_ERR_DEPTH;
 					goto end;
 				}
@@ -403,12 +472,12 @@ filter_rc_t filter_check(const char *_path)
 				// push descendants to the stack
 				for (; item != NULL ; item = item->next) {
 					filter_t *next_filter = (filter_t*)item->data;
-					if (stack_push_vars(&stack, stack_buf,
-							    &sp, level, offset,
+					if (stack_push_vars_cap(&stack, stack_buf,
+							    &sp, stack_cap,
+							    level, offset,
 							    next_filter)) {
 						msg(LOG_WARNING,
-		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
-						    MAX_FILTER_DEPTH);
+		    "fapolicyd: filter traversal stack exhausted\n");
 						res = FILTER_ERR_DEPTH;
 						goto end;
 					}
@@ -462,6 +531,7 @@ end:
 	// Clean up the stack
 	stack_pop_all_reset(&stack, &sp);
 	stack_destroy(&stack);
+	free(stack_buf);
 	return res;
 }
 
