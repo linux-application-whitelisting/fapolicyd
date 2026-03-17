@@ -163,8 +163,11 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 		struct stat sb;
 
 		if (strcmp(&buf[len - 10], " (deleted)") == 0 &&
-		    stat(buf, &sb) != 0)
+		    stat(buf, &sb) != 0) {
 			buf[len - 10] = '\0';
+			// reset errno back to 0 so it does not confuse get_subj_attr()
+			if (errno == ENOENT) errno = 0;
+		}
 	}
 
 	return buf;
