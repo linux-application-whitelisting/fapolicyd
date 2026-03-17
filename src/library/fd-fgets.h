@@ -32,7 +32,7 @@ enum fd_mem {
 	MEM_SELF_MANAGED, /* Internal buffer owned by fd-fgets. */
 	MEM_MALLOC,       /* User-supplied malloc buffer; fd-fgets frees it. */
 	MEM_MMAP,         /* User-supplied mmap buffer; fd-fgets munmaps it. */
-	MEM_MMAP_FILE     /* Read-only mmap file data; fd-fgets never writes. */
+	MEM_MMAP_FILE     /* Read-only mmap file data; fd-fgets munmaps it. */
 };
 
 void fd_fgets_clear(void);
