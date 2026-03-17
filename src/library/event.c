@@ -562,7 +562,10 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			errno = 0;
 			ptr = get_program_from_pid(e->pid, sizeof(buf), buf);
 			if (errno == ENOENT) {
-				/* kworkers have no exe entry, use comm */
+				/* kworkers have no exe entry
+				 * readlink("/proc/4/exe", 0x55624a28d410, 64) = -1 ENOENT (No such file or directory)
+				 * use comm
+				 */
 				sn = subject_access(s, COMM);
 				if (!sn)
 					sn = fetch_proc_status(e, COMM);
