@@ -41,6 +41,7 @@
 #include "conf.h"
 #include "policy.h"
 #include "event.h"
+#include "escape.h"
 #include "message.h"
 #include "queue.h"
 #include "mounts.h"
@@ -70,6 +71,32 @@ void do_stat_report(FILE *f, int shutdown);
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
+
+/*
+ * escape_path_for_log - return a shell-escaped path for logging.
+ * @path: path that may include control characters.
+ * @escaped: optional output pointer to an allocated escaped buffer.
+ * Returns escaped @path when needed, original @path when not needed,
+ * or "<unavailable>" if escaping is needed but allocation fails.
+ */
+static const char *escape_path_for_log(const char *path, char **escaped)
+{
+	size_t escaped_size;
+
+	if (escaped)
+		*escaped = NULL;
+
+	escaped_size = check_escape_shell(path);
+	if (escaped_size == 0)
+		return path;
+
+	if (escaped)
+		*escaped = escape_shell(path, escaped_size);
+	if (escaped && *escaped)
+		return *escaped;
+
+	return "<unavailable>";
+}
 
 /*
  * open_stat_report - open status report file for overwrite without symlinks.
@@ -207,6 +234,10 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	// Iterate through the mount points and add a mark
 	path = mlist_first(m);
 	while (path) {
+		char *escaped_path = NULL;
+		const char *safe_path;
+
+		safe_path = escape_path_for_log(path, &escaped_path);
 retry_mark:
 		if (fanotify_mark(fd, FAN_MARK_ADD | mark_flag,
 				  mask, -1, path) == -1) {
@@ -223,10 +254,12 @@ retry_mark:
 				goto retry_mark;
 			}
 			msg(LOG_ERR, "Error (%s) adding fanotify mark for %s",
-				strerror(errno), path);
+				strerror(errno), safe_path);
+			free(escaped_path);
 			exit(1);
 		}
-		msg(LOG_DEBUG, "added %s mount point", path);
+		msg(LOG_DEBUG, "added %s mount point", safe_path);
+		free(escaped_path);
 		path = mlist_next(m);
 	}
 
@@ -245,22 +278,26 @@ void fanotify_update(mlist *m)
 	mnode *cur = m->head, *prev = NULL, *temp;
 
 	while (cur) {
+		char *escaped_path = NULL;
+		const char *safe_path = escape_path_for_log(cur->path,
+							    &escaped_path);
+
 		if (cur->status == MNT_ADD) {
 			// We will trust that the mask was set correctly
 			if (fanotify_mark(fd, FAN_MARK_ADD | mark_flag,
 					mask, -1, cur->path) == -1) {
 				msg(LOG_ERR,
 				    "Error (%s) adding fanotify mark for %s",
-					strerror(errno), cur->path);
+					strerror(errno), safe_path);
 			} else {
 				msg(LOG_DEBUG, "Added %s mount point",
-					cur->path);
+					safe_path);
 			}
 		}
 
 		// Now remove the deleted mount point
 		if (cur->status == MNT_DELETE) {
-			msg(LOG_DEBUG, "Deleted %s mount point", cur->path);
+			msg(LOG_DEBUG, "Deleted %s mount point", safe_path);
 			temp = cur->next;
 
 			if (cur == m->head)
@@ -276,6 +313,7 @@ void fanotify_update(mlist *m)
 			prev = cur;
 			cur = cur->next;
 		}
+		free(escaped_path);
 	}
 	m->cur = m->head;  // Leave cur pointing to something valid
 }
@@ -289,10 +327,14 @@ void unmark_fanotify(mlist *m)
 
 	// Stop the flow of events
 	while (path) {
+		char *escaped_path = NULL;
+		const char *safe_path = escape_path_for_log(path, &escaped_path);
+
 		if (fanotify_mark(fd, FAN_MARK_FLUSH | mark_flag,
 				  0, -1, path) == -1)
 			msg(LOG_ERR, "Failed flushing path %s  (%s)",
-				path, strerror(errno));
+				safe_path, strerror(errno));
+		free(escaped_path);
 		path = mlist_next(m);
 	}
 }
