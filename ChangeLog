@@ -1,4 +1,15 @@
 1.4.4
+- Fix races and shutdown hazards in trust database updates
+- Fix races in rules reload and mount handling
+- Harden LMDB error handling to avoid corruption and stale state
+- Fix long-path trust hashing collisions
+- Improve parsing and validation of trust data inputs
+- Add support for SHA512 hashes in integrity data parsing
+- Improve shell script, R, and ELF MIME detection
+- Fix rule matching for set-based untrusted/execdirs checks
+- Improve verification of deleted paths and trust-file names
+- Fix fapolicyd-cli --check-ignore_mounts parsing with --verbose
+- Stop fapolicyd-cli --file from accepting special files
 
 1.4.3
 - Fix missing allow decision in fapolicyd-cli --test-filter
