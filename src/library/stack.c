@@ -44,12 +44,12 @@ void stack_destroy(stack_t *_stack)
 }
 
 // push to the top of the stack
-void stack_push(stack_t *_stack, void *_data)
+void stack_push(stack_t *_stack, const void *_data)
 {
 	if (_stack == NULL)
 		return;
 
-	list_prepend(_stack, NULL, (void *)_data);
+	list_prepend(_stack, NULL, (const char *)_data);
 }
 
 // pop the the top without returning what was on the top
