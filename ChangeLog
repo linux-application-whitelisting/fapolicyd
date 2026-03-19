@@ -1,3 +1,5 @@
+1.4.5
+
 1.4.4
 - Fix races and shutdown hazards in trust database updates
 - Fix races in rules reload and mount handling
