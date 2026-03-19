@@ -67,6 +67,7 @@ Makefile
 init/fapolicyd-magic.mgc
 src/fapolicyd
 src/fapolicyd-cli
+src/fapolicyd-perf-test
 src/fapolicyd-rpm-loader
 
 *.log

@@ -1,0 +1,41 @@
+.TH "FAPOLICYD-PERF-TEST" "26" "Mar 2026" "Red Hat" "System Administration Utilities"
+.SH NAME
+fapolicyd-perf-test \- Fapolicyd Performance Test Utility
+.SH SYNOPSIS
+\fBfapolicyd-perf-test\fP [\fIINPUT_FILE\fP]
+.SH DESCRIPTION
+Runs a dummy fapolicyd policy decision on each file from newline-separated
+list read from INPUT_FILE (or stdin if not specified) and prints the total
+time it took.
+.SH RETURN CODES
+The following exit status values are used for error reporting and scripting:
+.TP
+.B 0  Success
+Normal completion.
+.TP
+.B 1  Generic/unspecified failure
+Fallback for errors that do not map to a more specific category.
+.TP
+.B 2  CLI/usage error
+Incorrect options or argument counts.
+.SH EXAMPLE USAGE
+.nf
+\fB# touch file-list.txt\fP
+\fB# find /usr/lib64 -type f >>file-list.txt\fP
+\fB# find /usr/bin   -type f >>file-list.txt\fP
+\fB# find /usr/share -type f >>file-list.txt\fP
+\fB# wc -l file-list.txt\fP
+15080 file-list.txt
+\fB# fapolicyd-perf-test file-list.txt 2>/dev/null\fP
+Starting scan...
+Elapsed: 0 seconds, 58 milliseconds
+\fB# \fP
+.fi
+.SH "SEE ALSO"
+.BR fapolicyd (8),
+.BR fapolicyd-cli (8),
+and
+.BR fapolicyd.conf (5)
+
+.SH AUTHOR
+Ondrej Mosnacek

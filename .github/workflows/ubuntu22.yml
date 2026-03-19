@@ -33,7 +33,7 @@ jobs:
       run: ./autogen.sh
 
     - name: configure
-      run: ./configure --without-rpm --with-audit --disable-shared --disable-dependency-tracking --with-deb
+      run: ./configure --with-perf-test --without-rpm --with-audit --disable-shared --disable-dependency-tracking --with-deb
 
     - name: build
       run: make

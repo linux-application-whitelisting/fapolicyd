@@ -8,6 +8,10 @@ AM_CPPFLAGS = \
 check-recursive: libfapolicyd.la
 
 sbin_PROGRAMS = fapolicyd fapolicyd-cli
+if WITH_PERF_TEST
+sbin_PROGRAMS += fapolicyd-perf-test
+endif
+
 lib_LTLIBRARIES= libfapolicyd.la
 
 fapolicyd_CFLAGS = -std=gnu11 -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
@@ -17,6 +21,12 @@ fapolicyd_LDADD = libfapolicyd.la
 fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
 fapolicyd_cli_LDFLAGS = $(fapolicyd_LDFLAGS)
 fapolicyd_cli_LDADD = libfapolicyd.la
+
+if WITH_PERF_TEST
+fapolicyd_perf_test_CFLAGS = $(fapolicyd_CFLAGS)
+fapolicyd_perf_test_LDFLAGS = $(fapolicyd_LDFLAGS)
+fapolicyd_perf_test_LDADD = libfapolicyd.la
+endif
 
 libfapolicyd_la_SOURCES = \
 	library/avl.c \
@@ -117,3 +127,8 @@ fapolicyd_cli_SOURCES = \
 	cli/fapolicyd-cli.c \
 	cli/file-cli.c \
 	cli/file-cli.h
+
+if WITH_PERF_TEST
+fapolicyd_perf_test_SOURCES = \
+	perf-test/fapolicyd-perf-test.c
+endif
