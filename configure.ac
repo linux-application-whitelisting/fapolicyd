@@ -152,6 +152,12 @@ AM_CONDITIONAL(WITH_DEB, test x$use_deb = xyes)
 
 AM_CONDITIONAL(NEED_MD5, test x$use_deb = xyes)
 
+withval=""
+AC_ARG_WITH(perf-test,
+AS_HELP_STRING([--with-perf-test],[Build and install a performance test utility]),
+use_perf_test=$withval,use_perf_test=no)
+AM_CONDITIONAL(WITH_PERF_TEST, test x$use_perf_test = xyes)
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])

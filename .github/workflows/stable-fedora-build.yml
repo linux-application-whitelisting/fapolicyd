@@ -27,7 +27,7 @@ jobs:
       run: ./autogen.sh
 
     - name: configure
-      run: ./configure --with-rpm --with-audit --disable-shared --disable-dependency-tracking
+      run: ./configure --with-perf-test --with-rpm --with-audit --disable-shared --disable-dependency-tracking
 
     - name: build
       run: make
