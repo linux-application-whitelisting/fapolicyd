@@ -158,7 +158,7 @@ int load_daemon_config(conf_t *config)
 {
 	int fd, lineno = 1;
 	FILE *f;
-	char buf[160];
+	char buf[8192];
 
 	clear_daemon_config(config);
 
