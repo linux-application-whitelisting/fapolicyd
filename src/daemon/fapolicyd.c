@@ -50,6 +50,7 @@
 #ifdef HAVE_MALLINFO2
 #include <malloc.h>
 #endif
+#include <libmount/libmount.h>
 #include "notify.h"
 #include "policy.h"
 #include "event.h"
@@ -615,9 +616,10 @@ static int check_mount_entry(const char *point, const char *type)
 
 static void handle_mounts(int fd)
 {
-	char buf[PATH_MAX * 2], device[1025], point[4097];
-	char type[32], mntops[128];
-	int fs_req, fs_passno;
+	struct libmnt_table *tb;
+	struct libmnt_iter *itr;
+	struct libmnt_fs *fs;
+	char procfd_path[32];
 
 	pthread_mutex_lock(&mlist_lock);
 
@@ -628,45 +630,44 @@ static void handle_mounts(int fd)
 
 	// Rewind the descriptor
 	lseek(fd, 0, SEEK_SET);
-	fd_fgets_state_t *st = fd_fgets_init();
-	if (!st) {
-		pthread_mutex_unlock(&mlist_lock);
-		return;
-	}
 
 	mlist_mark_all_deleted(m);
-	do {
-		int rc = fd_fgets_r(st, buf, sizeof(buf), fd);
-		// Get a line
-		if (rc > 0) {
-			int parsed;
 
-			// Parse it
-			parsed = sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
-			    device, point, type, mntops, &fs_req, &fs_passno);
-			if (parsed != 6) {
-				msg(LOG_WARNING,
-				    "Skipping malformed mount (%s)", buf);
-				continue;
-			}
-			unescape_shell(device, strlen(device));
-			unescape_shell(point, strlen(point));
-			// Is this one that we care about?
-			if (check_mount_entry(point, type)) {
-				// Can we find it in the old list?
-				if (mlist_find(m, point)) {
-					// Mark no change
-					m->cur->status = MNT_NO_CHANGE;
-				} else
-					mlist_append(m, point);
-			}
-		} else if (rc < 0) // Some kind of error - stop
-			break;
-	} while (!fd_fgets_eof_r(st));
+	tb = mnt_new_table();
+	if (!tb) {
+		msg(LOG_WARNING, "Failed to allocate mount table, ignoring mount changes");
+		goto out;
+	}
 
-	fd_fgets_destroy(st);
+	snprintf(procfd_path, sizeof(procfd_path)-1, "/proc/self/fd/%d", fd);
+
+	if (mnt_table_parse_mtab(tb, procfd_path) != 0) {
+		msg(LOG_WARNING, "Failed to read mount table, ignoring mount changes");
+		mnt_unref_table(tb);
+		goto out;
+	}
+
+	itr = mnt_new_iter(MNT_ITER_FORWARD);
+
+	while (mnt_table_next_fs(tb, itr, &fs) == 0) {
+		const char *point = mnt_fs_get_target(fs);
+		if (check_mount_entry(point, mnt_fs_get_fstype(fs))) {
+			// Can we find it in the old list?
+			if (mlist_find(m, point)) {
+				// Mark no change
+				m->cur->status = MNT_NO_CHANGE;
+			} else
+				mlist_append(m, point);
+		}
+	}
+
+	mnt_free_iter(itr);
+	mnt_unref_table(tb);
+
 	// update marks
 	fanotify_update(m);
+
+out:
 	pthread_mutex_unlock(&mlist_lock);
 }
 

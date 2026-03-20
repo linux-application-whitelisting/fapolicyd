@@ -11,7 +11,7 @@ sbin_PROGRAMS = fapolicyd fapolicyd-cli
 lib_LTLIBRARIES= libfapolicyd.la
 
 fapolicyd_CFLAGS = -std=gnu11 -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
-fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now  -static
+fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now  -static -lmount
 fapolicyd_LDADD = libfapolicyd.la
 
 fapolicyd_cli_CFLAGS = $(fapolicyd_CFLAGS)
