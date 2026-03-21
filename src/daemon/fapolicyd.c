@@ -613,11 +613,73 @@ static int check_mount_entry(const char *point, const char *type)
 		return 0;
 }
 
+/*
+ * parse_mount_entry - extract the mount point and filesystem type.
+ * @buf: line from the mounts file to parse in place.
+ * @point: where to store the mount point token.
+ * @type: where to store the filesystem type token.
+ *
+ * Returns 0 on success or 1 when the line does not contain the first
+ * 3 whitespace-delimited fields expected from /proc/mounts.
+ */
+static int parse_mount_entry(char *buf, char **point, char **type)
+{
+	char *s = buf;
+	size_t len;
+	int field = 0;
+
+	*point = NULL;
+	*type = NULL;
+
+	while (*s && field < 3) {
+		// Skip over any leading field separators before trying
+		// to read the next token.
+		s += strspn(s, " \t");
+		if (*s == '\0' || *s == '\n')
+			break;
+
+		// Scan for anything not a space, tab, or newline
+		len = strcspn(s, " \t\n");
+		if (len == 0)
+			break;
+
+		if (field == 1)
+			*point = s;
+		else if (field == 2)
+			*type = s;
+
+		// If we hit the end, we are done
+		if (s[len] == '\0' || s[len] == '\n') {
+			s[len] = '\0';
+			field++;
+			break;
+		}
+
+		// terminate the field and increment
+		s[len] = '\0';
+		s += len + 1;
+		field++;
+	}
+
+	return (*point && *type) ? 0 : 1;
+}
+
+/*
+ * handle_mounts - read mount entries and refresh the watched mount list.
+ * @fd: file descriptor for the mounts file.
+ *
+ * This function serializes access to the global mount list and the
+ * subsequent fanotify mark update by holding mlist_lock across the
+ * read/parse/update cycle. Callers may invoke it from the main loop or
+ * the detached mount thread, but they must pass a descriptor that can be
+ * rewound and read while the lock is held.
+ *
+ * Returns no value.
+ */
 static void handle_mounts(int fd)
 {
-	char buf[PATH_MAX * 2], device[1025], point[4097];
-	char type[32], mntops[128];
-	int fs_req, fs_passno;
+	char buf[PATH_MAX * 2];
+	char *point, *type;
 
 	pthread_mutex_lock(&mlist_lock);
 
@@ -639,17 +701,13 @@ static void handle_mounts(int fd)
 		int rc = fd_fgets_r(st, buf, sizeof(buf), fd);
 		// Get a line
 		if (rc > 0) {
-			int parsed;
-
-			// Parse it
-			parsed = sscanf(buf, "%1024s %4096s %31s %127s %d %d\n",
-			    device, point, type, mntops, &fs_req, &fs_passno);
-			if (parsed != 6) {
+			// We only need the mount point and filesystem type.
+			// Note, the returned pointers point into buf.
+			if (parse_mount_entry(buf, &point, &type)) {
 				msg(LOG_WARNING,
 				    "Skipping malformed mount (%s)", buf);
 				continue;
 			}
-			unescape_shell(device, strlen(device));
 			unescape_shell(point, strlen(point));
 			// Is this one that we care about?
 			if (check_mount_entry(point, type)) {
