@@ -35,8 +35,6 @@
 #include <sys/resource.h>
 #include <ctype.h>
 #include <cap-ng.h>
-#include <sys/prctl.h>
-#include <linux/unistd.h>  /* syscall numbers */
 #include <sys/stat.h>	   /* umask */
 #include <seccomp.h>
 #include <stdbool.h>
