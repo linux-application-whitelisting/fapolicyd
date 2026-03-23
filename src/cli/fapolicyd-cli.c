@@ -1452,8 +1452,7 @@ retry:
 					write(1, buf, strlen(buf));
 			} while (!fd_fgets_eof_r(st));
 			close(rpt_fd);
-		} else
-			reason = "can't read pid file";
+		}
 		close(pidfd);
 		fd_fgets_destroy(st);
 		return CLI_EXIT_SUCCESS;
