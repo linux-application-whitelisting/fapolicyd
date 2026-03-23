@@ -140,19 +140,26 @@ _fapolicyd()
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--debug --debug-deny --help --mounts --no-details --permissive --version"
+	opts="--boost --debug --debug-deny --group --help --mounts= --no-details --permissive --queue --user --version"
 
 	case ${prev} in
-		--mounts)
-			if [ -e /usr/share/bash-completion/bash_completion ] ; then
-				_filedir
-			else
-				compopt -o filenames 2>/dev/null
-				COMPREPLY=( $(compgen -f -- ${cur}) )
-			fi
+		--boost|--queue|--user|--group)
 			return 0
 		;;
 	esac
+
+	if [[ ${cur} == --mounts=* ]]; then
+		local mount_cur=${cur#--mounts=}
+		if [ -e /usr/share/bash-completion/bash_completion ] ; then
+			_filedir
+			COMPREPLY=( ${COMPREPLY/#/--mounts=} )
+		else
+			compopt -o filenames 2>/dev/null
+			COMPREPLY=( $(compgen -f -- ${mount_cur}) )
+			COMPREPLY=( ${COMPREPLY/#/--mounts=} )
+		fi
+		return 0
+	fi
 
 	if [[ ${cur} == -* ]] ; then
 		COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )

@@ -1,8 +1,17 @@
-.TH "FAPOLICYD" "8" "March 2022" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD" "8" "March 2026" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd \- File Access Policy Daemon
 .SH SYNOPSIS
-\fBfapolicyd\fP [\fIoptions\fP]
+.B fapolicyd
+.RI [ --debug | --debug-deny ]
+.RI [ --permissive ]
+.RI [ --no-details ]
+.RI [ --mounts=PATH ]
+.RI [ --version ]
+.RI [ --boost VALUE ]
+.RI [ --queue VALUE ]
+.RI [ --user NAME ]
+.RI [ --group NAME ]
 .SH DESCRIPTION
 \fBfapolicyd\fP is a userspace daemon that determines access rights to files based on a trust database and file or process attributes. It can be used to either blacklist or whitelist file access and execution.
 
@@ -27,22 +36,39 @@ or instead of \-i, you can add \-\-format text to get an easier to read audit ev
 .SH OPTIONS
 .TP
 .B \-\-debug
-leave the daemon in the foreground for debugging. Event information is written to stderr so that policy decisions can be observed.
+Run the daemon in the foreground and write event information to stderr so
+policy decisions can be observed.
 .TP
 .B \-\-debug\-deny
-leave the daemon in the foreground for debugging. Event information is written to stderr only when the decision is to deny access.
+Run the daemon in the foreground and write only deny decisions to stderr.
 .TP
 .B \-\-permissive
-the daemon will allow file access regardless of the policy decision. This is useful for debugging rules before making them permanent.
+Allow file access even when policy would deny it. This is useful when
+validating rules before enforcing them.
 .TP
 .B \-\-mounts=PATH
-only in debug mode will the daemon use this flag to override the source of fanotify mounts with the contents of the file at the specified path. This file must be the same format as /proc/mounts, which allows one to head, tail, or grep a sublist from /proc/mounts into a file passed with this arg.
+In debug mode only, read mount information from the regular file at
+.I PATH
+instead of
+.I /proc/mounts.
+The file must use the same format as
+.IR /proc/mounts .
+This is useful when reproducing mount-related issues with a captured or
+filtered mount list.
 .TP
 .B \-\-no-details
-when fapolicyd ends, it dumps a usage report with various statistics that may be useful for tuning performance. It can also detail which processes it knew about and files being accessed by them. This can be useful for forensics investigations. In some settings, this may not be desirable as the file names may be sensitive. Using this option removes process and file names leaving only the statistics. The default without giving this option is to generate a full report.
+Suppress process and file names in the shutdown usage report while keeping
+the aggregate statistics.
 .TP
 .B \-\-version
-display version information and exit.
+Display version information and exit.
+.TP
+.B \-\-boost ,
+.BR \-\-queue ,
+.BR \-\-user ,
+.B \-\-group
+These legacy options are still accepted for backward compatibility, but the
+current daemon ignores their values and logs that they are deprecated.
 .SH SIGNALS
 .TP
 .B SIGTERM

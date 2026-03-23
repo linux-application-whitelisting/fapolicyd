@@ -1,10 +1,10 @@
-.TH "FAPOLICYD-CLI" "8" "Dec 2021" "Red Hat" "System Administration Utilities"
+.TH "FAPOLICYD-CLI" "8" "March 2026" "Red Hat" "System Administration Utilities"
 .SH NAME
 fapolicyd-cli \- Fapolicyd CLI Tool
 .SH SYNOPSIS
 \fBfapolicyd-cli\fP [\fIoptions\fP]
 .SH DESCRIPTION
-The fapolicyd command line utility is a tool to tell the daemon that it needs to update the trust database. Normally, the daemon learns that the trust database needs updating because it uses a dnf plugin to inform it. However, you may install an rpm by hand and it can't see that a system package was installed or updated. Or perhaps the admin updates the fapolicyd.trust file and would like the changes to take effect immediately. In either of these cases, you would need to tell the daemon that it needs to do an update by running this command.
+The fapolicyd command line utility performs maintenance and troubleshooting tasks for fapolicyd. It can ask the daemon to reload state, inspect the trust database, validate configuration, test filter decisions, and manage administrator-defined trust entries. Normally the daemon learns about package changes through integration such as the dnf plugin, but manual package installation or direct edits to trust files still require explicit administrator action.
 .SH OPTIONS
 .TP
 .B \-h, \-\-help
@@ -60,7 +60,7 @@ When used with \fBadd\fP or \fBupdate\fP, evaluate the selected files and direct
 Use after \fBfile\fP option. Makes every command of \fBfile\fP option operate on a single trust file named \fBtrust-file-name\fP that is located inside trust.d directory. If a trust file with such a name does not exist inside trust.d directory, it is created.
 .TP
 .B \-\-test-filter /path/to/file
-Evaluate FILTER_FILE against the given path and emit a rule-by-rule trace ending with "decision include" or "decision exclude". This let's you know if the file will be included in the trust database or not.
+Evaluate the filter configuration against the given path and emit a rule-by-rule trace ending with "decision include" or "decision exclude". Use this to confirm whether a file would be eligible for inclusion in the trust database.
 .TP
 .B \-t, \-\-ftype /path/to/file
 Prints the mime type of the file given. A full path must be specified. This command is intended to help get the ftype parameter of rules correct by seeing how fapolicyd will classify it. Fapolicyd may differ from the \fBfile\fP command.
@@ -75,7 +75,7 @@ Notifies fapolicyd to perform an update of the trust database.
 Notifies fapolicyd to perform a reload of the rules.
 .TP
 .B \-\-verbose
-Only for the \-\-check-ignore_mounts, print a list of files that do not pass inspection.
+Enable additional output for commands that support it. At present this affects \fB\-\-check-ignore_mounts\fP by printing each file that does not pass inspection.
 .SH RETURN CODES
 The following exit status values are used for error reporting and scripting:
 .TP
