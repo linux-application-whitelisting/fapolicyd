@@ -2016,6 +2016,7 @@ static void do_reload_db(conf_t* config)
 			rc = mdb_env_set_mapsize(env,
 				(size_t)config->db_max_size * MEGABYTE);
 			if (rc) {
+				config->db_max_size = old_db_max_size;
 				msg(LOG_ERR,
 					"env_set_mapsize error: %s",
 					mdb_strerror(rc));
