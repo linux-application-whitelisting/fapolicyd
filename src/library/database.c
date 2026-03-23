@@ -240,9 +240,12 @@ static int autosize_database(conf_t *config)
 	MDB_dbi		 dbi_tmp;
 	int		 changed = 0;
 
-	/* Open the existing env read‑only so stats reflect current use */
+	/* Open the existing env read-only without taking the shared LMDB
+	 * lockfile mutexes. autosize_database() only needs a point-in-time view
+	 * of the map, so MDB_NOLOCK avoids disturbing the live environment
+	 * during reloads. */
 	if (mdb_env_create(&tmp_env) || mdb_env_set_maxdbs(tmp_env, 2) ||
-				mdb_env_open(tmp_env, DB_DIR, MDB_RDONLY, 0)) {
+				mdb_env_open(tmp_env, DB_DIR, MDB_RDONLY|MDB_NOLOCK, 0)) {
 			msg(LOG_WARNING,
 			    "autosize: could not inspect LMDB – keeping %u MiB",
 			    config->db_max_size);

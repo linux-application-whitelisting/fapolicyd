@@ -270,6 +270,60 @@ static int test_lmdb_long_path_shared_prefix_no_collision(void)
 	return 0;
 }
 
+/*
+ * test_lmdb_readonly_probe_does_not_break_live_env - Guard LMDB mutexes.
+ *
+ * Returns 0 when a read-only probe environment can be opened and closed
+ * without breaking the existing writable trust database handle.
+ */
+static int test_lmdb_readonly_probe_does_not_break_live_env(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	MDB_env *probe = NULL;
+	const char *digest_a =
+		"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+	const char *digest_b =
+		"1111111111111111111111111111111111111111111111111111111111111111";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 60, "[ERROR:60] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n",
+		 "/usr/bin/probe-a", SRC_FILE_DB, (size_t)123, digest_a);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 61,
+	      "[ERROR:61] initial record import failed");
+
+	rc = mdb_env_create(&probe);
+	CHECK(rc == 0, 62, "[ERROR:62] failed to create probe environment");
+	rc = mdb_env_set_maxdbs(probe, 2);
+	CHECK(rc == 0, 63, "[ERROR:63] failed to size probe environment");
+	rc = mdb_env_open(probe, dir, MDB_RDONLY|MDB_NOLOCK, 0);
+	CHECK(rc == 0, 64, "[ERROR:64] failed to open probe environment");
+	mdb_env_close(probe);
+	probe = NULL;
+
+	entries = 0;
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n",
+		 "/usr/bin/probe-b", SRC_FILE_DB, (size_t)456, digest_b);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 65,
+	      "[ERROR:65] live environment import failed after probe close");
+
+	CHECK(check_trust_database("/usr/bin/probe-b", NULL, -1) == 1, 66,
+	      "[ERROR:66] post-probe lookup failed");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 67,
+	      "[ERROR:67] probe cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_long_path_negative_lookup(void)
 {
 	conf_t cfg;
@@ -327,6 +381,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_long_path_negative_lookup();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_readonly_probe_does_not_break_live_env();
 	if (rc)
 		return rc;
 
