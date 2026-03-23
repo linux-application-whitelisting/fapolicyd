@@ -1,5 +1,7 @@
 1.4.5
 - Inform the admin symlinks were skipped when adding paths
+- Avoid large mount options in the realtime mounts code
+- Fix cli --update causing fatal error in the damon (#399)
 
 1.4.4
 - Fix races and shutdown hazards in trust database updates
