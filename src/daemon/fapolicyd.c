@@ -214,6 +214,10 @@ static int new_filesystem(struct fs_avl *list, const char *fs)
 	fs_data_t *tmp = malloc(sizeof(fs_data_t));
 	if (tmp) {
 		tmp->fs_name = fs ? strdup(fs) : strdup("");
+		if (tmp->fs_name == NULL) {
+			free(tmp);
+			return 0;
+		}
 		if (add_filesystem(list, tmp) == 0) {
 			free((void *)tmp->fs_name);
 			free(tmp);
