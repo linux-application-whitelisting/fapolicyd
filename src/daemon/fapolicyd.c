@@ -578,7 +578,8 @@ static int become_daemon(void)
 				close(1);
 				return -1;
 			}
-			close(fd);
+			if (fd > 2)
+				close(fd);
 			chdir("/");
 			if (setsid() < 0)
 				return -1;
