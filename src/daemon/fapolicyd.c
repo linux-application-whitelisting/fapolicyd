@@ -1153,6 +1153,19 @@ int main(int argc, const char *argv[])
 
 	// Initialize the file watch system
 	pfd[0].fd = open(mounts, O_RDONLY);
+	if (pfd[0].fd < 0) {
+		msg(LOG_ERR, "Cannot open mounts file %s (%s)",
+			mounts, strerror(errno));
+		file_close();
+		close_database();
+		destroy_event_system();
+		destroy_rules();
+		destroy_fs_list(&filesystems);
+		destroy_fs_list(&ignored_mounts);
+		free_daemon_config(&config);
+		unlink(pidfile);
+		exit(1);
+	}
 	pfd[0].events = POLLPRI;
 	handle_mounts(pfd[0].fd);
 	pfd[1].fd = init_fanotify(&config, m);
