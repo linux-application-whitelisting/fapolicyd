@@ -295,7 +295,9 @@ void fanotify_update(mlist *m)
 			}
 		}
 
-		// Now remove the deleted mount point
+		// Now remove the deleted mount point - NOTE: the kernel
+		// cleans up the mark itself when umount ran. All we do
+		// here is update the bookkeeping.
 		if (cur->status == MNT_DELETE) {
 			msg(LOG_DEBUG, "Deleted %s mount point", safe_path);
 			temp = cur->next;
