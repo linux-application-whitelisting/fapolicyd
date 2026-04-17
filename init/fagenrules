@@ -97,6 +97,15 @@ END     {
         for (i = 0; i < rest; i++) { printf "%s\n", rules[i]; }
 }' >> "${TmpRules}"
 
+fapolicyd-cli --check-rules "${TmpRules}"
+err=$?
+if [ $err -ne 0 ]; then
+    echo "Rules file content:"
+    cat -n "${TmpRules}"
+    rm -f "${TmpRules}"
+    exit $err
+fi
+
 # If the same then quit
 cmp -s "${TmpRules}" ${DestinationFile} > /dev/null 2>&1
 if [ $? -eq 0 ]; then
