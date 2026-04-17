@@ -45,6 +45,7 @@
 #include <mntent.h>
 #include <libgen.h>	// basename
 #include "policy.h"
+#include "rules.h"
 #include "database.h"
 #include "file-cli.h"
 #include "file.h"
@@ -69,6 +70,7 @@ static const char *usage =
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
+"--check-rules path    Validate rules file syntax without loading\n"
 "--verbose             Enable verbose output for select commands\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
@@ -94,6 +96,7 @@ static struct option long_opts[] =
 	{"check-trustdb",0, NULL,  3 },
 	{"check-status",0, NULL,  4 },
 	{"check-path",  0, NULL,  5 },
+	{"check-rules",  1, NULL, 9 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -1194,6 +1197,75 @@ finish:
 	return rc;
 }
 
+static int check_rules_file(const char *path)
+{
+	FILE *f;
+	int rc, lineno = 1, invalid = 0;
+	char *line = NULL;
+	llist temp_rules;
+
+	// Set message mode to stderr so error messages are visible
+	set_message_mode(MSG_STDERR, DBG_NO);
+
+	// Initialize attribute sets (needed for %set parsing)
+	if (init_attr_sets()) {
+		fprintf(stderr, "Failed to initialize attribute sets\n");
+		return CLI_EXIT_INTERNAL;
+	}
+
+	// Open the specified rules file
+	f = fopen(path, "r");
+	if (f == NULL) {
+		fprintf(stderr, "Cannot open rules file %s (%s)\n",
+				path, strerror(errno));
+		destroy_attr_sets();
+		return CLI_EXIT_IO;
+	}
+
+	// Create temporary rules list for validation
+	if (rules_create(&temp_rules)) {
+		fprintf(stderr, "Failed to create rules list\n");
+		fclose(f);
+		destroy_attr_sets();
+		return CLI_EXIT_INTERNAL;
+	}
+
+	// Parse each line (same pattern as _load_rules in policy.c)
+	while ((line = get_line(f))) {
+		rc = rules_append(&temp_rules, line, lineno);
+		if (rc) {
+			fprintf(stderr, "Rule validation failed at line %d\n",
+					lineno);
+			invalid = 1;
+		}
+		free(line);
+		lineno++;
+	}
+
+	if (invalid) {
+		rules_clear(&temp_rules);
+		fclose(f);
+		destroy_attr_sets();
+		return CLI_EXIT_RULE_FILTER;
+	}
+
+	// Check for empty rules file
+	if (temp_rules.cnt == 0) {
+		fprintf(stderr, "No rules found in file\n");
+		rules_clear(&temp_rules);
+		fclose(f);
+		destroy_attr_sets();
+		return CLI_EXIT_RULE_FILTER;
+	}
+
+	printf("Rules file is valid (%u rules)\n", temp_rules.cnt);
+	rules_clear(&temp_rules);
+	fclose(f);
+	destroy_attr_sets();
+
+	return CLI_EXIT_SUCCESS;
+}
+
 // Returns 0 = everything is OK, 1 = there is a problem
 static int verify_file(const char *path, off_t size, const char *sha,
 		        unsigned int tsource)
@@ -1603,6 +1675,13 @@ int main(int argc, char * const argv[])
 		if (optind < arg_count)
 			goto args_err;
 		return check_ignore_mounts(override);
+		}
+		break;
+
+	case 9: { // --check-rules
+		if (arg_count > 3)
+			goto args_err;
+		return check_rules_file(optarg);
 		}
 		break;
 

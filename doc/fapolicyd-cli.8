@@ -33,6 +33,9 @@ matching the \fB%languages\fP macro. Any matches are reported and a summary per
 mount is displayed. A non-zero status is returned when suspicious files are
 found so automated workflows can gate changes.
 .TP
+.B \-\-check-rules path
+Parse the rules file and validate its syntax without loading it into the daemon. A zero exit status means the file is valid.
+.TP
 .B \-d, \-\-delete-db
 Deletes the trust database. Normally this never needs to be done. But if for some reason the trust database becomes corrupted, then the only method of recovery is to run this command.
 .TP

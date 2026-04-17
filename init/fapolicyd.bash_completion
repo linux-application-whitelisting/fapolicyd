@@ -7,7 +7,7 @@ _fapolicydcli()
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--check-config --check-path --check-status --check-trustdb \
+	opts="--check-config --check-path --check-rules --check-status --check-trustdb \
 		--check-watch_fs --check-ignore_mounts --delete-db --dump-db \
 		--file --filter --ftype --help --list --update --reload-rules \
 		--test-filter --trust-file --verbose -h -d -D -f -t -l -u -r"
@@ -108,6 +108,15 @@ _fapolicydcli()
 			return 0
 		;;
 		--filter)
+			if [ -e /usr/share/bash-completion/bash_completion ] ; then
+				_filedir
+			else
+				compopt -o filenames 2>/dev/null
+				COMPREPLY=( $(compgen -f -- ${cur}) )
+			fi
+			return 0
+		;;
+		--check-rules)
 			if [ -e /usr/share/bash-completion/bash_completion ] ; then
 				_filedir
 			else
