@@ -48,16 +48,17 @@ int obj_name_to_val(const char *name)
 {
 	static bool warned;
 
-	/* Announce deprecation once per start while keeping the alias usable. */
-	if (!warned) {
-		msg(LOG_NOTICE,
-		    "SHA256HASH object name is deprecated; use FILE_HASH instead");
-		warned = true;
-	}
-
 	// Accept the legacy name for compatibility with older rule sets.
-	if (strcmp(name, "sha256hash") == 0)
+	if (strcmp(name, "sha256hash") == 0) {
+		/* Announce deprecation once per start while keeping the alias usable. */
+		if (!warned) {
+			msg(LOG_NOTICE,
+			    "sha256hash object name is deprecated; use filehash instead");
+			warned = true;
+		}
+
 		return FILE_HASH;
+	}
 
 	unsigned int i = 0;
 	while (i < MAX_OBJECTS) {
