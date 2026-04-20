@@ -128,12 +128,12 @@ struct mount_scan_state {
 
 static struct mount_scan_state scan_state;
 
-static char *get_line(FILE *f, unsigned *lineno)
+static char *get_line(FILE *f)
 {
 	char *line = NULL;
 	size_t len = 0;
 
-	while (getline(&line, &len, f) != -1) {
+	if (getline(&line, &len, f) != -1) {
 		/* remove newline */
 		char *ptr = strchr(line, 0x0a);
 		if (ptr)
@@ -442,7 +442,7 @@ static int do_ftype(const char *path)
 
 static int do_list(void)
 {
-	unsigned count = 1, lineno = 0;
+	unsigned count = 1;
 	FILE *f = fopen(OLD_RULES_FILE, "rm");
 	char *buf;
 
@@ -465,9 +465,8 @@ static int do_list(void)
 		}
 	}
 
-	while ((buf = get_line(f, &lineno))) {
+	while ((buf = get_line(f))) {
 		char *str = buf;
-		lineno++;
 		while (*str) {
 			if (!isblank(*str))
 				break;
