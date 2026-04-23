@@ -1207,18 +1207,11 @@ static int check_rules_file(const char *path)
 	// Set message mode to stderr so error messages are visible
 	set_message_mode(MSG_STDERR, DBG_NO);
 
-	// Initialize attribute sets (needed for %set parsing)
-	if (init_attr_sets()) {
-		fprintf(stderr, "Failed to initialize attribute sets\n");
-		return CLI_EXIT_INTERNAL;
-	}
-
 	// Open the specified rules file
 	f = fopen(path, "r");
 	if (f == NULL) {
 		fprintf(stderr, "Cannot open rules file %s (%s)\n",
 				path, strerror(errno));
-		destroy_attr_sets();
 		return CLI_EXIT_IO;
 	}
 
@@ -1226,7 +1219,13 @@ static int check_rules_file(const char *path)
 	if (rules_create(&temp_rules)) {
 		fprintf(stderr, "Failed to create rules list\n");
 		fclose(f);
-		destroy_attr_sets();
+		return CLI_EXIT_INTERNAL;
+	}
+
+	// Initialize attribute sets (needed for %set parsing)
+	if (init_attr_sets()) {
+		fprintf(stderr, "Failed to initialize attribute sets\n");
+		fclose(f);
 		return CLI_EXIT_INTERNAL;
 	}
 
@@ -1242,26 +1241,21 @@ static int check_rules_file(const char *path)
 		lineno++;
 	}
 
-	if (invalid) {
-		rules_clear(&temp_rules);
-		fclose(f);
-		destroy_attr_sets();
-		return CLI_EXIT_RULE_FILTER;
-	}
-
-	// Check for empty rules file
-	if (temp_rules.cnt == 0) {
-		fprintf(stderr, "No rules found in file\n");
-		rules_clear(&temp_rules);
-		fclose(f);
-		destroy_attr_sets();
-		return CLI_EXIT_RULE_FILTER;
-	}
-
-	printf("Rules file is valid (%u rules)\n", temp_rules.cnt);
+	unsigned cnt = temp_rules.cnt;
 	rules_clear(&temp_rules);
 	fclose(f);
 	destroy_attr_sets();
+
+	if (invalid)
+		return CLI_EXIT_RULE_FILTER;
+
+	// Check for empty rules file
+	if (cnt == 0) {
+		fprintf(stderr, "No rules found in file\n");
+		return CLI_EXIT_RULE_FILTER;
+	}
+
+	printf("Rules file is valid (%u rules)\n", cnt);
 
 	return CLI_EXIT_SUCCESS;
 }
