@@ -6,7 +6,8 @@
 * This harness exercises the rule parser and evaluator for:
 *   1. direct values and %set references
 *   2. rule_evaluate() subject/object matching
-*   3. error paths: undefined sets and type mismatches
+*   3. error paths: undefined sets, type mismatches, and mixed
+*      valid/invalid same-side attributes
 *
 * Valid rules live in src/tests/fixtures/rules-valid.rules.  Each line is
 * fed through rules_append() to mimic fagenrules processing.  Negative
@@ -74,6 +75,22 @@ static const struct err_case errors[] = {
 	  "allow perm=any gid=%strs : path=/bin/ls",
 	  NULL },
 	"cannot assign %strs which has STRING type to gid (UNSIGNED expected)"
+	},
+	{
+	{ "allow auid=1000 uid=-1 path=/bin/ls", NULL },
+	"negative value -1 not allowed for uid"
+	},
+	{
+	{ "allow auid=1000 path=/bin/ls trust=2", NULL },
+	"trust can be set to 1 or 0"
+	},
+	{
+	{ "allow perm=any auid=1000 uid=-1 : path=/bin/ls", NULL },
+	"negative value -1 not allowed for uid"
+	},
+	{
+	{ "allow perm=any auid=1000 : path=/bin/ls trust=2", NULL },
+	"trust can be set to 1 or 0"
 	}
 };
 

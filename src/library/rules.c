@@ -744,8 +744,8 @@ static int parse_new_format(lnode *n, int lineno)
 						ptr, lineno);
 					return 1;
 				}
-				if (assign_subject(n, type, ptr2, lineno) == 3)
-					return -1;
+				if (assign_subject(n, type, ptr2, lineno))
+					return 1;
 			} else {
 				type = obj_name_to_val(ptr);
 				if (type == -1) {
@@ -753,18 +753,20 @@ static int parse_new_format(lnode *n, int lineno)
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
 					return 2;
-				} else
-					assign_object(n, type, ptr2, lineno);
+				} else if (assign_object(n, type, ptr2, lineno))
+					return 1;
 			}
 		} else if (state == 0 && strcmp(ptr, ":") == 0)
 			state = 1;
 		else if (strcmp(ptr, "all") == 0) {
 			if (state == 0) {
 				type = ALL_SUBJ;
-				assign_subject(n, type, "", lineno);
+				if (assign_subject(n, type, "", lineno))
+					return 1;
 			} else {
 				type = ALL_OBJ;
-				assign_object(n, type, "", lineno);
+				if (assign_object(n, type, "", lineno))
+					return 1;
 			}
 		} else {
 			msg(LOG_ERR, "'=' is missing for field %s, in line %d",
@@ -975,10 +977,11 @@ static int nv_split(char *buf, lnode *n, int lineno)
 						return 1;
 					}
 					if (assign_subject(n, type, ptr2,
-								lineno) == 3)
-						return -1;
+								lineno))
+						return 1;
 				}
-				parse_new_format(n, lineno);
+				if (parse_new_format(n, lineno))
+					return 1;
 				goto finish_up;
 			}
 			type = subj_name_to_val(ptr, format);
@@ -989,18 +992,20 @@ static int nv_split(char *buf, lnode *n, int lineno)
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
 					return 3;
-				} else
-					assign_object(n, type, ptr2, lineno);
+				} else if (assign_object(n, type, ptr2, lineno))
+					return 1;
 			} else
-				if (assign_subject(n, type, ptr2, lineno) == 3)
-					return -1;
+				if (assign_subject(n, type, ptr2, lineno))
+					return 1;
 		} else if (strcmp(ptr, "all") == 0) {
 			if (n->s_count == 0) {
 				type = ALL_SUBJ;
-				assign_subject(n, type, "", lineno);
+				if (assign_subject(n, type, "", lineno))
+					return 1;
 			} else if (n->o_count == 0) {
 				type = ALL_OBJ;
-				assign_object(n, type, "", lineno);
+				if (assign_object(n, type, "", lineno))
+					return 1;
 			} else {
 				msg(LOG_ERR,
 			"All can only be used in place of a subject or object");
