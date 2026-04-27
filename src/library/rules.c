@@ -48,6 +48,12 @@
 //#define DEBUG
 #define UNUSED 0xFF
 
+enum rule_parse_result {
+	RULE_PARSE_SKIP = -1,
+	RULE_PARSE_OK = 0,
+	RULE_PARSE_ERROR = 1
+};
+
 // Pattern detection
 #define SYSTEM_LD_CACHE "/etc/ld.so.cache"
 #define PATTERN_NORMAL_STR "normal"
@@ -930,10 +936,19 @@ static int parse_set_line(const char * line, int lineno)
 }
 
 /*
- * This function take a whole rule as input and parses it up.
- * Returns: -1 nothing, 0 OK, >0 error
+ * nv_split - parse one rule file line
+ * @buf: mutable rule file line to parse
+ * @n: rule node populated when the line contains a policy rule
+ * @lineno: rule file line number used for diagnostics
+ *
+ * Empty lines, comments, and attribute set definitions are handled by the
+ * parser but should not be appended as policy rule nodes. Those successful
+ * non-rule lines return RULE_PARSE_SKIP.
+ *
+ * Returns: RULE_PARSE_OK when @n contains a rule, RULE_PARSE_SKIP when the
+ * line should not append a rule node, or RULE_PARSE_ERROR on parse failure.
  */
-static int nv_split(char *buf, lnode *n, int lineno)
+static enum rule_parse_result nv_split(char *buf, lnode *n, int lineno)
 {
 	char *ptr, *ptr2;
 	rformat_t format = RULE_FMT_ORIG;
@@ -944,13 +959,13 @@ static int nv_split(char *buf, lnode *n, int lineno)
 
 	ptr = strtok(buf, " ");
 	if (ptr == NULL)
-		return -1; /* If there's nothing, go to next line */
+		return RULE_PARSE_SKIP;
 	if (ptr[0] == '#')
-		return -1; /* If there's a comment, go to next line */
+		return RULE_PARSE_SKIP;
 	if (ptr[0] == '%') {
 		if (parse_set_line(ptr, lineno))
-			return 1;
-		return -1;
+			return RULE_PARSE_ERROR;
+		return RULE_PARSE_SKIP;
 	}
 
 	// Load decision
@@ -958,7 +973,7 @@ static int nv_split(char *buf, lnode *n, int lineno)
 	if ((int)n->d == -1) {
 		msg(LOG_ERR, "Invalid decision (%s) in line %d",
 				ptr, lineno);
-		return 1;
+		return RULE_PARSE_ERROR;
 	}
 
 	// Default access permission is open
@@ -981,7 +996,7 @@ static int nv_split(char *buf, lnode *n, int lineno)
 						msg(LOG_ERR,
 				"Access permission (%s) is unknown in line %d",
 							ptr2, lineno);
-						return 2;
+						return RULE_PARSE_ERROR;
 					}
 				} else {
 					type = subj_name_to_val(ptr, 2);
@@ -989,14 +1004,14 @@ static int nv_split(char *buf, lnode *n, int lineno)
 						msg(LOG_ERR,
 					"Field type (%s) is unknown in line %d",
 							ptr, lineno);
-						return 1;
+						return RULE_PARSE_ERROR;
 					}
 					if (assign_subject(n, type, ptr2,
 								lineno))
-						return 1;
+						return RULE_PARSE_ERROR;
 				}
 				if (parse_new_format(n, lineno))
-					return 1;
+					return RULE_PARSE_ERROR;
 				goto finish_up;
 			}
 			type = subj_name_to_val(ptr, format);
@@ -1006,30 +1021,30 @@ static int nv_split(char *buf, lnode *n, int lineno)
 					msg(LOG_ERR,
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
-					return 3;
+					return RULE_PARSE_ERROR;
 				} else if (assign_object(n, type, ptr2, lineno))
-					return 1;
+					return RULE_PARSE_ERROR;
 			} else
 				if (assign_subject(n, type, ptr2, lineno))
-					return 1;
+					return RULE_PARSE_ERROR;
 		} else if (strcmp(ptr, "all") == 0) {
 			if (n->s_count == 0) {
 				type = ALL_SUBJ;
 				if (assign_subject(n, type, "", lineno))
-					return 1;
+					return RULE_PARSE_ERROR;
 			} else if (n->o_count == 0) {
 				type = ALL_OBJ;
 				if (assign_object(n, type, "", lineno))
-					return 1;
+					return RULE_PARSE_ERROR;
 			} else {
 				msg(LOG_ERR,
 			"All can only be used in place of a subject or object");
-				return 4;
+				return RULE_PARSE_ERROR;
 			}
 		} else {
 			msg(LOG_ERR, "'=' is missing for field %s, in line %d",
 				ptr, lineno);
-			return 5;
+			return RULE_PARSE_ERROR;
 		}
 	}
 
@@ -1037,13 +1052,13 @@ finish_up:
 	// do one last sanity check for missing subj or obj
 	if (n->s_count == 0) {
 		msg(LOG_ERR, "Subject is missing in line %d", lineno);
-		return 6;
+		return RULE_PARSE_ERROR;
 	}
 	if (n->o_count == 0) {
 		msg(LOG_ERR, "Object is missing in line %d", lineno);
-		return 7;
+		return RULE_PARSE_ERROR;
 	}
-	return 0;
+	return RULE_PARSE_OK;
 }
 
 
@@ -1067,13 +1082,13 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 			newnode->s[i].type = UNUSED;
 			newnode->o[i].type = UNUSED;
 		}
-		int rc = nv_split(buf, newnode, lineno);
-		if (rc) {
+		enum rule_parse_result rc = nv_split(buf, newnode, lineno);
+		if (rc == RULE_PARSE_SKIP) {
 			free(newnode);
-			if (rc < 0)
-				return 0;
-			else
-				return 1;
+			return 0;
+		} else if (rc == RULE_PARSE_ERROR) {
+			free(newnode);
+			return 1;
 		}
 	} else
 		return 1;
