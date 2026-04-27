@@ -777,9 +777,21 @@ static int parse_new_format(lnode *n, int lineno)
 	return 0;
 }
 
+/*
+ * parse_set_line - parse an attribute set definition
+ * @line: rule file line that starts with a '%' set name
+ * @lineno: rule file line number used for diagnostics
+ *
+ * The parser validates the set name, infers whether the values are strings
+ * or integers, creates the set, and appends every parsed value. Set lines
+ * define parser state only; they do not become policy rule nodes.
+ *
+ * Returns: 0 on success, 1 on parse or allocation errors.
+ */
 static int parse_set_line(const char * line, int lineno)
 {
-	if (!line) return -1; // for sure
+	if (!line)
+		return 1;
 
 	char * l = strdup(line);
 	if (!l) {
@@ -910,7 +922,7 @@ static int parse_set_line(const char * line, int lineno)
 	}
 
 	free(l);
-	return -1;
+	return 0;
 
  free_and_error:
 	free(l);
@@ -935,8 +947,11 @@ static int nv_split(char *buf, lnode *n, int lineno)
 		return -1; /* If there's nothing, go to next line */
 	if (ptr[0] == '#')
 		return -1; /* If there's a comment, go to next line */
-	if (ptr[0] == '%')
-		return parse_set_line(ptr, lineno);
+	if (ptr[0] == '%') {
+		if (parse_set_line(ptr, lineno))
+			return 1;
+		return -1;
+	}
 
 	// Load decision
 	n->d = dec_name_to_val(ptr);
