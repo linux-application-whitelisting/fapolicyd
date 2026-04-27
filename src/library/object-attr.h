@@ -46,7 +46,6 @@ typedef struct o {
 	char *o;	// Everything is a string
 
 	union {
-		size_t gr_index;
 		attr_sets_entry_t * set;
 	};
 } object_attr_t;

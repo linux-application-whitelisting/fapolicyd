@@ -67,16 +67,19 @@ enum rule_parse_result {
 
 static unsigned int proc_status_mask;
 
-static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
-	__wur;
-static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
-	__wur;
+static int assign_subject(attr_sets_t *sets, lnode *n, int type,
+			  const char *ptr2, int lineno) __wur;
+static int assign_object(attr_sets_t *sets, lnode *n, int type,
+			 const char *ptr2, int lineno) __wur;
 
 int rules_create(llist *l)
 {
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+	l->sets = attr_sets_create();
+	if (!l->sets)
+		return 1;
 
 	proc_status_mask = 0;
 
@@ -279,12 +282,13 @@ static const char *data_type_to_name(int type)
 	}
 }
 
-static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
+static int assign_subject(attr_sets_t *sets, lnode *n, int type,
+			  const char *ptr2, int lineno)
 {
-	size_t index = 0;
-
 	// assign the subject
 	unsigned int i = n->s_count;
+	attr_sets_entry_t *set = NULL;
+	attr_sets_entry_t *owned_set = NULL;
 
 	sanity_check_node(n, "assign_subject - 1");
 	n->s[i].type = type;
@@ -318,23 +322,19 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 			goto free_and_error;
 		}
 
-		index = search_attr_set_by_name(defined_set);
-		if (!index) {
+		set = attr_sets_find(sets, defined_set);
+		if (!set) {
 			msg(LOG_ERR, "rules: line:%d: assign_subject: "
 				"set \'%s\' was not defined before",
 				lineno, defined_set);
 			goto free_and_error;
 		}
 
-		attr_sets_entry_t * set = get_attr_set(index);
-		if (!set)
-			goto free_and_error;
-
 		// we cannot assign any set to these attributes
 		if (type == SUBJ_TRUST || type == PATTERN) {
 			msg(LOG_ERR, "rules: line:%d: assign_subject: "
 				"cannot assign any set to %s",
-			    lineno, subj_val_to_name(type, RULE_FMT_COLON));
+				lineno, subj_val_to_name(type, RULE_FMT_COLON));
 			goto free_and_error;
 		}
 
@@ -368,7 +368,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 		}
 
 
-		n->s[i].gr_index = index;
+		n->s[i].set = set;
 		goto finalize;
 	}
 
@@ -394,11 +394,8 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 		int set_type = (n->s[i].type == PID ||
 				n->s[i].type == PPID) ? SIGNED : UNSIGNED;
 
-		if (add_attr_set(name, set_type, &index)) {
-			goto free_and_error;
-		}
-
-		attr_sets_entry_t * set = get_attr_set(index);
+		owned_set = attr_set_create(name, set_type);
+		set = owned_set;
 		if (!set)
 			goto free_and_error;
 
@@ -418,7 +415,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 							"Error converting val (%s) in line %d",
 							ptr, lineno);
 						goto free_and_error;
-					} else if (append_int_attr_set(set,
+					} else if (attr_set_append_int(set,
 							(int64_t)val)) {
 						goto free_and_error;
 					}
@@ -438,7 +435,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 							"Error converting val (%s) in line %d",
 							ptr, lineno);
 						goto free_and_error;
-					} else if (append_int_attr_set(set,
+					} else if (attr_set_append_int(set,
 							(int64_t)val)) {
 						goto free_and_error;
 					}
@@ -456,7 +453,7 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 				unsigned int val = pw->pw_uid;
 				endpwent();
 
-				if (append_int_attr_set(set, (int64_t)val))
+				if (attr_set_append_int(set, (int64_t)val))
 					goto free_and_error;
 
 			} else if (n->s[i].type == GID) {
@@ -469,13 +466,16 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 				unsigned int val = gr->gr_gid;
 				endgrent();
 
-				if (append_int_attr_set(set, (int64_t)val))
+				if (attr_set_append_int(set, (int64_t)val))
 					goto free_and_error;
 			}
 
 			ptr = strtok_r(NULL, ",", &saved);
 		}
-		n->s[i].gr_index = index;
+		if (attr_sets_add(sets, set))
+			goto free_and_error;
+		n->s[i].set = set;
+		owned_set = NULL;
 		break;
 
 	} // case
@@ -541,21 +541,23 @@ static int assign_subject(lnode *n, int type, const char *ptr2, int lineno)
 	case EXE:
 	case EXE_DIR:
 	case EXE_TYPE: {
-		if (add_attr_set(name, STRING, &index)) {
-			goto free_and_error;
-		}
-
-		attr_sets_entry_t * set = get_attr_set(index);
+		owned_set = attr_set_create(name, STRING);
+		set = owned_set;
 		if (!set)
 			goto free_and_error;
 
 		ptr = strtok_r(tmp, ",", &saved);
 		while (ptr) {
-			append_str_attr_set(set, ptr);
+			if (!attr_set_check_str(set, ptr) &&
+			    attr_set_append_str(set, ptr))
+				goto free_and_error;
 			ptr = strtok_r(NULL, ",", &saved);
 		}
 
-		n->s[i].gr_index = index;
+		if (attr_sets_add(sets, set))
+			goto free_and_error;
+		n->s[i].set = set;
+		owned_set = NULL;
 		break;
 	} // case
 
@@ -574,18 +576,20 @@ finalize:
 	sanity_check_node(n, "assign_subject - 2");
 	return 0;
 
-free_and_error:
+ free_and_error:
+	attr_set_destroy(owned_set);
 	free(tmp);
 	return 1;
 }
 
 
-static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
+static int assign_object(attr_sets_t *sets, lnode *n, int type,
+			 const char *ptr2, int lineno)
 {
 	// assign the object
 	unsigned int i = n->o_count;
-
-	size_t index = 0;
+	attr_sets_entry_t *set = NULL;
+	attr_sets_entry_t *owned_set = NULL;
 
 	sanity_check_node(n, "assign_object - 1");
 	n->o[i].type = type;
@@ -608,17 +612,13 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 			goto free_and_error;
 		}
 
-		index = search_attr_set_by_name(defined_set);
-		if (!index) {
+		set = attr_sets_find(sets, defined_set);
+		if (!set) {
 			msg(LOG_ERR, "rules: line:%d: assign_object: "
 				"set \'%s\' was not defined before",
 				lineno, defined_set);
 			goto free_and_error;
 		}
-
-		attr_sets_entry_t * set = get_attr_set(index);
-		if (!set)
-			goto free_and_error;
 
 		// we cannot assign any set to these attributes
 		if (type == OBJ_TRUST) {
@@ -638,7 +638,7 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 		}
 
 
-		n->o[i].gr_index = index;
+		n->o[i].set = set;
 		goto finalize;
 	}
 
@@ -689,21 +689,23 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 	case FTYPE:
 	case FILE_HASH:
 	case FMODE: {
-		if (add_attr_set(name, STRING, &index)) {
-			goto free_and_error;
-		}
-
-		attr_sets_entry_t * set = get_attr_set(index);
+		owned_set = attr_set_create(name, STRING);
+		set = owned_set;
 		if (!set)
 			goto free_and_error;
 
 		ptr = strtok_r(tmp, ",", &saved);
 		while (ptr) {
-			append_str_attr_set(set, ptr);
+			if (!attr_set_check_str(set, ptr) &&
+			    attr_set_append_str(set, ptr))
+				goto free_and_error;
 			ptr = strtok_r(NULL, ",", &saved);
 		}
 
-		n->o[i].gr_index = index;
+		if (attr_sets_add(sets, set))
+			goto free_and_error;
+		n->o[i].set = set;
+		owned_set = NULL;
 
 		break;
 	} // case
@@ -712,7 +714,7 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 	default: {
 		msg(LOG_ERR, "assign_object: fatal error "
 			"-> this should not happen!");
-			goto free_and_error;
+		goto free_and_error;
 	} // case
 
 	} // switch
@@ -725,12 +727,13 @@ static int assign_object(lnode *n, int type, const char *ptr2, int lineno)
 	return 0;
 
  free_and_error:
+	attr_set_destroy(owned_set);
 	free(tmp);
 	return 1;
 }
 
 
-static int parse_new_format(lnode *n, int lineno)
+static int parse_new_format(attr_sets_t *sets, lnode *n, int lineno)
 {
 	int state = 0;  // 0 == subj, 1 == obj
 	char *ptr;
@@ -750,7 +753,7 @@ static int parse_new_format(lnode *n, int lineno)
 						ptr, lineno);
 					return 1;
 				}
-				if (assign_subject(n, type, ptr2, lineno))
+				if (assign_subject(sets, n, type, ptr2, lineno))
 					return 1;
 			} else {
 				type = obj_name_to_val(ptr);
@@ -759,7 +762,8 @@ static int parse_new_format(lnode *n, int lineno)
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
 					return 2;
-				} else if (assign_object(n, type, ptr2, lineno))
+				} else if (assign_object(sets, n, type, ptr2,
+							 lineno))
 					return 1;
 			}
 		} else if (state == 0 && strcmp(ptr, ":") == 0)
@@ -767,11 +771,11 @@ static int parse_new_format(lnode *n, int lineno)
 		else if (strcmp(ptr, "all") == 0) {
 			if (state == 0) {
 				type = ALL_SUBJ;
-				if (assign_subject(n, type, "", lineno))
+				if (assign_subject(sets, n, type, "", lineno))
 					return 1;
 			} else {
 				type = ALL_OBJ;
-				if (assign_object(n, type, "", lineno))
+				if (assign_object(sets, n, type, "", lineno))
 					return 1;
 			}
 		} else {
@@ -785,6 +789,7 @@ static int parse_new_format(lnode *n, int lineno)
 
 /*
  * parse_set_line - parse an attribute set definition
+ * @sets: rule-load registry that owns named sets
  * @line: rule file line that starts with a '%' set name
  * @lineno: rule file line number used for diagnostics
  *
@@ -794,8 +799,10 @@ static int parse_new_format(lnode *n, int lineno)
  *
  * Returns: 0 on success, 1 on parse or allocation errors.
  */
-static int parse_set_line(const char * line, int lineno)
+static int parse_set_line(attr_sets_t *sets, const char *line, int lineno)
 {
+	attr_sets_entry_t *set = NULL;
+
 	if (!line)
 		return 1;
 
@@ -820,11 +827,7 @@ static int parse_set_line(const char * line, int lineno)
 	        goto free_and_error;
 	}
 
-	size_t index = 0;
-
-	index = search_attr_set_by_name(name);
-	// looking for non zero result
-	if (index) {
+	if (attr_sets_find(sets, name)) {
 		msg(LOG_ERR, "rules.conf:%d: parse_set_line: "
 			"set %s was already defined!", lineno, name);
 		goto free_and_error;
@@ -876,11 +879,7 @@ static int parse_set_line(const char * line, int lineno)
 	free(values);
 	values = NULL;
 
-	if (add_attr_set(name, type, &index)) {
-		goto free_and_error;
-	}
-
-	attr_sets_entry_t * set = get_attr_set(index);
+	set = attr_set_create(name, type);
 	if (!set)
 		goto free_and_error;
 
@@ -892,7 +891,7 @@ static int parse_set_line(const char * line, int lineno)
 			continue;
 		}
 		if (type == STRING) {
-			if (append_str_attr_set(set, ptr))
+			if (attr_set_append_str(set, ptr))
 				goto free_and_error;
 		} else if (type == SIGNED) {
 			errno = 0;
@@ -902,8 +901,7 @@ static int parse_set_line(const char * line, int lineno)
 					"Error converting val (%s) in line %d",
 					ptr, lineno);
 				goto free_and_error;
-			} else if (append_int_attr_set(set,
-					(int64_t)val))
+			} else if (attr_set_append_int(set, (int64_t)val))
 				goto free_and_error;
 
 		} else if (type == UNSIGNED) {
@@ -920,23 +918,28 @@ static int parse_set_line(const char * line, int lineno)
 					"Error converting val (%s) in line %d",
 					ptr, lineno);
 				goto free_and_error;
-			} else if (append_int_attr_set(set,
-					(int64_t)val))
+			} else if (attr_set_append_int(set, (int64_t)val))
 				goto free_and_error;
 		}
 		ptr = strtok_r(NULL, ",", &saved);
 	}
 
+	if (attr_sets_add(sets, set))
+		goto free_and_error;
+	set = NULL;
+
 	free(l);
 	return 0;
 
  free_and_error:
+	attr_set_destroy(set);
 	free(l);
 	return 1;
 }
 
 /*
  * nv_split - parse one rule file line
+ * @sets: rule-load registry that owns parsed attribute sets
  * @buf: mutable rule file line to parse
  * @n: rule node populated when the line contains a policy rule
  * @lineno: rule file line number used for diagnostics
@@ -948,7 +951,8 @@ static int parse_set_line(const char * line, int lineno)
  * Returns: RULE_PARSE_OK when @n contains a rule, RULE_PARSE_SKIP when the
  * line should not append a rule node, or RULE_PARSE_ERROR on parse failure.
  */
-static enum rule_parse_result nv_split(char *buf, lnode *n, int lineno)
+static enum rule_parse_result nv_split(attr_sets_t *sets, char *buf, lnode *n,
+				       int lineno)
 {
 	char *ptr, *ptr2;
 	rformat_t format = RULE_FMT_ORIG;
@@ -963,7 +967,7 @@ static enum rule_parse_result nv_split(char *buf, lnode *n, int lineno)
 	if (ptr[0] == '#')
 		return RULE_PARSE_SKIP;
 	if (ptr[0] == '%') {
-		if (parse_set_line(ptr, lineno))
+		if (parse_set_line(sets, ptr, lineno))
 			return RULE_PARSE_ERROR;
 		return RULE_PARSE_SKIP;
 	}
@@ -1006,11 +1010,11 @@ static enum rule_parse_result nv_split(char *buf, lnode *n, int lineno)
 							ptr, lineno);
 						return RULE_PARSE_ERROR;
 					}
-					if (assign_subject(n, type, ptr2,
-								lineno))
+					if (assign_subject(sets, n, type, ptr2,
+							   lineno))
 						return RULE_PARSE_ERROR;
 				}
-				if (parse_new_format(n, lineno))
+				if (parse_new_format(sets, n, lineno))
 					return RULE_PARSE_ERROR;
 				goto finish_up;
 			}
@@ -1022,19 +1026,19 @@ static enum rule_parse_result nv_split(char *buf, lnode *n, int lineno)
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
 					return RULE_PARSE_ERROR;
-				} else if (assign_object(n, type, ptr2, lineno))
+				} else if (assign_object(sets, n, type, ptr2,
+							 lineno))
 					return RULE_PARSE_ERROR;
-			} else
-				if (assign_subject(n, type, ptr2, lineno))
-					return RULE_PARSE_ERROR;
+			} else if (assign_subject(sets, n, type, ptr2, lineno))
+				return RULE_PARSE_ERROR;
 		} else if (strcmp(ptr, "all") == 0) {
 			if (n->s_count == 0) {
 				type = ALL_SUBJ;
-				if (assign_subject(n, type, "", lineno))
+				if (assign_subject(sets, n, type, "", lineno))
 					return RULE_PARSE_ERROR;
 			} else if (n->o_count == 0) {
 				type = ALL_OBJ;
-				if (assign_object(n, type, "", lineno))
+				if (assign_object(sets, n, type, "", lineno))
 					return RULE_PARSE_ERROR;
 			} else {
 				msg(LOG_ERR,
@@ -1069,7 +1073,7 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 	lnode* newnode;
 
 	sanity_check_list(l, "rules_append - 1");
-	if (buf) { // parse up the rule
+	if (buf && l->sets) { // parse up the rule
 		unsigned int i;
 		newnode = malloc(sizeof(lnode));
 		if (newnode == NULL)
@@ -1082,7 +1086,8 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 			newnode->s[i].type = UNUSED;
 			newnode->o[i].type = UNUSED;
 		}
-		enum rule_parse_result rc = nv_split(buf, newnode, lineno);
+		enum rule_parse_result rc = nv_split(l->sets, buf,
+						     newnode, lineno);
 		if (rc == RULE_PARSE_SKIP) {
 			free(newnode);
 			return 0;
@@ -1343,7 +1348,7 @@ static int check_subject(lnode *r, event_t *e)
 		// numbers -> multiple value
 		case AUID:
 		case SESSIONID: {
-			if (!check_int_attr_set(r->s[cnt].set,
+			if (!attr_set_check_int(r->s[cnt].set,
 						(int64_t)subj->uval))
 				return 0;
 			break;
@@ -1362,7 +1367,7 @@ static int check_subject(lnode *r, event_t *e)
 			break;
 		case PID:
 		case PPID: {
-			if (!check_int_attr_set(r->s[cnt].set,
+			if (!attr_set_check_int(r->s[cnt].set,
 						(int64_t)subj->pid))
 				return 0;
  			break;
@@ -1412,11 +1417,11 @@ static int check_subject(lnode *r, event_t *e)
 			 * Otherwise, fall back to exact string match semantics so
 			 * explicit paths in the set continue to work.
 			 */
-			if (check_str_attr_set(r->s[cnt].set, "untrusted") &&
+			if (attr_set_check_str(r->s[cnt].set, "untrusted") &&
 			    !is_subj_trusted(e))
 				break;
 
-			if (!check_str_attr_set(r->s[cnt].set, subj->str))
+			if (!attr_set_check_str(r->s[cnt].set, subj->str))
 				return 0;
 
 			break;
@@ -1428,7 +1433,7 @@ static int check_subject(lnode *r, event_t *e)
 			if (!subj->str)
 				break;
 
-			if (!check_str_attr_set(r->s[cnt].set, subj->str))
+			if (!attr_set_check_str(r->s[cnt].set, subj->str))
 				return 0;
 
 			break;
@@ -1442,16 +1447,16 @@ static int check_subject(lnode *r, event_t *e)
 				break;
 			}
 
-			if (check_str_attr_set(r->s[cnt].set, "execdirs"))
+			if (attr_set_check_str(r->s[cnt].set, "execdirs"))
 				if (check_dirs(1, subj->str))
 					macro_match = 1;
 
-			if (check_str_attr_set(r->s[cnt].set, "systemdirs"))
+			if (attr_set_check_str(r->s[cnt].set, "systemdirs"))
 				if (check_dirs(0, subj->str))
 					macro_match = 1;
 
 			// DEPRECATED
-			if (check_str_attr_set(r->s[cnt].set, "untrusted"))
+			if (attr_set_check_str(r->s[cnt].set, "untrusted"))
 				if (!is_subj_trusted(e))
 					macro_match = 1;
 
@@ -1464,7 +1469,7 @@ static int check_subject(lnode *r, event_t *e)
 
 			// check partial match (via strncmp)
 			// subdir test
-			if (!check_pstr_attr_set(r->s[cnt].set, subj->str))
+			if (!attr_set_check_pstr(r->s[cnt].set, subj->str))
 				return 0;
 
 			break;
@@ -1520,7 +1525,7 @@ static decision_t check_object(lnode *r, event_t *e)
 
 		case FTYPE: {
 
-			if (check_str_attr_set(r->o[cnt].set, "any"))
+			if (attr_set_check_str(r->o[cnt].set, "any"))
 				break;
 		}
 
@@ -1530,7 +1535,7 @@ static decision_t check_object(lnode *r, event_t *e)
 		  // skip if fall through
 		  if (type == PATH) {
 			if (r->s[cnt].type == EXE || r->s[cnt].type == EXE_DIR)
-				if (check_str_attr_set(r->s[cnt].set,
+				if (attr_set_check_str(r->s[cnt].set,
 						       "untrusted"))
 					if (is_obj_trusted(e))
 						return 0;
@@ -1549,7 +1554,7 @@ static decision_t check_object(lnode *r, event_t *e)
 				break;
 			}
 
-			if (!check_str_attr_set(r->o[cnt].set, obj->o))
+			if (!attr_set_check_str(r->o[cnt].set, obj->o))
 				return 0;
 
 			break;
@@ -1563,16 +1568,16 @@ static decision_t check_object(lnode *r, event_t *e)
 				break;
 			}
 
-			if (check_str_attr_set(r->o[cnt].set, "execdirs"))
+			if (attr_set_check_str(r->o[cnt].set, "execdirs"))
 				if (check_dirs(1, obj->o))
 					macro_match = 1;
 
-			if (check_str_attr_set(r->o[cnt].set, "systemdirs"))
+			if (attr_set_check_str(r->o[cnt].set, "systemdirs"))
 				if (check_dirs(0, obj->o))
 					macro_match = 1;
 
 			// DEPRECATED
-			if (check_str_attr_set(r->o[cnt].set, "untrusted"))
+			if (attr_set_check_str(r->o[cnt].set, "untrusted"))
 				if (!is_obj_trusted(e))
 					macro_match = 1;
 
@@ -1585,7 +1590,7 @@ static decision_t check_object(lnode *r, event_t *e)
 
 			// check partial match (via strncmp)
 			// subdir test
-			if (!check_pstr_attr_set(r->o[cnt].set, obj->o))
+			if (!attr_set_check_pstr(r->o[cnt].set, obj->o))
 				return 0;
 
 			break;
@@ -1650,75 +1655,6 @@ void rules_unsupport_audit(const llist *l)
 #endif
 }
 
-// Function iterates over rules and theirs subjects and objects
-// and it is setting direct pointer to set instead of
-// set index.
-// Rules are created with set index because internal set
-// array structure can be reallocated when it grows.
-// We can safely call this function once right  after
-// rules.conf was processed.
-void rules_regen_sets(llist *l)
-{
-	lnode *nextnode;
-	lnode *current = l->head;
-
-	while (current) {
-		unsigned int i;
-
-		nextnode=current->next;
-		i = 0;
-		while (i < current->s_count) {
-			int type = current->s[i].type;
-
-			if (type == ALL_SUBJ
-			    || type == SUBJ_TRUST
-			    || type == PATTERN) {
-				i++;
-				continue;
-			}
-
-			size_t index = current->s[i].gr_index;
-			attr_sets_entry_t * set = get_attr_set(index);
-
-			if (!set) {
-				i++;
-				continue;
-			}
-
-			current->s[i].set = set;
-
-			i++;
-		}
-
-		i = 0;
-		while (i < current->o_count) {
-			int type = current->o[i].type;
-
-			if (type == ALL_OBJ
-			    || type == OBJ_TRUST) {
-				i++;
-				continue;
-			}
-
-			size_t index = current->o[i].gr_index;
-			attr_sets_entry_t * set = get_attr_set(index);
-
-			if (!set) {
-				i++;
-				continue;
-			}
-
-			current->o[i].set = set;
-
-
-			i++;
-		}
-
-		current=nextnode;
-	}
-}
-
-
 void rules_clear(llist *l)
 {
 	lnode *nextnode;
@@ -1732,6 +1668,8 @@ void rules_clear(llist *l)
 	l->head = NULL;
 	l->cur = NULL;
 	l->cnt = 0;
+	attr_sets_destroy(l->sets);
+	l->sets = NULL;
 
 	proc_status_mask = 0;
 }

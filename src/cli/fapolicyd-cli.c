@@ -1222,13 +1222,6 @@ static int check_rules_file(const char *path)
 		return CLI_EXIT_INTERNAL;
 	}
 
-	// Initialize attribute sets (needed for %set parsing)
-	if (init_attr_sets()) {
-		fprintf(stderr, "Failed to initialize attribute sets\n");
-		fclose(f);
-		return CLI_EXIT_INTERNAL;
-	}
-
 	// Parse each line (same pattern as _load_rules in policy.c)
 	while ((line = get_line(f))) {
 		rc = rules_append(&temp_rules, line, lineno);
@@ -1244,7 +1237,6 @@ static int check_rules_file(const char *path)
 	unsigned cnt = temp_rules.cnt;
 	rules_clear(&temp_rules);
 	fclose(f);
-	destroy_attr_sets();
 
 	if (invalid)
 		return CLI_EXIT_RULE_FILTER;

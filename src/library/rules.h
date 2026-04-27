@@ -54,6 +54,7 @@ typedef struct {
   lnode *head;		// List head
   lnode *cur;		// Pointer to current node
   unsigned int cnt;	// How many items in this list
+  attr_sets_t *sets;	// Registry that owns rule attribute sets
 } llist;
 
 int rules_create(llist *l);
@@ -63,7 +64,6 @@ static inline lnode *rules_get_cur(const llist *l) { return l->cur; }
 int rules_append(llist *l, char *buf, unsigned int lineno) __wur;
 __attribute__((hot)) decision_t rule_evaluate(lnode *r, event_t *e);
 void rules_unsupport_audit(const llist *l);
-void rules_regen_sets(llist* l);
 void rules_clear(llist* l);
 unsigned int rules_get_proc_status_mask(void);
 

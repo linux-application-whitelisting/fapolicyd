@@ -51,14 +51,7 @@ typedef struct attr_sets_entry {
 	avl_tree_t tree;
 } attr_sets_entry_t;
 
-// variable size array
-typedef struct attr_sets {
-	// allocated size
-	size_t capacity;
-	size_t size;
-	size_t resize_factor;
-	attr_sets_entry_t * array;
-} attr_sets_t;
+typedef struct attr_sets attr_sets_t;
 
 typedef enum _types {
 		STRING = 1,
@@ -67,24 +60,24 @@ typedef enum _types {
 } DATA_TYPES;
 
 
-int init_attr_sets(void);
-attr_sets_entry_t * get_attr_set(const size_t index);
-int add_attr_set(const char * name, const int type, size_t * index);
-void destroy_attr_set(attr_sets_entry_t *set);
-void destroy_attr_sets(void);
-size_t search_attr_set_by_name(const char * name);
-attr_sets_entry_t *init_standalone_set(const int type);
+attr_sets_t *attr_sets_create(void);
+void attr_sets_destroy(attr_sets_t *sets);
+int attr_sets_add(attr_sets_t *sets, attr_sets_entry_t *set);
+attr_sets_entry_t *attr_sets_find(const attr_sets_t *sets, const char *name);
 
-int append_int_attr_set(attr_sets_entry_t *set, const int64_t num);
-int append_str_attr_set(attr_sets_entry_t * set, const char * str);
+attr_sets_entry_t *attr_set_create(const char *name, const int type);
+void attr_set_destroy(attr_sets_entry_t *set);
 
-int check_int_attr_set(attr_sets_entry_t *set, const int64_t num);
-int check_str_attr_set(attr_sets_entry_t * set, const char * str);
-int check_pstr_attr_set(attr_sets_entry_t * set, const char * str);
+int attr_set_append_int(attr_sets_entry_t *set, const int64_t num);
+int attr_set_append_str(attr_sets_entry_t *set, const char *str);
 
-bool is_attr_set_empty(attr_sets_entry_t *set);
+int attr_set_check_int(attr_sets_entry_t *set, const int64_t num);
+int attr_set_check_str(attr_sets_entry_t *set, const char *str);
+int attr_set_check_pstr(attr_sets_entry_t *set, const char *str);
 
-void print_attr_sets(void);
-void print_attr_set(attr_sets_entry_t * set);
+bool attr_set_empty(attr_sets_entry_t *set);
+
+void attr_sets_print(const attr_sets_t *sets);
+void attr_set_print(attr_sets_entry_t *set);
 
 #endif // ATTR_SETS_H

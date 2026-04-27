@@ -77,6 +77,12 @@ static const struct err_case errors[] = {
 	"cannot assign %strs which has STRING type to gid (UNSIGNED expected)"
 	},
 	{
+	{ "%dupe=1,2",
+	  "%dupe=3,4",
+	  NULL },
+	"set dupe was already defined!"
+	},
+	{
 	{ "allow auid=1000 uid=-1 path=/bin/ls", NULL },
 	"negative value -1 not allowed for uid"
 	},
@@ -262,11 +268,9 @@ int main(void)
 	set_message_mode(MSG_STDERR, DBG_NO);
 
 	/* positive path using fixture file */
-	if (init_attr_sets())
-		error(1, 0, "init_attr_sets failed");
-	rules_create(&l);
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
 	load_fixture(VALID_RULES, &l);
-	rules_regen_sets(&l);
 
 	prep_event(&e, 1000, "/bin/ls");
 	if (evaluate(&l, &e) != ALLOW)
@@ -294,12 +298,10 @@ int main(void)
 	free_event(&e);
 
 	rules_clear(&l);
-	destroy_attr_sets();
 
 	/* macro keyword matching on dir attributes */
-	if (init_attr_sets())
-		error(1, 0, "init_attr_sets failed");
-	rules_create(&l);
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
 
 	rc = append_capture(&l, "allow perm=any dir=execdirs : all", 1,
 		err, sizeof(err));
@@ -310,8 +312,6 @@ int main(void)
 		err, sizeof(err));
 	if (rc)
 		error(1, 0, "systemdirs object rule parse failed: %s", err);
-
-	rules_regen_sets(&l);
 
 	prep_macro_event(&e, "/usr/bin/bash", "/tmp/xx");
 	if (evaluate(&l, &e) != ALLOW)
@@ -329,31 +329,40 @@ int main(void)
 	free_event(&e);
 
 	rules_clear(&l);
-	destroy_attr_sets();
+
+	/* duplicate inline string values should remain harmless */
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+
+	rc = append_capture(&l,
+		"allow perm=any all : path=/bin/ls,/bin/ls", 1,
+		err, sizeof(err));
+	if (rc)
+		error(1, 0, "inline duplicate string rejected: %s", err);
+
+	rules_clear(&l);
 
 	/* negative parsing scenarios */
 	for (i = 0; i < sizeof(errors)/sizeof(errors[0]); i++) {
 		const struct err_case *c = &errors[i];
 
-		if (init_attr_sets())
-			error(1, 0, "init_attr_sets failed");
-		rules_create(&l);
+		if (rules_create(&l))
+			error(1, 0, "rules_create failed");
 
 		for (j = 0; c->lines[j]; j++) {
 			rc = append_capture(&l, c->lines[j], j + 1,
 				err, sizeof(err));
-			if (c->lines[j + 1] == NULL) {
-				if (rc == 0)
-					error(1, 0, "error case %u accepted", i);
-			if (strstr(err, c->expect) == NULL)
-				error(1, 0, "case %u message: %s", i, err);
-			} else if (rc) {
-				error(1, 0, "setup line %u failed: %s", j, err);
-			}
+				if (c->lines[j + 1] == NULL) {
+					if (rc == 0)
+						error(1, 0, "error case %u accepted", i);
+					if (strstr(err, c->expect) == NULL)
+						error(1, 0, "case %u message: %s", i, err);
+				} else if (rc) {
+					error(1, 0, "setup line %u failed: %s", j, err);
+				}
 		}
 
 		rules_clear(&l);
-		destroy_attr_sets();
 	}
 
 	return 0;

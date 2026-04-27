@@ -23,7 +23,6 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
-#include "attr-sets.h"
 #include "config.h"
 #include <stdbool.h>
 #include <stdio.h>
@@ -298,8 +297,6 @@ static int _load_rules(const conf_t *_config, FILE *f)
 	}
 	free(line);
 
-	rules_regen_sets(&rules);
-
 	if (rules.cnt == 0) {
 		msg(LOG_INFO, "No rules in file - exiting");
 		return 1;
@@ -316,20 +313,15 @@ static int _load_rules(const conf_t *_config, FILE *f)
 
 int load_rules(const conf_t *_config)
 {
-	if (init_attr_sets())
-		return 1;
-
 	FILE * f = open_file();
-	if (f == NULL) {
-		destroy_attr_sets();
+	if (f == NULL)
 		return 1;
-	}
 
 	int res = _load_rules(_config, f);
 	fclose(f);
 
 	if (res) {
-		destroy_attr_sets();
+		rules_clear(&rules);
 		return 1;
 	}
 
@@ -347,7 +339,6 @@ void destroy_rules(void)
 		i++;
 	}
 
-	destroy_attr_sets();
 	if (stop) {
 		free(working_buffer);
 		working_buffer = NULL;
@@ -383,13 +374,14 @@ int do_reload_rules(const conf_t *_config)
 {
 	destroy_rules();
 
-	if (init_attr_sets())
-		return 1;
-
-	_load_rules(_config, ff);
+	int rc = _load_rules(_config, ff);
 
 	fclose(ff);
 	ff = NULL;
+	if (rc) {
+		rules_clear(&rules);
+		return 1;
+	}
 	return 0;
 }
 

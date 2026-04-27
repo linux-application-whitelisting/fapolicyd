@@ -286,7 +286,7 @@ static void append_group_from_text(attr_sets_entry_t *groups, const char *text)
 	if (errno || end == text || *end != '\0' || value > UINT_MAX)
 		return;
 
-	append_int_attr_set(groups, (int64_t)value);
+	attr_set_append_int(groups, (int64_t)value);
 }
 
 /*
@@ -353,26 +353,22 @@ int read_proc_status_fd(int fd, unsigned int fields,
 	// Initialize info struct
 	if (fields & PROC_STAT_UID) {
 		if (info->uid) {
-			destroy_attr_set(info->uid);
-			free(info->uid);
+			attr_set_destroy(info->uid);
 			info->uid = NULL;
 		}
-		info->uid = init_standalone_set(UNSIGNED);
+		info->uid = attr_set_create(NULL, UNSIGNED);
 		if (info->uid == NULL)
 			return -1;
 	}
 	if (fields & PROC_STAT_GID) {
 		if (info->groups) {
-			destroy_attr_set(info->groups);
-			free(info->groups);
+			attr_set_destroy(info->groups);
 			info->groups = NULL;
-
 		}
-		info->groups = init_standalone_set(UNSIGNED);
+		info->groups = attr_set_create(NULL, UNSIGNED);
 		if (info->groups == NULL) {
 			if (fields & PROC_STAT_UID) {
-				destroy_attr_set(info->uid);
-				free(info->uid);
+				attr_set_destroy(info->uid);
 				info->uid = NULL;
 			}
 			return -1;
@@ -387,13 +383,11 @@ int read_proc_status_fd(int fd, unsigned int fields,
 
 	if (fd < 0) {
 		if (fields & PROC_STAT_UID) {
-			destroy_attr_set(info->uid);
-			free(info->uid);
+			attr_set_destroy(info->uid);
 			info->uid = NULL;
 		}
 		if (fields & PROC_STAT_GID) {
-			destroy_attr_set(info->groups);
-			free(info->groups);
+			attr_set_destroy(info->groups);
 			info->groups = NULL;
 		}
 		return -1;
@@ -453,7 +447,7 @@ int read_proc_status_fd(int fd, unsigned int fields,
 			 * possible identities during matching.
 			 */
 			if ((fields & PROC_STAT_UID) &&
-			    is_attr_set_empty(info->uid) &&
+			    attr_set_empty(info->uid) &&
 			    memcmp(buf, "Uid:", 4) == 0) {
 				unsigned int real_uid = 0, eff_uid = 0;
 				unsigned int saved_uid = 0, fs_uid = 0;
@@ -463,20 +457,20 @@ int read_proc_status_fd(int fd, unsigned int fields,
 						 &saved_uid, &fs_uid);
 				if (info->uid) {
 					if (fields_read >= 1)
-						append_int_attr_set(info->uid,
+						attr_set_append_int(info->uid,
 							(int64_t)real_uid);
 					if (fields_read >= 2)
-						append_int_attr_set(info->uid,
+						attr_set_append_int(info->uid,
 							(int64_t)eff_uid);
 					if (fields_read >= 4)
-						append_int_attr_set(info->uid,
+						attr_set_append_int(info->uid,
 							(int64_t)fs_uid);
 				}
 				found |= PROC_STAT_UID;
 				continue;
 			}
 			if ((fields & PROC_STAT_GID) &&
-			    is_attr_set_empty(info->groups) &&
+			    attr_set_empty(info->groups) &&
 			    memcmp(buf, "Gid:", 4) == 0) {
 				unsigned int real_gid = 0, eff_gid = 0;
 				unsigned int saved_gid = 0, fs_gid = 0;
@@ -486,13 +480,13 @@ int read_proc_status_fd(int fd, unsigned int fields,
 						&saved_gid, &fs_gid);
 				if (info->groups) {
 					if (fields_read >= 1)
-					    append_int_attr_set(info->groups,
+					    attr_set_append_int(info->groups,
 							(int64_t)real_gid);
 					if (fields_read >= 2)
-					    append_int_attr_set(info->groups,
+					    attr_set_append_int(info->groups,
 							(int64_t)eff_gid);
 					if (fields_read >= 4)
-					    append_int_attr_set(info->groups,
+					    attr_set_append_int(info->groups,
 							(int64_t)fs_gid);
 				}
 				// Not marking found - wait for supplemental

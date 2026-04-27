@@ -16,7 +16,7 @@
 static void require_uid(attr_sets_entry_t *set, unsigned int uid,
 			const char *label)
 {
-	if (!check_int_attr_set(set, (int64_t)uid))
+	if (!attr_set_check_int(set, (int64_t)uid))
 		error(1, 0, "%s uid %u not found", label, uid);
 }
 
@@ -78,8 +78,7 @@ int main(void)
 	if (!saw_uid_line)
 		error(1, 0, "Uid line not found in /proc/self/status");
 
-	destroy_attr_set(uids);
-	free(uids);
+	attr_set_destroy(uids);
 
 	return 0;
 }

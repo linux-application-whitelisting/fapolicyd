@@ -151,11 +151,11 @@ void subject_clear(s_array* a)
 			continue;
 		if (current->type == GID || current->type == UID) {
 			/*
-			 * GID/UID attributes borrow dynamically allocated
-			 * sets; release both the set contents and container.
+			 * GID/UID attributes own dynamically allocated
+			 * sets; attr_set_destroy() releases contents and
+			 * container.
 			 */
-			destroy_attr_set(current->set);
-			free(current->set);
+			attr_set_destroy(current->set);
 		} else if (current->type >= COMM)
 			free(current->str);
 		free(current);
@@ -181,11 +181,11 @@ void subject_reset(s_array *a, subject_type_t t)
 			return;
 		if (current->type == GID || current->type == UID) {
 			/*
-			 * GID/UID attributes borrow dynamically allocated
-			 * sets; release both the set contents and container.
+			 * GID/UID attributes own dynamically allocated
+			 * sets; attr_set_destroy() releases contents and
+			 * container.
 			 */
-			destroy_attr_set(current->set);
-			free(current->set);
+			attr_set_destroy(current->set);
 		} else if (current->type >= COMM)
 			free(current->str);
 		free(current);
@@ -194,4 +194,3 @@ void subject_reset(s_array *a, subject_type_t t)
 		sanity_check_array(a, "subject_reset2");
 	}
 }
-

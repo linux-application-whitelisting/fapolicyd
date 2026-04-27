@@ -19,7 +19,7 @@
 static void require_group(attr_sets_entry_t *set, unsigned int gid,
 			  const char *label)
 {
-	if (!check_int_attr_set(set, (int64_t)gid))
+	if (!attr_set_check_int(set, (int64_t)gid))
 		error(1, 0, "%s group %u not found", label, gid);
 }
 
@@ -88,14 +88,13 @@ static void check_split_groups_status(void)
 		error(1, 0, "Synthetic gid set not available");
 
 	for (i = 0; i < sizeof(gid_values) / sizeof(gid_values[0]); i++) {
-		if (!check_int_attr_set(groups, (int64_t)gid_values[i])) {
+		if (!attr_set_check_int(groups, (int64_t)gid_values[i])) {
 			error(1, 0, "Synthetic group %u not found",
 				gid_values[i]);
 		}
 	}
 
-	destroy_attr_set(groups);
-	free(groups);
+	attr_set_destroy(groups);
 }
 
 /*
@@ -170,7 +169,7 @@ int main(void)
 		if (gids[i] == gid)
 			check_intersect = 1;
 		printf("Checking for %u...", (unsigned int)gids[i]);
-		res = check_int_attr_set(groups, (int64_t)gids[i]);
+		res = attr_set_check_int(groups, (int64_t)gids[i]);
 		if (!res)
 			error(1, 0, "Group %u not found", (unsigned int)gids[i]);
 		printf("found\n");
@@ -178,37 +177,35 @@ int main(void)
 
 	missing_gid = 0;
 	for (; missing_gid < UINT_MAX; missing_gid++) {
-		if (!check_int_attr_set(groups, (int64_t)missing_gid))
+		if (!attr_set_check_int(groups, (int64_t)missing_gid))
 			break;
 	}
 
 	if (missing_gid == UINT_MAX)
 		error(1, 0, "Unable to determine missing group for test");
 
-	res = check_int_attr_set(groups, (int64_t)missing_gid);
+	res = attr_set_check_int(groups, (int64_t)missing_gid);
 	if (res)
 		error(1, 0, "Found unexpected group");
 
 	if (check_intersect) {
 		printf("Doing Negative AVL intersection\n");
-		attr_sets_entry_t *g = init_standalone_set(UNSIGNED);
-		append_int_attr_set(g, (int64_t)missing_gid);
-		append_int_attr_set(g, (int64_t)(missing_gid + 1));
+		attr_sets_entry_t *g = attr_set_create(NULL, UNSIGNED);
+		attr_set_append_int(g, (int64_t)missing_gid);
+		attr_set_append_int(g, (int64_t)(missing_gid + 1));
 		res = avl_intersection(&(g->tree), &(groups->tree));
 		if (res)
 			error(1, 0, "Negative AVL intersection failed");
 
 		printf("Doing Positive AVL intersection\n");
-		append_int_attr_set(g, (int64_t)gid);
+		attr_set_append_int(g, (int64_t)gid);
 		res = avl_intersection(&(g->tree), &(groups->tree));
 		if (!res)
 			error(1, 0, "Positive AVL intersection failed");
-		destroy_attr_set(g);
-		free(g);
+		attr_set_destroy(g);
 	}
 
-	destroy_attr_set(groups);
-	free(groups);
+	attr_set_destroy(groups);
 
 	return 0;
 }
