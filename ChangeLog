@@ -3,6 +3,7 @@
 - Add fapolicyd-cli --check-rules to validate rules
 - Add fapolicyd-perf-test for QE purposes
 - Make fapolicyd rule reload transactional
+- Detect and handle FAN_Q_OVERFLOW in fapolicyd
 
 1.4.5
 - Inform the admin symlinks were skipped when adding paths

@@ -11,5 +11,6 @@
 #include "conf.h"
 
 atomic_bool stop;
+atomic_bool run_stats;
 unsigned int debug_mode;
 conf_t config;

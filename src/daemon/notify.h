@@ -26,6 +26,7 @@
 #define NOTIFY_HEADER
 
 #include <stdio.h>
+#include <sys/fanotify.h>
 #include "conf.h"
 #include "mounts.h"
 
@@ -35,6 +36,8 @@ void unmark_fanotify(mlist *m);
 void shutdown_fanotify(mlist *m);
 void decision_report(FILE *f);
 void handle_events(void);
+int handle_kernel_event(const struct fanotify_event_metadata *metadata);
+unsigned long getKernelQueueOverflow(void);
 void nudge_queue(void);
 
 #endif

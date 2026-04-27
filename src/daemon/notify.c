@@ -38,6 +38,7 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <ctype.h>
+#include <time.h>
 #include "conf.h"
 #include "policy.h"
 #include "event.h"
@@ -48,6 +49,11 @@
 #include "paths.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192
+#define KERNEL_OVERFLOW_LOG_INTERVAL 60
+
+#ifndef FAN_Q_OVERFLOW
+#define FAN_Q_OVERFLOW		0x00004000
+#endif
 
 // External variables
 extern atomic_bool stop, run_stats;
@@ -64,6 +70,8 @@ static int rpt_timer_fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
 static unsigned int rpt_interval;
+static atomic_ulong kernel_queue_overflow;
+static atomic_long kernel_queue_overflow_last_log;
 
 // External functions
 void do_stat_report(FILE *f, int shutdown);
@@ -71,6 +79,83 @@ void do_stat_report(FILE *f, int shutdown);
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
+void nudge_queue(void);
+
+/*
+ * getKernelQueueOverflow - return kernel fanotify overflow count.
+ * Returns the number of FAN_Q_OVERFLOW events reported by the kernel.
+ */
+unsigned long getKernelQueueOverflow(void)
+{
+	return atomic_load_explicit(&kernel_queue_overflow,
+				    memory_order_relaxed);
+}
+
+/*
+ * kernel_overflow_should_log - rate limit kernel overflow diagnostics.
+ * @now: current wall clock time.
+ * Returns 1 if a critical log should be emitted, 0 otherwise.
+ */
+static int kernel_overflow_should_log(time_t now)
+{
+	long current = (long)now;
+	long last = atomic_load_explicit(&kernel_queue_overflow_last_log,
+					 memory_order_relaxed);
+
+	while (last == 0 || current < last ||
+	       current - last >= KERNEL_OVERFLOW_LOG_INTERVAL) {
+		if (atomic_compare_exchange_weak_explicit(
+			    &kernel_queue_overflow_last_log, &last, current,
+			    memory_order_relaxed, memory_order_relaxed))
+			return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * fanotify_failure_action - run the daemon-local failure response.
+ * @why: diagnostic name for the failure condition.
+ * Returns nothing.
+ */
+static void fanotify_failure_action(const char *why)
+{
+	(void)why;
+
+	/*
+	 * This is a placeholder until configurable failure actions are
+	 * available, make the failure visible through the regular status
+	 * path immediately for now.
+	 */
+	run_stats = true;
+	nudge_queue();
+}
+
+/*
+ * handle_kernel_event - process fanotify metadata without a file descriptor.
+ * @metadata: fanotify event metadata from the kernel.
+ * Returns 1 when the event was consumed, 0 when normal event handling should
+ * continue.
+ */
+int handle_kernel_event(const struct fanotify_event_metadata *metadata)
+{
+	unsigned long total;
+	time_t now;
+
+	if ((metadata->mask & FAN_Q_OVERFLOW) == 0)
+		return 0;
+
+	total = atomic_fetch_add_explicit(&kernel_queue_overflow, 1,
+					  memory_order_relaxed) + 1;
+	now = time(NULL);
+	if (now == (time_t)-1 || kernel_overflow_should_log(now))
+		msg(LOG_CRIT,
+		    "Kernel fanotify queue overflow; events were lost "
+		    "(kernel_queue_overflow=%lu)", total);
+
+	fanotify_failure_action("kernel_queue_overflow");
+	return 1;
+}
 
 /*
  * escape_path_for_log - return a shell-escaped path for logging.
@@ -371,6 +456,7 @@ void decision_report(FILE *f)
 		return;
 
 	// Report results
+	fprintf(f, "kernel_queue_overflow: %lu\n", getKernelQueueOverflow());
 	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
 	fprintf(f, "Denied accesses: %lu\n", getDenied());
 }
@@ -586,6 +672,11 @@ void handle_events(void)
 		if (metadata->vers != FANOTIFY_METADATA_VERSION) {
 			msg(LOG_ERR, "Mismatch of fanotify metadata version");
 			exit(1);
+		}
+
+		if (handle_kernel_event(metadata)) {
+			metadata = FAN_EVENT_NEXT(metadata, len);
+			continue;
 		}
 
 		if (metadata->fd >= 0) {
