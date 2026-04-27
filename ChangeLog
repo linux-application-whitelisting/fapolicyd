@@ -1,5 +1,8 @@
 1.4.6
-
+- Increase the line length of config files (Renaud Métrich)
+- Add fapolicyd-cli --check-rules to validate rules
+- Add fapolicyd-perf-test for QE purposes
+- Make fapolicyd rule reload transactional
 
 1.4.5
 - Inform the admin symlinks were skipped when adding paths
