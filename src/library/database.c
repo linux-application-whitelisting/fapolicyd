@@ -2109,7 +2109,9 @@ static void *update_thread_main(void *arg)
 			      strerror(errno));
 			} else {
 				lock_rule();
-				do_reload_rules(config);
+				if (do_reload_rules(config))
+					msg(LOG_ERR, "Rule reload failed; "
+					    "previous policy preserved");
 				unlock_rule();
 			}
 		}
@@ -2233,8 +2235,10 @@ static void *update_thread_main(void *arg)
 								strerror(errno));
 							} else {
 								lock_rule();
-								do_reload_rules(
-									config);
+								if (do_reload_rules(config))
+									msg(LOG_ERR,
+								    "Rule reload failed; "
+								    "previous policy preserved");
 								unlock_rule();
 							}
 

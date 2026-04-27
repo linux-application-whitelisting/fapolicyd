@@ -51,7 +51,7 @@ int compare_file_infos(const struct file_info *p1, const struct file_info *p2);
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf);
 uint32_t gather_elf(int fd, off_t size);
 void msg(int priority, const char *fmt, ...);
-unsigned int rules_get_proc_status_mask(void);
+unsigned int policy_get_rules_proc_status_mask(void);
 unsigned int policy_get_syslog_proc_status_mask(void);
 int read_proc_status(pid_t pid, unsigned int fields, struct proc_status_info *info);
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf);
@@ -333,7 +333,7 @@ void msg(int priority, const char *fmt, ...)
 }
 
 /* Return zero to disable reading of /proc status fields during tests. */
-unsigned int rules_get_proc_status_mask(void)
+unsigned int policy_get_rules_proc_status_mask(void)
 {
 	return 0;
 }
@@ -691,4 +691,3 @@ int main(void)
 
 	return 0;
 }
-

@@ -55,6 +55,7 @@ typedef struct {
   lnode *cur;		// Pointer to current node
   unsigned int cnt;	// How many items in this list
   attr_sets_t *sets;	// Registry that owns rule attribute sets
+  unsigned int proc_status_mask; // /proc status fields needed by rules
 } llist;
 
 int rules_create(llist *l);
@@ -65,6 +66,6 @@ int rules_append(llist *l, char *buf, unsigned int lineno) __wur;
 __attribute__((hot)) decision_t rule_evaluate(lnode *r, event_t *e);
 void rules_unsupport_audit(const llist *l);
 void rules_clear(llist* l);
-unsigned int rules_get_proc_status_mask(void);
+unsigned int rules_get_proc_status_mask(const llist *l);
 
 #endif

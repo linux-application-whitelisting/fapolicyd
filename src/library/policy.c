@@ -54,11 +54,39 @@
 #define NGID_LIMIT		32	// Limit buffer size allocated for
 					// subject to not waste memory
 
-static llist rules;
+/*
+ * policy_snapshot - coherent policy generation used for decisions
+ *
+ * The rule list owns parsed rule nodes and attribute sets. The same snapshot
+ * also owns syslog fields, proc-status masks, the rule count, and the hashed
+ * rule-file identity so all parser side effects publish as one unit.
+ */
+struct policy_snapshot {
+	llist rules;
+	nvlist_t fields[MAX_SYSLOG_FIELDS];
+	unsigned int num_fields;
+	unsigned int rules_proc_status_mask;
+	unsigned int syslog_proc_status_mask;
+	unsigned int rule_count;
+	char *rule_file_identity;
+};
+
+/*
+ * active_policy - currently published policy generation
+ *
+ * Evaluation and reload both run under the rule lock, so pointer replacement
+ * and old-snapshot destruction are serialized with policy readers.
+ */
+static struct policy_snapshot *active_policy;
 static atomic_ulong allowed = 0, denied = 0;
-static nvlist_t fields[MAX_SYSLOG_FIELDS];
-static unsigned int num_fields;
-static unsigned int syslog_proc_status_mask;
+/*
+ * active_*_proc_status_mask - atomic copies of active snapshot masks
+ *
+ * Event construction reads these without taking the rule lock so proc-status
+ * collection can request fields required by the active rules and log format.
+ */
+static atomic_uint active_rules_proc_status_mask;
+static atomic_uint active_syslog_proc_status_mask;
 
 extern atomic_bool stop;
 atomic_bool reload_rules = false;
@@ -104,25 +132,105 @@ static int parsing_obj;
 static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
 	__attr_access((__write_only__, 1, 3))
 	__attr_access((__read_only__, 2, 3));
-static int lookup_field(const char *ptr)
+
+/*
+ * free_syslog_fields - release syslog format fields in a policy snapshot
+ * @policy: snapshot whose syslog field array should be reset.
+ * Returns nothing.
+ */
+static void free_syslog_fields(struct policy_snapshot *policy)
+{
+	unsigned int i = 0;
+
+	while (i < policy->num_fields) {
+		free((void *)policy->fields[i].name);
+		policy->fields[i].name = NULL;
+		i++;
+	}
+
+	policy->num_fields = 0;
+	policy->syslog_proc_status_mask = 0;
+}
+
+/*
+ * policy_snapshot_destroy - release one policy snapshot
+ * @policy: snapshot to destroy, or NULL.
+ * Returns nothing.
+ */
+static void policy_snapshot_destroy(struct policy_snapshot *policy)
+{
+	if (!policy)
+		return;
+
+	rules_clear(&policy->rules);
+	free_syslog_fields(policy);
+	free(policy->rule_file_identity);
+	free(policy);
+}
+
+/*
+ * policy_snapshot_create - allocate an unpublished policy snapshot
+ * @identity: optional rule file identity string, transferred to the snapshot
+ *
+ * The caller builds rules and syslog fields in this private object. It is
+ * only installed as the active policy after every parser stage succeeds.
+ *
+ * Returns: snapshot pointer on success, NULL on allocation failure.
+ */
+static struct policy_snapshot *policy_snapshot_create(char *identity)
+{
+	struct policy_snapshot *policy = calloc(1, sizeof(*policy));
+
+	if (!policy) {
+		free(identity);
+		return NULL;
+	}
+
+	if (rules_create(&policy->rules)) {
+		free(identity);
+		free(policy);
+		return NULL;
+	}
+
+	policy->rule_file_identity = identity;
+	return policy;
+}
+
+/*
+ * add_syslog_field - append one parsed syslog format field
+ * @policy: candidate policy snapshot receiving the field.
+ * @name: field name to copy into the snapshot.
+ * @item: field identifier used when formatting policy logs.
+ * Returns 1 on success, 0 on allocation or capacity failure.
+ */
+static int add_syslog_field(struct policy_snapshot *policy, const char *name,
+			    int item)
+{
+	if (policy->num_fields >= MAX_SYSLOG_FIELDS)
+		return 0;
+
+	policy->fields[policy->num_fields].name = strdup(name);
+	if (!policy->fields[policy->num_fields].name) {
+		msg(LOG_ERR, "No memory for syslog_format field %s", name);
+		return 0;
+	}
+
+	policy->fields[policy->num_fields].item = item;
+	policy->num_fields++;
+	return 1;
+}
+
+static int lookup_field(struct policy_snapshot *policy, const char *ptr)
 {
 	if (strcmp("rule", ptr) == 0) {
-		fields[num_fields].name = strdup(ptr);
-		fields[num_fields].item = F_RULE;
-		goto success;
+		return add_syslog_field(policy, ptr, F_RULE);
 	} else if (strcmp("dec", ptr) == 0) {
-		fields[num_fields].name = strdup(ptr);
-		fields[num_fields].item = F_DECISION;
-		goto success;
+		return add_syslog_field(policy, ptr, F_DECISION);
 	} else if (strcmp("perm", ptr) == 0) {
-		fields[num_fields].name = strdup(ptr);
-		fields[num_fields].item = F_PERM;
-		goto success;
+		return add_syslog_field(policy, ptr, F_PERM);
 	} else if (strcmp(":", ptr) == 0) {
-		fields[num_fields].name = strdup(ptr);
-		fields[num_fields].item = F_COLON;
 		parsing_obj = 1;
-		goto success;
+		return add_syslog_field(policy, ptr, F_COLON);
 	}
 
 	if (parsing_obj == 0) {
@@ -138,23 +246,25 @@ static int lookup_field(const char *ptr)
 				// them all at once later.
 				switch (ret_val) {
 				case UID:
-				    syslog_proc_status_mask |= PROC_STAT_UID;
+				    policy->syslog_proc_status_mask |=
+					    PROC_STAT_UID;
 				    break;
 				case PPID:
-				    syslog_proc_status_mask |= PROC_STAT_PPID;
+				    policy->syslog_proc_status_mask |=
+					    PROC_STAT_PPID;
 				    break;
 				case GID:
-				    syslog_proc_status_mask |= PROC_STAT_GID;
+				    policy->syslog_proc_status_mask |=
+					    PROC_STAT_GID;
 				    break;
 				case COMM:
-				    syslog_proc_status_mask |= PROC_STAT_COMM;
+				    policy->syslog_proc_status_mask |=
+					    PROC_STAT_COMM;
 				    break;
 				default:
 				    break;
 				}
-				fields[num_fields].name = strdup(ptr);
-				fields[num_fields].item = ret_val;
-				goto success;
+				return add_syslog_field(policy, ptr, ret_val);
 			}
 		}
 	} else {
@@ -164,40 +274,44 @@ static int lookup_field(const char *ptr)
 				msg(LOG_ERR,
 				    "%s cannot be used in syslog_format", ptr);
 			} else {
-				fields[num_fields].name = strdup(ptr);
-				fields[num_fields].item = ret_val;
-				goto success;
+				return add_syslog_field(policy, ptr, ret_val);
 			}
 		}
 	}
 
 	return 0;
-success:
-	num_fields++;
-	return 1;
 }
 
 
 // This function returns 1 on success, 0 on failure
-static int parse_syslog_format(const char *syslog_format)
+static int parse_syslog_format(struct policy_snapshot *policy,
+			       const char *syslog_format)
 {
 	char *ptr, *saved, *tformat;
 	int rc = 1;
+
+	if (!syslog_format) {
+		msg(LOG_ERR, "syslog_format is not configured");
+		return 0;
+	}
 
 	if (strchr(syslog_format, ':') == NULL) {
 		msg(LOG_ERR, "syslog_format does not have a ':'");
 		return 0;
 	}
 
-	num_fields = 0;
+	free_syslog_fields(policy);
 	parsing_obj = 0;
-	syslog_proc_status_mask = 0;
 	tformat = strdup(syslog_format);
+	if (!tformat) {
+		msg(LOG_ERR, "No memory for syslog_format");
+		return 0;
+	}
 
 	// Must be delimited by comma
 	ptr = strtok_r(tformat, ",", &saved);
-	while (ptr && rc && num_fields < MAX_SYSLOG_FIELDS) {
-		rc = lookup_field(ptr);
+	while (ptr && rc && policy->num_fields < MAX_SYSLOG_FIELDS) {
+		rc = lookup_field(policy, ptr);
 		if (rc == 0)
 			msg(LOG_ERR, "Field %s invalid for syslog_format", ptr);
 		ptr = strtok_r(NULL, ",", &saved);
@@ -229,10 +343,14 @@ static const char *dec_val_to_name(unsigned int v)
 	return NULL;
 }
 
-static FILE *open_file(void)
+static FILE *open_file(char **identity)
 {
 	int fd;
 	FILE *f;
+
+	if (identity)
+		*identity = NULL;
+
 	// Now open the file and load them one by one. We default to
 	// opening the old file first in case there are both
 	fd = open(OLD_RULES_FILE, O_NOFOLLOW|O_RDONLY);
@@ -255,8 +373,10 @@ static FILE *open_file(void)
 
 	char *sha_buf = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_SHA256);
 	if (sha_buf) {
-		msg(LOG_INFO, "Ruleset identity: %s", sha_buf);
-		free(sha_buf);
+		if (identity)
+			*identity = sha_buf;
+		else
+			free(sha_buf);
 	} else {
 		msg(LOG_WARNING, "Failed to hash rule identity %s",
 		    strerror(errno));
@@ -265,19 +385,85 @@ static FILE *open_file(void)
 	f = fdopen(fd, "r");
 	if (f == NULL) {
 		msg(LOG_ERR, "Error - fdopen failed (%s)", strerror(errno));
+		free(identity ? *identity : NULL);
+		if (identity)
+			*identity = NULL;
+		close(fd);
 	}
 
 	return f;
 }
 
-// Returns 0 on success and 1 on error
-static int _load_rules(const conf_t *_config, FILE *f)
+/*
+ * log_policy_update_failure - report an unsuccessful policy update
+ * @void: no arguments are required.
+ * Returns nothing.
+ */
+static void log_policy_update_failure(void)
+{
+	if (active_policy)
+		msg(LOG_ERR, "Daemon configuration update failed; "
+		    "previous policy preserved");
+	else
+		msg(LOG_ERR, "Daemon configuration update failed; "
+		    "no policy installed");
+}
+
+/*
+ * publish_policy_snapshot - install a fully validated policy snapshot
+ * @policy: candidate snapshot built by build_policy_snapshot().
+ * Returns nothing.
+ */
+static void publish_policy_snapshot(struct policy_snapshot *policy)
+{
+	struct policy_snapshot *old = active_policy;
+
+	policy->rule_count = policy->rules.cnt;
+	policy->rules_proc_status_mask =
+		rules_get_proc_status_mask(&policy->rules);
+
+	/*
+	 * Transaction point: after this assignment, new decisions use the
+	 * candidate policy. Everything before this must be able to fail while
+	 * leaving the old active_policy untouched.
+	 */
+	active_policy = policy;
+	atomic_store_explicit(&active_rules_proc_status_mask,
+			      policy->rules_proc_status_mask,
+			      memory_order_release);
+	atomic_store_explicit(&active_syslog_proc_status_mask,
+			      policy->syslog_proc_status_mask,
+			      memory_order_release);
+
+	if (policy->rule_file_identity)
+		msg(LOG_INFO, "Ruleset identity: %s",
+		    policy->rule_file_identity);
+	msg(LOG_INFO, "Daemon rules updated");
+
+	policy_snapshot_destroy(old);
+}
+
+/*
+ * build_policy_snapshot - parse rules and syslog fields into a candidate
+ * @_config: daemon configuration containing the syslog format.
+ * @f: already opened rule file stream.
+ * @identity: optional rule-file identity string consumed by the candidate.
+ * @out: receives the validated snapshot on success.
+ *
+ * Returns 0 on success, 1 on parser, read, or allocation failure. On failure,
+ * the active policy is not changed and @identity has been consumed.
+ */
+static int build_policy_snapshot(const conf_t *_config, FILE *f,
+				 char *identity,
+				 struct policy_snapshot **out)
 {
 	int rc, lineno = 1;
 	char *line = NULL;
 	size_t len = 0;
+	struct policy_snapshot *policy = policy_snapshot_create(identity);
 
-	if (rules_create(&rules))
+	*out = NULL;
+	if (!policy)
 		return 1;
 
 
@@ -288,56 +474,98 @@ static int _load_rules(const conf_t *_config, FILE *f)
 		if (ptr)
 			*ptr = 0;
 		msg(LOG_DEBUG, "%s", line);
-		rc = rules_append(&rules, line, lineno);
+		rc = rules_append(&policy->rules, line, lineno);
 		if (rc) {
 			free(line);
+			policy_snapshot_destroy(policy);
 			return 1;
 		}
 		lineno++;
 	}
 	free(line);
 
-	if (rules.cnt == 0) {
-		msg(LOG_INFO, "No rules in file - exiting");
+	if (ferror(f)) {
+		msg(LOG_ERR, "Error reading rules file (%s)",
+		    strerror(errno));
+		policy_snapshot_destroy(policy);
 		return 1;
-	} else {
-		msg(LOG_DEBUG, "Loaded %u rules", rules.cnt);
 	}
 
-	rc = parse_syslog_format(_config->syslog_format);
-	if (!rc || num_fields == 0)
+	if (policy->rules.cnt == 0) {
+		msg(LOG_INFO, "No rules in file - exiting");
+		policy_snapshot_destroy(policy);
 		return 1;
+	} else {
+		msg(LOG_DEBUG, "Loaded %u rules", policy->rules.cnt);
+	}
 
+	rc = parse_syslog_format(policy, _config->syslog_format);
+	if (!rc || policy->num_fields == 0) {
+		policy_snapshot_destroy(policy);
+		return 1;
+	}
+
+	*out = policy;
 	return 0;
 }
 
 int load_rules(const conf_t *_config)
 {
-	FILE * f = open_file();
-	if (f == NULL)
-		return 1;
+	char *identity = NULL;
+	struct policy_snapshot *policy = NULL;
+	FILE * f = open_file(&identity);
 
-	int res = _load_rules(_config, f);
-	fclose(f);
-
-	if (res) {
-		rules_clear(&rules);
+	if (f == NULL) {
+		log_policy_update_failure();
 		return 1;
 	}
 
+	int res = build_policy_snapshot(_config, f, identity, &policy);
+	fclose(f);
+
+	if (res) {
+		log_policy_update_failure();
+		return 1;
+	}
+
+	publish_policy_snapshot(policy);
+	return 0;
+}
+
+/*
+ * load_rules_from_stream - load policy from a caller-owned stream
+ * @_config: daemon configuration containing the syslog format.
+ * @f: rule stream positioned at the beginning.
+ *
+ * Returns 0 on success, 1 on failure. This helper exists so tests can exercise
+ * the same transactional publish path without depending on /etc paths.
+ */
+int load_rules_from_stream(const conf_t *_config, FILE *f)
+{
+	struct policy_snapshot *policy = NULL;
+
+	if (!f) {
+		log_policy_update_failure();
+		return 1;
+	}
+
+	if (build_policy_snapshot(_config, f, NULL, &policy)) {
+		log_policy_update_failure();
+		return 1;
+	}
+
+	publish_policy_snapshot(policy);
 	return 0;
 }
 
 void destroy_rules(void)
 {
-	unsigned int i = 0;
-
-	rules_clear(&rules);
-
-	while (i < num_fields) {
-		free((void *)fields[i].name);
-		i++;
-	}
+	policy_snapshot_destroy(active_policy);
+	active_policy = NULL;
+	atomic_store_explicit(&active_rules_proc_status_mask, 0,
+			      memory_order_release);
+	atomic_store_explicit(&active_syslog_proc_status_mask, 0,
+			      memory_order_release);
 
 	if (stop) {
 		free(working_buffer);
@@ -347,7 +575,19 @@ void destroy_rules(void)
 
 unsigned int policy_get_syslog_proc_status_mask(void)
 {
-	return syslog_proc_status_mask;
+	return atomic_load_explicit(&active_syslog_proc_status_mask,
+				    memory_order_acquire);
+}
+
+/*
+ * policy_get_rules_proc_status_mask - return active rule proc-status mask
+ * @void: no arguments are required.
+ * Returns a bitmap of PROC_STAT_* fields required by the active rules.
+ */
+unsigned int policy_get_rules_proc_status_mask(void)
+{
+	return atomic_load_explicit(&active_rules_proc_status_mask,
+				    memory_order_acquire);
 }
 
 void set_reload_rules(void)
@@ -355,15 +595,25 @@ void set_reload_rules(void)
 	reload_rules = true;
 }
 
+/*
+ * ff - pending reload rule file opened before taking the rule lock.
+ * ff_identity - SHA256 identity for @ff, transferred to the new snapshot.
+ *
+ * load_rule_file() prepares these so do_reload_rules() can spend the locked
+ * section parsing and publishing rather than opening and hashing policy files.
+ */
 static FILE * ff = NULL;
+static char *ff_identity;
 int load_rule_file(void)
 {
 	if (ff) {
 		fclose(ff);
 		ff = NULL;
 	}
+	free(ff_identity);
+	ff_identity = NULL;
 
-	ff = open_file();
+	ff = open_file(&ff_identity);
 	if (ff == NULL)
 		return 1;
 
@@ -372,16 +622,27 @@ int load_rule_file(void)
 
 int do_reload_rules(const conf_t *_config)
 {
-	destroy_rules();
+	struct policy_snapshot *policy = NULL;
+	char *identity = ff_identity;
 
-	int rc = _load_rules(_config, ff);
+	ff_identity = NULL;
+	if (!ff) {
+		free(identity);
+		msg(LOG_ERR, "Rule reload failed: no rule file is open");
+		log_policy_update_failure();
+		return 1;
+	}
+
+	int rc = build_policy_snapshot(_config, ff, identity, &policy);
 
 	fclose(ff);
 	ff = NULL;
 	if (rc) {
-		rules_clear(&rules);
+		log_policy_update_failure();
 		return 1;
 	}
+
+	publish_policy_snapshot(policy);
 	return 0;
 }
 
@@ -506,7 +767,8 @@ static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
 }
 
 
-static void log_it(unsigned int num, decision_t results, event_t *e)
+static void log_it(const struct policy_snapshot *policy, unsigned int num,
+		   decision_t results, event_t *e)
 {
 	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
 	unsigned int i;
@@ -524,7 +786,7 @@ static void log_it(unsigned int num, decision_t results, event_t *e)
 
 	dsize = WB_SIZE;
 	p1 = p2 = working_buffer; // Dummy assignment for p1 to quiet warnings
-	for (i = 0; i < num_fields && dsize; i++)
+	for (i = 0; i < policy->num_fields && dsize; i++)
 	{
 		if (dsize < WB_SIZE) {
 			// This is skipped first pass, p1 is initialized below
@@ -534,18 +796,19 @@ static void log_it(unsigned int num, decision_t results, event_t *e)
 				break;
 			dsize -= (size_t)written;
 		}
-		p1 = fmemccpy(p2, fields[i].name, dsize);
+		p1 = fmemccpy(p2, policy->fields[i].name, dsize);
 		written = p1 - p2;
 		if ((size_t)written > dsize)
 			break;
 		dsize -= (size_t)written;
-		if (fields[i].item != F_COLON) {
+		if (policy->fields[i].item != F_COLON) {
 			p2 = fmemccpy(p1, "=", dsize);
 			written = p2 - p1;
 			if ((size_t)written > dsize)
 				break;
 			dsize -= (size_t)written;
-			val = format_value(fields[i].item, num, results, e);
+			val = format_value(policy->fields[i].item, num,
+					   results, e);
 			p1 = fmemccpy(p2, val ? val : "?", dsize);
 			written = p1 - p2;
 			if ((size_t)written > dsize) {
@@ -564,10 +827,14 @@ static void log_it(unsigned int num, decision_t results, event_t *e)
 decision_t process_event(event_t *e)
 {
 	decision_t results = NO_OPINION;
+	struct policy_snapshot *policy = active_policy;
+
+	if (!policy)
+		return ALLOW;
 
 	/* populate the event struct and iterate over the rules */
-	rules_first(&rules);
-	lnode *r = rules_get_cur(&rules);
+	rules_first(&policy->rules);
+	lnode *r = rules_get_cur(&policy->rules);
 	//int cnt = 0;
 	while (r) {
 		//msg(LOG_INFO, "process_event: rule %d", cnt);
@@ -575,14 +842,14 @@ decision_t process_event(event_t *e)
 		// If a rule has an opinion, stop and use it
 		if (results != NO_OPINION)
 			break;
-		r = rules_next(&rules);
+		r = rules_next(&policy->rules);
 		//cnt++;
 	}
 
 	// Output some information if debugging on or syslogging requested
 	if ( (results & SYSLOG) || (debug_mode == 1) ||
 	     (debug_mode > 1 && (results & DENY)) )
-		log_it(r ? r->num : 0xFFFFFFFF, results, e);
+		log_it(policy, r ? r->num : 0xFFFFFFFF, results, e);
 
 	// Record which rule (rules are 1 based when listed by the cli tool)
 	if (r)
@@ -716,5 +983,6 @@ unsigned long getDenied(void)
 
 void policy_no_audit(void)
 {
-	rules_unsupport_audit(&rules);
+	if (active_policy)
+		rules_unsupport_audit(&active_policy->rules);
 }

@@ -461,7 +461,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
  */
 subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
 {
-	unsigned int mask = rules_get_proc_status_mask();
+	unsigned int mask = policy_get_rules_proc_status_mask();
 	mask |= policy_get_syslog_proc_status_mask();
 	struct proc_status_info info = {
 		.ppid = -1,
@@ -852,4 +852,3 @@ void do_cache_reports(FILE *f)
 		early_subj_cache_evictions);
 	print_queue_stats(f, obj_cache);
 }
-

@@ -65,11 +65,9 @@ enum rule_parse_result {
 #define PATTERN_LD_PRELOAD_STR "ld_preload"
 #define PATTERN_LD_PRELOAD_VAL 3
 
-static unsigned int proc_status_mask;
-
-static int assign_subject(attr_sets_t *sets, lnode *n, int type,
+static int assign_subject(llist *l, lnode *n, int type,
 			  const char *ptr2, int lineno) __wur;
-static int assign_object(attr_sets_t *sets, lnode *n, int type,
+static int assign_object(llist *l, lnode *n, int type,
 			 const char *ptr2, int lineno) __wur;
 
 int rules_create(llist *l)
@@ -81,7 +79,7 @@ int rules_create(llist *l)
 	if (!l->sets)
 		return 1;
 
-	proc_status_mask = 0;
+	l->proc_status_mask = 0;
 
 	return  0;
 }
@@ -282,11 +280,12 @@ static const char *data_type_to_name(int type)
 	}
 }
 
-static int assign_subject(attr_sets_t *sets, lnode *n, int type,
+static int assign_subject(llist *l, lnode *n, int type,
 			  const char *ptr2, int lineno)
 {
 	// assign the subject
 	unsigned int i = n->s_count;
+	attr_sets_t *sets = l->sets;
 	attr_sets_entry_t *set = NULL;
 	attr_sets_entry_t *owned_set = NULL;
 
@@ -296,13 +295,13 @@ static int assign_subject(attr_sets_t *sets, lnode *n, int type,
 	// Opportunistically mark the fields that might be needed for
 	// rule evaluation so that we gather them all at once later.
 	if (type == UID)
-		proc_status_mask |= PROC_STAT_UID;
+		l->proc_status_mask |= PROC_STAT_UID;
 	else if (type == PPID)
-		proc_status_mask |= PROC_STAT_PPID;
+		l->proc_status_mask |= PROC_STAT_PPID;
 	else if (type == GID)
-		proc_status_mask |= PROC_STAT_GID;
+		l->proc_status_mask |= PROC_STAT_GID;
 	else if (type == COMM)
-		proc_status_mask |= PROC_STAT_COMM;
+		l->proc_status_mask |= PROC_STAT_COMM;
 
 	char *ptr, *saved, *tmp = strdup(ptr2);
 	if (tmp == NULL) {
@@ -583,11 +582,12 @@ finalize:
 }
 
 
-static int assign_object(attr_sets_t *sets, lnode *n, int type,
+static int assign_object(llist *l, lnode *n, int type,
 			 const char *ptr2, int lineno)
 {
 	// assign the object
 	unsigned int i = n->o_count;
+	attr_sets_t *sets = l->sets;
 	attr_sets_entry_t *set = NULL;
 	attr_sets_entry_t *owned_set = NULL;
 
@@ -733,7 +733,7 @@ static int assign_object(attr_sets_t *sets, lnode *n, int type,
 }
 
 
-static int parse_new_format(attr_sets_t *sets, lnode *n, int lineno)
+static int parse_new_format(llist *l, lnode *n, int lineno)
 {
 	int state = 0;  // 0 == subj, 1 == obj
 	char *ptr;
@@ -753,7 +753,7 @@ static int parse_new_format(attr_sets_t *sets, lnode *n, int lineno)
 						ptr, lineno);
 					return 1;
 				}
-				if (assign_subject(sets, n, type, ptr2, lineno))
+				if (assign_subject(l, n, type, ptr2, lineno))
 					return 1;
 			} else {
 				type = obj_name_to_val(ptr);
@@ -762,7 +762,7 @@ static int parse_new_format(attr_sets_t *sets, lnode *n, int lineno)
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
 					return 2;
-				} else if (assign_object(sets, n, type, ptr2,
+				} else if (assign_object(l, n, type, ptr2,
 							 lineno))
 					return 1;
 			}
@@ -771,11 +771,11 @@ static int parse_new_format(attr_sets_t *sets, lnode *n, int lineno)
 		else if (strcmp(ptr, "all") == 0) {
 			if (state == 0) {
 				type = ALL_SUBJ;
-				if (assign_subject(sets, n, type, "", lineno))
+				if (assign_subject(l, n, type, "", lineno))
 					return 1;
 			} else {
 				type = ALL_OBJ;
-				if (assign_object(sets, n, type, "", lineno))
+				if (assign_object(l, n, type, "", lineno))
 					return 1;
 			}
 		} else {
@@ -951,11 +951,12 @@ static int parse_set_line(attr_sets_t *sets, const char *line, int lineno)
  * Returns: RULE_PARSE_OK when @n contains a rule, RULE_PARSE_SKIP when the
  * line should not append a rule node, or RULE_PARSE_ERROR on parse failure.
  */
-static enum rule_parse_result nv_split(attr_sets_t *sets, char *buf, lnode *n,
+static enum rule_parse_result nv_split(llist *l, char *buf, lnode *n,
 				       int lineno)
 {
 	char *ptr, *ptr2;
 	rformat_t format = RULE_FMT_ORIG;
+	attr_sets_t *sets = l->sets;
 
 	if (strchr(buf, ':'))
 		format = RULE_FMT_COLON;
@@ -1010,11 +1011,11 @@ static enum rule_parse_result nv_split(attr_sets_t *sets, char *buf, lnode *n,
 							ptr, lineno);
 						return RULE_PARSE_ERROR;
 					}
-					if (assign_subject(sets, n, type, ptr2,
+					if (assign_subject(l, n, type, ptr2,
 							   lineno))
 						return RULE_PARSE_ERROR;
 				}
-				if (parse_new_format(sets, n, lineno))
+				if (parse_new_format(l, n, lineno))
 					return RULE_PARSE_ERROR;
 				goto finish_up;
 			}
@@ -1026,19 +1027,19 @@ static enum rule_parse_result nv_split(attr_sets_t *sets, char *buf, lnode *n,
 					"Field type (%s) is unknown in line %d",
 						ptr, lineno);
 					return RULE_PARSE_ERROR;
-				} else if (assign_object(sets, n, type, ptr2,
+				} else if (assign_object(l, n, type, ptr2,
 							 lineno))
 					return RULE_PARSE_ERROR;
-			} else if (assign_subject(sets, n, type, ptr2, lineno))
+			} else if (assign_subject(l, n, type, ptr2, lineno))
 				return RULE_PARSE_ERROR;
 		} else if (strcmp(ptr, "all") == 0) {
 			if (n->s_count == 0) {
 				type = ALL_SUBJ;
-				if (assign_subject(sets, n, type, "", lineno))
+				if (assign_subject(l, n, type, "", lineno))
 					return RULE_PARSE_ERROR;
 			} else if (n->o_count == 0) {
 				type = ALL_OBJ;
-				if (assign_object(sets, n, type, "", lineno))
+				if (assign_object(l, n, type, "", lineno))
 					return RULE_PARSE_ERROR;
 			} else {
 				msg(LOG_ERR,
@@ -1086,8 +1087,8 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 			newnode->s[i].type = UNUSED;
 			newnode->o[i].type = UNUSED;
 		}
-		enum rule_parse_result rc = nv_split(l->sets, buf,
-						     newnode, lineno);
+		enum rule_parse_result rc = nv_split(l, buf, newnode,
+						     lineno);
 		if (rc == RULE_PARSE_SKIP) {
 			free(newnode);
 			return 0;
@@ -1671,7 +1672,7 @@ void rules_clear(llist *l)
 	attr_sets_destroy(l->sets);
 	l->sets = NULL;
 
-	proc_status_mask = 0;
+	l->proc_status_mask = 0;
 }
 
 /*
@@ -1681,7 +1682,10 @@ void rules_clear(llist *l)
  * rule set. The mask guides process attribute collection so we only read
  * /proc/<pid>/status once for all requested fields.
  */
-unsigned int rules_get_proc_status_mask(void)
+unsigned int rules_get_proc_status_mask(const llist *l)
 {
-       return proc_status_mask;
+	if (!l)
+		return 0;
+
+	return l->proc_status_mask;
 }

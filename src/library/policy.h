@@ -25,6 +25,7 @@
 #ifndef POLICY_HEADER
 #define POLICY_HEADER
 
+#include <stdio.h>
 #include <sys/fanotify.h>
 #include "event.h"
 
@@ -58,6 +59,7 @@ typedef enum {
 
 int dec_name_to_val(const char *name);
 int load_rules(const conf_t *config);
+int load_rules_from_stream(const conf_t *config, FILE *f);
 int load_rule_file(void);
 int do_reload_rules(const conf_t *config);
 void set_reload_rules(void);
@@ -70,7 +72,7 @@ unsigned long getAllowed(void);
 unsigned long getDenied(void);
 void policy_no_audit(void);
 void destroy_rules(void);
+unsigned int policy_get_rules_proc_status_mask(void);
 unsigned int policy_get_syslog_proc_status_mask(void);
 
 #endif
-
