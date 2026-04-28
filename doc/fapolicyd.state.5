@@ -1,0 +1,233 @@
+.TH "FAPOLICYD.STATE" "5" "April 2026" "Red Hat" "File Formats"
+.SH NAME
+fapolicyd.state \- fapolicyd runtime state report
+.SH DESCRIPTION
+The
+.I /run/fapolicyd/fapolicyd.state
+file contains a point-in-time runtime state report from
+.BR fapolicyd (8).
+The daemon writes this file when it receives
+.B SIGUSR1
+or when periodic reporting is enabled with
+.B report_interval
+in
+.BR fapolicyd.conf (5).
+.PP
+The report is intended for human inspection and operational troubleshooting.
+Each metric is printed as a
+.I name: value
+line. The fields below are listed in the order they appear in the report.
+.SH TOP-LEVEL FIELDS
+.TP
+.B Permissive
+Whether the daemon is running in permissive mode. In permissive mode, policy
+denials are reported as denied decisions, but the response sent to the kernel
+allows access.
+.TP
+.B Integrity
+The configured file integrity mode used for trust checks.
+.TP
+.B CPU cores
+The number of online processor cores reported by the system.
+.TP
+.B q_size
+The configured size of the internal event queue.
+.TP
+.B Inter-thread max queue depth
+The highest internal event queue depth observed since daemon startup.
+
+.SH DECISION AND RELIABILITY COUNTERS
+.TP
+.B Kernel Queue Overflow
+The number of
+.B FAN_Q_OVERFLOW
+events reported by the kernel. A non-zero value means kernel fanotify events
+were lost before the daemon could process them.
+.TP
+.B Reply Errors
+The number of failed or short writes when sending fanotify permission
+responses back to the kernel.
+.TP
+.B Allowed accesses
+The number of policy decisions that allowed access. This includes both
+rule-based allows and no-opinion fallthrough allows.
+.TP
+.B Denied accesses
+The number of policy decisions that denied access. In permissive mode these
+decisions are still counted as denials even though the daemon permits the
+kernel access.
+.TP
+.B Allowed by rule
+The number of allow decisions produced by a matching rule.
+.TP
+.B Allowed by fallthrough
+The number of allow decisions produced when no rule had an opinion and the
+daemon used the default allow behavior. When this value is zero, the detailed
+fallthrough fields below are omitted from the report.
+.TP
+.B Allowed by fallthrough open
+The number of fallthrough allows for file open permission events.
+.TP
+.B Allowed by fallthrough execute
+The number of fallthrough allows for file execute permission events.
+.TP
+.B Allowed by fallthrough trusted
+The number of fallthrough allows where the object was known to be trusted.
+.TP
+.B Allowed by fallthrough untrusted
+The number of fallthrough allows where the object was known to be untrusted.
+.TP
+.B Allowed by fallthrough trust unknown
+The number of fallthrough allows where object trust could not be determined
+or was not present in the event attributes.
+.TP
+.B Allowed by fallthrough executable
+The number of fallthrough allows whose object type was classified as
+executable content, including bad ELF content.
+.TP
+.B Allowed by fallthrough programmatic
+The number of fallthrough allows whose object type was classified as content
+commonly consumed by interpreters, such as language source, bytecode, scripts,
+or Java archives.
+.TP
+.B Allowed by fallthrough sharedlib
+The number of fallthrough allows whose object type was classified as a shared
+library.
+.TP
+.B Allowed by fallthrough unknown ftype
+The number of fallthrough allows where the object file type was missing or
+unknown.
+.TP
+.B Allowed by fallthrough other ftype
+The number of fallthrough allows whose object file type did not fit the
+executable, programmatic, shared library, or unknown buckets.
+.TP
+.B Ruleset generation
+The current in-memory ruleset generation. This value increments each time a
+fully validated ruleset is published by the daemon.
+
+.SH FAILURE ACTION COUNTERS
+Failure action counters record reliability failures that may need stricter
+configured behavior in high-security deployments. In this version every
+failure action is
+.BR observe ,
+meaning the daemon records and reports the failure while preserving existing
+compatibility behavior.
+
+.TP
+.B Failure action queue_full (observe)
+Number of times the internal userspace event queue was full. Current behavior
+is unchanged: enforcing mode denies the event, while permissive mode allows it.
+.TP
+.B Failure action kernel_queue_overflow (observe)
+Number of kernel fanotify queue overflow events. This indicates lost kernel
+visibility and should be treated as a high-severity operational signal.
+.TP
+.B Failure action worker_stall (observe)
+Number of decision worker stall detections. Current behavior remains the
+existing deadman response.
+.TP
+.B Failure action rule_reload_failure (observe)
+Number of rule reload failures. A failed transactional reload preserves the
+previous published policy when one exists.
+.TP
+.B Failure action trust_reload_failure (observe)
+Number of trust database reload failures.
+.TP
+.B Failure action response_write_failure (observe)
+Number of failed or incomplete fanotify response writes to the kernel.
+
+.SH TRUST DATABASE FIELDS
+.TP
+.B Trust database max pages
+The configured maximum LMDB page count for the trust database.
+.TP
+.B Trust database pages in use
+The number and percentage of LMDB pages currently used by the trust database.
+
+.SH MEMORY FIELDS
+When fapolicyd is built on a system that provides
+.BR mallinfo2 (3),
+the report includes glibc allocator fields showing current and previous values.
+.TP
+.B glibc arena (total memory) is
+The current total glibc heap arena size in KiB, followed by the value from
+the previous report. This field is printed only when the daemon is built with
+glibc
+.BR mallinfo2 (3)
+support.
+.TP
+.B glibc uordblks (in use memory) is
+The current allocated heap memory in KiB, followed by the value from the
+previous report. This field is printed only when the daemon is built with
+glibc
+.BR mallinfo2 (3)
+support.
+.TP
+.B glibc fordblks (total free space) is
+The current free heap memory in KiB, followed by the value from the previous
+report. This field is printed only when the daemon is built with glibc
+.BR mallinfo2 (3)
+support.
+
+.SH CACHE AND MOUNT FIELDS
+Interval state reports include aggregate subject and object cache statistics.
+.TP
+.B Subject cache size
+The configured number of entries in the subject cache.
+.TP
+.B Subject slots in use
+The number and percentage of subject cache slots currently occupied.
+.TP
+.B Subject hits
+The number of subject cache hits.
+.TP
+.B Subject misses
+The number of subject cache misses.
+.TP
+.B Subject evictions
+The number of subject cache evictions and the eviction percentage relative
+to subject cache hits.
+.TP
+.B Early subject cache evictions
+The number of subject cache entries evicted before process startup state was
+complete.
+.TP
+.B Object cache size
+The configured number of entries in the object cache.
+.TP
+.B Object slots in use
+The number and percentage of object cache slots currently occupied.
+.TP
+.B Object hits
+The number of object cache hits.
+.TP
+.B Object misses
+The number of object cache misses.
+.TP
+.B Object evictions
+The number of object cache evictions and the eviction percentage relative to
+object cache hits.
+.TP
+.B watching mount
+One line is printed for each mount point currently marked for fanotify
+monitoring.
+
+.SH NOTES
+Some detailed fallthrough fields are printed only after at least one
+fallthrough allow has occurred. Memory fields depend on build-time platform
+support for
+.BR mallinfo2 (3).
+
+.SH FILES
+.TP
+.I /run/fapolicyd/fapolicyd.state
+Runtime state report.
+
+.SH SEE ALSO
+.BR fapolicyd (8),
+.BR fapolicyd-cli (8),
+.BR fapolicyd.conf (5),
+.BR fapolicyd.rules (5),
+and
+.BR fapolicyd.trust (5).
