@@ -116,7 +116,7 @@ conflict can be corrected before startup.
 
 .TP
 .B report_interval
-This option specifies a reporting interval, measured in seconds, which fapolicyd uses to schedule a recurring dump of internal performance statistics to the \fBfapolicyd.state\fP file. The default value of 0 disables interval reporting.
+This option specifies a reporting interval, measured in seconds, which fapolicyd uses to schedule a recurring dump of internal performance statistics to the \fBfapolicyd.state\fP file. See \fBfapolicyd.state\fP(5) for the report fields. The default value of 0 disables interval reporting.
 
 .SS SECURITY CONSIDERATIONS FOR ignore_mounts
 Ignoring a mount removes fanotify visibility for that tree. fapolicyd will
@@ -154,9 +154,10 @@ trailing slashes are normalized. Bind/overlay/NFS/FUSE mounts are matched by the
 
 .SH "SEE ALSO"
 .BR fapolicyd (8),
-.BR fapolicyd-cli (8)
+.BR fapolicyd-cli (8),
+.BR fapolicyd.state (5)
 and
-.BR fapolicy.rules (5).
+.BR fapolicyd.rules (5).
 
 .SH AUTHOR
 Steve Grubb
