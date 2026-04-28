@@ -839,21 +839,20 @@ decision_t process_event(event_t *e)
 {
 	decision_t results = NO_OPINION;
 	struct policy_snapshot *policy = active_policy;
+	lnode *r;
 
 	if (!policy)
 		return ALLOW;
 
-	/* populate the event struct and iterate over the rules */
-	rules_first(&policy->rules);
-	lnode *r = rules_get_cur(&policy->rules);
+	/* Use a local cursor so concurrent readers do not share list state. */
 	//int cnt = 0;
-	while (r) {
+	for (r = rules_first_node(&policy->rules); r;
+	     r = rules_next_node(r)) {
 		//msg(LOG_INFO, "process_event: rule %d", cnt);
 		results = rule_evaluate(r, e);
 		// If a rule has an opinion, stop and use it
 		if (results != NO_OPINION)
 			break;
-		r = rules_next(&policy->rules);
 		//cnt++;
 	}
 

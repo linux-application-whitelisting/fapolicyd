@@ -22,8 +22,8 @@
 CONFIG_CLEAN_FILES = *.orig *.cur
 check_PROGRAMS = avl_test gid_proc_test uid_proc_test escape_test \
 attr_sets_test elf_file_test fd_fgets_test file_type_detect_test \
-rules_test policy_reload_test event_test trustdb_format_test \
-trustdb_lmdb_test lru_test notify_test
+rules_test policy_reload_test policy_concurrent_test event_test \
+trustdb_format_test trustdb_lmdb_test lru_test notify_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 AM_CFLAGS = -std=gnu11
@@ -48,6 +48,9 @@ rules_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 policy_reload_test_SOURCES = policy_reload_test.c test-stubs.c
 policy_reload_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+policy_concurrent_test_SOURCES = policy_concurrent_test.c test-stubs.c
+policy_concurrent_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+policy_concurrent_test_LDFLAGS = -pthread
 trustdb_format_test_SOURCES = trustdb_format_test.c
 trustdb_lmdb_test_SOURCES = trustdb_lmdb_test.c test-stubs.c
 trustdb_lmdb_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la

@@ -1,6 +1,6 @@
 /*
 * rules.h - Header file for rules.c
-* Copyright (c) 2016-17,2019 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2016-17,2019 Red Hat Inc.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -52,16 +52,36 @@ typedef struct _lnode{
  * event goes here. */
 typedef struct {
   lnode *head;		// List head
-  lnode *cur;		// Pointer to current node
+  lnode *cur;		// Mutable build/compat traversal state
   unsigned int cnt;	// How many items in this list
   attr_sets_t *sets;	// Registry that owns rule attribute sets
   unsigned int proc_status_mask; // /proc status fields needed by rules
 } llist;
 
 int rules_create(llist *l);
+/*
+ * rules_first/rules_next/rules_get_cur use llist.cur and are retained for
+ * mutable construction-time traversal. Decision reads use local node cursors.
+ */
 void rules_first(llist *l);
 lnode *rules_next(llist *l);
 static inline lnode *rules_get_cur(const llist *l) { return l->cur; }
+
+/* rules_first_node - get first rule for a local read cursor.
+ * @l: rule list to read.
+ * Return: first rule node, or NULL if the list is empty.
+ */
+static inline lnode *rules_first_node(const llist *l) { return l->head; }
+
+/* rules_next_node - advance a local read cursor.
+ * @n: current rule node, or NULL.
+ * Return: next rule node, or NULL at the end of the list.
+ */
+static inline lnode *rules_next_node(const lnode *n)
+{
+	return n ? n->next : NULL;
+}
+
 int rules_append(llist *l, char *buf, unsigned int lineno) __wur;
 __attribute__((hot)) decision_t rule_evaluate(lnode *r, event_t *e);
 void rules_unsupport_audit(const llist *l);
