@@ -533,6 +533,46 @@ static int init_caches(unsigned int subj_size, unsigned int obj_size)
 }
 
 /*
+ * read_object_cache_metric - report an object-cache counter from event.c.
+ * @metric: printable counter label from do_cache_reports(), e.g. "hits".
+ * @value: output location for the parsed counter.
+ *
+ * The helper captures do_cache_reports() into a temporary stream and extracts
+ * a single "Object <metric>: <number>" line for assertions.
+ *
+ * Returns 0 when @value is populated and 1 on parse or I/O failure.
+ */
+static int read_object_cache_metric(const char *metric, unsigned long *value)
+{
+	FILE *report;
+	char line[256];
+	char pattern[64];
+	unsigned long parsed;
+
+	if (metric == NULL || value == NULL)
+		return 1;
+
+	report = tmpfile();
+	if (report == NULL)
+		return 1;
+
+	do_cache_reports(report);
+	rewind(report);
+	snprintf(pattern, sizeof(pattern), "Object %s: %%lu", metric);
+
+	while (fgets(line, sizeof(line), report)) {
+		if (sscanf(line, pattern, &parsed) == 1) {
+			fclose(report);
+			*value = parsed;
+			return 0;
+		}
+	}
+
+	fclose(report);
+	return 1;
+}
+
+/*
  * Verify that a second FAN_OPEN_PERM event for the same pid reuses the cached
  * subject, transitions STATE_COLLECTING -> STATE_REOPEN, and skips path
  * collection.
@@ -632,7 +672,7 @@ static int test_needs_flush_resets_object_cache(void)
 	struct fanotify_event_metadata meta = { 0 };
 	event_t first = { 0 };
 	event_t second = { 0 };
-	o_array *cached_object;
+	unsigned long object_hits = 0, object_misses = 0;
 
 	CHECK(init_caches(4, 1) == 0, 30,
 	      "[ERROR:30] init_event_system failed");
@@ -642,8 +682,7 @@ static int test_needs_flush_resets_object_cache(void)
 	meta.pid = 400;
 	CHECK(new_event(&meta, &first) == 0, 31,
 	      "[ERROR:31] first new_event failed");
-	cached_object = first.o;
-	CHECK(cached_object != NULL, 32, "[ERROR:32] object missing");
+	CHECK(first.o != NULL, 32, "[ERROR:32] object missing");
 
 	atomic_store_explicit(&needs_flush, true, memory_order_relaxed);
 	meta.mask = FAN_OPEN_PERM;
@@ -653,8 +692,14 @@ static int test_needs_flush_resets_object_cache(void)
 	      "[ERROR:34] needs_flush not cleared");
 	CHECK(second.s == first.s, 35,
 	      "[ERROR:35] subject cache should reuse same entry");
-	CHECK(second.o != cached_object, 36,
-	      "[ERROR:36] object cache not flushed");
+	CHECK(read_object_cache_metric("hits", &object_hits) == 0, 36,
+	      "[ERROR:36] failed reading object cache hits");
+	CHECK(read_object_cache_metric("misses", &object_misses) == 0, 37,
+	      "[ERROR:37] failed reading object cache misses");
+	CHECK(object_hits == 0, 38,
+	      "[ERROR:38] object cache flush should reset hit counter");
+	CHECK(object_misses == 1, 39,
+	      "[ERROR:39] object cache flush should force a cache miss");
 
 	destroy_event_system();
 	return 0;
