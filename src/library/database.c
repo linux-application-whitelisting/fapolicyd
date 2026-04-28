@@ -43,6 +43,7 @@
 #include <ctype.h>	/* isspace() */
 
 #include "database.h"
+#include "failure-action.h"
 #include "message.h"
 #include "file.h"
 #include "fd-fgets.h"
@@ -1982,6 +1983,21 @@ void set_reload_trust_database(void)
 	atomic_store_explicit(&reload_db, true, memory_order_release);
 }
 
+/*
+ * record_trust_reload_failure - count a failed trust database reload.
+ * @void: no arguments are required.
+ *
+ * Failed trust reloads currently keep compatibility behavior. The counter
+ * gives later high-security profiles a single place to drive fail-closed or
+ * degraded decisions.
+ *
+ * Returns nothing.
+ */
+static void record_trust_reload_failure(void)
+{
+	failure_action_record(FAILURE_REASON_TRUST_RELOAD_FAILURE);
+}
+
 static void do_reload_db(conf_t* config)
 {
 	msg(LOG_INFO,
@@ -2007,6 +2023,7 @@ static void do_reload_db(conf_t* config)
 				if (stop)
 					goto out;
 
+				record_trust_reload_failure();
 				close(ffd[0].fd);
 				backend_close();
 				unlink_fifo();
@@ -2020,6 +2037,7 @@ static void do_reload_db(conf_t* config)
 				msg(LOG_ERR,
 					"env_set_mapsize error: %s",
 					mdb_strerror(rc));
+				record_trust_reload_failure();
 				goto out;
 			}
 		}
@@ -2027,12 +2045,14 @@ static void do_reload_db(conf_t* config)
 
 	if ((rc = backend_init(config))) {
 		msg(LOG_ERR, "Failed to load trust data from backend (%d)", rc);
+		record_trust_reload_failure();
 		close_db(0);
 		goto out;
 	}
 
 	if ((rc = backend_load(config))) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
+		record_trust_reload_failure();
 		close_db(0);
 		goto out;
 	}
@@ -2043,6 +2063,7 @@ static void do_reload_db(conf_t* config)
 		if (stop)
 			goto out;
 
+		record_trust_reload_failure();
 		close(ffd[0].fd);
 		backend_close();
 		unlink_fifo();
@@ -2054,6 +2075,32 @@ static void do_reload_db(conf_t* config)
 out:
 	// Conserve memory
 	backend_close();
+}
+
+/*
+ * reload_rules_from_file - perform a requested rule reload.
+ * @config: daemon configuration used for parsing syslog fields.
+ *
+ * Returns 0 on success and non-zero on failure.
+ */
+static int reload_rules_from_file(conf_t *config)
+{
+	int rc;
+
+	if (load_rule_file()) {
+		failure_action_record(FAILURE_REASON_RULE_RELOAD_FAILURE);
+		msg(LOG_ERR,
+		    "Rule reload aborted: unable to open rules file (%s)",
+		    strerror(errno));
+		return 1;
+	}
+
+	lock_rule();
+	rc = do_reload_rules(config);
+	if (rc)
+		msg(LOG_ERR, "Rule reload failed; previous policy preserved");
+	unlock_rule();
+	return rc;
 }
 
 static void *update_thread_main(void *arg)
@@ -2103,17 +2150,7 @@ static void *update_thread_main(void *arg)
 
 		if (reload_rules) {
 			reload_rules = false;
-			if (load_rule_file()) {
-			    msg(LOG_ERR,
-			      "Rule reload aborted: unable to open rules file (%s)",
-			      strerror(errno));
-			} else {
-				lock_rule();
-				if (do_reload_rules(config))
-					msg(LOG_ERR, "Rule reload failed; "
-					    "previous policy preserved");
-				unlock_rule();
-			}
+			reload_rules_from_file(config);
 		}
 		// got SIGHUP
 		if (atomic_exchange_explicit(&reload_db, false,
@@ -2228,19 +2265,7 @@ static void *update_thread_main(void *arg)
 							 * daemon to re-parse policy files.
 							 */
 							do_operation = DB_NO_OP;
-
-							if (load_rule_file()) {
-								msg(LOG_ERR,
-			     "Rule reload aborted: unable to open rules file (%s)",
-								strerror(errno));
-							} else {
-								lock_rule();
-								if (do_reload_rules(config))
-									msg(LOG_ERR,
-								    "Rule reload failed; "
-								    "previous policy preserved");
-								unlock_rule();
-							}
+							reload_rules_from_file(config);
 
 							// got "2" -> flush cache
 						} else if (do_operation == FLUSH_CACHE) {

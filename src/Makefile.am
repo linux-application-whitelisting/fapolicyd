@@ -44,6 +44,8 @@ libfapolicyd_la_SOURCES = \
 	library/escape.h \
 	library/event.c \
 	library/event.h \
+	library/failure-action.c \
+	library/failure-action.h \
 	library/fapolicyd-defs.h \
 	library/fapolicyd-backend.h \
 	library/fd-fgets.c \

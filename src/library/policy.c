@@ -38,6 +38,7 @@
 
 #include "database.h"
 #include "escape.h"
+#include "failure-action.h"
 #include "file.h"
 #include "rules.h"
 #include "policy.h"
@@ -91,7 +92,6 @@ static atomic_ulong fallthrough_programmatic;
 static atomic_ulong fallthrough_sharedlib;
 static atomic_ulong fallthrough_unknown_ftype;
 static atomic_ulong fallthrough_other_ftype;
-static atomic_ulong reply_errors;
 static atomic_uint ruleset_generation;
 /*
  * active_*_proc_status_mask - atomic copies of active snapshot masks
@@ -613,7 +613,7 @@ unsigned int policy_get_rules_proc_status_mask(void)
  */
 unsigned long getReplyErrors(void)
 {
-	return atomic_load_explicit(&reply_errors, memory_order_relaxed);
+	return failure_action_count(FAILURE_REASON_RESPONSE_WRITE_FAILURE);
 }
 
 void set_reload_rules(void)
@@ -655,6 +655,7 @@ int do_reload_rules(const conf_t *_config)
 	if (!ff) {
 		free(identity);
 		msg(LOG_ERR, "Rule reload failed: no rule file is open");
+		failure_action_record(FAILURE_REASON_RULE_RELOAD_FAILURE);
 		log_policy_update_failure();
 		return 1;
 	}
@@ -664,6 +665,7 @@ int do_reload_rules(const conf_t *_config)
 	fclose(ff);
 	ff = NULL;
 	if (rc) {
+		failure_action_record(FAILURE_REASON_RULE_RELOAD_FAILURE);
 		log_policy_update_failure();
 		return 1;
 	}
@@ -970,8 +972,8 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		if (write(fd, &f, sizeof(struct fan_audit_response)) <
 				(ssize_t)sizeof(struct fanotify_response) ||
 				errno)
-			atomic_fetch_add_explicit(&reply_errors, 1,
-						  memory_order_relaxed);
+			failure_action_record(
+			    FAILURE_REASON_RESPONSE_WRITE_FAILURE);
 		goto out;
 	}
 #endif
@@ -982,8 +984,8 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 	errno = 0;
 	if (write(fd, &response, sizeof(struct fanotify_response)) <
 			(ssize_t)sizeof(struct fanotify_response) || errno)
-		atomic_fetch_add_explicit(&reply_errors, 1,
-					  memory_order_relaxed);
+		failure_action_record(
+		    FAILURE_REASON_RESPONSE_WRITE_FAILURE);
 out:
 	// Close this last so that no other thread can open a file which
 	// reclaims this fd number before we render a decision.

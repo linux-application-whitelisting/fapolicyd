@@ -40,6 +40,7 @@
 #include <ctype.h>
 #include <time.h>
 #include "conf.h"
+#include "failure-action.h"
 #include "policy.h"
 #include "event.h"
 #include "escape.h"
@@ -70,7 +71,6 @@ static int rpt_timer_fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
 static unsigned int rpt_interval;
-static atomic_ulong kernel_queue_overflow;
 static atomic_long kernel_queue_overflow_last_log;
 
 // External functions
@@ -87,8 +87,7 @@ void nudge_queue(void);
  */
 unsigned long getKernelQueueOverflow(void)
 {
-	return atomic_load_explicit(&kernel_queue_overflow,
-				    memory_order_relaxed);
+	return failure_action_count(FAILURE_REASON_KERNEL_QUEUE_OVERFLOW);
 }
 
 /*
@@ -115,17 +114,16 @@ static int kernel_overflow_should_log(time_t now)
 
 /*
  * fanotify_failure_action - run the daemon-local failure response.
- * @why: diagnostic name for the failure condition.
+ * @reason: failure condition that was already recorded.
  * Returns nothing.
  */
-static void fanotify_failure_action(const char *why)
+static void fanotify_failure_action(failure_reason_t reason)
 {
-	(void)why;
+	(void)reason;
 
 	/*
-	 * This is a placeholder until configurable failure actions are
-	 * available, make the failure visible through the regular status
-	 * path immediately for now.
+	 * The current action is observe-only. Wake the report path so serious
+	 * reliability failures are visible before the next interval report.
 	 */
 	run_stats = true;
 	nudge_queue();
@@ -145,15 +143,14 @@ int handle_kernel_event(const struct fanotify_event_metadata *metadata)
 	if ((metadata->mask & FAN_Q_OVERFLOW) == 0)
 		return 0;
 
-	total = atomic_fetch_add_explicit(&kernel_queue_overflow, 1,
-					  memory_order_relaxed) + 1;
+	total = failure_action_record(FAILURE_REASON_KERNEL_QUEUE_OVERFLOW);
 	now = time(NULL);
 	if (now == (time_t)-1 || kernel_overflow_should_log(now))
 		msg(LOG_CRIT,
 		    "Kernel fanotify queue overflow; events were lost "
 		    "(kernel_queue_overflow=%lu)", total);
 
-	fanotify_failure_action("kernel_queue_overflow");
+	fanotify_failure_action(FAILURE_REASON_KERNEL_QUEUE_OVERFLOW);
 	return 1;
 }
 
@@ -462,6 +459,7 @@ void decision_report(FILE *f)
 	// Report results
 	fprintf(f, "Kernel Queue Overflow: %lu\n", getKernelQueueOverflow());
 	fprintf(f, "Reply Errors: %lu\n", getReplyErrors());
+	failure_action_report(f);
 	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
 	fprintf(f, "Denied accesses: %lu\n", getDenied());
 	fprintf(f, "Allowed by rule: %lu\n", metrics.allowed_by_rule);
@@ -514,8 +512,9 @@ static void *deadmans_switch_thread_main(void *arg)
 		if (!atomic_load_explicit(&alive, memory_order_relaxed) &&
 		    !atomic_load_explicit(&stop, memory_order_relaxed) &&
 		    q_queue_length(q) > 5) {
+			failure_action_record(FAILURE_REASON_WORKER_STALL);
 			msg(LOG_ERR,
-				"Deadman's switch activated...killing process");
+			    "Deadman's switch activated...killing process");
 			raise(SIGKILL);
 		}
 		// OK, prove it again.
@@ -716,10 +715,14 @@ void handle_events(void)
 					reply_event(fd, metadata, FAN_ALLOW,
 						    NULL);
 				else if (q_enqueue(q, metadata)) {
+					failure_action_record(
+					    FAILURE_REASON_QUEUE_FULL);
 					msg(LOG_ERR,
-				"Failed to enqueue event for PID %d: "
-				"queue is full, please consider tuning q_size "
-				"if issue happens often", metadata->pid);
+					    "Failed to enqueue event for PID %d: "
+					    "queue is full, please consider "
+					    "tuning q_size if issue happens "
+					    "often",
+					    metadata->pid);
 					int decision = FAN_DENY;
 					if (__atomic_load_n(&config.permissive,
 							    __ATOMIC_RELAXED))
