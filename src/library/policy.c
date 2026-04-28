@@ -79,6 +79,7 @@ struct policy_snapshot {
  */
 static struct policy_snapshot *active_policy;
 static atomic_ulong allowed = 0, denied = 0;
+static atomic_ulong reply_errors;
 /*
  * active_*_proc_status_mask - atomic copies of active snapshot masks
  *
@@ -590,6 +591,16 @@ unsigned int policy_get_rules_proc_status_mask(void)
 				    memory_order_acquire);
 }
 
+/*
+ * getReplyErrors - return fanotify response write error count.
+ * Returns the number of fanotify response writes that failed or appeared
+ * incomplete.
+ */
+unsigned long getReplyErrors(void)
+{
+	return atomic_load_explicit(&reply_errors, memory_order_relaxed);
+}
+
 void set_reload_rules(void)
 {
 	reload_rules = true;
@@ -917,7 +928,12 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 			f.a.obj_trust = obj->val;
 		} else
 			f.a.obj_trust = 2;
-		write(fd, &f, sizeof(struct fan_audit_response));
+		errno = 0;
+		if (write(fd, &f, sizeof(struct fan_audit_response)) <
+				(ssize_t)sizeof(struct fanotify_response) ||
+				errno)
+			atomic_fetch_add_explicit(&reply_errors, 1,
+						  memory_order_relaxed);
 		goto out;
 	}
 #endif
@@ -925,7 +941,11 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 
 	response.fd = metadata->fd;
 	response.response = reply;
-	write(fd, &response, sizeof(struct fanotify_response));
+	errno = 0;
+	if (write(fd, &response, sizeof(struct fanotify_response)) <
+			(ssize_t)sizeof(struct fanotify_response) || errno)
+		atomic_fetch_add_explicit(&reply_errors, 1,
+					  memory_order_relaxed);
 out:
 	// Close this last so that no other thread can open a file which
 	// reclaims this fd number before we render a decision.

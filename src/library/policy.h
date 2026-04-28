@@ -70,6 +70,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 						int fd, uint64_t mask);
 unsigned long getAllowed(void);
 unsigned long getDenied(void);
+unsigned long getReplyErrors(void);
 void policy_no_audit(void);
 void destroy_rules(void);
 unsigned int policy_get_rules_proc_status_mask(void);

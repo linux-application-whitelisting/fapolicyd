@@ -456,7 +456,8 @@ void decision_report(FILE *f)
 		return;
 
 	// Report results
-	fprintf(f, "kernel_queue_overflow: %lu\n", getKernelQueueOverflow());
+	fprintf(f, "Kernel Queue Overflow: %lu\n", getKernelQueueOverflow());
+	fprintf(f, "Reply Errors: %lu\n", getReplyErrors());
 	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
 	fprintf(f, "Denied accesses: %lu\n", getDenied());
 }
