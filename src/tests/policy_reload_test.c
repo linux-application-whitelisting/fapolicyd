@@ -98,7 +98,8 @@ static void free_event(event_t *e)
  * @buflen: size of @buf.
  * Returns the decision from process_event().
  */
-static decision_t process_capture(event_t *e, char *buf, size_t buflen)
+static decision_t process_capture(event_t *e, char *buf, size_t buflen,
+				  decision_source_t *source)
 {
 	decision_t decision;
 	ssize_t r;
@@ -116,7 +117,7 @@ static decision_t process_capture(event_t *e, char *buf, size_t buflen)
 		error(1, errno, "dup2 failed");
 	close(p[1]);
 
-	decision = process_event(e);
+	decision = process_event_with_source(e, source);
 
 	fflush(stderr);
 	if (dup2(save, STDERR_FILENO) == -1)
@@ -143,7 +144,7 @@ static void require_old_policy(const char *phase)
 	decision_t decision;
 
 	prep_event(&e, 1000, "/bin/ls");
-	decision = process_capture(&e, log, sizeof(log));
+	decision = process_capture(&e, log, sizeof(log), NULL);
 	free_event(&e);
 
 	if (decision != ALLOW_SYSLOG)
@@ -161,6 +162,31 @@ static void require_old_policy(const char *phase)
 	if (strstr(log, " pid=") != NULL)
 		error(1, 0, "%s: stale reload syslog field leaked: %s",
 		      phase, log);
+}
+
+/*
+ * require_decision_sources - verify policy evaluation reports rule/fallback
+ * @void: no arguments are required.
+ * Returns nothing.
+ */
+static void require_decision_sources(void)
+{
+	char log[LOGBUF];
+	event_t e;
+	decision_t decision;
+	decision_source_t source;
+
+	prep_event(&e, 1000, "/bin/ls");
+	decision = process_capture(&e, log, sizeof(log), &source);
+	free_event(&e);
+	if (decision != ALLOW_SYSLOG || source != DECISION_SOURCE_RULE)
+		error(1, 0, "rule allow source not reported");
+
+	prep_event(&e, 1000, "/bin/cat");
+	decision = process_capture(&e, log, sizeof(log), &source);
+	free_event(&e);
+	if (decision != ALLOW || source != DECISION_SOURCE_FALLTHROUGH)
+		error(1, 0, "fallthrough allow source not reported");
 }
 
 /*
@@ -182,6 +208,7 @@ int main(void)
 	    "allow_syslog perm=any auid=1000 : path=/bin/ls\n"))
 		error(1, 0, "initial policy load failed");
 	require_old_policy("initial load");
+	require_decision_sources();
 
 	if (load_text_policy(&pid_cfg,
 	    "deny_syslog perm=any auid=1000 uid=-1 : path=/bin/ls\n") == 0)

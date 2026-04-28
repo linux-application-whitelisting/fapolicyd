@@ -79,7 +79,20 @@ struct policy_snapshot {
  */
 static struct policy_snapshot *active_policy;
 static atomic_ulong allowed = 0, denied = 0;
+static atomic_ulong allowed_by_rule;
+static atomic_ulong allowed_by_fallthrough;
+static atomic_ulong fallthrough_open;
+static atomic_ulong fallthrough_execute;
+static atomic_ulong fallthrough_trusted;
+static atomic_ulong fallthrough_untrusted;
+static atomic_ulong fallthrough_trust_unknown;
+static atomic_ulong fallthrough_executable;
+static atomic_ulong fallthrough_programmatic;
+static atomic_ulong fallthrough_sharedlib;
+static atomic_ulong fallthrough_unknown_ftype;
+static atomic_ulong fallthrough_other_ftype;
 static atomic_ulong reply_errors;
+static atomic_uint ruleset_generation;
 /*
  * active_*_proc_status_mask - atomic copies of active snapshot masks
  *
@@ -429,6 +442,8 @@ static void publish_policy_snapshot(struct policy_snapshot *policy)
 	 * leaving the old active_policy untouched.
 	 */
 	active_policy = policy;
+	atomic_fetch_add_explicit(&ruleset_generation, 1,
+				  memory_order_relaxed);
 	atomic_store_explicit(&active_rules_proc_status_mask,
 			      policy->rules_proc_status_mask,
 			      memory_order_release);
@@ -835,11 +850,22 @@ static void log_it(const struct policy_snapshot *policy, unsigned int num,
 }
 
 
-decision_t process_event(event_t *e)
+/*
+ * process_event_with_source - evaluate policy and report decision source
+ * @e: event to evaluate.
+ * @source: optional output receiving rule or fallthrough source.
+ *
+ * Returns the access decision. A no-opinion policy result remains compatible
+ * with historical behavior by returning ALLOW and reporting fallthrough.
+ */
+decision_t process_event_with_source(event_t *e, decision_source_t *source)
 {
 	decision_t results = NO_OPINION;
 	struct policy_snapshot *policy = active_policy;
 	lnode *r;
+
+	if (source)
+		*source = DECISION_SOURCE_FALLTHROUGH;
 
 	if (!policy)
 		return ALLOW;
@@ -862,14 +888,27 @@ decision_t process_event(event_t *e)
 		log_it(policy, r ? r->num : 0xFFFFFFFF, results, e);
 
 	// Record which rule (rules are 1 based when listed by the cli tool)
-	if (r)
+	if (r) {
 		e->num = r->num + 1;
+		if (source)
+			*source = DECISION_SOURCE_RULE;
+	}
 
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)
 		return results;
 
 	return ALLOW;
+}
+
+/*
+ * process_event - evaluate policy using the compatibility decision API
+ * @e: event to evaluate.
+ * Returns the access decision without exposing source metadata.
+ */
+decision_t process_event(event_t *e)
+{
+	return process_event_with_source(e, NULL);
 }
 
 #ifdef FAN_AUDIT_RULE_NUM
@@ -951,25 +990,139 @@ out:
 	close(metadata->fd);
 }
 
+/*
+ * ftype_is_programmatic - classify ftypes commonly loaded by interpreters
+ * @ftype: MIME type reported for the object.
+ * Returns 1 when @ftype names language source, bytecode, jars, or scripts.
+ */
+static int ftype_is_programmatic(const char *ftype)
+{
+	if (strncmp(ftype, "text/x-", 7) == 0)
+		return 1;
+	if (strstr(ftype, "javascript"))
+		return 1;
+	if (strstr(ftype, "bytecode"))
+		return 1;
+	if (strstr(ftype, "script"))
+		return 1;
+	if (strcmp(ftype, "application/java-archive") == 0)
+		return 1;
+	if (strcmp(ftype, "application/x-java-applet") == 0)
+		return 1;
+	if (strcmp(ftype, "application/x-elc") == 0)
+		return 1;
+
+	return 0;
+}
+
+/*
+ * count_fallthrough_ftype - bucket object ftype for default-allow reporting
+ * @e: event whose object ftype should be classified.
+ * Returns nothing.
+ */
+static void count_fallthrough_ftype(event_t *e)
+{
+	object_attr_t *ftype = get_obj_attr(e, FTYPE);
+	const char *name = ftype ? ftype->o : NULL;
+
+	if (!name || name[0] == 0) {
+		atomic_fetch_add_explicit(&fallthrough_unknown_ftype, 1,
+					  memory_order_relaxed);
+		return;
+	}
+
+	if (strcmp(name, "application/x-sharedlib") == 0) {
+		atomic_fetch_add_explicit(&fallthrough_sharedlib, 1,
+					  memory_order_relaxed);
+		return;
+	}
+	if (strstr(name, "executable") ||
+	    strcmp(name, "application/x-bad-elf") == 0) {
+		atomic_fetch_add_explicit(&fallthrough_executable, 1,
+					  memory_order_relaxed);
+		return;
+	}
+	if (ftype_is_programmatic(name)) {
+		atomic_fetch_add_explicit(&fallthrough_programmatic, 1,
+					  memory_order_relaxed);
+		return;
+	}
+
+	atomic_fetch_add_explicit(&fallthrough_other_ftype, 1,
+				  memory_order_relaxed);
+}
+
+/*
+ * count_fallthrough_details - record low-cardinality default-allow dimensions
+ * @e: event that reached the no-opinion allow path.
+ * Returns nothing.
+ */
+static void count_fallthrough_details(event_t *e)
+{
+	object_attr_t *trust;
+
+	if (e->type & FAN_OPEN_EXEC_PERM)
+		atomic_fetch_add_explicit(&fallthrough_execute, 1,
+					  memory_order_relaxed);
+	else
+		atomic_fetch_add_explicit(&fallthrough_open, 1,
+					  memory_order_relaxed);
+
+	trust = get_obj_attr(e, OBJ_TRUST);
+	if (!trust)
+		atomic_fetch_add_explicit(&fallthrough_trust_unknown, 1,
+					  memory_order_relaxed);
+	else if (trust->val)
+		atomic_fetch_add_explicit(&fallthrough_trusted, 1,
+					  memory_order_relaxed);
+	else
+		atomic_fetch_add_explicit(&fallthrough_untrusted, 1,
+					  memory_order_relaxed);
+
+	count_fallthrough_ftype(e);
+}
+
+/*
+ * count_allow_source - record whether an allow came from a rule or fallback
+ * @e: event that was allowed.
+ * @source: source reported by process_event_with_source().
+ * Returns nothing.
+ */
+static void count_allow_source(event_t *e, decision_source_t source)
+{
+	if (source == DECISION_SOURCE_RULE) {
+		atomic_fetch_add_explicit(&allowed_by_rule, 1,
+					  memory_order_relaxed);
+		return;
+	}
+
+	atomic_fetch_add_explicit(&allowed_by_fallthrough, 1,
+				  memory_order_relaxed);
+	count_fallthrough_details(e);
+}
+
 
 void make_policy_decision(const struct fanotify_event_metadata *metadata,
 						int fd, uint64_t mask)
 {
 	event_t e;
 	int decision;
+	decision_source_t source = DECISION_SOURCE_FALLTHROUGH;
 
 	if (new_event(metadata, &e))
 		decision = FAN_DENY;
 	else {
 		lock_rule();
-		decision = process_event(&e);
+		decision = process_event_with_source(&e, &source);
 		unlock_rule();
 	}
 
 	if ((decision & DENY) == DENY)
 		atomic_fetch_add_explicit(&denied, 1, memory_order_relaxed);
-	else
+	else {
 		atomic_fetch_add_explicit(&allowed, 1, memory_order_relaxed);
+		count_allow_source(&e, source);
+	}
 
 	if (metadata->mask & mask) {
 		// if in debug mode, do not allow audit events
@@ -997,6 +1150,55 @@ unsigned long getAllowed(void)
 unsigned long getDenied(void)
 {
 	return atomic_load_explicit(&denied, memory_order_relaxed);
+}
+
+/*
+ * getDecisionMetrics - copy policy decision counters for reporting
+ * @metrics: destination metrics snapshot.
+ * Returns nothing.
+ */
+void getDecisionMetrics(decision_metrics_t *metrics)
+{
+	if (!metrics)
+		return;
+
+	metrics->allowed_by_rule =
+		atomic_load_explicit(&allowed_by_rule, memory_order_relaxed);
+	metrics->allowed_by_fallthrough =
+		atomic_load_explicit(&allowed_by_fallthrough,
+				     memory_order_relaxed);
+	metrics->fallthrough_open =
+		atomic_load_explicit(&fallthrough_open, memory_order_relaxed);
+	metrics->fallthrough_execute =
+		atomic_load_explicit(&fallthrough_execute,
+				     memory_order_relaxed);
+	metrics->fallthrough_trusted =
+		atomic_load_explicit(&fallthrough_trusted,
+				     memory_order_relaxed);
+	metrics->fallthrough_untrusted =
+		atomic_load_explicit(&fallthrough_untrusted,
+				     memory_order_relaxed);
+	metrics->fallthrough_trust_unknown =
+		atomic_load_explicit(&fallthrough_trust_unknown,
+				     memory_order_relaxed);
+	metrics->fallthrough_executable =
+		atomic_load_explicit(&fallthrough_executable,
+				     memory_order_relaxed);
+	metrics->fallthrough_programmatic =
+		atomic_load_explicit(&fallthrough_programmatic,
+				     memory_order_relaxed);
+	metrics->fallthrough_sharedlib =
+		atomic_load_explicit(&fallthrough_sharedlib,
+				     memory_order_relaxed);
+	metrics->fallthrough_unknown_ftype =
+		atomic_load_explicit(&fallthrough_unknown_ftype,
+				     memory_order_relaxed);
+	metrics->fallthrough_other_ftype =
+		atomic_load_explicit(&fallthrough_other_ftype,
+				     memory_order_relaxed);
+	metrics->ruleset_generation =
+		atomic_load_explicit(&ruleset_generation,
+				     memory_order_relaxed);
 }
 
 

@@ -452,14 +452,44 @@ void nudge_queue(void)
 
 void decision_report(FILE *f)
 {
+	decision_metrics_t metrics;
+
 	if (f == NULL)
 		return;
+
+	getDecisionMetrics(&metrics);
 
 	// Report results
 	fprintf(f, "Kernel Queue Overflow: %lu\n", getKernelQueueOverflow());
 	fprintf(f, "Reply Errors: %lu\n", getReplyErrors());
 	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
 	fprintf(f, "Denied accesses: %lu\n", getDenied());
+	fprintf(f, "Allowed by rule: %lu\n", metrics.allowed_by_rule);
+	fprintf(f, "Allowed by fallthrough: %lu\n",
+		metrics.allowed_by_fallthrough);
+	if (metrics.allowed_by_fallthrough) {
+		fprintf(f, "Allowed by fallthrough open: %lu\n",
+			metrics.fallthrough_open);
+		fprintf(f, "Allowed by fallthrough execute: %lu\n",
+			metrics.fallthrough_execute);
+		fprintf(f, "Allowed by fallthrough trusted: %lu\n",
+			metrics.fallthrough_trusted);
+		fprintf(f, "Allowed by fallthrough untrusted: %lu\n",
+			metrics.fallthrough_untrusted);
+		fprintf(f, "Allowed by fallthrough trust unknown: %lu\n",
+			metrics.fallthrough_trust_unknown);
+		fprintf(f, "Allowed by fallthrough executable: %lu\n",
+			metrics.fallthrough_executable);
+		fprintf(f, "Allowed by fallthrough programmatic: %lu\n",
+			metrics.fallthrough_programmatic);
+		fprintf(f, "Allowed by fallthrough sharedlib: %lu\n",
+			metrics.fallthrough_sharedlib);
+		fprintf(f, "Allowed by fallthrough unknown ftype: %lu\n",
+			metrics.fallthrough_unknown_ftype);
+		fprintf(f, "Allowed by fallthrough other ftype: %lu\n",
+			metrics.fallthrough_other_ftype);
+	}
+	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
 }
 
 

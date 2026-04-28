@@ -66,7 +66,7 @@ int main(void)
 		.pid = 0,
 	};
 	unsigned long before, after;
-	char report[512], expected[64];
+	char report[2048], expected[64];
 	int event_pipe[2];
 
 	before = getKernelQueueOverflow();
@@ -123,6 +123,14 @@ int main(void)
 	// The status report should expose the aggregate reply_errors value.
 	CHECK(strstr(report, expected) != NULL, 10,
 	      "[ERROR:10] status report missing Reply Errors count");
+	CHECK(strstr(report, "Allowed by rule: ") != NULL, 11,
+	      "[ERROR:11] status report missing rule allow count");
+	CHECK(strstr(report, "Allowed by fallthrough: ") != NULL, 12,
+	      "[ERROR:12] status report missing fallthrough allow count");
+	CHECK(strstr(report, "Allowed by fallthrough executable: ") == NULL, 13,
+	      "[ERROR:13] zero fallthrough report included ftype detail");
+	CHECK(strstr(report, "Ruleset generation: ") != NULL, 14,
+	      "[ERROR:14] status report missing ruleset generation");
 
 	return 0;
 }

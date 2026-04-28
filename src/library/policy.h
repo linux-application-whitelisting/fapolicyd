@@ -57,6 +57,27 @@ typedef enum {
 	DENY_LOG = FAN_DENY | AUDIT | SYSLOG
 } decision_t;
 
+typedef enum {
+	DECISION_SOURCE_RULE,
+	DECISION_SOURCE_FALLTHROUGH
+} decision_source_t;
+
+typedef struct {
+	unsigned long allowed_by_rule;
+	unsigned long allowed_by_fallthrough;
+	unsigned long fallthrough_open;
+	unsigned long fallthrough_execute;
+	unsigned long fallthrough_trusted;
+	unsigned long fallthrough_untrusted;
+	unsigned long fallthrough_trust_unknown;
+	unsigned long fallthrough_executable;
+	unsigned long fallthrough_programmatic;
+	unsigned long fallthrough_sharedlib;
+	unsigned long fallthrough_unknown_ftype;
+	unsigned long fallthrough_other_ftype;
+	unsigned int ruleset_generation;
+} decision_metrics_t;
+
 int dec_name_to_val(const char *name);
 int load_rules(const conf_t *config);
 int load_rules_from_stream(const conf_t *config, FILE *f);
@@ -64,6 +85,7 @@ int load_rule_file(void);
 int do_reload_rules(const conf_t *config);
 void set_reload_rules(void);
 decision_t process_event(event_t *e);
+decision_t process_event_with_source(event_t *e, decision_source_t *source);
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e);
 void make_policy_decision(const struct fanotify_event_metadata *metadata,
@@ -71,6 +93,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 unsigned long getAllowed(void);
 unsigned long getDenied(void);
 unsigned long getReplyErrors(void);
+void getDecisionMetrics(decision_metrics_t *metrics);
 void policy_no_audit(void);
 void destroy_rules(void);
 unsigned int policy_get_rules_proc_status_mask(void);

@@ -61,6 +61,7 @@
 #include "file.h"
 
 bool verbose = false;
+static bool lint_rules = false;
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
@@ -71,6 +72,7 @@ static const char *usage =
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
 "--check-rules path    Validate rules file syntax without loading\n"
+"--lint                Enable policy lint warnings with --check-rules\n"
 "--verbose             Enable verbose output for select commands\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
@@ -97,6 +99,7 @@ static struct option long_opts[] =
 	{"check-status",0, NULL,  4 },
 	{"check-path",  0, NULL,  5 },
 	{"check-rules",  1, NULL, 9 },
+	{"lint",	0, NULL, 10 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -1197,6 +1200,162 @@ finish:
 	return rc;
 }
 
+/*
+ * rule_is_broad_subject - check if a rule has an unrestricted subject side.
+ * @rule: parsed rule to inspect.
+ * Returns 1 when the subject side is all, 0 otherwise.
+ */
+static int rule_is_broad_subject(const lnode *rule)
+{
+	for (unsigned int i = 0; i < rule->s_count; i++)
+		if (rule->s[i].type == ALL_SUBJ)
+			return 1;
+
+	return 0;
+}
+
+/*
+ * rule_is_broad_object - check if a rule has an unrestricted object side.
+ * @rule: parsed rule to inspect.
+ * Returns 1 when the object side is all, 0 otherwise.
+ */
+static int rule_is_broad_object(const lnode *rule)
+{
+	for (unsigned int i = 0; i < rule->o_count; i++)
+		if (rule->o[i].type == ALL_OBJ)
+			return 1;
+
+	return 0;
+}
+
+/*
+ * rule_is_deny - check if a rule denies access.
+ * @rule: parsed rule to inspect.
+ * Returns 1 for deny-family decisions, 0 otherwise.
+ */
+static int rule_is_deny(const lnode *rule)
+{
+	return (rule->d & DENY) == DENY;
+}
+
+/*
+ * rule_is_allow - check if a rule allows access.
+ * @rule: parsed rule to inspect.
+ * Returns 1 for allow-family decisions, 0 otherwise.
+ */
+static int rule_is_allow(const lnode *rule)
+{
+	return (rule->d & ALLOW) == ALLOW;
+}
+
+/*
+ * rule_matches_execute - check if a rule can match execute events.
+ * @rule: parsed rule to inspect.
+ * Returns 1 when perm=execute or perm=any, 0 otherwise.
+ */
+static int rule_matches_execute(const lnode *rule)
+{
+	return rule->a == EXEC_ACC || rule->a == ANY_ACC;
+}
+
+/*
+ * rule_matches_open - check if a rule can match open events.
+ * @rule: parsed rule to inspect.
+ * Returns 1 when perm=open or perm=any, 0 otherwise.
+ */
+static int rule_matches_open(const lnode *rule)
+{
+	return rule->a == OPEN_ACC || rule->a == ANY_ACC;
+}
+
+/*
+ * rule_has_language_ftype - check if a rule matches the %languages set.
+ * @rule: parsed rule to inspect.
+ * Returns 1 when an object ftype attribute references %languages.
+ */
+static int rule_has_language_ftype(const lnode *rule)
+{
+	for (unsigned int i = 0; i < rule->o_count; i++) {
+		if (rule->o[i].type != FTYPE || rule->o[i].set == NULL)
+			continue;
+		if (rule->o[i].set->name &&
+				strcmp(rule->o[i].set->name, "languages") == 0)
+			return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * lint_rules_policy - emit policy-shape warnings for default-allow gaps.
+ * @rules: parsed rule list to inspect.
+ * Returns CLI_EXIT_GENERIC when warnings were emitted, CLI_EXIT_SUCCESS
+ * otherwise. Syntax validation is handled before this function runs.
+ */
+static int lint_rules_policy(const llist *rules)
+{
+	const lnode *rule;
+	const lnode *last_exec_rule = NULL;
+	const lnode *first_lang_deny = NULL;
+	const lnode *first_open_allow = NULL;
+	int warnings = 0;
+	int has_languages;
+
+	has_languages = attr_sets_find(rules->sets, "languages") != NULL;
+
+	for (rule = rules_first_node(rules); rule;
+	     rule = rules_next_node(rule)) {
+		if (rule_matches_execute(rule))
+			last_exec_rule = rule;
+
+		if (!first_lang_deny && rule_is_deny(rule) &&
+		    rule_matches_open(rule) && rule_is_broad_subject(rule) &&
+		    rule_has_language_ftype(rule))
+			first_lang_deny = rule;
+
+		if (!first_open_allow && rule_is_allow(rule) &&
+		    rule_matches_open(rule) && rule_is_broad_subject(rule) &&
+		    rule_is_broad_object(rule))
+			first_open_allow = rule;
+	}
+
+	if (!last_exec_rule || !rule_is_deny(last_exec_rule) ||
+	    !rule_is_broad_subject(last_exec_rule) ||
+	    !rule_is_broad_object(last_exec_rule)) {
+		fprintf(stderr, "Policy lint warning: executable events can "
+			"fall through; no terminal broad execute deny found\n");
+		warnings = 1;
+	}
+
+	if (!has_languages) {
+		fprintf(stderr, "Policy lint warning: %%languages is not "
+			"defined; programmatic ftype coverage cannot be checked\n");
+		warnings = 1;
+	} else if (!first_lang_deny) {
+		fprintf(stderr, "Policy lint warning: programmatic opens can "
+			"fall through; no broad %%languages open deny found\n");
+		warnings = 1;
+	}
+
+	if (first_open_allow &&
+	    (!first_lang_deny || first_open_allow->num < first_lang_deny->num)) {
+		fprintf(stderr, "Policy lint warning: broad open allow on rule "
+			"%u can shadow programmatic-content denies\n",
+			first_open_allow->num + 1);
+		warnings = 1;
+	}
+
+	if (warnings == 0)
+		printf("Policy lint found no warnings\n");
+
+	return warnings ? CLI_EXIT_GENERIC : CLI_EXIT_SUCCESS;
+}
+
+/*
+ * check_rules_file - parse a rules file and optionally lint policy shape.
+ * @path: rule file path to inspect.
+ * Returns CLI_EXIT_SUCCESS when validation passes and lint finds no warnings.
+ */
 static int check_rules_file(const char *path)
 {
 	FILE *f;
@@ -1235,21 +1394,30 @@ static int check_rules_file(const char *path)
 	}
 
 	unsigned cnt = temp_rules.cnt;
-	rules_clear(&temp_rules);
 	fclose(f);
 
-	if (invalid)
+	if (invalid) {
+		rules_clear(&temp_rules);
 		return CLI_EXIT_RULE_FILTER;
+	}
 
 	// Check for empty rules file
 	if (cnt == 0) {
 		fprintf(stderr, "No rules found in file\n");
+		rules_clear(&temp_rules);
 		return CLI_EXIT_RULE_FILTER;
 	}
 
 	printf("Rules file is valid (%u rules)\n", cnt);
 
-	return CLI_EXIT_SUCCESS;
+	if (lint_rules) {
+		fflush(stdout);
+		rc = lint_rules_policy(&temp_rules);
+	} else
+		rc = CLI_EXIT_SUCCESS;
+
+	rules_clear(&temp_rules);
+	return rc;
 }
 
 // Returns 0 = everything is OK, 1 = there is a problem
@@ -1554,6 +1722,10 @@ int main(int argc, char * const argv[])
 			verbose = true;
 			continue;
 		}
+		if (strcmp(argv[i], "--lint") == 0) {
+			lint_rules = true;
+			continue;
+		}
 		args[arg_count++] = argv[i];
 	}
 	args[arg_count] = NULL;
@@ -1573,16 +1745,22 @@ int main(int argc, char * const argv[])
 
 	switch (opt) {
 	case 'd':
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		rc = do_delete_db();
 		break;
 	case 'D':
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		rc = do_dump_db();
 		break;
 	case 'f':
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 7)
 			goto args_err;
 		// fapolicyd-cli, -f, | operation, path ...
@@ -1590,25 +1768,35 @@ int main(int argc, char * const argv[])
 		rc = do_manage_files(arg_count-2, args+2);
 		break;
 	case 'h':
+		if (lint_rules)
+			goto args_err;
 		printf("%s", usage);
 		rc = CLI_EXIT_SUCCESS;
 		break;
 	case 't':
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 3)
 			goto args_err;
 		rc = do_ftype(optarg);
 		break;
 	case 'l':
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		rc = do_list();
 		break;
 	case 'u':
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		rc = do_reload(DB);
 		break;
 	case 'r':
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		rc = do_reload(RULES);
@@ -1617,6 +1805,8 @@ int main(int argc, char * const argv[])
 	// Now the pure long options
 	case 1: { // --check-config
 
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		set_message_mode(MSG_STDERR, DBG_YES);
@@ -1632,21 +1822,29 @@ int main(int argc, char * const argv[])
 		} }
 		break;
 	case 2: // --check-watch_fs
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		return check_watch_fs();
 		break;
 	case 3: // --check-trustdb
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		return check_trustdb();
 		break;
 	case 4: // --check-status
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		return do_status_report();
 		break;
 	case 5: // --check-path
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
 		return check_path();
@@ -1655,6 +1853,8 @@ int main(int argc, char * const argv[])
 	case 7: { // --check-ignore_mounts
 		const char *override = optarg;
 
+		if (lint_rules)
+			goto args_err;
 		if (override == NULL && optind < arg_count &&
 						args[optind][0] != '-')
 			override = args[optind++];
@@ -1671,8 +1871,13 @@ int main(int argc, char * const argv[])
 		}
 		break;
 
+	case 10:
+		goto args_err;
+
 #ifdef HAVE_LIBRPM
 	case 6: { // --test-filter
+		if (lint_rules)
+			goto args_err;
 		if (arg_count > 3)
 			goto args_err;
 		return do_test_filter(optarg);
