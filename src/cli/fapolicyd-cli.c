@@ -71,7 +71,7 @@ static const char *usage =
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
-"--check-rules path    Validate rules file syntax without loading\n"
+"--check-rules [path]  Validate rules file syntax without loading\n"
 "--lint                Enable policy lint warnings with --check-rules\n"
 "--verbose             Enable verbose output for select commands\n"
 "-d, --delete-db       Delete the trust database\n"
@@ -98,7 +98,7 @@ static struct option long_opts[] =
 	{"check-trustdb",0, NULL,  3 },
 	{"check-status",0, NULL,  4 },
 	{"check-path",  0, NULL,  5 },
-	{"check-rules",  1, NULL, 9 },
+	{"check-rules",  2, NULL, 9 },
 	{"lint",	0, NULL, 10 },
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
@@ -1352,8 +1352,32 @@ static int lint_rules_policy(const llist *rules)
 }
 
 /*
+ * default_rules_path - select the rules file used when no path is supplied.
+ * @path: selected path is returned here.
+ * Returns CLI_EXIT_SUCCESS when a single candidate was selected.
+ */
+static int default_rules_path(const char **path)
+{
+	int old_rules = access(OLD_RULES_FILE, F_OK) == 0;
+	int compiled_rules = access(RULES_FILE, F_OK) == 0;
+
+	if (old_rules && compiled_rules) {
+		fprintf(stderr, "Error - old and new rules file detected. "
+			"Delete one or the other.\n");
+		return CLI_EXIT_PATH_CONFIG;
+	}
+
+	if (old_rules)
+		*path = OLD_RULES_FILE;
+	else
+		*path = RULES_FILE;
+
+	return CLI_EXIT_SUCCESS;
+}
+
+/*
  * check_rules_file - parse a rules file and optionally lint policy shape.
- * @path: rule file path to inspect.
+ * @path: rule file path to inspect, or NULL for the active rules file.
  * Returns CLI_EXIT_SUCCESS when validation passes and lint finds no warnings.
  */
 static int check_rules_file(const char *path)
@@ -1365,6 +1389,12 @@ static int check_rules_file(const char *path)
 
 	// Set message mode to stderr so error messages are visible
 	set_message_mode(MSG_STDERR, DBG_NO);
+
+	if (path == NULL) {
+		rc = default_rules_path(&path);
+		if (rc)
+			return rc;
+	}
 
 	// Open the specified rules file
 	f = fopen(path, "r");
@@ -1865,9 +1895,14 @@ int main(int argc, char * const argv[])
 		break;
 
 	case 9: { // --check-rules
-		if (arg_count > 3)
+		const char *path = optarg;
+
+		if (path == NULL && optind < arg_count &&
+						args[optind][0] != '-')
+			path = args[optind++];
+		if (optind < arg_count)
 			goto args_err;
-		return check_rules_file(optarg);
+		return check_rules_file(path);
 		}
 		break;
 
