@@ -52,10 +52,6 @@
 #define FANOTIFY_BUFFER_SIZE 8192
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
 
-#ifndef FAN_Q_OVERFLOW
-#define FAN_Q_OVERFLOW		0x00004000
-#endif
-
 // External variables
 extern atomic_bool stop, run_stats;
 extern conf_t config;
@@ -74,7 +70,7 @@ static unsigned int rpt_interval;
 static atomic_long kernel_queue_overflow_last_log;
 
 // External functions
-void do_stat_report(FILE *f, int shutdown);
+extern void do_stat_report(FILE *f, int shutdown);
 
 // Local functions
 static void *decision_thread_main(void *arg);
