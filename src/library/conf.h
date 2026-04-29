@@ -28,6 +28,11 @@
 #include <stdbool.h>
 
 typedef enum { IN_NONE, IN_SIZE, IN_IMA, IN_SHA256 } integrity_t;
+typedef enum { RESET_NEVER, RESET_AUTO, RESET_MANUAL } reset_strategy_t;
+typedef enum {
+	REPORT_INTENT_STATUS,
+	REPORT_INTENT_RESET_METRICS
+} report_intent_t;
 
 typedef struct conf
 {
@@ -50,6 +55,7 @@ typedef struct conf
 	unsigned int rpm_sha256_only;
 	unsigned int allow_filesystem_mark;
 	unsigned int report_interval;
+	reset_strategy_t reset_strategy;
 } conf_t;
 
 #endif

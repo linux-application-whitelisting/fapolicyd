@@ -26,10 +26,11 @@ extern atomic_bool run_stats;
 			error(1, 0, "%s", msg); \
 	} while (0)
 
-void do_stat_report(FILE *f, int shutdown)
+void do_stat_report_reset(FILE *f, int shutdown, int reset)
 {
 	(void)f;
 	(void)shutdown;
+	(void)reset;
 }
 
 /*
@@ -38,7 +39,7 @@ void do_stat_report(FILE *f, int shutdown)
  * @size: size of @buf.
  * Returns nothing. Exits if the temporary stream cannot be used.
  */
-static void read_decision_report(char *buf, size_t size)
+static void read_decision_report(char *buf, size_t size, int reset)
 {
 	FILE *f = tmpfile();
 	size_t used;
@@ -46,7 +47,7 @@ static void read_decision_report(char *buf, size_t size)
 	if (f == NULL)
 		error(1, 0, "tmpfile failed");
 
-	decision_report(f);
+	decision_report_reset(f, reset);
 	fflush(f);
 	rewind(f);
 	used = fread(buf, 1, size - 1, f);
@@ -67,6 +68,7 @@ int main(void)
 		.pid = 0,
 	};
 	unsigned long before, after;
+	unsigned long overflow_after, reply_after;
 	char report[2048], expected[64];
 	int event_pipe[2];
 
@@ -88,6 +90,7 @@ int main(void)
 	      "[ERROR:4] FAN_Q_OVERFLOW event was not consumed");
 
 	after = getKernelQueueOverflow();
+	overflow_after = after;
 	// Consuming FAN_Q_OVERFLOW should increment the overflow counter once.
 	CHECK(after == before + 1, 5,
 	      "[ERROR:5] FAN_Q_OVERFLOW did not increment count");
@@ -97,7 +100,7 @@ int main(void)
 	CHECK(atomic_load(&run_stats), 7,
 	      "[ERROR:7] FAN_Q_OVERFLOW did not trigger failure action");
 
-	read_decision_report(report, sizeof(report));
+	read_decision_report(report, sizeof(report), 0);
 	snprintf(expected, sizeof(expected), "Kernel Queue Overflow: %lu",
 		 after);
 	// The status report should expose the overflow counter value.
@@ -117,6 +120,7 @@ int main(void)
 
 	reply_event(-1, &metadata, FAN_ALLOW, NULL);
 	after = getReplyErrors();
+	reply_after = after;
 	// A failed fanotify response write should increment reply_errors once.
 	CHECK(after == before + 1, 11,
 	      "[ERROR:11] reply_event did not count EBADF write failure");
@@ -129,7 +133,7 @@ int main(void)
 	      "[ERROR:13] reply_event did not close event fd");
 	close(event_pipe[1]);
 
-	read_decision_report(report, sizeof(report));
+	read_decision_report(report, sizeof(report), 0);
 	snprintf(expected, sizeof(expected), "Reply Errors: %lu", after);
 	// The status report should expose the aggregate reply_errors value.
 	CHECK(strstr(report, expected) != NULL, 14,
@@ -156,6 +160,19 @@ int main(void)
 	      "[ERROR:22] zero fallthrough report included ftype detail");
 	CHECK(strstr(report, "Ruleset generation: ") != NULL, 23,
 	      "[ERROR:23] status report missing ruleset generation");
+
+	read_decision_report(report, sizeof(report), 1);
+	snprintf(expected, sizeof(expected), "Kernel Queue Overflow: %lu",
+		 overflow_after);
+	CHECK(strstr(report, expected) != NULL, 24,
+	      "[ERROR:24] reset report lost pre-reset overflow count");
+	snprintf(expected, sizeof(expected), "Reply Errors: %lu", reply_after);
+	CHECK(strstr(report, expected) != NULL, 25,
+	      "[ERROR:25] reset report lost pre-reset reply count");
+	CHECK(getKernelQueueOverflow() == 0, 26,
+	      "[ERROR:26] reset report did not clear overflow count");
+	CHECK(getReplyErrors() == 0, 27,
+	      "[ERROR:27] reset report did not clear reply count");
 
 	return 0;
 }

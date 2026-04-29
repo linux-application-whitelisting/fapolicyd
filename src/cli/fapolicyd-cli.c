@@ -62,6 +62,7 @@
 
 bool verbose = false;
 static bool lint_rules = false;
+static bool assume_yes = false;
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"
@@ -73,6 +74,7 @@ static const char *usage =
 "--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
 "--check-rules [path]  Validate rules file syntax without loading\n"
 "--lint                Enable policy lint warnings with --check-rules\n"
+"--reset-metrics       Dump status and reset metrics when daemon allows it\n"
 "--verbose             Enable verbose output for select commands\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
@@ -81,6 +83,7 @@ static const char *usage =
 "-t, --ftype file-path Prints out the mime type of a file\n"
 "-l, --list            Prints a list of the daemon's rules with numbers\n"
 "-r, --reload-rules    Notifies fapolicyd to perform reload of rules\n"
+"-y, --yes             Do not prompt before a manual metrics reset\n"
 #ifdef HAVE_LIBRPM
 "--test-filter path    Test FILTER_FILE against path and trace to stdout\n"
 #endif
@@ -100,6 +103,8 @@ static struct option long_opts[] =
 	{"check-path",  0, NULL,  5 },
 	{"check-rules",  2, NULL, 9 },
 	{"lint",	0, NULL, 10 },
+	{"reset-metrics", 0, NULL, 11 },
+	{"yes",		0, NULL, 'y'},
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
 	{"file",	1, NULL, 'f'},
@@ -1636,9 +1641,99 @@ next:
 	return CLI_EXIT_SUCCESS;
 }
 
-static int do_status_report(void)
+/*
+ * confirm_metric_reset - ask before sending a SIGUSR1 reset intent.
+ * Returns 1 when the caller confirms, 0 otherwise.
+ */
+static int confirm_metric_reset(void)
+{
+	char answer[8];
+
+	fprintf(stderr,
+		"Request runtime metrics reset with this state report? [y/N] ");
+	fflush(stderr);
+	if (fgets(answer, sizeof(answer), stdin) == NULL)
+		return 0;
+
+	return answer[0] == 'y' || answer[0] == 'Y';
+}
+
+/*
+ * check_metric_reset_strategy - verify reset intent against on-disk config.
+ * @reset_metrics: reset intent flag to clear when manual reset is unlikely.
+ * Returns nothing.
+ */
+static void check_metric_reset_strategy(int *reset_metrics)
+{
+	conf_t disk_config;
+	const char *strategy;
+
+	if (!*reset_metrics)
+		return;
+
+	memset(&disk_config, 0, sizeof(disk_config));
+	set_message_mode(MSG_STDERR, DBG_NO);
+	if (load_daemon_config(&disk_config)) {
+		fprintf(stderr,
+			"Unable to verify reset_strategy in %s; sending a "
+			"plain --check-status request.\n", CONFIG_FILE);
+		fprintf(stderr,
+			"The daemon's active setting may differ from the "
+			"on-disk configuration.\n");
+		*reset_metrics = 0;
+		free_daemon_config(&disk_config);
+		set_message_mode(MSG_QUIET, DBG_NO);
+		return;
+	}
+	strategy = lookup_reset_strategy(disk_config.reset_strategy);
+
+	if (disk_config.reset_strategy != RESET_MANUAL) {
+		fprintf(stderr,
+			"On-disk reset_strategy is %s, not manual; "
+			"--reset-metrics appears unable to reset metrics.\n",
+			strategy ? strategy : "unknown");
+		fprintf(stderr,
+			"Sending a plain --check-status request. The daemon's "
+			"active setting may differ until config is reloaded.\n");
+		*reset_metrics = 0;
+	}
+
+	free_daemon_config(&disk_config);
+	set_message_mode(MSG_QUIET, DBG_NO);
+}
+
+/*
+ * send_state_report_signal - request a state report from fapolicyd.
+ * @pid: daemon PID to signal.
+ * @reset_metrics: non-zero adds reset intent to the signal.
+ * @reason: error text buffer.
+ * @reason_len: size of @reason.
+ * Returns 0 on success, non-zero on failure.
+ */
+static int send_state_report_signal(unsigned int pid, int reset_metrics,
+		char *reason, size_t reason_len)
+{
+	union sigval value;
+
+	value.sival_int = reset_metrics ? REPORT_INTENT_RESET_METRICS :
+					  REPORT_INTENT_STATUS;
+	if (sigqueue(pid, SIGUSR1, value)) {
+		snprintf(reason, reason_len, "signal failed: %s",
+			 strerror(errno));
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * do_status_report - request and display a daemon state report.
+ * @reset_metrics: non-zero when the user requested --reset-metrics.
+ * Returns a CLI_EXIT_* value.
+ */
+static int do_status_report(int reset_metrics)
 {
 	const char *reason = "no pid file";
+	char signal_reason[80];
 
 	fd_fgets_state_t *st = fd_fgets_init();
 	if (!st)
@@ -1674,11 +1769,24 @@ static int do_status_report(void)
 				goto err_out;
 			}
 
+			check_metric_reset_strategy(&reset_metrics);
+			if (reset_metrics && !assume_yes &&
+			    !confirm_metric_reset()) {
+				close(pidfd);
+				fd_fgets_destroy(st);
+				return CLI_EXIT_NOOP;
+			}
+
 			// delete the old report
 			unlink(STAT_REPORT);
 
 			// send the signal for the report
-			kill(pid, SIGUSR1);
+			if (send_state_report_signal(pid, reset_metrics,
+						     signal_reason,
+						     sizeof(signal_reason))) {
+				reason = signal_reason;
+				goto err_out;
+			}
 
 			// Access a file to provoke a response
 			int fd = open(CONFIG_FILE, O_RDONLY);
@@ -1756,6 +1864,11 @@ int main(int argc, char * const argv[])
 			lint_rules = true;
 			continue;
 		}
+		if (strcmp(argv[i], "--yes") == 0 ||
+		    strcmp(argv[i], "-y") == 0) {
+			assume_yes = true;
+			continue;
+		}
 		args[arg_count++] = argv[i];
 	}
 	args[arg_count] = NULL;
@@ -1763,15 +1876,18 @@ int main(int argc, char * const argv[])
 	if (arg_count == 1) {
 		fprintf(stderr, "Too few arguments\n\n");
 		fprintf(stderr, "%s", usage);
-	return CLI_EXIT_USAGE;
+		return CLI_EXIT_USAGE;
 	}
 
 	optind = 1;
 
 	/* Run getopt_long on the sanitized copy so command parsing behaves
 	 * exactly as before --verbose was introduced. */
-	opt = getopt_long(arg_count, (char * const *)args, "Ddf:ht:lur",
+	opt = getopt_long(arg_count, (char * const *)args, "Ddf:ht:lury",
 				 long_opts, &option_index);
+
+	if (assume_yes && opt != 11)
+		goto args_err;
 
 	switch (opt) {
 	case 'd':
@@ -1870,7 +1986,7 @@ int main(int argc, char * const argv[])
 			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
-		return do_status_report();
+		return do_status_report(0);
 		break;
 	case 5: // --check-path
 		if (lint_rules)
@@ -1907,6 +2023,16 @@ int main(int argc, char * const argv[])
 		break;
 
 	case 10:
+		goto args_err;
+
+	case 11: // --reset-metrics
+		if (lint_rules)
+			goto args_err;
+		if (arg_count > 2)
+			goto args_err;
+		return do_status_report(1);
+
+	case 'y':
 		goto args_err;
 
 #ifdef HAVE_LIBRPM

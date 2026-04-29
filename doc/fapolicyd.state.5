@@ -12,6 +12,10 @@ or when periodic reporting is enabled with
 .B report_interval
 in
 .BR fapolicyd.conf (5).
+Depending on the
+.B reset_strategy
+configuration and report trigger, generating this report can also reset runtime
+metric counters after the report snapshot is written.
 .PP
 The report is intended for human inspection and operational troubleshooting.
 Each metric is printed as a
@@ -26,6 +30,15 @@ allows access.
 .TP
 .B Integrity
 The configured file integrity mode used for trust checks.
+.TP
+.B reset_strategy
+The active metrics reset strategy. A value of
+.B never
+keeps metrics growing for the daemon lifetime,
+.B auto
+resets timer-generated reports, and
+.B manual
+resets signal-generated reports if the signal carries reset intent (only possible programmatically).
 .TP
 .B CPU cores
 The number of online processor cores reported by the system.

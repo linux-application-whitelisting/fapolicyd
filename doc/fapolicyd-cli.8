@@ -19,7 +19,7 @@ Check the PATH environmental variable against the trustdb to look for file not i
 .B \-\-check-status
 Dump the daemon's internal performance statistics. See
 .BR fapolicyd.state (5)
-for the report fields. See also the fapolicyd.conf option \fBreport_interval\fP.
+for the report fields. See also the fapolicyd.conf options \fBreport_interval\fP and \fBreset_strategy\fP. This command requests a plain state report and does not ask the daemon to reset runtime metric counters.
 .TP
 .B \-\-check-trustdb
 Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.
@@ -40,6 +40,12 @@ Parse the rules file and validate its syntax without loading it into the daemon.
 .TP
 .B \-\-lint
 When used with \fB\-\-check-rules\fP, also emit policy-shape warnings for executable or programmatic content that can reach the default-allow path. The option may be placed before or after \fB\-\-check-rules\fP. A warning causes a non-zero exit status.
+.TP
+.B \-\-reset-metrics
+Request the metrics to be reset. Runtime metric counters reset after a report is written when the daemon is configured with \fBreset_strategy=manual\fP. The report contains the counter values being reset. The CLI checks the on-disk \fIfapolicyd.conf\fP before requesting the metrics to be reset. If the on-disk \fBreset_strategy\fP is not \fBmanual\fP, or the setting cannot be verified, the command tells the user and sends a plain \fB\-\-check-status\fP request instead. The daemon's active in-memory setting may differ from the file until configuration is reloaded. The command asks for confirmation before sending the reset request unless \fB-y\fP or \fB--yes\fP is used.
+.TP
+.B \-y, \-\-yes
+Do not prompt before \fB--reset-metrics\fP sends a reset request.
 .TP
 .B \-d, \-\-delete-db
 Deletes the trust database. Normally this never needs to be done. But if for some reason the trust database becomes corrupted, then the only method of recovery is to run this command.

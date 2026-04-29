@@ -71,6 +71,10 @@ const char* mounts = MOUNTS_FILE;
 
 // Signal handler notifications
 atomic_bool stop = false, hup = false, run_stats = false;
+atomic_uint signal_report_requests;
+atomic_uint signal_report_reset_requests;
+atomic_int signal_report_reset_request_pid = -1;
+atomic_int signal_report_reset_request_uid = -1;
 
 // Global configuration state
 conf_t config;
@@ -357,10 +361,52 @@ static void hup_handler(int sig __attribute__((unused)))
 	hup = true;
 }
 
-static void usr1_handler(int sig __attribute__((unused)))
+/*
+ * usr1_handler - request a state report and record signal sender identity.
+ * @sig: signal number.
+ * @info: sender identity supplied by sigaction.
+ * @context: unused signal context.
+ * Returns nothing.
+ */
+static void usr1_handler(int sig __attribute__((unused)), siginfo_t *info,
+		void *context __attribute__((unused)))
 {
+	if (info && info->si_code == SI_QUEUE &&
+	    info->si_value.sival_int == REPORT_INTENT_RESET_METRICS) {
+		atomic_store_explicit(&signal_report_reset_request_pid,
+				      info->si_pid, memory_order_relaxed);
+		atomic_store_explicit(&signal_report_reset_request_uid,
+				      info->si_uid, memory_order_relaxed);
+		atomic_fetch_add_explicit(&signal_report_reset_requests, 1,
+					  memory_order_relaxed);
+	}
+	atomic_fetch_add_explicit(&signal_report_requests, 1,
+				  memory_order_relaxed);
 	run_stats = true;
 	nudge_queue();
+}
+
+/*
+ * log_metric_reset_strategy - record how runtime metric resets are allowed.
+ * @strategy: configured reset strategy.
+ * Returns nothing.
+ */
+static void log_metric_reset_strategy(reset_strategy_t strategy)
+{
+	switch (strategy) {
+	case RESET_NEVER:
+		msg(LOG_INFO,
+		    "Metrics resets disabled; counters grow for daemon lifetime");
+		break;
+	case RESET_AUTO:
+		msg(LOG_INFO,
+		    "Metrics resets will occur only by interval timer reports");
+		break;
+	case RESET_MANUAL:
+		msg(LOG_INFO,
+		    "Metrics resets will occur only by privileged signal reports");
+		break;
+	}
 }
 
 /*
@@ -388,6 +434,11 @@ static int reload_configuration(void)
 
 	config.do_stat_report = new_config.do_stat_report;
 	config.detailed_report = new_config.detailed_report;
+	if (new_config.reset_strategy != config.reset_strategy) {
+		__atomic_store_n(&config.reset_strategy,
+				 new_config.reset_strategy, __ATOMIC_RELAXED);
+		log_metric_reset_strategy(new_config.reset_strategy);
+	}
 
 	if (new_config.integrity != config.integrity) {
 		set_integrity_mode(new_config.integrity);
@@ -842,6 +893,8 @@ static void usage(void)
 	exit(1);
 }
 
+void do_stat_report_reset(FILE *f, int shutdown, int reset);
+
 #ifdef HAVE_MALLINFO2
 static struct mallinfo2 last_mi;
 static void memory_use_report(FILE *f)
@@ -873,22 +926,44 @@ static void close_memory_report(void)
 
 void do_stat_report(FILE *f, int shutdown)
 {
+	do_stat_report_reset(f, shutdown, 0);
+}
+
+/*
+ * do_stat_report_reset - write state report and optionally reset metrics.
+ * @f: output stream.
+ * @shutdown: non-zero when writing final shutdown report.
+ * @reset: non-zero resets interval counters after copying them.
+ *
+ * Reset only affects operational counters. Configuration and state identity
+ * values such as queue size, integrity mode, database size, and ruleset
+ * generation remain unchanged.
+ */
+void do_stat_report_reset(FILE *f, int shutdown, int reset)
+{
 	const char *ptr = lookup_integrity(config.integrity);
+	reset_strategy_t strategy;
+	const char *reset_ptr;
+
+	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
+	reset_ptr = lookup_reset_strategy(strategy);
 
 	fprintf(f, "Permissive: %s\n",
 		__atomic_load_n(&config.permissive,
 				__ATOMIC_RELAXED) ? "true" : "false");
 	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
+	fprintf(f, "reset_strategy: %s\n",
+		reset_ptr ? reset_ptr : "unknown");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "q_size: %u\n", config.q_size);
-	fanotify_queue_report(f);
-	decision_report(f);
+	fanotify_queue_report_reset(f, reset);
+	decision_report_reset(f, reset);
 	database_report(f);
 #ifdef HAVE_MALLINFO2
 	memory_use_report(f);
 #endif
 	if (!shutdown)
-		do_cache_reports(f);
+		do_cache_reports_reset(f, reset);
 
 	// Report mounts under fanotify watch
 	pthread_mutex_lock(&mlist_lock);
@@ -1078,8 +1153,10 @@ int main(int argc, const char *argv[])
 	sigaction(SIGXFSZ, &sa, NULL);
 	sigaction(SIGQUIT, &sa, NULL);
 
-	sa.sa_handler = usr1_handler;
+	sa.sa_flags = SA_SIGINFO;
+	sa.sa_sigaction = usr1_handler;
 	sigaction(SIGUSR1, &sa, NULL);
+	sa.sa_flags = 0;
 	/* These need to be last since they are used later */
 	sa.sa_handler = term_handler;
 	sigaction(SIGTERM, &sa, NULL);
@@ -1119,6 +1196,7 @@ int main(int argc, const char *argv[])
 		set_message_mode(MSG_SYSLOG, DBG_NO);
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
 	}
+	log_metric_reset_strategy(config.reset_strategy);
 
 	// Set the exit function so there is always a fifo cleanup
 	if (atexit(unlink_fifo)) {

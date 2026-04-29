@@ -1145,13 +1145,48 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 unsigned long getAllowed(void)
 {
-	return atomic_load_explicit(&allowed, memory_order_relaxed);
+	return getAllowedReset(0);
 }
 
 
 unsigned long getDenied(void)
 {
-	return atomic_load_explicit(&denied, memory_order_relaxed);
+	return getDeniedReset(0);
+}
+
+/*
+ * policy_counter_snapshot - copy one policy counter and optionally reset it.
+ * @counter: atomic counter to read.
+ * @reset: non-zero resets the counter after copying it.
+ * Returns the copied counter value.
+ */
+static unsigned long policy_counter_snapshot(atomic_ulong *counter, int reset)
+{
+	if (reset)
+		return atomic_exchange_explicit(counter, 0,
+						memory_order_relaxed);
+
+	return atomic_load_explicit(counter, memory_order_relaxed);
+}
+
+/*
+ * getAllowedReset - copy the allowed counter, optionally resetting it.
+ * @reset: non-zero resets the counter after copying it.
+ * Returns the copied counter value.
+ */
+unsigned long getAllowedReset(int reset)
+{
+	return policy_counter_snapshot(&allowed, reset);
+}
+
+/*
+ * getDeniedReset - copy the denied counter, optionally resetting it.
+ * @reset: non-zero resets the counter after copying it.
+ * Returns the copied counter value.
+ */
+unsigned long getDeniedReset(int reset)
+{
+	return policy_counter_snapshot(&denied, reset);
 }
 
 /*
@@ -1161,43 +1196,46 @@ unsigned long getDenied(void)
  */
 void getDecisionMetrics(decision_metrics_t *metrics)
 {
+	getDecisionMetricsReset(metrics, 0);
+}
+
+/*
+ * getDecisionMetricsReset - copy policy decision counters for reporting.
+ * @metrics: destination metrics snapshot.
+ * @reset: non-zero resets interval counters after copying them.
+ *
+ * Ruleset generation identifies the active policy and is never reset.
+ * Returns nothing.
+ */
+void getDecisionMetricsReset(decision_metrics_t *metrics, int reset)
+{
 	if (!metrics)
 		return;
 
 	metrics->allowed_by_rule =
-		atomic_load_explicit(&allowed_by_rule, memory_order_relaxed);
+		policy_counter_snapshot(&allowed_by_rule, reset);
 	metrics->allowed_by_fallthrough =
-		atomic_load_explicit(&allowed_by_fallthrough,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&allowed_by_fallthrough, reset);
 	metrics->fallthrough_open =
-		atomic_load_explicit(&fallthrough_open, memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_open, reset);
 	metrics->fallthrough_execute =
-		atomic_load_explicit(&fallthrough_execute,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_execute, reset);
 	metrics->fallthrough_trusted =
-		atomic_load_explicit(&fallthrough_trusted,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_trusted, reset);
 	metrics->fallthrough_untrusted =
-		atomic_load_explicit(&fallthrough_untrusted,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_untrusted, reset);
 	metrics->fallthrough_trust_unknown =
-		atomic_load_explicit(&fallthrough_trust_unknown,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_trust_unknown, reset);
 	metrics->fallthrough_executable =
-		atomic_load_explicit(&fallthrough_executable,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_executable, reset);
 	metrics->fallthrough_programmatic =
-		atomic_load_explicit(&fallthrough_programmatic,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_programmatic, reset);
 	metrics->fallthrough_sharedlib =
-		atomic_load_explicit(&fallthrough_sharedlib,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_sharedlib, reset);
 	metrics->fallthrough_unknown_ftype =
-		atomic_load_explicit(&fallthrough_unknown_ftype,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_unknown_ftype, reset);
 	metrics->fallthrough_other_ftype =
-		atomic_load_explicit(&fallthrough_other_ftype,
-				     memory_order_relaxed);
+		policy_counter_snapshot(&fallthrough_other_ftype, reset);
 	metrics->ruleset_generation =
 		atomic_load_explicit(&ruleset_generation,
 				     memory_order_relaxed);

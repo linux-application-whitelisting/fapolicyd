@@ -93,6 +93,22 @@ int main(void)
 	CHECK(strcmp(report, "Inter-thread max queue depth: 2\n") == 0, 15,
 	      "[ERROR:15] legacy queue report format changed");
 
+	q_metrics_snapshot_reset(q, &metrics, 1);
+	CHECK(metrics.current_depth == 1, 16,
+	      "[ERROR:16] reset snapshot changed current depth");
+	CHECK(metrics.max_depth == 2, 17,
+	      "[ERROR:17] reset snapshot lost previous max depth");
+	CHECK(metrics.full_count == 1, 18,
+	      "[ERROR:18] reset snapshot lost previous full count");
+
+	q_metrics_snapshot(q, &metrics);
+	CHECK(metrics.current_depth == 1, 19,
+	      "[ERROR:19] reset changed current depth state");
+	CHECK(metrics.max_depth == 1, 20,
+	      "[ERROR:20] reset did not restart max depth at current depth");
+	CHECK(metrics.full_count == 0, 21,
+	      "[ERROR:21] reset did not clear full count");
+
 	q_close(q);
 	return 0;
 }

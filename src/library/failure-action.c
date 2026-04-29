@@ -134,20 +134,74 @@ unsigned long failure_action_count(failure_reason_t reason)
 }
 
 /*
- * failure_action_report - print failure action counters.
- * @f: report stream.
+ * failure_action_snapshot - copy failure counters, optionally resetting them.
+ * @metrics: destination metrics snapshot.
+ * @reset: non-zero resets counters after copying them.
  * Returns nothing.
  */
-void failure_action_report(FILE *f)
+void failure_action_snapshot(failure_action_metrics_t *metrics, int reset)
 {
 	failure_reason_t reason;
 
-	if (f == NULL)
+	if (metrics == NULL)
+		return;
+
+	for (reason = 0; reason < FAILURE_REASON_MAX; reason++) {
+		if (reset)
+			metrics->counts[reason] = atomic_exchange_explicit(
+				&failure_counts[reason], 0,
+				memory_order_relaxed);
+		else
+			metrics->counts[reason] = failure_action_count(reason);
+	}
+}
+
+/*
+ * failure_action_metrics_count - read one value from a metrics snapshot.
+ * @metrics: metrics returned by failure_action_snapshot().
+ * @reason: failure reason to read.
+ * Returns the snapshot value, or 0 for unknown reasons.
+ */
+unsigned long failure_action_metrics_count(
+		const failure_action_metrics_t *metrics,
+		failure_reason_t reason)
+{
+	if (metrics == NULL || !failure_reason_valid(reason))
+		return 0;
+
+	return metrics->counts[reason];
+}
+
+/*
+ * failure_action_metrics_report - print failure action metric snapshot.
+ * @f: report stream.
+ * @metrics: metrics returned by failure_action_snapshot().
+ * Returns nothing.
+ */
+void failure_action_metrics_report(FILE *f,
+		const failure_action_metrics_t *metrics)
+{
+	failure_reason_t reason;
+
+	if (f == NULL || metrics == NULL)
 		return;
 
 	for (reason = 0; reason < FAILURE_REASON_MAX; reason++)
 		fprintf(f, "Failure action %s (%s): %lu\n",
 			failure_reason_name(reason),
 			failure_action_name(failure_reason_action(reason)),
-			failure_action_count(reason));
+			failure_action_metrics_count(metrics, reason));
+}
+
+/*
+ * failure_action_report - print current failure action counters.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void failure_action_report(FILE *f)
+{
+	failure_action_metrics_t metrics;
+
+	failure_action_snapshot(&metrics, 0);
+	failure_action_metrics_report(f, &metrics);
 }

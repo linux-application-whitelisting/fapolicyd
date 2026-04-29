@@ -732,21 +732,24 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 	return NULL;
 }
 
-static void print_queue_stats(FILE *f, const Queue *q)
+static void print_queue_stats(FILE *f, const struct lru_metrics *metrics)
 {
-	fprintf(f, "%s cache size: %u\n", q->name, q->total);
-	fprintf(f, "%s slots in use: %u (%u%%)\n", q->name, q->count,
-				q->total ? (100*q->count)/q->total : 0);
-	fprintf(f, "%s hits: %lu\n", q->name, q->hits);
-	fprintf(f, "%s misses: %lu\n", q->name, q->misses);
-	fprintf(f, "%s evictions: %lu (%lu%%)\n", q->name, q->evictions,
-				q->hits ? (100*q->evictions)/q->hits : 0);
+	fprintf(f, "%s cache size: %u\n", metrics->name, metrics->total);
+	fprintf(f, "%s slots in use: %u (%u%%)\n", metrics->name,
+		metrics->count,
+		metrics->total ? (100*metrics->count)/metrics->total : 0);
+	fprintf(f, "%s hits: %lu\n", metrics->name, metrics->hits);
+	fprintf(f, "%s misses: %lu\n", metrics->name, metrics->misses);
+	fprintf(f, "%s evictions: %lu (%lu%%)\n", metrics->name,
+		metrics->evictions,
+		metrics->hits ? (100*metrics->evictions)/metrics->hits : 0);
 }
 
 void run_usage_report(const conf_t *config, FILE *f)
 {
 	time_t t;
 	QNode *q_node;
+	struct lru_metrics metrics;
 
 	if (f == NULL)
 		return;
@@ -789,7 +792,8 @@ void run_usage_report(const conf_t *config, FILE *f)
 
 		fprintf(f, "\n---\n\n");
 	}
-	print_queue_stats(f, obj_cache);
+	lru_metrics_snapshot(obj_cache, &metrics, 0);
+	print_queue_stats(f, &metrics);
 	fprintf(f, "\n\n");
 
 	if (config->detailed_report) {
@@ -841,14 +845,34 @@ void run_usage_report(const conf_t *config, FILE *f)
 		}
 		fprintf(f, "\n---\n\n");
 	}
-	print_queue_stats(f, subj_cache);
+	lru_metrics_snapshot(subj_cache, &metrics, 0);
+	print_queue_stats(f, &metrics);
 	fprintf(f, "\n");
 }
 
 void do_cache_reports(FILE *f)
 {
-	print_queue_stats(f, subj_cache);
-	fprintf(f, "Early subject cache evictions: %u\n",
-		early_subj_cache_evictions);
-	print_queue_stats(f, obj_cache);
+	do_cache_reports_reset(f, 0);
+}
+
+/*
+ * do_cache_reports_reset - write cache metrics and optionally reset counters.
+ * @f: output stream.
+ * @reset: non-zero resets interval counters after copying them.
+ *
+ * Cache sizes and occupancy are state values and are never reset.
+ */
+void do_cache_reports_reset(FILE *f, int reset)
+{
+	struct lru_metrics metrics;
+	unsigned int early_evictions = early_subj_cache_evictions;
+
+	if (reset)
+		early_subj_cache_evictions = 0;
+
+	lru_metrics_snapshot(subj_cache, &metrics, reset);
+	print_queue_stats(f, &metrics);
+	fprintf(f, "Early subject cache evictions: %u\n", early_evictions);
+	lru_metrics_snapshot(obj_cache, &metrics, reset);
+	print_queue_stats(f, &metrics);
 }

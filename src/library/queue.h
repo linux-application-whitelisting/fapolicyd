@@ -63,6 +63,10 @@ struct queue *q_open(size_t num_entries) __attribute_malloc__
 /* Copy queue metrics into METRICS. */
 void q_metrics_snapshot(const struct queue *q, struct queue_metrics *metrics);
 
+/* Copy queue metrics into METRICS and optionally reset interval counters. */
+void q_metrics_snapshot_reset(struct queue *q, struct queue_metrics *metrics,
+		int reset);
+
 /* Write queue metrics using the current text report format. */
 void q_metrics_report(FILE *f, const struct queue_metrics *metrics);
 

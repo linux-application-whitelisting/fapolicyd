@@ -41,6 +41,7 @@ static void read_failure_report(char *buf, size_t size)
  */
 int main(void)
 {
+	failure_action_metrics_t metrics;
 	char report[1024];
 	char expected[128];
 	unsigned long before, after;
@@ -76,6 +77,13 @@ int main(void)
 	CHECK(strstr(report,
 		     "Failure action trust_reload_failure (observe): ") != NULL,
 	      9, "[ERROR:9] report missing trust reload counter");
+
+	failure_action_snapshot(&metrics, 1);
+	CHECK(failure_action_metrics_count(&metrics,
+	      FAILURE_REASON_QUEUE_FULL) == after, 10,
+	      "[ERROR:10] reset snapshot lost queue_full count");
+	CHECK(failure_action_count(FAILURE_REASON_QUEUE_FULL) == 0, 11,
+	      "[ERROR:11] reset snapshot did not clear queue_full count");
 
 	return 0;
 }

@@ -60,10 +60,21 @@ typedef struct Queue
 	QNode *free_list;	// Free list for queue nodes
 } Queue;
 
+struct lru_metrics {
+	const char *name;
+	unsigned int count;
+	unsigned int total;
+	unsigned long hits;
+	unsigned long misses;
+	unsigned long evictions;
+};
+
 void destroy_lru(Queue *queue);
 Queue *init_lru(unsigned int qsize, void (*cleanup)(void *),
 		const char *name, void (*evict_cb)(void *)) __attribute_malloc__
 		__attr_dealloc (destroy_lru, 1);
+void lru_metrics_snapshot(Queue *queue, struct lru_metrics *metrics,
+		int reset);
 void lru_evict(Queue *queue, unsigned int key);
 QNode *check_lru_cache(Queue *q, unsigned int key);
 unsigned int compute_subject_key(const Queue *queue, unsigned int pid);

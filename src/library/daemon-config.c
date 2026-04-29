@@ -98,7 +98,9 @@ static int rpm_sha256_only_parser(const struct nv_pair *nv, int line,
 static int fs_mark_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int report_interval_parser(const struct nv_pair *nv, int line,
-        conf_t *config);
+		conf_t *config);
+static int reset_strategy_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -120,6 +122,7 @@ static const struct kw_pair keywords[] =
   {"rpm_sha256_only", rpm_sha256_only_parser},
   {"allow_filesystem_mark",	fs_mark_parser },
   {"report_interval",	report_interval_parser },
+  {"reset_strategy",	reset_strategy_parser },
   { NULL,		NULL }
 };
 
@@ -151,7 +154,8 @@ static void clear_daemon_config(conf_t *config)
 		strdup("rule,dec,perm,auid,pid,exe,:,path,ftype");
 	config->rpm_sha256_only = 0;
 	config->allow_filesystem_mark = 0;
-    config->report_interval = 0;
+	config->report_interval = 0;
+	config->reset_strategy = RESET_NEVER;
 }
 
 int load_daemon_config(conf_t *config)
@@ -572,9 +576,38 @@ static int ignore_mounts_parser(const struct nv_pair *nv, int line,
 }
 
 static int report_interval_parser(const struct nv_pair *nv, int line,
-        conf_t *config)
+		conf_t *config)
 {
-    return unsigned_int_parser(&(config->report_interval), nv->value, line);
+	return unsigned_int_parser(&(config->report_interval), nv->value, line);
+}
+
+static const struct nv_list reset_strategies[] =
+{
+  {"never",	RESET_NEVER },
+  {"auto",	RESET_AUTO },
+  {"manual",	RESET_MANUAL },
+  { NULL,	0 }
+};
+
+/*
+ * reset_strategy_parser - parse metrics reset strategy.
+ * @nv: name/value pair describing the option.
+ * @line: line number where the option was found.
+ * @config: configuration structure to update.
+ * Returns 0 on success and 1 when the value is unknown.
+ */
+static int reset_strategy_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	for (int i = 0; reset_strategies[i].name != NULL; i++) {
+		if (strcasecmp(nv->value, reset_strategies[i].name) == 0) {
+			config->reset_strategy = reset_strategies[i].option;
+			return 0;
+		}
+	}
+
+	msg(LOG_ERR, "Option %s not found - line %d", nv->value, line);
+	return 1;
 }
 
 
@@ -637,6 +670,19 @@ const char *lookup_integrity(unsigned value)
 		return NULL;
 
 	return integrity_schemes[value].name;
+}
+
+/*
+ * lookup_reset_strategy - return the reset strategy name.
+ * @value: reset_strategy_t value to describe.
+ * Returns the strategy name, or NULL when the value is unknown.
+ */
+const char *lookup_reset_strategy(unsigned value)
+{
+	if (value > RESET_MANUAL)
+		return NULL;
+
+	return reset_strategies[value].name;
 }
 
 static int syslog_format_parser(const struct nv_pair *nv, int line,

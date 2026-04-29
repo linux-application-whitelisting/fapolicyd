@@ -28,11 +28,21 @@ typedef enum {
 	FAILURE_ACTION_OBSERVE
 } failure_action_t;
 
+typedef struct {
+	unsigned long counts[FAILURE_REASON_MAX];
+} failure_action_metrics_t;
+
 const char *failure_reason_name(failure_reason_t reason);
 failure_action_t failure_reason_action(failure_reason_t reason);
 const char *failure_action_name(failure_action_t action);
 unsigned long failure_action_record(failure_reason_t reason);
 unsigned long failure_action_count(failure_reason_t reason);
+void failure_action_snapshot(failure_action_metrics_t *metrics, int reset);
+unsigned long failure_action_metrics_count(
+		const failure_action_metrics_t *metrics,
+		failure_reason_t reason);
+void failure_action_metrics_report(FILE *f,
+		const failure_action_metrics_t *metrics);
 void failure_action_report(FILE *f);
 
 #endif

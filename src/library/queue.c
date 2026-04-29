@@ -125,6 +125,45 @@ void q_metrics_snapshot(const struct queue *q, struct queue_metrics *metrics)
 }
 
 /*
+ * q_metrics_snapshot_reset - copy queue counters, optionally resetting them.
+ * @q: queue to read.
+ * @metrics: destination for the metric values.
+ * @reset: non-zero resets interval counters after copying them.
+ *
+ * The current depth is state, not an interval counter. A reset starts max
+ * depth at the current depth so the next report never claims a max lower than
+ * the number of events already queued.
+ */
+void q_metrics_snapshot_reset(struct queue *q, struct queue_metrics *metrics,
+		int reset)
+{
+	unsigned int current;
+
+	if (!reset) {
+		q_metrics_snapshot(q, metrics);
+		return;
+	}
+
+	current = atomic_load_explicit(&q->queue_length, memory_order_relaxed);
+	metrics->current_depth = current;
+	metrics->max_depth = atomic_exchange_explicit(&q->max_depth, current,
+						      memory_order_relaxed);
+	metrics->full_count = atomic_exchange_explicit(&q->full_count, 0,
+						       memory_order_relaxed);
+
+	current = atomic_load_explicit(&q->queue_length, memory_order_relaxed);
+	for (;;) {
+		unsigned int max = atomic_load_explicit(&q->max_depth,
+						       memory_order_relaxed);
+
+		if (max >= current ||
+		    atomic_compare_exchange_weak_explicit(&q->max_depth, &max,
+			current, memory_order_relaxed, memory_order_relaxed))
+			break;
+	}
+}
+
+/*
  * q_metrics_report - write queue metrics in the legacy text format.
  * @f: output stream.
  * @metrics: queue metrics to report.

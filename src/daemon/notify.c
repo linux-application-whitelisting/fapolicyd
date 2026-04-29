@@ -40,6 +40,7 @@
 #include <ctype.h>
 #include <time.h>
 #include "conf.h"
+#include "daemon-config.h"
 #include "failure-action.h"
 #include "policy.h"
 #include "event.h"
@@ -54,6 +55,10 @@
 
 // External variables
 extern atomic_bool stop, run_stats;
+extern atomic_uint signal_report_requests;
+extern atomic_uint signal_report_reset_requests;
+extern atomic_int signal_report_reset_request_pid;
+extern atomic_int signal_report_reset_request_uid;
 extern conf_t config;
 
 // Local variables
@@ -71,12 +76,19 @@ static unsigned int rpt_interval;
 static atomic_long kernel_queue_overflow_last_log;
 
 // External functions
-extern void do_stat_report(FILE *f, int shutdown);
+extern void do_stat_report_reset(FILE *f, int shutdown, int reset);
 
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
+void fanotify_queue_report_reset(FILE *f, int reset);
+void decision_report_reset(FILE *f, int reset);
 void nudge_queue(void);
+
+enum report_reason {
+	REPORT_SIGNAL,
+	REPORT_INTERVAL,
+};
 
 /*
  * getKernelQueueOverflow - return kernel fanotify overflow count.
@@ -454,30 +466,61 @@ void nudge_queue(void)
  */
 void fanotify_queue_report(FILE *f)
 {
+	fanotify_queue_report_reset(f, 0);
+}
+
+/*
+ * fanotify_queue_report_reset - write fanotify queue metrics.
+ * @f: output stream.
+ * @reset: non-zero resets interval counters after copying them.
+ * Returns nothing.
+ */
+void fanotify_queue_report_reset(FILE *f, int reset)
+{
 	if (f == NULL)
 		return;
 
-	if (q)
-		q_report(f, q);
-	else
+	if (q) {
+		struct queue_metrics metrics;
+
+		q_metrics_snapshot_reset(q, &metrics, reset);
+		q_metrics_report(f, &metrics);
+	} else
 		q_metrics_report(f, &last_queue_metrics);
 }
 
 void decision_report(FILE *f)
 {
+	decision_report_reset(f, 0);
+}
+
+/*
+ * decision_report_reset - write policy and failure metrics.
+ * @f: output stream.
+ * @reset: non-zero resets interval counters after copying them.
+ * Returns nothing.
+ */
+void decision_report_reset(FILE *f, int reset)
+{
 	decision_metrics_t metrics;
+	failure_action_metrics_t failures;
 
 	if (f == NULL)
 		return;
 
-	getDecisionMetrics(&metrics);
+	getDecisionMetricsReset(&metrics, reset);
+	failure_action_snapshot(&failures, reset);
 
 	// Report results
-	fprintf(f, "Kernel Queue Overflow: %lu\n", getKernelQueueOverflow());
-	fprintf(f, "Reply Errors: %lu\n", getReplyErrors());
-	failure_action_report(f);
-	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
-	fprintf(f, "Denied accesses: %lu\n", getDenied());
+	fprintf(f, "Kernel Queue Overflow: %lu\n",
+		failure_action_metrics_count(&failures,
+			FAILURE_REASON_KERNEL_QUEUE_OVERFLOW));
+	fprintf(f, "Reply Errors: %lu\n",
+		failure_action_metrics_count(&failures,
+			FAILURE_REASON_RESPONSE_WRITE_FAILURE));
+	failure_action_metrics_report(f, &failures);
+	fprintf(f, "Allowed accesses: %lu\n", getAllowedReset(reset));
+	fprintf(f, "Denied accesses: %lu\n", getDeniedReset(reset));
 	fprintf(f, "Allowed by rule: %lu\n", metrics.allowed_by_rule);
 	fprintf(f, "Allowed by fallthrough: %lu\n",
 		metrics.allowed_by_fallthrough);
@@ -569,11 +612,90 @@ static void rpt_init(struct timespec *t)
 	}
 }
 
-// write a stat report to file at the standard location
-static void rpt_write(void)
+/*
+ * metric_reset_allowed - decide whether a report should reset counters.
+ * @reason: why the report is being generated.
+ * @reset_requests: number of pending signal-based reset requests.
+ * Returns 1 when counters should be reset after this report snapshot.
+ */
+static int metric_reset_allowed(enum report_reason reason,
+			unsigned int reset_requests)
+{
+	reset_strategy_t strategy;
+	int uid;
+
+	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
+	if (strategy == RESET_AUTO && reason == REPORT_INTERVAL)
+		return 1;
+	uid = atomic_load_explicit(&signal_report_reset_request_uid,
+				   memory_order_relaxed);
+	if (strategy == RESET_MANUAL && reason == REPORT_SIGNAL &&
+	    reset_requests && uid == 0)
+		return 1;
+	return 0;
+}
+
+/*
+ * log_manual_metric_reset - log a manual reset request from SIGUSR1.
+ * @reset_requests: number of requests consumed by this report.
+ * @reset: non-zero when the request reset counters.
+ * Returns nothing.
+ */
+static void log_manual_metric_reset(unsigned int reset_requests, int reset)
+{
+	reset_strategy_t strategy;
+	int pid, uid;
+
+	if (reset_requests == 0)
+		return;
+
+	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
+	if (strategy != RESET_MANUAL)
+		return;
+
+	pid = atomic_load_explicit(&signal_report_reset_request_pid,
+				   memory_order_relaxed);
+	uid = atomic_load_explicit(&signal_report_reset_request_uid,
+				   memory_order_relaxed);
+
+	if (pid > 0)
+		msg(LOG_INFO,
+		    "Manual metrics reset requested by pid=%d uid=%d "
+		    "(requests=%u): %s",
+		    pid, uid, reset_requests,
+		    reset ? "resetting counters after state report" :
+		    "not resetting counters");
+	else
+		msg(LOG_INFO,
+		    "Manual metrics reset requested (requests=%u): %s",
+		    reset_requests,
+		    reset ? "resetting counters after state report" :
+		    "not resetting counters");
+
+	if (!reset) {
+		if (strategy == RESET_MANUAL && uid != 0)
+			msg(LOG_INFO,
+			    "Manual metrics reset ignored because uid=%d "
+			    "is not privileged",
+			    uid);
+		else
+			msg(LOG_INFO,
+			    "Manual metrics reset ignored because report was not "
+			    "signal based");
+	}
+}
+
+/*
+ * rpt_write - write a state report to the standard location.
+ * @reason: report trigger used to apply reset_strategy.
+ * Returns nothing.
+ */
+static void rpt_write(enum report_reason reason)
 {
 	int sr_fd = open_stat_report();
 	FILE *f;
+	unsigned int reset_requests;
+	int reset;
 
 	if (sr_fd < 0) {
 		msg(LOG_WARNING, "cannot open %s: %s",
@@ -589,8 +711,27 @@ static void rpt_write(void)
 		return;
 	}
 
-	do_stat_report(f, 0);
+	(void)atomic_exchange_explicit(&signal_report_requests, 0,
+				       memory_order_relaxed);
+	reset_requests = atomic_exchange_explicit(&signal_report_reset_requests,
+						  0, memory_order_relaxed);
+	reset = metric_reset_allowed(reason, reset_requests);
+	log_manual_metric_reset(reset_requests, reset);
+	do_stat_report_reset(f, 0, reset);
 	fclose(f);
+}
+
+/*
+ * report_reason_for_triggers - classify the pending report trigger.
+ * @expired: non-zero when the interval timer expired.
+ * Returns the trigger to use when applying reset_strategy.
+ */
+static enum report_reason report_reason_for_triggers(int expired)
+{
+	if (atomic_load_explicit(&signal_report_requests,
+				 memory_order_relaxed))
+		return REPORT_SIGNAL;
+	return expired ? REPORT_INTERVAL : REPORT_SIGNAL;
 }
 
 static void *decision_thread_main(void *arg)
@@ -626,9 +767,10 @@ static void *decision_thread_main(void *arg)
 			errno = 0;
 			rc = q_timed_dequeue(q, &metadata, &rpt_timeout);
 			if (rc == 0) {
+				uint64_t expired = 0;
+
 				// check for timer expirations
 				if (errno == ETIMEDOUT) {
-					uint64_t expired = 0;
 					if (read(rpt_timer_fd, &expired,
 						sizeof(uint64_t)) == -1) {
 						// EAGAIN expected w/nonblocking
@@ -640,30 +782,29 @@ static void *decision_thread_main(void *arg)
 							continue;
 						}
 					}
-					// timer expired or stats explicitly
-					// requested
-					if (expired || run_stats) {
+				}
+				// timer expired or stats explicitly requested
+				if (expired || run_stats) {
 					// write a new report only when one of
 					// 1. new events seen since last report
 					// 2. explicitly requested w/run_stats
-						if (rpt_is_stale || run_stats) {
-							rpt_write();
-							run_stats = 0;
-							rpt_is_stale = 0;
-						}
-						// adjust the timed dequeue timeout to
-						// a full interval from now
-						if (clock_gettime(CLOCK_REALTIME,
-								&rpt_timeout)) {
-							// gettime errors are
-							// unrecoverable
-							rpt_disable(
-							    "clock failure");
-							continue;
-						}
-						rpt_timeout.tv_sec +=
-							rpt_interval;
+					if (rpt_is_stale || run_stats) {
+						rpt_write(
+						    report_reason_for_triggers(
+							expired));
+						run_stats = 0;
+						rpt_is_stale = 0;
 					}
+					// adjust the timed dequeue timeout to
+					// a full interval from now
+					if (clock_gettime(CLOCK_REALTIME,
+							&rpt_timeout)) {
+						// gettime errors are
+						// unrecoverable
+						rpt_disable("clock failure");
+						continue;
+					}
+					rpt_timeout.tv_sec += rpt_interval;
 				}
 				continue;
 			}
@@ -671,13 +812,13 @@ static void *decision_thread_main(void *arg)
 			rc = q_dequeue(q, &metadata);
 			if (rc == 0) {
 				if (run_stats) {
-					rpt_write();
+					rpt_write(REPORT_SIGNAL);
 					run_stats = 0;
 				}
 				continue;
 			}
 			if (run_stats) {
-				rpt_write();
+				rpt_write(REPORT_SIGNAL);
 				run_stats = 0;
 			}
 		}

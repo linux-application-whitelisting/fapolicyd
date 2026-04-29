@@ -444,6 +444,34 @@ void destroy_lru(Queue *queue)
 	destroy_queue(queue);
 }
 
+/*
+ * lru_metrics_snapshot - copy cache counters, optionally resetting them.
+ * @queue: cache queue to read.
+ * @metrics: destination metrics snapshot.
+ * @reset: non-zero resets interval counters after copying them.
+ *
+ * Cache occupancy and capacity are state values and are never reset.
+ */
+void lru_metrics_snapshot(Queue *queue, struct lru_metrics *metrics,
+		int reset)
+{
+	if (queue == NULL || metrics == NULL)
+		return;
+
+	metrics->name = queue->name;
+	metrics->count = queue->count;
+	metrics->total = queue->total;
+	metrics->hits = queue->hits;
+	metrics->misses = queue->misses;
+	metrics->evictions = queue->evictions;
+
+	if (reset) {
+		queue->hits = 0;
+		queue->misses = 0;
+		queue->evictions = 0;
+	}
+}
+
 unsigned int compute_subject_key(const Queue *queue, unsigned int pid)
 {
 	if (queue)
