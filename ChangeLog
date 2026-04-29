@@ -8,6 +8,7 @@
 - Collect metrics around decision replies that fail (Reply Errors)
 - Collect metrics around default-allow decisions
 - Document metrics in fapolicyd.state
+- Add --reset-metrics to fapolicayd-cli and reset_strategy to fapolicyd.conf
 
 1.4.5
 - Inform the admin symlinks were skipped when adding paths
