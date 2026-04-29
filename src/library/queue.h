@@ -41,7 +41,16 @@ struct queue
 	atomic_uint q_next;
 	atomic_uint q_last;
 	atomic_uint queue_length;
-        sem_t sem;
+	atomic_uint max_depth;
+	atomic_ulong full_count;
+	sem_t sem;
+};
+
+struct queue_metrics
+{
+	unsigned int current_depth;
+	unsigned int max_depth;
+	unsigned long full_count;
 };
 
 /* Close Q. */
@@ -51,8 +60,14 @@ void q_close(struct queue *q);
 struct queue *q_open(size_t num_entries) __attribute_malloc__
 		     __attr_dealloc (q_close, 1);
 
-/* Write out q_depth */
-void q_report(FILE *f);
+/* Copy queue metrics into METRICS. */
+void q_metrics_snapshot(const struct queue *q, struct queue_metrics *metrics);
+
+/* Write queue metrics using the current text report format. */
+void q_metrics_report(FILE *f, const struct queue_metrics *metrics);
+
+/* Write out queue metrics for Q. */
+void q_report(FILE *f, const struct queue *q);
 
 /* Add DATA to tail of Q. Return 0 on success, -1 on error and set errno. */
 int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data);

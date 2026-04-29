@@ -52,12 +52,9 @@
  *
  * queue_length is read without locking by the deadman thread and is
  * therefore atomic. Using a ring buffer avoids per-event malloc/free and
- * keeps memory usage predictable. max_depth records the highest
- * queue_length observed for diagnostics.
+ * keeps memory usage predictable. Per-queue metrics record queue pressure for
+ * diagnostics and future structured status output.
  */
-
-/* Queue implementation */
-static atomic_uint max_depth;
 
 /* Initialize a queue   */
 struct queue *q_open(size_t num_entries)
@@ -83,7 +80,8 @@ struct queue *q_open(size_t num_entries)
 	atomic_store_explicit(&q->q_next, 0, memory_order_relaxed);
 	atomic_store_explicit(&q->q_last, 0, memory_order_relaxed);
 	atomic_store_explicit(&q->queue_length, 0, memory_order_relaxed);
-	max_depth = 0;
+	atomic_store_explicit(&q->max_depth, 0, memory_order_relaxed);
+	atomic_store_explicit(&q->full_count, 0, memory_order_relaxed);
 
 	if (sem_init(&q->sem, 0, 0) == -1) {
 		free(q->events);
@@ -101,15 +99,54 @@ err:
 
 void q_close(struct queue *q)
 {
+	struct queue_metrics metrics;
+
+	q_metrics_snapshot(q, &metrics);
 	sem_destroy(&q->sem);
 	free(q->events);
-	msg(LOG_DEBUG, "Inter-thread max queue depth %u", max_depth);
+	msg(LOG_DEBUG, "Inter-thread max queue depth %u", metrics.max_depth);
 	free(q);
 }
 
-void q_report(FILE *f)
+/*
+ * q_metrics_snapshot - copy the current queue counters.
+ * @q: queue to read.
+ * @metrics: destination for the metric values.
+ * Returns nothing.
+ */
+void q_metrics_snapshot(const struct queue *q, struct queue_metrics *metrics)
 {
-	fprintf(f, "Inter-thread max queue depth: %u\n", max_depth);
+	metrics->current_depth = atomic_load_explicit(&q->queue_length,
+						      memory_order_relaxed);
+	metrics->max_depth = atomic_load_explicit(&q->max_depth,
+						  memory_order_relaxed);
+	metrics->full_count = atomic_load_explicit(&q->full_count,
+						   memory_order_relaxed);
+}
+
+/*
+ * q_metrics_report - write queue metrics in the legacy text format.
+ * @f: output stream.
+ * @metrics: queue metrics to report.
+ * Returns nothing.
+ */
+void q_metrics_report(FILE *f, const struct queue_metrics *metrics)
+{
+	fprintf(f, "Inter-thread max queue depth: %u\n", metrics->max_depth);
+}
+
+/*
+ * q_report - snapshot and write queue metrics for a live queue.
+ * @f: output stream.
+ * @q: queue to report.
+ * Returns nothing.
+ */
+void q_report(FILE *f, const struct queue *q)
+{
+	struct queue_metrics metrics;
+
+	q_metrics_snapshot(q, &metrics);
+	q_metrics_report(f, &metrics);
 }
 
 /* add DATA to Q */
@@ -119,6 +156,8 @@ int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 
 	if (atomic_load_explicit(&q->queue_length, memory_order_relaxed) ==
 		q->num_entries) {
+		atomic_fetch_add_explicit(&q->full_count, 1,
+					  memory_order_relaxed);
 		errno = ENOSPC;
 		return -1;
 	}
@@ -147,8 +186,9 @@ int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 
 	n = atomic_fetch_add_explicit(&q->queue_length, 1,
 				      memory_order_relaxed) + 1;
-	unsigned int old = atomic_load(&max_depth);
-	while (n > old && !atomic_compare_exchange_weak(&max_depth, &old, n))
+	unsigned int old = atomic_load(&q->max_depth);
+	while (n > old &&
+	       !atomic_compare_exchange_weak(&q->max_depth, &old, n))
 		;
 
 	sem_post(&q->sem);

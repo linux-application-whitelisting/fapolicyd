@@ -881,7 +881,7 @@ void do_stat_report(FILE *f, int shutdown)
 	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "q_size: %u\n", config.q_size);
-	q_report(f);
+	fanotify_queue_report(f);
 	decision_report(f);
 	database_report(f);
 #ifdef HAVE_MALLINFO2

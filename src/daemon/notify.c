@@ -59,6 +59,7 @@ extern conf_t config;
 // Local variables
 static pid_t our_pid;
 static struct queue *q = NULL;
+static struct queue_metrics last_queue_metrics;
 static pthread_t decision_thread;
 static pthread_t deadmans_switch_thread;
 static atomic_bool alive = true;
@@ -233,6 +234,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 			strerror(errno));
 		exit(1);
 	}
+	q_metrics_snapshot(q, &last_queue_metrics);
 	our_pid = getpid();
 
 	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
@@ -429,7 +431,9 @@ void shutdown_fanotify(mlist *m)
 	pthread_join(deadmans_switch_thread, NULL);
 
 	// Clean up
+	q_metrics_snapshot(q, &last_queue_metrics);
 	q_close(q);
+	q = NULL;
 	close(rpt_timer_fd);
 	close(fd);
 
@@ -441,6 +445,22 @@ void shutdown_fanotify(mlist *m)
 void nudge_queue(void)
 {
 	q_shutdown(q);
+}
+
+/*
+ * fanotify_queue_report - write fanotify queue metrics.
+ * @f: output stream.
+ * Returns nothing.
+ */
+void fanotify_queue_report(FILE *f)
+{
+	if (f == NULL)
+		return;
+
+	if (q)
+		q_report(f, q);
+	else
+		q_metrics_report(f, &last_queue_metrics);
 }
 
 void decision_report(FILE *f)
