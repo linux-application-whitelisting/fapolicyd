@@ -88,7 +88,7 @@ static inline void rewind_fd(int fd)
 
 
 // Initialize what we can now so that its not done each call
-void file_init(void)
+int file_init(void)
 {
 	// Setup udev
 	udev = udev_new();
@@ -109,13 +109,14 @@ void file_init(void)
 		);
 	if (magic_fast == NULL) {
 		msg(LOG_ERR, "Unable to init libmagic");
-		exit(1);
+		return 1;
 	}
 
 	// Load only essential magic rules
 	if (magic_load(magic_fast, MAGIC_PATH) != 0) {
 		msg(LOG_ERR, "Unable to load fast magic database");
-		exit(1);
+		magic_close(magic_fast);
+		return 2;
 	}
 
 	// Full magic: normal operation
@@ -123,12 +124,15 @@ void file_init(void)
 			MAGIC_NO_CHECK_ELF);
 	if (magic_full == NULL) {
 		msg(LOG_ERR, "Unable to init libmagic");
-		exit(1);
+		magic_close(magic_fast);
+		return 3;
 	}
 	// System default
 	if (magic_load(magic_full, NULL) != 0) {
 		msg(LOG_ERR, "Unable to load default magic database");
-		exit(1);
+		magic_close(magic_fast);
+		magic_close(magic_full);
+		return 4;
 	}
 }
 

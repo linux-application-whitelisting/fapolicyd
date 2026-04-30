@@ -1252,7 +1252,16 @@ int main(int argc, const char *argv[])
 	}
 
 	// Init the file test libraries
-	file_init();
+	if (file_init()) {
+		// file_init cleans up on failure - skip
+		destroy_event_system();
+		destroy_rules();
+		destroy_fs_list(&filesystems);
+		destroy_fs_list(&ignored_mounts);
+		free_daemon_config(&config);
+		unlink(pidfile);
+		exit(1);
+	}
 
 	// Initialize the file watch system
 	pfd[0].fd = open(mounts, O_RDONLY);

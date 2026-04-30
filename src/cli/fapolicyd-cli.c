@@ -438,7 +438,11 @@ static int do_ftype(const char *path)
 	i.mode = sb.st_mode;
 	i.size = sb.st_size;
 
-	file_init();
+	if (file_init()) {
+		fprintf(stderr, "Cannot initialize file helper libraries\n");
+		close(fd);
+		return CLI_EXIT_INTERNAL;
+	}
 	ptr = get_file_type_from_fd(fd, &i, path, sizeof(buf), buf);
 	file_close();
 	close(fd);
@@ -1171,7 +1175,12 @@ static int check_ignore_mounts(const char *override)
 	}
 
 	/* Initialize libmagic once so nftw() callbacks can reuse it. */
-	file_init();
+	if (file_init()) {
+		fprintf(stderr, "Cannot initialize file helper libraries\n");
+		rc = CLI_EXIT_INTERNAL;
+		goto finish;
+	}
+
 	file_ready = 1;
 	scan_state.languages = &languages;
 

@@ -62,7 +62,7 @@ struct file_info
 	char digest[FILE_DIGEST_STRING_MAX];
 };
 
-void file_init(void);
+int file_init(void);
 void file_close(void);
 struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
 void file_info_reset_digest(struct file_info *info);
