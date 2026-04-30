@@ -132,7 +132,9 @@ fapolicyd_SOURCES = \
 fapolicyd_cli_SOURCES = \
 	cli/fapolicyd-cli.c \
 	cli/file-cli.c \
-	cli/file-cli.h
+	cli/file-cli.h \
+	cli/rule-lint.c \
+	cli/rule-lint.h
 
 if WITH_PERF_TEST
 fapolicyd_perf_test_SOURCES = \
