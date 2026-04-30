@@ -133,6 +133,8 @@ fapolicyd_cli_SOURCES = \
 	cli/fapolicyd-cli.c \
 	cli/file-cli.c \
 	cli/file-cli.h \
+	cli/ignore-mounts.c \
+	cli/ignore-mounts.h \
 	cli/rule-lint.c \
 	cli/rule-lint.h
 
