@@ -68,6 +68,8 @@ libfapolicyd_la_SOURCES = \
 	library/paths.h \
 	library/policy.c \
 	library/policy.h \
+	library/policy-metrics.c \
+	library/policy-metrics.h \
 	library/process.c \
 	library/process.h \
 	library/queue.c \

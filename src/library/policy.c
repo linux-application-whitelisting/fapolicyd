@@ -40,6 +40,7 @@
 #include "escape.h"
 #include "failure-action.h"
 #include "file.h"
+#include "policy-metrics.h"
 #include "rules.h"
 #include "policy.h"
 #include "nv.h"
@@ -79,20 +80,6 @@ struct policy_snapshot {
  * and old-snapshot destruction are serialized with policy readers.
  */
 static struct policy_snapshot *active_policy;
-static atomic_ulong allowed = 0, denied = 0;
-static atomic_ulong allowed_by_rule;
-static atomic_ulong allowed_by_fallthrough;
-static atomic_ulong fallthrough_open;
-static atomic_ulong fallthrough_execute;
-static atomic_ulong fallthrough_trusted;
-static atomic_ulong fallthrough_untrusted;
-static atomic_ulong fallthrough_trust_unknown;
-static atomic_ulong fallthrough_executable;
-static atomic_ulong fallthrough_programmatic;
-static atomic_ulong fallthrough_sharedlib;
-static atomic_ulong fallthrough_unknown_ftype;
-static atomic_ulong fallthrough_other_ftype;
-static atomic_uint ruleset_generation;
 /*
  * active_*_proc_status_mask - atomic copies of active snapshot masks
  *
@@ -442,8 +429,7 @@ static void publish_policy_snapshot(struct policy_snapshot *policy)
 	 * leaving the old active_policy untouched.
 	 */
 	active_policy = policy;
-	atomic_fetch_add_explicit(&ruleset_generation, 1,
-				  memory_order_relaxed);
+	policy_metrics_record_ruleset_update();
 	atomic_store_explicit(&active_rules_proc_status_mask,
 			      policy->rules_proc_status_mask,
 			      memory_order_release);
@@ -992,139 +978,24 @@ out:
 	close(metadata->fd);
 }
 
-/*
- * ftype_is_programmatic - classify ftypes commonly loaded by interpreters
- * @ftype: MIME type reported for the object.
- * Returns 1 when @ftype names language source, bytecode, jars, or scripts.
- */
-static int ftype_is_programmatic(const char *ftype)
-{
-	if (strncmp(ftype, "text/x-", 7) == 0)
-		return 1;
-	if (strstr(ftype, "javascript"))
-		return 1;
-	if (strstr(ftype, "bytecode"))
-		return 1;
-	if (strstr(ftype, "script"))
-		return 1;
-	if (strcmp(ftype, "application/java-archive") == 0)
-		return 1;
-	if (strcmp(ftype, "application/x-java-applet") == 0)
-		return 1;
-	if (strcmp(ftype, "application/x-elc") == 0)
-		return 1;
-
-	return 0;
-}
-
-/*
- * count_fallthrough_ftype - bucket object ftype for default-allow reporting
- * @e: event whose object ftype should be classified.
- * Returns nothing.
- */
-static void count_fallthrough_ftype(event_t *e)
-{
-	object_attr_t *ftype = get_obj_attr(e, FTYPE);
-	const char *name = ftype ? ftype->o : NULL;
-
-	if (!name || name[0] == 0) {
-		atomic_fetch_add_explicit(&fallthrough_unknown_ftype, 1,
-					  memory_order_relaxed);
-		return;
-	}
-
-	if (strcmp(name, "application/x-sharedlib") == 0) {
-		atomic_fetch_add_explicit(&fallthrough_sharedlib, 1,
-					  memory_order_relaxed);
-		return;
-	}
-	if (strstr(name, "executable") ||
-	    strcmp(name, "application/x-bad-elf") == 0) {
-		atomic_fetch_add_explicit(&fallthrough_executable, 1,
-					  memory_order_relaxed);
-		return;
-	}
-	if (ftype_is_programmatic(name)) {
-		atomic_fetch_add_explicit(&fallthrough_programmatic, 1,
-					  memory_order_relaxed);
-		return;
-	}
-
-	atomic_fetch_add_explicit(&fallthrough_other_ftype, 1,
-				  memory_order_relaxed);
-}
-
-/*
- * count_fallthrough_details - record low-cardinality default-allow dimensions
- * @e: event that reached the no-opinion allow path.
- * Returns nothing.
- */
-static void count_fallthrough_details(event_t *e)
-{
-	object_attr_t *trust;
-
-	if (e->type & FAN_OPEN_EXEC_PERM)
-		atomic_fetch_add_explicit(&fallthrough_execute, 1,
-					  memory_order_relaxed);
-	else
-		atomic_fetch_add_explicit(&fallthrough_open, 1,
-					  memory_order_relaxed);
-
-	trust = get_obj_attr(e, OBJ_TRUST);
-	if (!trust)
-		atomic_fetch_add_explicit(&fallthrough_trust_unknown, 1,
-					  memory_order_relaxed);
-	else if (trust->val)
-		atomic_fetch_add_explicit(&fallthrough_trusted, 1,
-					  memory_order_relaxed);
-	else
-		atomic_fetch_add_explicit(&fallthrough_untrusted, 1,
-					  memory_order_relaxed);
-
-	count_fallthrough_ftype(e);
-}
-
-/*
- * count_allow_source - record whether an allow came from a rule or fallback
- * @e: event that was allowed.
- * @source: source reported by process_event_with_source().
- * Returns nothing.
- */
-static void count_allow_source(event_t *e, decision_source_t source)
-{
-	if (source == DECISION_SOURCE_RULE) {
-		atomic_fetch_add_explicit(&allowed_by_rule, 1,
-					  memory_order_relaxed);
-		return;
-	}
-
-	atomic_fetch_add_explicit(&allowed_by_fallthrough, 1,
-				  memory_order_relaxed);
-	count_fallthrough_details(e);
-}
-
-
 void make_policy_decision(const struct fanotify_event_metadata *metadata,
 						int fd, uint64_t mask)
 {
 	event_t e;
 	int decision;
+	event_t *metric_event = NULL;
 	decision_source_t source = DECISION_SOURCE_FALLTHROUGH;
 
 	if (new_event(metadata, &e))
 		decision = FAN_DENY;
 	else {
+		metric_event = &e;
 		lock_rule();
 		decision = process_event_with_source(&e, &source);
 		unlock_rule();
 	}
 
-	if ((decision & DENY) == DENY)
-		atomic_fetch_add_explicit(&denied, 1, memory_order_relaxed);
-	else {
-		atomic_fetch_add_explicit(&allowed, 1, memory_order_relaxed);
-		count_allow_source(&e, source);
-	}
+	policy_metrics_record_decision(decision, metric_event, source);
 
 	if (metadata->mask & mask) {
 		// if in debug mode, do not allow audit events
@@ -1140,105 +1011,6 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 			reply_event(fd, metadata, decision & FAN_RESPONSE_MASK,
 					&e);
 	}
-}
-
-
-unsigned long getAllowed(void)
-{
-	return getAllowedReset(0);
-}
-
-
-unsigned long getDenied(void)
-{
-	return getDeniedReset(0);
-}
-
-/*
- * policy_counter_snapshot - copy one policy counter and optionally reset it.
- * @counter: atomic counter to read.
- * @reset: non-zero resets the counter after copying it.
- * Returns the copied counter value.
- */
-static unsigned long policy_counter_snapshot(atomic_ulong *counter, int reset)
-{
-	if (reset)
-		return atomic_exchange_explicit(counter, 0,
-						memory_order_relaxed);
-
-	return atomic_load_explicit(counter, memory_order_relaxed);
-}
-
-/*
- * getAllowedReset - copy the allowed counter, optionally resetting it.
- * @reset: non-zero resets the counter after copying it.
- * Returns the copied counter value.
- */
-unsigned long getAllowedReset(int reset)
-{
-	return policy_counter_snapshot(&allowed, reset);
-}
-
-/*
- * getDeniedReset - copy the denied counter, optionally resetting it.
- * @reset: non-zero resets the counter after copying it.
- * Returns the copied counter value.
- */
-unsigned long getDeniedReset(int reset)
-{
-	return policy_counter_snapshot(&denied, reset);
-}
-
-/*
- * getDecisionMetrics - copy policy decision counters for reporting
- * @metrics: destination metrics snapshot.
- * Returns nothing.
- */
-void getDecisionMetrics(decision_metrics_t *metrics)
-{
-	getDecisionMetricsReset(metrics, 0);
-}
-
-/*
- * getDecisionMetricsReset - copy policy decision counters for reporting.
- * @metrics: destination metrics snapshot.
- * @reset: non-zero resets interval counters after copying them.
- *
- * Ruleset generation identifies the active policy and is never reset.
- * Returns nothing.
- */
-void getDecisionMetricsReset(decision_metrics_t *metrics, int reset)
-{
-	if (!metrics)
-		return;
-
-	metrics->allowed_by_rule =
-		policy_counter_snapshot(&allowed_by_rule, reset);
-	metrics->allowed_by_fallthrough =
-		policy_counter_snapshot(&allowed_by_fallthrough, reset);
-	metrics->fallthrough_open =
-		policy_counter_snapshot(&fallthrough_open, reset);
-	metrics->fallthrough_execute =
-		policy_counter_snapshot(&fallthrough_execute, reset);
-	metrics->fallthrough_trusted =
-		policy_counter_snapshot(&fallthrough_trusted, reset);
-	metrics->fallthrough_untrusted =
-		policy_counter_snapshot(&fallthrough_untrusted, reset);
-	metrics->fallthrough_trust_unknown =
-		policy_counter_snapshot(&fallthrough_trust_unknown, reset);
-	metrics->fallthrough_executable =
-		policy_counter_snapshot(&fallthrough_executable, reset);
-	metrics->fallthrough_programmatic =
-		policy_counter_snapshot(&fallthrough_programmatic, reset);
-	metrics->fallthrough_sharedlib =
-		policy_counter_snapshot(&fallthrough_sharedlib, reset);
-	metrics->fallthrough_unknown_ftype =
-		policy_counter_snapshot(&fallthrough_unknown_ftype, reset);
-	metrics->fallthrough_other_ftype =
-		policy_counter_snapshot(&fallthrough_other_ftype, reset);
-	metrics->ruleset_generation =
-		atomic_load_explicit(&ruleset_generation,
-				     memory_order_relaxed);
 }
 
 
