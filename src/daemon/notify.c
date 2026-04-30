@@ -32,7 +32,6 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <signal.h>
-#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/timerfd.h>
 #include <stdbool.h>
@@ -40,7 +39,6 @@
 #include <ctype.h>
 #include <time.h>
 #include "conf.h"
-#include "daemon-config.h"
 #include "failure-action.h"
 #include "policy.h"
 #include "event.h"
@@ -48,17 +46,13 @@
 #include "message.h"
 #include "queue.h"
 #include "mounts.h"
-#include "paths.h"
+#include "state-report.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
 
 // External variables
 extern atomic_bool stop, run_stats;
-extern atomic_uint signal_report_requests;
-extern atomic_uint signal_report_reset_requests;
-extern atomic_int signal_report_reset_request_pid;
-extern atomic_int signal_report_reset_request_uid;
 extern conf_t config;
 
 // Local variables
@@ -75,20 +69,11 @@ static unsigned int mark_flag;
 static unsigned int rpt_interval;
 static atomic_long kernel_queue_overflow_last_log;
 
-// External functions
-extern void do_stat_report_reset(FILE *f, int shutdown, int reset);
-
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
 void fanotify_queue_report_reset(FILE *f, int reset);
-void decision_report_reset(FILE *f, int reset);
 void nudge_queue(void);
-
-enum report_reason {
-	REPORT_SIGNAL,
-	REPORT_INTERVAL,
-};
 
 /*
  * getKernelQueueOverflow - return kernel fanotify overflow count.
@@ -187,32 +172,6 @@ static const char *escape_path_for_log(const char *path, char **escaped)
 		return *escaped;
 
 	return "<unavailable>";
-}
-
-/*
- * open_stat_report - open status report file for overwrite without symlinks.
- * Return codes:
- * >= 0 - writable file descriptor for STAT_REPORT
- *  -1 - open or validation failed (errno set)
- */
-static int open_stat_report(void)
-{
-	struct stat st;
-	int sfd;
-
-	sfd = open(STAT_REPORT,
-		O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW,
-		0640);
-	if (sfd < 0)
-		return -1;
-
-	if (fstat(sfd, &st) == -1 || !S_ISREG(st.st_mode)) {
-		close(sfd);
-		errno = EINVAL;
-		return -1;
-	}
-
-	return sfd;
 }
 
 /*
@@ -489,67 +448,6 @@ void fanotify_queue_report_reset(FILE *f, int reset)
 		q_metrics_report(f, &last_queue_metrics);
 }
 
-void decision_report(FILE *f)
-{
-	decision_report_reset(f, 0);
-}
-
-/*
- * decision_report_reset - write policy and failure metrics.
- * @f: output stream.
- * @reset: non-zero resets interval counters after copying them.
- * Returns nothing.
- */
-void decision_report_reset(FILE *f, int reset)
-{
-	decision_metrics_t metrics;
-	failure_action_metrics_t failures;
-
-	if (f == NULL)
-		return;
-
-	getDecisionMetricsReset(&metrics, reset);
-	failure_action_snapshot(&failures, reset);
-
-	// Report results
-	fprintf(f, "Kernel Queue Overflow: %lu\n",
-		failure_action_metrics_count(&failures,
-			FAILURE_REASON_KERNEL_QUEUE_OVERFLOW));
-	fprintf(f, "Reply Errors: %lu\n",
-		failure_action_metrics_count(&failures,
-			FAILURE_REASON_RESPONSE_WRITE_FAILURE));
-	failure_action_metrics_report(f, &failures);
-	fprintf(f, "Allowed accesses: %lu\n", getAllowedReset(reset));
-	fprintf(f, "Denied accesses: %lu\n", getDeniedReset(reset));
-	fprintf(f, "Allowed by rule: %lu\n", metrics.allowed_by_rule);
-	fprintf(f, "Allowed by fallthrough: %lu\n",
-		metrics.allowed_by_fallthrough);
-	if (metrics.allowed_by_fallthrough) {
-		fprintf(f, "Allowed by fallthrough open: %lu\n",
-			metrics.fallthrough_open);
-		fprintf(f, "Allowed by fallthrough execute: %lu\n",
-			metrics.fallthrough_execute);
-		fprintf(f, "Allowed by fallthrough trusted: %lu\n",
-			metrics.fallthrough_trusted);
-		fprintf(f, "Allowed by fallthrough untrusted: %lu\n",
-			metrics.fallthrough_untrusted);
-		fprintf(f, "Allowed by fallthrough trust unknown: %lu\n",
-			metrics.fallthrough_trust_unknown);
-		fprintf(f, "Allowed by fallthrough executable: %lu\n",
-			metrics.fallthrough_executable);
-		fprintf(f, "Allowed by fallthrough programmatic: %lu\n",
-			metrics.fallthrough_programmatic);
-		fprintf(f, "Allowed by fallthrough sharedlib: %lu\n",
-			metrics.fallthrough_sharedlib);
-		fprintf(f, "Allowed by fallthrough unknown ftype: %lu\n",
-			metrics.fallthrough_unknown_ftype);
-		fprintf(f, "Allowed by fallthrough other ftype: %lu\n",
-			metrics.fallthrough_other_ftype);
-	}
-	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
-}
-
-
 static void *deadmans_switch_thread_main(void *arg)
 {
 	sigset_t sigs;
@@ -612,128 +510,6 @@ static void rpt_init(struct timespec *t)
 	}
 }
 
-/*
- * metric_reset_allowed - decide whether a report should reset counters.
- * @reason: why the report is being generated.
- * @reset_requests: number of pending signal-based reset requests.
- * Returns 1 when counters should be reset after this report snapshot.
- */
-static int metric_reset_allowed(enum report_reason reason,
-			unsigned int reset_requests)
-{
-	reset_strategy_t strategy;
-	int uid;
-
-	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
-	if (strategy == RESET_AUTO && reason == REPORT_INTERVAL)
-		return 1;
-	uid = atomic_load_explicit(&signal_report_reset_request_uid,
-				   memory_order_relaxed);
-	if (strategy == RESET_MANUAL && reason == REPORT_SIGNAL &&
-	    reset_requests && uid == 0)
-		return 1;
-	return 0;
-}
-
-/*
- * log_manual_metric_reset - log a manual reset request from SIGUSR1.
- * @reset_requests: number of requests consumed by this report.
- * @reset: non-zero when the request reset counters.
- * Returns nothing.
- */
-static void log_manual_metric_reset(unsigned int reset_requests, int reset)
-{
-	reset_strategy_t strategy;
-	int pid, uid;
-
-	if (reset_requests == 0)
-		return;
-
-	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
-	if (strategy != RESET_MANUAL)
-		return;
-
-	pid = atomic_load_explicit(&signal_report_reset_request_pid,
-				   memory_order_relaxed);
-	uid = atomic_load_explicit(&signal_report_reset_request_uid,
-				   memory_order_relaxed);
-
-	if (pid > 0)
-		msg(LOG_INFO,
-		    "Manual metrics reset requested by pid=%d uid=%d "
-		    "(requests=%u): %s",
-		    pid, uid, reset_requests,
-		    reset ? "resetting counters after state report" :
-		    "not resetting counters");
-	else
-		msg(LOG_INFO,
-		    "Manual metrics reset requested (requests=%u): %s",
-		    reset_requests,
-		    reset ? "resetting counters after state report" :
-		    "not resetting counters");
-
-	if (!reset) {
-		if (strategy == RESET_MANUAL && uid != 0)
-			msg(LOG_INFO,
-			    "Manual metrics reset ignored because uid=%d "
-			    "is not privileged",
-			    uid);
-		else
-			msg(LOG_INFO,
-			    "Manual metrics reset ignored because report was not "
-			    "signal based");
-	}
-}
-
-/*
- * rpt_write - write a state report to the standard location.
- * @reason: report trigger used to apply reset_strategy.
- * Returns nothing.
- */
-static void rpt_write(enum report_reason reason)
-{
-	int sr_fd = open_stat_report();
-	FILE *f;
-	unsigned int reset_requests;
-	int reset;
-
-	if (sr_fd < 0) {
-		msg(LOG_WARNING, "cannot open %s: %s",
-			STAT_REPORT, strerror(errno));
-		return;
-	}
-
-	f = fdopen(sr_fd, "w");
-	if (!f) {
-		msg(LOG_WARNING, "cannot fdopen %s: %s",
-			STAT_REPORT, strerror(errno));
-		close(sr_fd);
-		return;
-	}
-
-	(void)atomic_exchange_explicit(&signal_report_requests, 0,
-				       memory_order_relaxed);
-	reset_requests = atomic_exchange_explicit(&signal_report_reset_requests,
-						  0, memory_order_relaxed);
-	reset = metric_reset_allowed(reason, reset_requests);
-	log_manual_metric_reset(reset_requests, reset);
-	do_stat_report_reset(f, 0, reset);
-	fclose(f);
-}
-
-/*
- * report_reason_for_triggers - classify the pending report trigger.
- * @expired: non-zero when the interval timer expired.
- * Returns the trigger to use when applying reset_strategy.
- */
-static enum report_reason report_reason_for_triggers(int expired)
-{
-	if (atomic_load_explicit(&signal_report_requests,
-				 memory_order_relaxed))
-		return REPORT_SIGNAL;
-	return expired ? REPORT_INTERVAL : REPORT_SIGNAL;
-}
-
 static void *decision_thread_main(void *arg)
 {
 	sigset_t sigs;
@@ -789,8 +565,8 @@ static void *decision_thread_main(void *arg)
 					// 1. new events seen since last report
 					// 2. explicitly requested w/run_stats
 					if (rpt_is_stale || run_stats) {
-						rpt_write(
-						    report_reason_for_triggers(
+						state_report_write(
+						    state_report_reason_for_triggers(
 							expired));
 						run_stats = 0;
 						rpt_is_stale = 0;
@@ -812,13 +588,13 @@ static void *decision_thread_main(void *arg)
 			rc = q_dequeue(q, &metadata);
 			if (rc == 0) {
 				if (run_stats) {
-					rpt_write(REPORT_SIGNAL);
+					state_report_write(STATE_REPORT_SIGNAL);
 					run_stats = 0;
 				}
 				continue;
 			}
 			if (run_stats) {
-				rpt_write(REPORT_SIGNAL);
+				state_report_write(STATE_REPORT_SIGNAL);
 				run_stats = 0;
 			}
 		}

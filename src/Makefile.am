@@ -125,7 +125,9 @@ fapolicyd_SOURCES = \
 	daemon/mounts.c \
 	daemon/mounts.h \
 	daemon/notify.c \
-	daemon/notify.h
+	daemon/notify.h \
+	daemon/state-report.c \
+	daemon/state-report.h
 
 fapolicyd_cli_SOURCES = \
 	cli/fapolicyd-cli.c \

@@ -13,6 +13,7 @@
 #include "failure-action.h"
 #include "notify.h"
 #include "policy.h"
+#include "state-report.h"
 
 #ifndef FAN_Q_OVERFLOW
 #define FAN_Q_OVERFLOW		0x00004000

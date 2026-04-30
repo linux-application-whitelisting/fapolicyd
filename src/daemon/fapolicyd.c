@@ -64,6 +64,7 @@
 #include "paths.h"
 #include "string-util.h"
 #include "filter.h"
+#include "state-report.h"
 
 // Global program variables
 unsigned int debug_mode = 0;
@@ -362,54 +363,6 @@ static void hup_handler(int sig __attribute__((unused)))
 }
 
 /*
- * usr1_handler - request a state report and record signal sender identity.
- * @sig: signal number.
- * @info: sender identity supplied by sigaction.
- * @context: unused signal context.
- * Returns nothing.
- */
-static void usr1_handler(int sig __attribute__((unused)), siginfo_t *info,
-		void *context __attribute__((unused)))
-{
-	if (info && info->si_code == SI_QUEUE &&
-	    info->si_value.sival_int == REPORT_INTENT_RESET_METRICS) {
-		atomic_store_explicit(&signal_report_reset_request_pid,
-				      info->si_pid, memory_order_relaxed);
-		atomic_store_explicit(&signal_report_reset_request_uid,
-				      info->si_uid, memory_order_relaxed);
-		atomic_fetch_add_explicit(&signal_report_reset_requests, 1,
-					  memory_order_relaxed);
-	}
-	atomic_fetch_add_explicit(&signal_report_requests, 1,
-				  memory_order_relaxed);
-	run_stats = true;
-	nudge_queue();
-}
-
-/*
- * log_metric_reset_strategy - record how runtime metric resets are allowed.
- * @strategy: configured reset strategy.
- * Returns nothing.
- */
-static void log_metric_reset_strategy(reset_strategy_t strategy)
-{
-	switch (strategy) {
-	case RESET_NEVER:
-		msg(LOG_INFO,
-		    "Metrics resets disabled; counters grow for daemon lifetime");
-		break;
-	case RESET_AUTO:
-		msg(LOG_INFO,
-		    "Metrics resets will occur only by interval timer reports");
-		break;
-	case RESET_MANUAL:
-		msg(LOG_INFO,
-		    "Metrics resets will occur only by privileged signal reports");
-		break;
-	}
-}
-
-/*
  * reload_configuration - refresh runtime configuration settings.
  * @void: no arguments are required.
  * Returns 0 when the configuration was reloaded, non-zero otherwise.
@@ -437,7 +390,7 @@ static int reload_configuration(void)
 	if (new_config.reset_strategy != config.reset_strategy) {
 		__atomic_store_n(&config.reset_strategy,
 				 new_config.reset_strategy, __ATOMIC_RELAXED);
-		log_metric_reset_strategy(new_config.reset_strategy);
+		state_report_log_reset_strategy(new_config.reset_strategy);
 	}
 
 	if (new_config.integrity != config.integrity) {
@@ -893,8 +846,6 @@ static void usage(void)
 	exit(1);
 }
 
-void do_stat_report_reset(FILE *f, int shutdown, int reset);
-
 #ifdef HAVE_MALLINFO2
 static struct mallinfo2 last_mi;
 static void memory_use_report(FILE *f)
@@ -1154,7 +1105,7 @@ int main(int argc, const char *argv[])
 	sigaction(SIGQUIT, &sa, NULL);
 
 	sa.sa_flags = SA_SIGINFO;
-	sa.sa_sigaction = usr1_handler;
+	sa.sa_sigaction = state_report_signal_handler;
 	sigaction(SIGUSR1, &sa, NULL);
 	sa.sa_flags = 0;
 	/* These need to be last since they are used later */
@@ -1196,7 +1147,7 @@ int main(int argc, const char *argv[])
 		set_message_mode(MSG_SYSLOG, DBG_NO);
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
 	}
-	log_metric_reset_strategy(config.reset_strategy);
+	state_report_log_reset_strategy(config.reset_strategy);
 
 	// Set the exit function so there is always a fifo cleanup
 	if (atexit(unlink_fifo)) {
