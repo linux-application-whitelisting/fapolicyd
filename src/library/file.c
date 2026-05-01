@@ -134,6 +134,7 @@ int file_init(void)
 		magic_close(magic_full);
 		return 4;
 	}
+	return 0;
 }
 
 
