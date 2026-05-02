@@ -9,6 +9,47 @@
  * later version.
  */
 
+/*
+ * Overview
+ * --------
+ *
+ * Decision timing is an opt-in diagnostic window for explaining where
+ * fapolicyd spends time while callers are blocked on fanotify permission
+ * events.  It is meant for QE, stress runs, field diagnosis and sizing work,
+ * not for permanent always-on tracing.
+ *
+ * Normal operation keeps timing disabled.  When disabled, the decision path
+ * copies one armed flag into thread-local state for each dequeued event, and
+ * the inline stage helpers return without calling clock_gettime(), updating
+ * histograms, or touching shared counters.  A privileged manual start request
+ * resets the bounded metric blocks and arms collection.  A stop request
+ * disarms collection, snapshots the aggregates and writes TIMING_REPORT.
+ * Queue wait is measured separately from dequeue-to-reply decision time so
+ * reports can distinguish backlog from slow work inside a decision.
+ *
+ * Each worker owns a padded block of stage metrics.  A stage records only a
+ * count, total nanoseconds, max nanoseconds and fixed latency buckets.  The
+ * daemon intentionally does not store one record per decision; that keeps
+ * memory bounded for stress tests that may generate millions of events and
+ * avoids turning the measurement system into the workload.
+ *
+ * Stage rows are operation histograms.  They may be nested and some helpers
+ * are lazy, so rows are not expected to add up to decision:total.  Lazy
+ * helper costs that can be caused by either rule evaluation or response
+ * formatting use a thread-local "driver" so the report can show evaluation
+ * versus response attribution.
+ *
+ * The report path does the expensive work after collection stops: aggregate
+ * worker blocks, rank stages, derive bucket percentiles and emit short
+ * observations about queueing, helper cost, tail latency and debug-heavy
+ * response formatting.
+ *
+ * Assumption: normal deployments leave timing_collection=off.  Manual timing
+ * runs are short diagnostic windows, and worker-local blocks are kept from
+ * the beginning so future decision-worker pools do not contend on one global
+ * histogram.
+ */
+
 #include "config.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -37,6 +78,7 @@
 #define TRUST_DB_LOCK_TINY_SHARE 1.0
 #define HASH_RARE_SHARE 10.0
 
+/* Fixed-size aggregate for one stage in one worker's timing block. */
 struct decision_timing_stage_metrics {
 	atomic_ullong count;
 	atomic_ullong total_ns;
@@ -44,6 +86,10 @@ struct decision_timing_stage_metrics {
 	atomic_ullong buckets[DECISION_TIMING_BUCKETS];
 };
 
+/*
+ * Keep worker blocks cache-line separated so future decision workers can
+ * update their own histograms without false sharing.
+ */
 struct decision_timing_worker_block {
 	struct decision_timing_stage_metrics stages[DECISION_TIMING_STAGE_COUNT];
 } __attribute__((aligned(64)));
@@ -189,6 +235,10 @@ static timing_collection_t config_timing_mode(const conf_t *config)
 
 static struct decision_timing_worker_block workers[DECISION_TIMING_MAX_WORKERS];
 static atomic_bool timing_armed;
+/*
+ * active_workers is one today.  The storage and report aggregation already
+ * support more workers so timing remains local when the decision path grows.
+ */
 static atomic_uint active_workers = 1;
 static atomic_uint arm_requests;
 static atomic_uint stop_requests;
