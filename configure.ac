@@ -158,6 +158,12 @@ AS_HELP_STRING([--with-perf-test],[Build and install a performance test utility]
 use_perf_test=$withval,use_perf_test=no)
 AM_CONDITIONAL(WITH_PERF_TEST, test x$use_perf_test = xyes)
 
+AC_ARG_ENABLE(stress,
+AS_HELP_STRING([--enable-stress],
+[Build non-installed stress test helper (default=no)]),
+use_stress=$enableval,use_stress=no)
+AM_CONDITIONAL(WITH_STRESS, test x$use_stress = xyes)
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
@@ -185,7 +191,13 @@ AC_CHECK_LIB(lmdb, mdb_env_create, , [AC_MSG_ERROR([liblmdb not found])], -llmdb
 
 LD_SO_PATH
 
-AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile init/Makefile doc/Makefile rules.d/Makefile])
+AC_CONFIG_FILES([Makefile
+	src/Makefile
+	src/tests/Makefile
+	src/tests/stress/Makefile
+	init/Makefile
+	doc/Makefile
+	rules.d/Makefile])
 AC_OUTPUT
 
 echo .

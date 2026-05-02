@@ -20,6 +20,12 @@
 #
 
 CONFIG_CLEAN_FILES = *.orig *.cur
+
+SUBDIRS =
+if WITH_STRESS
+SUBDIRS += stress
+endif
+
 check_PROGRAMS = avl_test gid_proc_test uid_proc_test escape_test \
 attr_sets_test elf_file_test fd_fgets_test file_type_detect_test \
 rules_test policy_reload_test policy_concurrent_test failure_action_test \
