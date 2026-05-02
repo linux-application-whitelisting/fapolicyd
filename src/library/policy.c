@@ -857,6 +857,7 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 {
 	decision_t results = NO_OPINION;
 	struct policy_snapshot *policy = active_policy;
+	decision_timing_driver_t previous_driver;
 	struct decision_timing_span eval_timing;
 	lnode *r;
 
@@ -873,6 +874,8 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 
 	/* Use a local cursor so concurrent readers do not share list state. */
 	//int cnt = 0;
+	previous_driver = decision_timing_driver_push(
+		DECISION_TIMING_DRIVER_EVALUATION);
 	decision_timing_stage_begin(DECISION_TIMING_STAGE_RULE_EVALUATION,
 				    &eval_timing);
 	for (r = rules_first_node(&policy->rules); r;
@@ -885,6 +888,7 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 		//cnt++;
 	}
 	decision_timing_stage_end(&eval_timing);
+	decision_timing_driver_pop(previous_driver);
 
 	if (response_timing)
 		decision_timing_stage_begin(DECISION_TIMING_STAGE_RESPONSE_TOTAL,
@@ -892,8 +896,12 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 
 	// Output some information if debugging on or syslogging requested
 	if ( (results & SYSLOG) || (debug_mode == 1) ||
-	     (debug_mode > 1 && (results & DENY)) )
+	     (debug_mode > 1 && (results & DENY)) ) {
+		previous_driver = decision_timing_driver_push(
+			DECISION_TIMING_DRIVER_RESPONSE);
 		log_it(policy, r ? r->num : 0xFFFFFFFF, results, e);
+		decision_timing_driver_pop(previous_driver);
+	}
 
 	// Record which rule (rules are 1 based when listed by the cli tool)
 	if (r) {
@@ -1026,6 +1034,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 	struct decision_timing_span event_timing;
 	struct decision_timing_span rule_wait_timing;
 	struct decision_timing_span response_timing = { 0 };
+	decision_timing_driver_t previous_driver;
 
 	decision_timing_stage_begin(DECISION_TIMING_STAGE_EVENT_BUILD,
 				    &event_timing);
@@ -1046,9 +1055,14 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 	if (metric_event == NULL)
 		decision_timing_stage_end(&event_timing);
 
+	previous_driver = decision_timing_driver_push(
+		DECISION_TIMING_DRIVER_RESPONSE);
 	policy_metrics_record_decision(decision, metric_event, source);
+	decision_timing_driver_pop(previous_driver);
 
 	if (metadata->mask & mask) {
+		previous_driver = decision_timing_driver_push(
+			DECISION_TIMING_DRIVER_RESPONSE);
 		// if in debug mode, do not allow audit events
 		if (debug_mode)
 			decision &= ~AUDIT;
@@ -1061,6 +1075,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 		else
 			reply_event(fd, metadata, decision & FAN_RESPONSE_MASK,
 					&e);
+		decision_timing_driver_pop(previous_driver);
 	}
 	decision_timing_stage_end(&response_timing);
 }

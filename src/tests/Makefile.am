@@ -24,7 +24,8 @@ check_PROGRAMS = avl_test gid_proc_test uid_proc_test escape_test \
 attr_sets_test elf_file_test fd_fgets_test file_type_detect_test \
 rules_test policy_reload_test policy_concurrent_test failure_action_test \
 queue_test event_test \
-trustdb_format_test trustdb_lmdb_test lru_test notify_test
+trustdb_format_test trustdb_lmdb_test lru_test notify_test \
+decision_timing_report_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 AM_CFLAGS = -std=gnu11
@@ -69,6 +70,12 @@ notify_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 notify_test_CPPFLAGS = \
 	-I${top_srcdir}/src/library/ \
 	-I${top_srcdir}/src/daemon/
+decision_timing_report_test_SOURCES = decision_timing_report_test.c \
+	${top_srcdir}/src/library/decision-timing.c
+decision_timing_report_test_CPPFLAGS = \
+	-I${top_builddir} \
+	-I${top_srcdir}/src/library/ \
+	-DTEST_DECISION_TIMING_REPORT
 event_test_SOURCES = event_test.c
 event_test_LDADD = \
 	${top_builddir}/src/library/libfapolicyd_la-event.o \

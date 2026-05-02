@@ -47,7 +47,9 @@ Number of decision worker timing blocks included in the snapshot.
 Highest internal event queue depth observed during the timing run. The daemon
 temporarily resets only the max queue depth counter when timing starts and
 restores the previous high-water mark after timing stops if the previous value
-was larger.
+was larger. The
+.B Queueing
+section repeats this value next to queue wait timing.
 .TP
 .B Decisions
 Number of completed fanotify decisions timed during the run.
@@ -85,11 +87,233 @@ Percentiles are bucket approximations, not exact per-decision percentiles.
 The 95th percentile is a useful tail-latency marker: roughly 95% of observed
 calls were at or below that bucket, so a high p95 points to a recurring slow
 path rather than a single worst-case outlier.
-.SH STAGE TABLE
+.PP
+When high-end tail buckets are observed, the section also prints a compact
+.B tail
+line for
+.B >10ms ,
+.B >25ms ,
+.B >50ms ,
+.B >100ms ,
+and
+.B >250ms .
+The line includes both count and percentage so long outliers do not disappear
+inside a single
+.B >10ms
+bucket.
+.SH QUEUEING
 The
-.B Stage timing
+.B Queueing
+section describes work waiting before a decision worker starts processing an
+event. It is based on
+.B time_in_queue:total
+when enqueue timestamps were observed during the timing run.
+.TP
+.B avg wait
+Average observed time in the internal userspace event queue.
+.TP
+.B max wait
+Longest observed wait in the internal userspace event queue.
+.TP
+.B p95 bucket
+Approximate bucket containing the 95th percentile queue wait.
+.TP
+.B total queued time
+Sum of observed queue wait time. This is useful for spotting producer/consumer
+imbalance, but it is not decision CPU time.
+.TP
+.B max queue depth
+Highest internal event queue depth observed during the timing run.
+.PP
+If no enqueue timestamps were observed, the section prints
+.B not observed
+and still reports max queue depth.
+.SH DECISION PHASE TIMING
+The
+.B Decision phase timing
+section shows the main decision-thread phases when they were observed:
+.PP
+.RS
+.nf
+event_build:total
+evaluation:total
+response:total
+.fi
+.RE
+.TP
+.B Phase
+Displayed phase name.
+.TP
+.B Calls
+Number of times the phase was measured.
+.TP
+.B Calls/Dec
+Average phase calls per timed decision.
+.TP
+.B Total
+Total measured phase time.
+.TP
+.B Avg
+Average phase call time.
+.TP
+.B Max
+Slowest observed phase call.
+.TP
+.B p95 bucket
+Approximate bucket containing the 95th percentile phase call.
+.TP
+.B Notes
+Short deterministic notes. For example, a response phase dominated by syslog
+or debug formatting is marked
+.B syslog/debug-heavy .
+.PP
+These phase rows are the best first view for explaining where decision-thread
+time is being spent. Helper rows are separate because some lazy helper
+operations can be requested from more than one phase.
+.SH LAZY HELPER ATTRIBUTION
+The report introduces helper attribution with:
+.PP
+.RS
+.nf
+Lazy helper attribution:
+  Helper timings are attributed to the active logical driver:
+  evaluation or response.
+  Combined totals are evaluation + response.
+.fi
+.RE
+.PP
+The driver table and combined helper table follow this note.
+.SH LAZY HELPER ATTRIBUTION BY DRIVER
+The
+.B Lazy helper attribution by driver
+section shows helper time split by the logical context that caused it:
+evaluation or response.
+.TP
+.B Helper
+Short helper path.
+.TP
+.B Eval total
+Total helper time caused while the rule evaluation driver was active.
+.TP
+.B Response total
+Total helper time caused while response, audit metadata, or syslog/debug
+formatting was active.
+.TP
+.B Combined
+Total helper time from all driver contexts.
+.TP
+.B Response %
+Percentage of combined helper time caused by response-side work. This is useful
+for deciding whether manual/debug reporting is driving MIME or trust lookup
+cost.
+.SH COMBINED LAZY HELPER ATTRIBUTION
+The
+.B Combined lazy helper attribution
+section groups helper-related stages into stable combined paths. For helpers
+that are split by driver, the combined row is calculated by adding the
+phase-specific evaluation and response rows together. These rows answer how
+often a helper was needed and how expensive that helper was when amortized over
+all decisions.
+.TP
+.B Helper path
+Short combined helper path.
+.TP
+.B Calls
+Number of helper calls measured.
+.TP
+.B Calls/Dec
+Average helper calls per timed decision.
+.TP
+.B Total
+Total measured helper time.
+.TP
+.B Avg/call
+Average measured helper call time.
+.TP
+.B Amort/Dec
+Total helper time divided by all timed decisions. This shows how much a lazy or
+rare helper contributes to a typical decision in the measured workload.
+.TP
+.B Max
+Slowest observed helper call.
+.TP
+.B p95 bucket
+Approximate bucket containing the 95th percentile helper call.
+.PP
+The current helper groups are:
+.PP
+.RS
+.nf
+mime_detection:total
+mime_detection:fast_classification
+mime_detection:gather_elf
+mime_detection:libmagic_fallback
+trust_db_lookup:total
+trust_db_lookup:read
+trust_db_lookup:lock_wait
+hash_ima:total
+hash_sha:total
+proc_detail_lookup
+.fi
+.RE
+.SH DERIVED OBSERVATIONS
+The
+.B Derived observations
+section prints short deterministic observations when the required data was
+present in the run. Examples include:
+.IP \(bu 2
+Wall-clock throughput compared with active decision rate, which can show that
+the workload was mostly idle while timing was armed.
+.IP \(bu 2
+Queue wait and maximum queue depth compared with
+.B q_size
+when queue timing and configuration data are available.
+.IP \(bu 2
+Response formatting share when syslog/debug formatting dominates
+.B response:total .
+.IP \(bu 2
+MIME helper cost and libmagic fallback share.
+.IP \(bu 2
+Rare but expensive integrity work from
+.B hash_ima
+or
+.B hash_sha ,
+reported as percent of decisions, average time when called, and amortized
+decision cost.
+.IP \(bu 2
+Trust database lock wait compared with trust database read time.
+.SH STAGE TAIL SUMMARY
+When hot detailed stage rows have observations above 10ms, the report prints a
+.B Stage tail summary
+after the detailed table. Rows are sorted by
+.B >10ms
+count, limited to the top five rows, and extended with any additional row that
+has a nonzero
+.B >50ms
+count. Near-identical parent/child tail rows may be suppressed to keep the
+section focused.
+.PP
+.RS
+.nf
+stage:name: >10ms count/percent, >25ms count/percent, >50ms count/percent
+.fi
+.RE
+.PP
+The detailed table remains the canonical total-time ranking; the tail summary
+only adds high-end resolution for rows that crossed one of the tail thresholds.
+Thresholds with zero observations are omitted.
+.SH DETAILED STAGE TABLE
+The
+.B Detailed stage timing
 table is sorted by total measured time by default. It answers which measured
-operations consumed the most total time during the run.
+operations consumed the most total time during the run. This is the detailed
+view and is intentionally kept below the summary and helper attribution
+sections.
+.PP
+The
+.B decision:total
+row is included when observed and participates in the same total-time sort as
+the other rows.
 .TP
 .B Stage
 Measured operation name. The current stage set is listed in
@@ -118,7 +342,10 @@ Stages with zero calls are hidden from the table and listed under
 If a stage is not observed, no measured call to that operation occurred during
 the timing window. For example, an absent
 .B evaluation:trust_db_lookup:total
-line means no measured trust database lookup occurred in that run.
+and
+.B response:trust_db_lookup:total
+line means no measured trust database lookup occurred from those drivers in
+that run.
 .SH DECISION FLOW
 Stage names use a colon-separated hierarchy:
 .PP
@@ -154,23 +381,32 @@ evaluation:mime_detection:libmagic_fallback
 evaluation:fd_path_resolution
 evaluation:proc_detail_lookup
 evaluation:hash_ima:total
+evaluation:hash_sha:total
 evaluation:trust_db_lookup:total
 evaluation:trust_db_lookup:lock_wait
 evaluation:trust_db_lookup:read
 
 response:total
 response:syslog_debug_format:total
+response:mime_detection:total
+response:mime_detection:fast_classification
+response:mime_detection:gather_elf
+response:mime_detection:libmagic_fallback
+response:trust_db_lookup:total
+response:trust_db_lookup:lock_wait
+response:trust_db_lookup:read
 response:audit_metadata:total
 response:fanotify_write
 .fi
 .RE
 .PP
-Lazy helper operations are grouped under the phase that normally drives them.
-For example, MIME detection can be requested by response logging or metrics
-after an early pattern decision, but normal rule evaluation is the dominant
-source of file type lookups. The report therefore names these rows under
-.B evaluation:mime_detection
-for readability while still measuring the exact helper call sites.
+Lazy helper operations are attributed to the active logical driver when the
+helper is called. Rule evaluation uses
+.B evaluation: ,
+response logging and audit response work use
+.B response: .
+Helper timing outside those logical drivers is treated as an instrumentation
+bug and is not reported as a separate phase.
 .SH STAGES
 .TP
 .B decision:total
@@ -219,28 +455,39 @@ lazily by rules, syslog/debug formatting, or audit metadata.
 .TP
 .B evaluation:fd_path_resolution
 Path resolution for the object file descriptor.
+.PP
+For MIME and trust DB helper rows below,
+.B *
+means the driver prefix
+.B evaluation ,
+.B response .
 .TP
-.B evaluation:mime_detection:total
+.B *:mime_detection:total
 Object type and ELF/script detection.
 .TP
-.B evaluation:mime_detection:fast_classification
+.B *:mime_detection:fast_classification
 In-house classification before libmagic fallback. This includes empty-file,
 ELF/script, shebang, common magic number, common text format, and device checks.
 .TP
-.B evaluation:mime_detection:gather_elf
+.B *:mime_detection:gather_elf
 ELF/script header scan performed by
 .BR gather_elf ().
-This can occur inside the normal object type lookup or during rare pattern-state
-work in event build.
 .TP
-.B evaluation:mime_detection:libmagic_fallback
+.B *:mime_detection:libmagic_fallback
 Full libmagic fallback used when the faster type checks cannot classify the
 object.
 .TP
 .B evaluation:hash_ima:total
-File hash or IMA digest collection.
+IMA digest collection from the
+.I security.ima
+xattr through
+.BR get_ima_hash ().
 .TP
-.B evaluation:trust_db_lookup:total
+.B evaluation:hash_sha:total
+SHA-style file digest collection through
+.BR get_hash_from_fd2 ().
+.TP
+.B *:trust_db_lookup:total
 Total trust database lookup through
 .BR check_trust_database ().
 This includes update-thread lock wait, long-term LMDB read setup, the primary
@@ -248,11 +495,11 @@ LMDB lookup, optional hash work requested by trust lookup, and the top-level
 .I /usr
 symlink retry path.
 .TP
-.B evaluation:trust_db_lookup:lock_wait
+.B *:trust_db_lookup:lock_wait
 Time spent waiting for the trust database update-thread lock before LMDB read
 setup. This is a future multi-decision-thread contention signal.
 .TP
-.B evaluation:trust_db_lookup:read
+.B *:trust_db_lookup:read
 LMDB read setup and trust database read work after the update-thread lock is
 held. This currently includes the primary lookup, optional hash work requested
 by trust lookup, the top-level
@@ -277,15 +524,9 @@ The actual
 .BR write (2)
 of the fanotify response to the kernel.
 .SH NOTES
-Stage timings are operation histograms. They may be nested or lazy and are not
-required to sum to
-.B decision:total .
-The interpretation footer reports the hottest stage by total time, the slowest
-single observed call by maximum time, and the largest rare contributor by total
-time among stages called by fewer than 10% of decisions.
-That last note is meant to identify infrequent work that still consumes a
-visible amount of measured time; it is not the same as the largest single
-outlier.
+The notes footer reports the largest queued-time contributor when queue wait
+was observed, the largest helper contributor, the largest decision phase
+contributor, and the slowest observed row by maximum time.
 .PP
 For cache hit, miss, collision, eviction, early subject eviction, and deferred
 subject path collection counters, see

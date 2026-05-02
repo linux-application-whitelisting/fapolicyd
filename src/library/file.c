@@ -1093,8 +1093,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 
 	// libmagic is unpredictable in determining elf files.
 	// We need to do it ourselves for consistency (and speed).
-	decision_timing_stage_begin(
-		DECISION_TIMING_STAGE_MIME_FAST_CLASSIFICATION, &fast_timing);
+	decision_timing_mime_stage_begin(
+		DECISION_TIMING_MIME_FAST_CLASSIFICATION, &fast_timing);
 	if (i->mode & S_IFREG) {
 		// If its a regular file (block devices have 0 length, too)
 		// check to see if it's empty to skip doing all of the
@@ -1106,8 +1106,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			return buf;
 		}
 
-		decision_timing_stage_begin(
-			DECISION_TIMING_STAGE_MIME_GATHER_ELF, &gather_timing);
+		decision_timing_mime_stage_begin(
+			DECISION_TIMING_MIME_GATHER_ELF, &gather_timing);
 		elf = gather_elf(fd, i->size);
 		decision_timing_stage_end(&gather_timing);
 		if (elf & IS_ELF) {
@@ -1180,8 +1180,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	decision_timing_stage_end(&fast_timing);
 
 	// Use libmagic when in-house classification did not identify the object.
-	decision_timing_stage_begin(
-		DECISION_TIMING_STAGE_LIBMAGIC_FALLBACK, &timing);
+	decision_timing_mime_stage_begin(
+		DECISION_TIMING_MIME_LIBMAGIC_FALLBACK, &timing);
 	ptr = magic_descriptor(magic_fast, fd);
 	if (ptr == NULL ||
 	    (ptr && (memcmp(ptr, "text/plain", 10) == 0 ||
@@ -1260,7 +1260,7 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 	size_t digest_length;
 	struct decision_timing_span timing;
 
-	decision_timing_stage_begin(DECISION_TIMING_STAGE_HASH_IMA,
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_HASH_SHA,
 				    &timing);
 	if (size == 0) {
 		char *degenerate;

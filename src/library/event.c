@@ -450,17 +450,8 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				// In this step, we gather info on what is
 				// being asked permission to execute.
 				pinfo->path1 = strdup(file);
-				// Keep ELF/type work under evaluation in the
-				// timing report. This pattern check is still in
-				// event_build:total, but rules are the dominant
-				// source of type lookups and pattern denies
-				// are expected to be rare.
-				decision_timing_stage_begin(
-					DECISION_TIMING_STAGE_MIME_GATHER_ELF,
-					&timing);
 				pinfo->elf_info = gather_elf(e->fd,
 							e->o->info->size);
-				decision_timing_stage_end(&timing);
 			//	pinfo->state = STATE_COLLECTING;Just for clarity
 			} else if (pinfo->path2 == NULL) {
 				pinfo->path2 = strdup(file);
@@ -730,13 +721,11 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			break;
 		case FTYPE: {
 			object_attr_t *path =  get_obj_attr(e, PATH);
-			// Report type lookups under evaluation. Response
-			// logging and metrics can ask for FTYPE after an
-			// early decision, but normal policy evaluation is the
-			// main driver and precise call-site timing is still
-			// preserved by this operation histogram.
-			decision_timing_stage_begin(
-				DECISION_TIMING_STAGE_TYPE_ELF_DETECTION,
+			// Attribute MIME lookup to the active logical driver
+			// so rule and response/debug costs stay separate in
+			// timing reports.
+			decision_timing_mime_stage_begin(
+				DECISION_TIMING_MIME_TOTAL,
 				&timing);
 			ptr = get_file_type_from_fd(e->fd, o->info,
 							path ? path->o : "?",

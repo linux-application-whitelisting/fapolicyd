@@ -25,10 +25,9 @@
 #endif
 
 /*
- * Timing stage names are emitted as phase:operation[:child].  Some lazy
- * helper operations are grouped under evaluation even when a rare response
- * path asks for them, because rules are the dominant driver and the report
- * is intended to explain the decision flow at a glance.
+ * Timing stage names are emitted as phase:operation[:child]. Lazy helpers
+ * that can be driven by multiple code paths get separate phase-specific rows
+ * so the report can distinguish rule evaluation from response logging/audit.
  */
 typedef enum {
 	DECISION_TIMING_STAGE_TOTAL,
@@ -39,14 +38,22 @@ typedef enum {
 	DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
 	DECISION_TIMING_STAGE_FD_STAT,
 	DECISION_TIMING_STAGE_FD_PATH_RESOLUTION,
-	DECISION_TIMING_STAGE_TYPE_ELF_DETECTION,
-	DECISION_TIMING_STAGE_MIME_FAST_CLASSIFICATION,
-	DECISION_TIMING_STAGE_MIME_GATHER_ELF,
-	DECISION_TIMING_STAGE_LIBMAGIC_FALLBACK,
+	DECISION_TIMING_STAGE_EVAL_MIME_DETECTION,
+	DECISION_TIMING_STAGE_EVAL_MIME_FAST_CLASSIFICATION,
+	DECISION_TIMING_STAGE_EVAL_MIME_GATHER_ELF,
+	DECISION_TIMING_STAGE_EVAL_MIME_LIBMAGIC_FALLBACK,
+	DECISION_TIMING_STAGE_RESPONSE_MIME_DETECTION,
+	DECISION_TIMING_STAGE_RESPONSE_MIME_FAST_CLASSIFICATION,
+	DECISION_TIMING_STAGE_RESPONSE_MIME_GATHER_ELF,
+	DECISION_TIMING_STAGE_RESPONSE_MIME_LIBMAGIC_FALLBACK,
 	DECISION_TIMING_STAGE_HASH_IMA,
-	DECISION_TIMING_STAGE_TRUST_DB_LOOKUP,
-	DECISION_TIMING_STAGE_TRUST_DB_LOCK_WAIT,
-	DECISION_TIMING_STAGE_TRUST_DB_READ,
+	DECISION_TIMING_STAGE_HASH_SHA,
+	DECISION_TIMING_STAGE_EVAL_TRUST_DB_LOOKUP,
+	DECISION_TIMING_STAGE_EVAL_TRUST_DB_LOCK_WAIT,
+	DECISION_TIMING_STAGE_EVAL_TRUST_DB_READ,
+	DECISION_TIMING_STAGE_RESPONSE_TRUST_DB_LOOKUP,
+	DECISION_TIMING_STAGE_RESPONSE_TRUST_DB_LOCK_WAIT,
+	DECISION_TIMING_STAGE_RESPONSE_TRUST_DB_READ,
 	DECISION_TIMING_STAGE_RULE_LOCK_WAIT,
 	DECISION_TIMING_STAGE_RULE_EVALUATION,
 	DECISION_TIMING_STAGE_RESPONSE_TOTAL,
@@ -56,9 +63,29 @@ typedef enum {
 	DECISION_TIMING_STAGE_COUNT
 } decision_timing_stage_t;
 
+typedef enum {
+	DECISION_TIMING_DRIVER_EVALUATION,
+	DECISION_TIMING_DRIVER_RESPONSE,
+	DECISION_TIMING_DRIVER_COUNT
+} decision_timing_driver_t;
+
+typedef enum {
+	DECISION_TIMING_MIME_TOTAL,
+	DECISION_TIMING_MIME_FAST_CLASSIFICATION,
+	DECISION_TIMING_MIME_GATHER_ELF,
+	DECISION_TIMING_MIME_LIBMAGIC_FALLBACK
+} decision_timing_mime_stage_t;
+
+typedef enum {
+	DECISION_TIMING_TRUST_DB_TOTAL,
+	DECISION_TIMING_TRUST_DB_LOCK_WAIT,
+	DECISION_TIMING_TRUST_DB_READ
+} decision_timing_trust_db_stage_t;
+
 struct decision_timing_context {
 	bool armed;
 	unsigned int worker_id;
+	decision_timing_driver_t driver;
 	uint64_t total_start_ns;
 };
 
@@ -91,6 +118,32 @@ void decision_timing_queue_dequeued(uint64_t enqueue_ns);
 void decision_timing_stage_begin_slow(decision_timing_stage_t stage,
 		struct decision_timing_span *span);
 void decision_timing_stage_end_slow(struct decision_timing_span *span);
+void decision_timing_mime_stage_begin_slow(decision_timing_mime_stage_t stage,
+		struct decision_timing_span *span);
+void decision_timing_trust_db_stage_begin_slow(
+		decision_timing_trust_db_stage_t stage,
+		struct decision_timing_span *span);
+
+#ifdef TEST_DECISION_TIMING_REPORT
+struct decision_timing_test_stage_sample {
+	decision_timing_stage_t stage;
+	unsigned long long count;
+	unsigned long long total_ns;
+	unsigned long long max_ns;
+	unsigned int bucket;
+};
+
+struct decision_timing_test_report_input {
+	unsigned long long duration_ns;
+	unsigned int max_queue_depth;
+	unsigned int q_size;
+};
+
+void decision_timing_test_write_report(FILE *f,
+	const struct decision_timing_test_stage_sample *samples,
+	unsigned int sample_count,
+	const struct decision_timing_test_report_input *input);
+#endif
 
 /*
  * decision_timing_stage_begin - start timing a stage for this event.
@@ -111,6 +164,36 @@ static inline void decision_timing_stage_begin(decision_timing_stage_t stage,
 }
 
 /*
+ * decision_timing_mime_stage_begin - start timing a MIME helper stage.
+ * @stage: MIME helper substage.
+ * @span: caller-owned span storage.
+ * Returns nothing.
+ */
+static inline void decision_timing_mime_stage_begin(
+		decision_timing_mime_stage_t stage,
+		struct decision_timing_span *span)
+{
+	span->active = false;
+	if (DECISION_TIMING_UNLIKELY(decision_timing_tls.armed))
+		decision_timing_mime_stage_begin_slow(stage, span);
+}
+
+/*
+ * decision_timing_trust_db_stage_begin - start timing a trust DB helper stage.
+ * @stage: trust DB helper substage.
+ * @span: caller-owned span storage.
+ * Returns nothing.
+ */
+static inline void decision_timing_trust_db_stage_begin(
+		decision_timing_trust_db_stage_t stage,
+		struct decision_timing_span *span)
+{
+	span->active = false;
+	if (DECISION_TIMING_UNLIKELY(decision_timing_tls.armed))
+		decision_timing_trust_db_stage_begin_slow(stage, span);
+}
+
+/*
  * decision_timing_stage_end - finish timing a stage for this event.
  * @span: span previously passed to decision_timing_stage_begin().
  * Returns nothing.
@@ -119,6 +202,34 @@ static inline void decision_timing_stage_end(struct decision_timing_span *span)
 {
 	if (DECISION_TIMING_UNLIKELY(span->active))
 		decision_timing_stage_end_slow(span);
+}
+
+/*
+ * decision_timing_driver_push - set the current logical timing driver.
+ * @driver: driver to use for nested lazy helper measurements.
+ * Returns the previous driver.
+ */
+static inline decision_timing_driver_t decision_timing_driver_push(
+		decision_timing_driver_t driver)
+{
+	decision_timing_driver_t previous = decision_timing_tls.driver;
+
+	if (DECISION_TIMING_UNLIKELY(decision_timing_tls.armed))
+		decision_timing_tls.driver = driver;
+
+	return previous;
+}
+
+/*
+ * decision_timing_driver_pop - restore the previous timing driver.
+ * @driver: driver returned by decision_timing_driver_push().
+ * Returns nothing.
+ */
+static inline void decision_timing_driver_pop(
+		decision_timing_driver_t driver)
+{
+	if (DECISION_TIMING_UNLIKELY(decision_timing_tls.armed))
+		decision_timing_tls.driver = driver;
 }
 
 #endif
