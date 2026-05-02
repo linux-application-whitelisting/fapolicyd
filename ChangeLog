@@ -11,6 +11,7 @@
 - Add --reset-metrics to fapolicayd-cli and reset_strategy to fapolicyd.conf
 - Add a decision timing framework to fapolicyd
 - Add --timing-start/--timing-stop to fapolicyd-cli
+- fapolicyd, remove deprecated options: --boost, --group, --queue, and --user
 
 1.4.5
 - Inform the admin symlinks were skipped when adding paths
