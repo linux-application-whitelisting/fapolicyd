@@ -1,0 +1,9 @@
+data=${1:?missing data path}
+i=0
+
+while [ "$i" -lt 4 ]; do
+	test -r "$data" || exit 1
+	i=$((i + 1))
+done
+
+exit 0
