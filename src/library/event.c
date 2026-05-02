@@ -51,7 +51,6 @@ static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 static bool obj_cache_warned = false;
 static unsigned int early_subj_cache_evictions = 0;
-static unsigned int deferred_subj_path_collections = 0;
 
 atomic_bool needs_flush = false;
 
@@ -248,7 +247,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
 	subject_attr_t subj;
 	QNode *q_node;
-	unsigned int key, rc, evict = 1, skip_path = 0, defer_path = 0;
+	unsigned int key, rc, evict = 1, skip_path = 0;
 	s_array *s;
 	o_array *o;
 	struct proc_info *pinfo;
@@ -300,7 +299,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				s->info->state = STATE_DEFAULT_REOPEN;
 			else {
 				skip_path = 1;
-				defer_path = 1;
 				s->info->state = STATE_REOPEN;
 			}
 		}
@@ -319,7 +317,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			else {
 				s->info->state = STATE_STATIC;
 				skip_path = 1;
-				defer_path = 1;
 			}
 			evict = 0;
 			reset_subject_attributes(s);
@@ -332,7 +329,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			s->info->state = STATE_STATIC_PARTIAL;
 			evict = 0;
 			skip_path = 1;
-			defer_path = 1;
 		}
 
 
@@ -347,7 +343,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			s->info->state = STATE_DEFAULT_REOPEN;
 			evict = 0;
 			skip_path = 1;
-			defer_path = 1;
 		}
 
 		// this is how STATE_REOPEN and
@@ -356,7 +351,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		if ((s->info->state == STATE_REOPEN) && !skip_path &&
 				(e->type & FAN_OPEN_PERM) && !rc) {
 			skip_path = 1;
-			defer_path = 1;
 		}
 
 		if (evict) {
@@ -405,8 +399,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			lru_evict(subj_cache, key);
 			e->s = NULL;
 		}
-		if (defer_path)
-			deferred_subj_path_collections++;
 		return 1;
 	}
 
@@ -466,8 +458,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			}
 		}
 	}
-	if (defer_path)
-		deferred_subj_path_collections++;
 	return 0;
 }
 
@@ -927,18 +917,13 @@ void do_cache_reports_reset(FILE *f, int reset)
 {
 	struct lru_metrics metrics;
 	unsigned int early_evictions = early_subj_cache_evictions;
-	unsigned int deferred_paths = deferred_subj_path_collections;
 
-	if (reset) {
+	if (reset)
 		early_subj_cache_evictions = 0;
-		deferred_subj_path_collections = 0;
-	}
 
 	lru_metrics_snapshot(subj_cache, &metrics, reset);
 	print_queue_stats(f, &metrics);
 	fprintf(f, "Early subject cache evictions: %u\n", early_evictions);
-	fprintf(f, "Deferred subject path collections: %u\n",
-		deferred_paths);
 	lru_metrics_snapshot(obj_cache, &metrics, reset);
 	print_queue_stats(f, &metrics);
 }
