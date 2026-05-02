@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "daemon-config.h"
+#include "decision-timing.h"
 #include "failure-action.h"
 #include "message.h"
 #include "notify.h"
@@ -33,23 +34,37 @@ extern atomic_int signal_report_reset_request_uid;
 extern conf_t config;
 
 /*
- * state_report_signal_handler - request a state report from SIGUSR1.
+ * usr1_handler - request work from SIGUSR1.
  * @sig: signal number.
  * @info: sender identity supplied by sigaction.
  * @context: unused signal context.
  * Returns nothing.
  */
-void state_report_signal_handler(int sig __attribute__((unused)),
+void usr1_handler(int sig __attribute__((unused)),
 		siginfo_t *info, void *context __attribute__((unused)))
 {
-	if (info && info->si_code == SI_QUEUE &&
-	    info->si_value.sival_int == REPORT_INTENT_RESET_METRICS) {
-		atomic_store_explicit(&signal_report_reset_request_pid,
-				      info->si_pid, memory_order_relaxed);
-		atomic_store_explicit(&signal_report_reset_request_uid,
-				      info->si_uid, memory_order_relaxed);
-		atomic_fetch_add_explicit(&signal_report_reset_requests, 1,
-					  memory_order_relaxed);
+	if (info && info->si_code == SI_QUEUE) {
+		report_intent_t intent = info->si_value.sival_int;
+
+		if (intent == REPORT_INTENT_TIMING_ARM ||
+		    intent == REPORT_INTENT_TIMING_STOP) {
+			decision_timing_signal_request(intent, info->si_pid,
+						       info->si_uid);
+			nudge_queue();
+			return;
+		}
+
+		if (intent == REPORT_INTENT_RESET_METRICS) {
+			atomic_store_explicit(&signal_report_reset_request_pid,
+					      info->si_pid,
+					      memory_order_relaxed);
+			atomic_store_explicit(&signal_report_reset_request_uid,
+					      info->si_uid,
+					      memory_order_relaxed);
+			atomic_fetch_add_explicit(
+				&signal_report_reset_requests, 1,
+				memory_order_relaxed);
+		}
 	}
 	atomic_fetch_add_explicit(&signal_report_requests, 1,
 				  memory_order_relaxed);
@@ -124,23 +139,40 @@ void decision_report(FILE *f)
  */
 void decision_report_reset(FILE *f, int reset)
 {
-	decision_metrics_t metrics;
 	failure_action_metrics_t failures;
 
 	if (f == NULL)
 		return;
 
-	getDecisionMetricsReset(&metrics, reset);
 	failure_action_snapshot(&failures, reset);
+	decision_report_reset_with_failures(f, reset, &failures);
+	decision_failure_action_report(f, &failures);
+}
+
+/*
+ * decision_report_reset_with_failures - write policy metrics.
+ * @f: output stream.
+ * @reset: non-zero resets interval counters after copying them.
+ * @failures: failure action metrics snapshot for reliability counters.
+ * Returns nothing.
+ */
+void decision_report_reset_with_failures(FILE *f, int reset,
+		const failure_action_metrics_t *failures)
+{
+	decision_metrics_t metrics;
+
+	if (f == NULL || failures == NULL)
+		return;
+
+	getDecisionMetricsReset(&metrics, reset);
 
 	// Report results
 	fprintf(f, "Kernel Queue Overflow: %lu\n",
-		failure_action_metrics_count(&failures,
+		failure_action_metrics_count(failures,
 			FAILURE_REASON_KERNEL_QUEUE_OVERFLOW));
 	fprintf(f, "Reply Errors: %lu\n",
-		failure_action_metrics_count(&failures,
+		failure_action_metrics_count(failures,
 			FAILURE_REASON_RESPONSE_WRITE_FAILURE));
-	failure_action_metrics_report(f, &failures);
 	fprintf(f, "Allowed accesses: %lu\n", getAllowedReset(reset));
 	fprintf(f, "Denied accesses: %lu\n", getDeniedReset(reset));
 	fprintf(f, "Allowed by rule: %lu\n", metrics.allowed_by_rule);
@@ -169,6 +201,21 @@ void decision_report_reset(FILE *f, int reset)
 			metrics.fallthrough_other_ftype);
 	}
 	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
+}
+
+/*
+ * decision_failure_action_report - write failure action metrics.
+ * @f: output stream.
+ * @failures: failure action metrics snapshot to report.
+ * Returns nothing.
+ */
+void decision_failure_action_report(FILE *f,
+		const failure_action_metrics_t *failures)
+{
+	if (f == NULL || failures == NULL)
+		return;
+
+	failure_action_metrics_report(f, failures);
 }
 
 /*

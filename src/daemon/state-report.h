@@ -13,6 +13,7 @@
 #define STATE_REPORT_HEADER
 
 #include "conf.h"
+#include "failure-action.h"
 #include <signal.h>
 #include <stdio.h>
 
@@ -21,7 +22,7 @@ enum state_report_reason {
 	STATE_REPORT_INTERVAL,
 };
 
-void state_report_signal_handler(int sig, siginfo_t *info, void *context);
+void usr1_handler(int sig, siginfo_t *info, void *context);
 void state_report_log_reset_strategy(reset_strategy_t strategy);
 enum state_report_reason state_report_reason_for_triggers(int expired);
 void state_report_write(enum state_report_reason reason);
@@ -29,5 +30,9 @@ void do_stat_report(FILE *f, int shutdown);
 void do_stat_report_reset(FILE *f, int shutdown, int reset);
 void decision_report(FILE *f);
 void decision_report_reset(FILE *f, int reset);
+void decision_report_reset_with_failures(FILE *f, int reset,
+		const failure_action_metrics_t *failures);
+void decision_failure_action_report(FILE *f,
+		const failure_action_metrics_t *failures);
 
 #endif

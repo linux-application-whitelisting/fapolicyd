@@ -36,6 +36,7 @@
 
 #include "event.h"
 #include "database.h"
+#include "decision-timing.h"
 #include "file.h"
 #include "lru.h"
 #include "message.h"
@@ -50,6 +51,7 @@ static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 static bool obj_cache_warned = false;
 static unsigned int early_subj_cache_evictions = 0;
+static unsigned int deferred_subj_path_collections = 0;
 
 atomic_bool needs_flush = false;
 
@@ -246,15 +248,19 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
 	subject_attr_t subj;
 	QNode *q_node;
-	unsigned int key, rc, evict = 1, skip_path = 0;
+	unsigned int key, rc, evict = 1, skip_path = 0, defer_path = 0;
 	s_array *s;
 	o_array *o;
 	struct proc_info *pinfo;
 	struct file_info *finfo;
+	struct decision_timing_span timing;
 
 	if (atomic_exchange_explicit(&needs_flush, false,
 				     memory_order_acq_rel)) {
+		decision_timing_stage_begin(
+			DECISION_TIMING_STAGE_CACHE_FLUSH, &timing);
 		flush_cache();
+		decision_timing_stage_end(&timing);
 	}
 
 	// Transfer things from fanotify structs to ours
@@ -268,7 +274,10 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	s = (s_array *)q_node->item;
 
 	// get proc fingerprint
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_PROC_FINGERPRINT, &timing);
 	pinfo = stat_proc_entry(m->pid);
+	decision_timing_stage_end(&timing);
 	if (pinfo == NULL)
 		return 1;
 
@@ -291,11 +300,14 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				s->info->state = STATE_DEFAULT_REOPEN;
 			else {
 				skip_path = 1;
+				defer_path = 1;
 				s->info->state = STATE_REOPEN;
 			}
 		}
 
 		// If not same proc or we detect execution, evict
+		if (rc)
+			lru_record_collision(subj_cache);
 		evict = rc || e->type & FAN_OPEN_EXEC_PERM;
 
 		// We need to reset everything now that execve has finished
@@ -307,6 +319,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			else {
 				s->info->state = STATE_STATIC;
 				skip_path = 1;
+				defer_path = 1;
 			}
 			evict = 0;
 			reset_subject_attributes(s);
@@ -319,6 +332,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			s->info->state = STATE_STATIC_PARTIAL;
 			evict = 0;
 			skip_path = 1;
+			defer_path = 1;
 		}
 
 
@@ -333,6 +347,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			s->info->state = STATE_DEFAULT_REOPEN;
 			evict = 0;
 			skip_path = 1;
+			defer_path = 1;
 		}
 
 		// this is how STATE_REOPEN and
@@ -341,6 +356,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		if ((s->info->state == STATE_REOPEN) && !skip_path &&
 				(e->type & FAN_OPEN_PERM) && !rc) {
 			skip_path = 1;
+			defer_path = 1;
 		}
 
 		if (evict) {
@@ -377,7 +393,10 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// Init the object
 	// get file fingerprint
 	rc = 1;
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_FD_STAT,
+				    &timing);
 	finfo = stat_file_entry(m->fd);
+	decision_timing_stage_end(&timing);
 	if (finfo == NULL) {
 		/* On stat_file_entry failure, evict the subject to avoid
 		 * leaving an incomplete subject cached, which could
@@ -386,6 +405,8 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			lru_evict(subj_cache, key);
 			e->s = NULL;
 		}
+		if (defer_path)
+			deferred_subj_path_collections++;
 		return 1;
 	}
 
@@ -399,6 +420,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	if (o) {
 		rc = compare_file_infos(finfo, o->info);
 		if (rc) {
+			lru_record_collision(obj_cache);
 			lru_evict(obj_cache, key);
 			q_node = check_lru_cache(obj_cache, key);
 			o = (o_array *)q_node->item;
@@ -428,8 +450,17 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 				// In this step, we gather info on what is
 				// being asked permission to execute.
 				pinfo->path1 = strdup(file);
+				// Keep ELF/type work under evaluation in the
+				// timing report. This pattern check is still in
+				// event_build:total, but rules are the dominant
+				// source of type lookups and pattern denies
+				// are expected to be rare.
+				decision_timing_stage_begin(
+					DECISION_TIMING_STAGE_MIME_GATHER_ELF,
+					&timing);
 				pinfo->elf_info = gather_elf(e->fd,
 							e->o->info->size);
+				decision_timing_stage_end(&timing);
 			//	pinfo->state = STATE_COLLECTING;Just for clarity
 			} else if (pinfo->path2 == NULL) {
 				pinfo->path2 = strdup(file);
@@ -444,6 +475,8 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			}
 		}
 	}
+	if (defer_path)
+		deferred_subj_path_collections++;
 	return 0;
 }
 
@@ -469,9 +502,15 @@ subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
 		.groups = NULL,
 		.comm = NULL
 	};
+	struct decision_timing_span timing;
 
-	if (read_proc_status(e->pid, mask, &info) != 0)
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP, &timing);
+	if (read_proc_status(e->pid, mask, &info) != 0) {
+		decision_timing_stage_end(&timing);
 		return NULL;
+	}
+	decision_timing_stage_end(&timing);
 
 	// Cache everything - sets and comm are malloc'ed. Transfer ownership.
 	// Not checking return of subject_add. Caller needs to check for NULL.
@@ -522,6 +561,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 	subject_attr_t subj;
 	subject_attr_t *sn;
 	s_array *s = e->s;
+	struct decision_timing_span timing;
 
 	sn = subject_access(s, t);
 	if (sn)
@@ -532,7 +572,11 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 	subj.str = NULL;
 	switch (t) {
 		case AUID:
+			decision_timing_stage_begin(
+				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
+				&timing);
 			subj.uval = get_program_auid_from_pid(e->pid);
+			decision_timing_stage_end(&timing);
 			break;
 		case PPID:
 		case UID:
@@ -547,8 +591,12 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			return fetch_proc_status(e, t);
 			break;
 		case SESSIONID:
+			decision_timing_stage_begin(
+				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
+				&timing);
 			subj.uval = (unsigned int)
 					get_program_sessionid_from_pid(e->pid);
+			decision_timing_stage_end(&timing);
 			break;
 		case PID:
 			subj.pid = e->pid;
@@ -560,7 +608,11 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			char buf[PATH_MAX+1], *ptr;
 
 			errno = 0;
+			decision_timing_stage_begin(
+				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
+				&timing);
 			ptr = get_program_from_pid(e->pid, sizeof(buf), buf);
+			decision_timing_stage_end(&timing);
 			if (errno == ENOENT) {
 				/* kworkers have no exe entry
 				 * readlink("/proc/4/exe", 0x55624a28d410, 64) = -1 ENOENT (No such file or directory)
@@ -581,7 +633,11 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		break;
 		case EXE_TYPE: {
 			char buf[128], *ptr;
+			decision_timing_stage_begin(
+				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
+				&timing);
 			ptr = get_type_from_pid(e->pid, sizeof(buf), buf);
+			decision_timing_stage_end(&timing);
 			if (ptr)
 				subj.str = strdup(buf);
 			else
@@ -634,6 +690,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 	object_attr_t obj;
 	object_attr_t *on;
 	o_array *o = e->o;
+	struct decision_timing_span timing;
 
 	on = object_access(o, t);
 	if (on)
@@ -651,8 +708,12 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			if (on)
 				obj.o = strdup(on->o);
 			else {
+				decision_timing_stage_begin(
+					DECISION_TIMING_STAGE_FD_PATH_RESOLUTION,
+					&timing);
 				ptr = get_file_from_fd(e->fd, e->pid,
 							sizeof(buf), buf);
+				decision_timing_stage_end(&timing);
 				if (ptr)
 					obj.o = strdup(buf);
 				else
@@ -669,9 +730,18 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			break;
 		case FTYPE: {
 			object_attr_t *path =  get_obj_attr(e, PATH);
+			// Report type lookups under evaluation. Response
+			// logging and metrics can ask for FTYPE after an
+			// early decision, but normal policy evaluation is the
+			// main driver and precise call-site timing is still
+			// preserved by this operation histogram.
+			decision_timing_stage_begin(
+				DECISION_TIMING_STAGE_TYPE_ELF_DETECTION,
+				&timing);
 			ptr = get_file_type_from_fd(e->fd, o->info,
 							path ? path->o : "?",
 							sizeof(buf), buf);
+			decision_timing_stage_end(&timing);
 			if (ptr)
 				obj.o = strdup(buf);
 			else
@@ -740,6 +810,8 @@ static void print_queue_stats(FILE *f, const struct lru_metrics *metrics)
 		metrics->total ? (100*metrics->count)/metrics->total : 0);
 	fprintf(f, "%s hits: %lu\n", metrics->name, metrics->hits);
 	fprintf(f, "%s misses: %lu\n", metrics->name, metrics->misses);
+	fprintf(f, "%s collisions: %lu\n", metrics->name,
+		metrics->collisions);
 	fprintf(f, "%s evictions: %lu (%lu%%)\n", metrics->name,
 		metrics->evictions,
 		metrics->hits ? (100*metrics->evictions)/metrics->hits : 0);
@@ -866,13 +938,18 @@ void do_cache_reports_reset(FILE *f, int reset)
 {
 	struct lru_metrics metrics;
 	unsigned int early_evictions = early_subj_cache_evictions;
+	unsigned int deferred_paths = deferred_subj_path_collections;
 
-	if (reset)
+	if (reset) {
 		early_subj_cache_evictions = 0;
+		deferred_subj_path_collections = 0;
+	}
 
 	lru_metrics_snapshot(subj_cache, &metrics, reset);
 	print_queue_stats(f, &metrics);
 	fprintf(f, "Early subject cache evictions: %u\n", early_evictions);
+	fprintf(f, "Deferred subject path collections: %u\n",
+		deferred_paths);
 	lru_metrics_snapshot(obj_cache, &metrics, reset);
 	print_queue_stats(f, &metrics);
 }

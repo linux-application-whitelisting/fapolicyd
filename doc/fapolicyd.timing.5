@@ -1,0 +1,310 @@
+.TH "FAPOLICYD.TIMING" "5" "May 2026" "Red Hat" "File Formats"
+.SH NAME
+fapolicyd.timing \- fapolicyd manual decision timing report
+.SH DESCRIPTION
+The
+.I /run/fapolicyd/fapolicyd.timing
+file contains one manual decision timing run from
+.BR fapolicyd (8).
+The daemon writes this file when a privileged manual timing stop request ends
+an armed timing run. A stop request while timing is not armed writes a short
+status report instead of timing data. The daemon may also stop collection and
+write the report when a timing counter would overflow.
+.PP
+Timing collection is disabled by default. Manual timing requests are honored
+only when the active daemon configuration has
+.B timing_collection=manual
+in
+.BR fapolicyd.conf (5).
+The command
+.B fapolicyd-cli --timing-start
+arms a run, and
+.B fapolicyd-cli --timing-stop
+stops the run and prints this report.
+.PP
+The daemon stores aggregate counters only. It does not store one timing record
+per decision. Each decision worker owns local aggregate blocks containing a
+call count, total time, maximum time, and fixed latency buckets for each stage.
+The report snapshots and aggregates those blocks.
+.SH RUN SUMMARY
+The first lines summarize the run:
+.TP
+.B Mode
+Active timing collection mode.
+.TP
+.B Timing run
+Wall-clock start and stop time.
+.TP
+.B Duration
+Elapsed wall-clock run time in
+.B H:MM:SS
+format.
+.TP
+.B Workers
+Number of decision worker timing blocks included in the snapshot.
+.TP
+.B Max queue depth
+Highest internal event queue depth observed during the timing run. The daemon
+temporarily resets only the max queue depth counter when timing starts and
+restores the previous high-water mark after timing stops if the previous value
+was larger.
+.TP
+.B Decisions
+Number of completed fanotify decisions timed during the run.
+.TP
+.B Throughput
+Timed decisions per second over the wall-clock run duration. This includes
+time when fapolicyd was armed but no events were waiting to be decided.
+.TP
+.B Active decision rate
+Timed decisions per second using the sum of
+.B decision:total
+latency instead of wall-clock duration. With more than one decision worker,
+this is worker-time, not elapsed wall-clock time.
+.TP
+.B Stop reason
+Printed only when the run stopped automatically because a timing counter would
+overflow.
+.SH OVERALL DECISION LATENCY
+The
+.B Overall decision latency
+section describes end-to-end decision latency from the point a decision worker
+starts processing a dequeued fanotify event until the decision path returns
+after response handling.
+.PP
+The section prints average and maximum latency using compact latency units,
+approximate
+percentile buckets, and cumulative percentages for useful thresholds such as
+.B <=50us ,
+.B <=100us ,
+.B <=500us ,
+.B <=1ms ,
+and
+.B >10ms .
+Percentiles are bucket approximations, not exact per-decision percentiles.
+The 95th percentile is a useful tail-latency marker: roughly 95% of observed
+calls were at or below that bucket, so a high p95 points to a recurring slow
+path rather than a single worst-case outlier.
+.SH STAGE TABLE
+The
+.B Stage timing
+table is sorted by total measured time by default. It answers which measured
+operations consumed the most total time during the run.
+.TP
+.B Stage
+Measured operation name. The current stage set is listed in
+.BR "DECISION FLOW" .
+.TP
+.B Calls
+Number of times the operation was measured.
+.TP
+.B Calls/Dec
+Average measured calls per timed decision.
+.TP
+.B Total
+Total measured time for the stage.
+.TP
+.B Avg
+Average measured call time for the stage.
+.TP
+.B Max
+Slowest observed call for the stage.
+.TP
+.B p95 bucket
+Approximate bucket containing the 95th percentile call for the stage.
+.PP
+Stages with zero calls are hidden from the table and listed under
+.B Not observed .
+If a stage is not observed, no measured call to that operation occurred during
+the timing window. For example, an absent
+.B evaluation:trust_db_lookup:total
+line means no measured trust database lookup occurred in that run.
+.SH DECISION FLOW
+Stage names use a colon-separated hierarchy:
+.PP
+.RS
+.nf
+phase:operation:child
+.fi
+.RE
+.PP
+Rows ending in
+.B :total
+are parent scopes. Child operation timings are useful contributors, but they
+can be nested, lazy, or shared by more than one code path, so child rows are
+not expected to add up to the parent total.
+.PP
+The main decision-thread view is:
+.PP
+.RS
+.nf
+decision:total
+time_in_queue:total
+event_build:total
+event_build:cache_flush
+event_build:proc_fingerprint
+event_build:fd_stat
+
+evaluation:lock_wait
+evaluation:total
+evaluation:mime_detection:total
+evaluation:mime_detection:fast_classification
+evaluation:mime_detection:gather_elf
+evaluation:mime_detection:libmagic_fallback
+evaluation:fd_path_resolution
+evaluation:proc_detail_lookup
+evaluation:hash_ima:total
+evaluation:trust_db_lookup:total
+evaluation:trust_db_lookup:lock_wait
+evaluation:trust_db_lookup:read
+
+response:total
+response:syslog_debug_format:total
+response:audit_metadata:total
+response:fanotify_write
+.fi
+.RE
+.PP
+Lazy helper operations are grouped under the phase that normally drives them.
+For example, MIME detection can be requested by response logging or metrics
+after an early pattern decision, but normal rule evaluation is the dominant
+source of file type lookups. The report therefore names these rows under
+.B evaluation:mime_detection
+for readability while still measuring the exact helper call sites.
+.SH STAGES
+.TP
+.B decision:total
+Decision worker latency after a fanotify event has been dequeued, including
+event build, policy evaluation, optional logging or audit preparation, and
+response handling. Queue wait time is reported separately.
+.TP
+.B time_in_queue:total
+Time a fanotify event spent in the internal userspace queue between enqueue by
+the fanotify reader thread and dequeue by a decision worker. Events already in
+the queue when timing is armed do not have an enqueue timestamp and are not
+included in this stage.
+.TP
+.B event_build:total
+Construction of the internal event from fanotify metadata. This includes
+subject and object cache lookups, initial subject and object fingerprints, and
+some pattern-state work.
+.TP
+.B event_build:cache_flush
+Object cache flush performed on the decision path when the global flush flag
+is set.
+.TP
+.B event_build:proc_fingerprint
+Initial
+.I /proc/<pid>
+stat used to identify the subject process and detect stale subject cache
+entries.
+.TP
+.B event_build:fd_stat
+Stat of the fanotify file descriptor used to fingerprint the object.
+.TP
+.B evaluation:lock_wait
+Time spent waiting for the rule lock before policy evaluation.
+.TP
+.B evaluation:total
+Rule list evaluation loop. Lazy subject, object, trust, hash, or type lookups
+caused by rule fields can appear as child operation timings and also contribute
+to this total.
+.TP
+.B evaluation:proc_detail_lookup
+On-demand subject procfs detail lookups, including
+.I /proc/<pid>/status ,
+.I /proc/<pid>/exe ,
+subject executable type, session id, and auid lookups. These can be driven
+lazily by rules, syslog/debug formatting, or audit metadata.
+.TP
+.B evaluation:fd_path_resolution
+Path resolution for the object file descriptor.
+.TP
+.B evaluation:mime_detection:total
+Object type and ELF/script detection.
+.TP
+.B evaluation:mime_detection:fast_classification
+In-house classification before libmagic fallback. This includes empty-file,
+ELF/script, shebang, common magic number, common text format, and device checks.
+.TP
+.B evaluation:mime_detection:gather_elf
+ELF/script header scan performed by
+.BR gather_elf ().
+This can occur inside the normal object type lookup or during rare pattern-state
+work in event build.
+.TP
+.B evaluation:mime_detection:libmagic_fallback
+Full libmagic fallback used when the faster type checks cannot classify the
+object.
+.TP
+.B evaluation:hash_ima:total
+File hash or IMA digest collection.
+.TP
+.B evaluation:trust_db_lookup:total
+Total trust database lookup through
+.BR check_trust_database ().
+This includes update-thread lock wait, long-term LMDB read setup, the primary
+LMDB lookup, optional hash work requested by trust lookup, and the top-level
+.I /usr
+symlink retry path.
+.TP
+.B evaluation:trust_db_lookup:lock_wait
+Time spent waiting for the trust database update-thread lock before LMDB read
+setup. This is a future multi-decision-thread contention signal.
+.TP
+.B evaluation:trust_db_lookup:read
+LMDB read setup and trust database read work after the update-thread lock is
+held. This currently includes the primary lookup, optional hash work requested
+by trust lookup, the top-level
+.I /usr
+symlink retry path, and read cleanup.
+.TP
+.B response:total
+Work after the rule loop has completed. This includes syslog/debug formatting,
+rule/source bookkeeping, decision metric updates, response selection, audit
+metadata preparation, fanotify response writes, and descriptor close work.
+.TP
+.B response:syslog_debug_format:total
+Formatting of syslog or debug output after a decision. Lazy field lookups
+needed only for logging may appear as nested stage timings.
+.TP
+.B response:audit_metadata:total
+Preparation of fanotify audit response metadata before the response write.
+When audit metadata needs object trust, trust lookup time can be nested here.
+.TP
+.B response:fanotify_write
+The actual
+.BR write (2)
+of the fanotify response to the kernel.
+.SH NOTES
+Stage timings are operation histograms. They may be nested or lazy and are not
+required to sum to
+.B decision:total .
+The interpretation footer reports the hottest stage by total time, the slowest
+single observed call by maximum time, and the largest rare contributor by total
+time among stages called by fewer than 10% of decisions.
+That last note is meant to identify infrequent work that still consumes a
+visible amount of measured time; it is not the same as the largest single
+outlier.
+.PP
+For cache hit, miss, collision, eviction, early subject eviction, and deferred
+subject path collection counters, see
+.BR fapolicyd.state (5).
+.PP
+If adding a timing count, total, or bucket counter would overflow, fapolicyd
+disarms timing, records an overflow stop reason, and writes the timing report
+instead of allowing counters to wrap and skew the data.
+.SH FILES
+.TP
+.I /run/fapolicyd/fapolicyd.timing
+Manual decision timing report.
+.TP
+.I /run/fapolicyd/fapolicyd.state
+Runtime state report containing timing control state and cache counters.
+.SH SEE ALSO
+.BR fapolicyd (8),
+.BR fapolicyd-cli (8),
+.BR fapolicyd.conf (5),
+.BR fapolicyd.state (5),
+and
+.BR fapolicyd.trust (5).

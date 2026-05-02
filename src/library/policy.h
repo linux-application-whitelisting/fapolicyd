@@ -62,6 +62,8 @@ typedef enum {
 	DECISION_SOURCE_FALLTHROUGH
 } decision_source_t;
 
+struct decision_timing_span;
+
 typedef struct {
 	unsigned long allowed_by_rule;
 	unsigned long allowed_by_fallthrough;
@@ -85,7 +87,8 @@ int load_rule_file(void);
 int do_reload_rules(const conf_t *config);
 void set_reload_rules(void);
 decision_t process_event(event_t *e);
-decision_t process_event_with_source(event_t *e, decision_source_t *source);
+decision_t process_event_with_source(event_t *e, decision_source_t *source,
+		struct decision_timing_span *response_timing);
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e);
 void make_policy_decision(const struct fanotify_event_metadata *metadata,

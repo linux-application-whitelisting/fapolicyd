@@ -25,6 +25,7 @@
 #ifndef QUEUE_HEADER
 #define QUEUE_HEADER
 
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>
@@ -33,10 +34,12 @@
 #include <time.h>
 #include "gcc-attributes.h"
 
+struct queue_entry;
+
 struct queue
 {
 	/* Ring buffer of fanotify events */
-	struct fanotify_event_metadata *events;
+	struct queue_entry *events;
 	size_t num_entries;
 	atomic_uint q_next;
 	atomic_uint q_last;
@@ -67,6 +70,12 @@ void q_metrics_snapshot(const struct queue *q, struct queue_metrics *metrics);
 void q_metrics_snapshot_reset(struct queue *q, struct queue_metrics *metrics,
 		int reset);
 
+/* Copy and reset only the max depth counter. */
+unsigned int q_max_depth_snapshot_reset(struct queue *q);
+
+/* Copy the max depth counter and restore SAVED if it was larger. */
+unsigned int q_max_depth_snapshot_restore(struct queue *q, unsigned int saved);
+
 /* Write queue metrics using the current text report format. */
 void q_metrics_report(FILE *f, const struct queue_metrics *metrics);
 
@@ -76,14 +85,16 @@ void q_report(FILE *f, const struct queue *q);
 /* Add DATA to tail of Q. Return 0 on success, -1 on error and set errno. */
 int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data);
 
-/* Remove one event from Q, storing it into DATA. Return 1 on success or 0 if
- * the queue is empty. */
-int q_dequeue(struct queue *q, struct fanotify_event_metadata *data);
+/* Remove one event from Q, storing it into DATA and its enqueue timestamp into
+ * ENQUEUE_NS when requested. Return 1 on success or 0 if the queue is empty. */
+int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+	      uint64_t *enqueue_ns);
 
-/* Remove one event from Q, blocking until timeout. On success return 1. On
- * timeout return 0 and set errno to ETIMEDOUT. */
- int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-		     const struct timespec *ts);
+/* Remove one event from Q, blocking until timeout. Store the enqueue timestamp
+ * into ENQUEUE_NS when requested. On success return 1. On timeout return 0 and
+ * set errno to ETIMEDOUT. */
+int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+		    uint64_t *enqueue_ns, const struct timespec *ts);
 
 /* Wake up anyone waiting on the queue. */
 void q_shutdown(struct queue *q);

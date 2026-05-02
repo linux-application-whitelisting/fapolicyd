@@ -36,6 +36,7 @@
 #define REPORT          "/var/log/fapolicyd-access.log"
 #define RUN_DIR         "/run/fapolicyd/"
 #define STAT_REPORT     "/run/fapolicyd/fapolicyd.state"
+#define TIMING_REPORT   "/run/fapolicyd/fapolicyd.timing"
 #define fifo_path       "/run/fapolicyd/fapolicyd.fifo"
 #define pidfile         "/run/fapolicyd.pid"
 

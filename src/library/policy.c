@@ -37,6 +37,7 @@
 #include <stdatomic.h>
 
 #include "database.h"
+#include "decision-timing.h"
 #include "escape.h"
 #include "failure-action.h"
 #include "file.h"
@@ -784,16 +785,20 @@ static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
 static void log_it(const struct policy_snapshot *policy, unsigned int num,
 		   decision_t results, event_t *e)
 {
+	struct decision_timing_span timing;
 	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
 	unsigned int i;
 	size_t dsize;
 	ptrdiff_t written;
 	char *p1, *p2, *val;
 
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_SYSLOG_DEBUG_FORMAT, &timing);
 	if (working_buffer == NULL) {
 		working_buffer = malloc(WB_SIZE);
 		if (working_buffer == NULL) {
 			msg(LOG_ERR, "No working buffer for logging");
+			decision_timing_stage_end(&timing);
 			return;
 		}
 	}
@@ -835,6 +840,7 @@ static void log_it(const struct policy_snapshot *policy, unsigned int num,
 	}
 	working_buffer[WB_SIZE-1] = 0;	// Just in case
 	msg(mode, "%s", working_buffer);
+	decision_timing_stage_end(&timing);
 }
 
 
@@ -846,20 +852,29 @@ static void log_it(const struct policy_snapshot *policy, unsigned int num,
  * Returns the access decision. A no-opinion policy result remains compatible
  * with historical behavior by returning ALLOW and reporting fallthrough.
  */
-decision_t process_event_with_source(event_t *e, decision_source_t *source)
+decision_t process_event_with_source(event_t *e, decision_source_t *source,
+		struct decision_timing_span *response_timing)
 {
 	decision_t results = NO_OPINION;
 	struct policy_snapshot *policy = active_policy;
+	struct decision_timing_span eval_timing;
 	lnode *r;
 
 	if (source)
 		*source = DECISION_SOURCE_FALLTHROUGH;
 
-	if (!policy)
+	if (!policy) {
+		if (response_timing)
+			decision_timing_stage_begin(
+				DECISION_TIMING_STAGE_RESPONSE_TOTAL,
+				response_timing);
 		return ALLOW;
+	}
 
 	/* Use a local cursor so concurrent readers do not share list state. */
 	//int cnt = 0;
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_RULE_EVALUATION,
+				    &eval_timing);
 	for (r = rules_first_node(&policy->rules); r;
 	     r = rules_next_node(r)) {
 		//msg(LOG_INFO, "process_event: rule %d", cnt);
@@ -869,6 +884,11 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source)
 			break;
 		//cnt++;
 	}
+	decision_timing_stage_end(&eval_timing);
+
+	if (response_timing)
+		decision_timing_stage_begin(DECISION_TIMING_STAGE_RESPONSE_TOTAL,
+					    response_timing);
 
 	// Output some information if debugging on or syslogging requested
 	if ( (results & SYSLOG) || (debug_mode == 1) ||
@@ -896,7 +916,7 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source)
  */
 decision_t process_event(event_t *e)
 {
-	return process_event_with_source(e, NULL);
+	return process_event_with_source(e, NULL, NULL);
 }
 
 #ifdef FAN_AUDIT_RULE_NUM
@@ -925,6 +945,9 @@ static int test_info_api(int fd)
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e)
 {
+	struct decision_timing_span prep_timing;
+	struct decision_timing_span write_timing;
+
 #ifdef FAN_AUDIT_RULE_NUM
 	static int use_new = 2;
 	if (use_new == 2)
@@ -934,6 +957,9 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		subject_attr_t *sn;
 		object_attr_t *obj;
 
+		decision_timing_stage_begin(
+			DECISION_TIMING_STAGE_AUDIT_RESPONSE_PREP,
+			&prep_timing);
 		f.r.fd = metadata->fd;
 		f.r.response = reply | FAN_INFO;
 		f.a.hdr.type = FAN_RESPONSE_INFO_AUDIT_RULE;
@@ -954,24 +980,36 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 			f.a.obj_trust = obj->val;
 		} else
 			f.a.obj_trust = 2;
+		decision_timing_stage_end(&prep_timing);
 		errno = 0;
+		decision_timing_stage_begin(
+			DECISION_TIMING_STAGE_FANOTIFY_RESPONSE_WRITE,
+			&write_timing);
 		if (write(fd, &f, sizeof(struct fan_audit_response)) <
 				(ssize_t)sizeof(struct fanotify_response) ||
 				errno)
 			failure_action_record(
 			    FAILURE_REASON_RESPONSE_WRITE_FAILURE);
+		decision_timing_stage_end(&write_timing);
 		goto out;
 	}
 #endif
 	struct fanotify_response response;
 
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_AUDIT_RESPONSE_PREP, &prep_timing);
 	response.fd = metadata->fd;
 	response.response = reply;
+	decision_timing_stage_end(&prep_timing);
 	errno = 0;
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_FANOTIFY_RESPONSE_WRITE,
+		&write_timing);
 	if (write(fd, &response, sizeof(struct fanotify_response)) <
 			(ssize_t)sizeof(struct fanotify_response) || errno)
 		failure_action_record(
 		    FAILURE_REASON_RESPONSE_WRITE_FAILURE);
+	decision_timing_stage_end(&write_timing);
 out:
 	// Close this last so that no other thread can open a file which
 	// reclaims this fd number before we render a decision.
@@ -985,15 +1023,28 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 	int decision;
 	event_t *metric_event = NULL;
 	decision_source_t source = DECISION_SOURCE_FALLTHROUGH;
+	struct decision_timing_span event_timing;
+	struct decision_timing_span rule_wait_timing;
+	struct decision_timing_span response_timing = { 0 };
 
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_EVENT_BUILD,
+				    &event_timing);
 	if (new_event(metadata, &e))
 		decision = FAN_DENY;
 	else {
+		decision_timing_stage_end(&event_timing);
 		metric_event = &e;
+		decision_timing_stage_begin(
+			DECISION_TIMING_STAGE_RULE_LOCK_WAIT,
+			&rule_wait_timing);
 		lock_rule();
-		decision = process_event_with_source(&e, &source);
+		decision_timing_stage_end(&rule_wait_timing);
+		decision = process_event_with_source(&e, &source,
+						     &response_timing);
 		unlock_rule();
 	}
+	if (metric_event == NULL)
+		decision_timing_stage_end(&event_timing);
 
 	policy_metrics_record_decision(decision, metric_event, source);
 
@@ -1011,6 +1062,7 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 			reply_event(fd, metadata, decision & FAN_RESPONSE_MASK,
 					&e);
 	}
+	decision_timing_stage_end(&response_timing);
 }
 
 

@@ -31,5 +31,6 @@ int load_daemon_config(conf_t *config);
 void free_daemon_config(conf_t *config);
 const char *lookup_integrity(unsigned value);
 const char *lookup_reset_strategy(unsigned value);
+const char *lookup_timing_collection(unsigned value);
 
 #endif

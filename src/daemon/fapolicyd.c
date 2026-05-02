@@ -57,6 +57,7 @@
 #include "database.h"
 #include "message.h"
 #include "daemon-config.h"
+#include "decision-timing.h"
 #include "conf.h"
 #include "queue.h"
 #include "gcc-attributes.h"
@@ -370,6 +371,8 @@ static void hup_handler(int sig __attribute__((unused)))
 static int reload_configuration(void)
 {
 	conf_t new_config;
+	reset_strategy_t reset_strategy;
+	timing_collection_t timing_collection;
 
 	if (load_daemon_config(&new_config)) {
 		free_daemon_config(&new_config);
@@ -387,10 +390,23 @@ static int reload_configuration(void)
 
 	config.do_stat_report = new_config.do_stat_report;
 	config.detailed_report = new_config.detailed_report;
-	if (new_config.reset_strategy != config.reset_strategy) {
+	reset_strategy = __atomic_load_n(&config.reset_strategy,
+					 __ATOMIC_RELAXED);
+	if (new_config.reset_strategy != reset_strategy) {
 		__atomic_store_n(&config.reset_strategy,
 				 new_config.reset_strategy, __ATOMIC_RELAXED);
 		state_report_log_reset_strategy(new_config.reset_strategy);
+	}
+	timing_collection = __atomic_load_n(&config.timing_collection,
+					    __ATOMIC_RELAXED);
+	if (new_config.timing_collection != timing_collection) {
+		__atomic_store_n(&config.timing_collection,
+				 new_config.timing_collection,
+				 __ATOMIC_RELAXED);
+		decision_timing_apply_config(new_config.timing_collection);
+		// Let the decision thread restore timing-owned queue metrics.
+		if (new_config.timing_collection == TIMING_COLLECTION_OFF)
+			nudge_queue();
 	}
 
 	if (new_config.integrity != config.integrity) {
@@ -894,10 +910,12 @@ void do_stat_report_reset(FILE *f, int shutdown, int reset)
 {
 	const char *ptr = lookup_integrity(config.integrity);
 	reset_strategy_t strategy;
+	failure_action_metrics_t failures;
 	const char *reset_ptr;
 
 	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
 	reset_ptr = lookup_reset_strategy(strategy);
+	failure_action_snapshot(&failures, reset);
 
 	fprintf(f, "Permissive: %s\n",
 		__atomic_load_n(&config.permissive,
@@ -905,16 +923,19 @@ void do_stat_report_reset(FILE *f, int shutdown, int reset)
 	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
 	fprintf(f, "reset_strategy: %s\n",
 		reset_ptr ? reset_ptr : "unknown");
+	decision_timing_control_report(f, &config);
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "q_size: %u\n", config.q_size);
 	fanotify_queue_report_reset(f, reset);
-	decision_report_reset(f, reset);
+	decision_report_reset_with_failures(f, reset, &failures);
 	database_report(f);
 #ifdef HAVE_MALLINFO2
 	memory_use_report(f);
 #endif
 	if (!shutdown)
 		do_cache_reports_reset(f, reset);
+	decision_failure_action_report(f, &failures);
+	decision_timing_history_report(f);
 
 	// Report mounts under fanotify watch
 	pthread_mutex_lock(&mlist_lock);
@@ -1105,7 +1126,7 @@ int main(int argc, const char *argv[])
 	sigaction(SIGQUIT, &sa, NULL);
 
 	sa.sa_flags = SA_SIGINFO;
-	sa.sa_sigaction = state_report_signal_handler;
+	sa.sa_sigaction = usr1_handler;
 	sigaction(SIGUSR1, &sa, NULL);
 	sa.sa_flags = 0;
 	/* These need to be last since they are used later */
@@ -1148,6 +1169,7 @@ int main(int argc, const char *argv[])
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
 	}
 	state_report_log_reset_strategy(config.reset_strategy);
+	decision_timing_apply_config(config.timing_collection);
 
 	// Set the exit function so there is always a fifo cleanup
 	if (atexit(unlink_fifo)) {

@@ -111,6 +111,7 @@ static void dump_queue_stats(const Queue *q)
 				q->total ? (100*q->count)/q->total : 0);
 	msg(LOG_DEBUG, "%s hits: %lu", q->name, q->hits);
 	msg(LOG_DEBUG, "%s misses: %lu", q->name, q->misses);
+	msg(LOG_DEBUG, "%s collisions: %lu", q->name, q->collisions);
 	msg(LOG_DEBUG, "%s evictions: %lu (%lu%%)", q->name, q->evictions,
 				q->hits ? (100*q->evictions)/q->hits : 0);
 }
@@ -127,6 +128,7 @@ static Queue *create_queue(unsigned int qsize, const char *name)
 	queue->count = 0;
 	queue->hits = 0;
 	queue->misses = 0;
+	queue->collisions = 0;
 	queue->evictions = 0;
 	queue->front = queue->end = NULL;
 
@@ -355,6 +357,21 @@ void lru_evict(Queue *queue, unsigned int key)
 	queue->evictions++;
 }
 
+/*
+ * lru_record_collision - count an unusable cache entry for this key.
+ * @queue: cache queue whose lookup collided.
+ *
+ * The LRU layer indexes by a bounded hash key and callers compare the
+ * complete subject or object identity after lookup. Callers use this counter
+ * when a populated slot mapped by the key has to be evicted because that
+ * complete identity did not match.
+ */
+void lru_record_collision(Queue *queue)
+{
+	if (queue)
+		queue->collisions++;
+}
+
 // Make a new entry with item to be assigned later
 // and setup the hash key
 static void enqueue(Queue *queue, unsigned int key)
@@ -463,11 +480,13 @@ void lru_metrics_snapshot(Queue *queue, struct lru_metrics *metrics,
 	metrics->total = queue->total;
 	metrics->hits = queue->hits;
 	metrics->misses = queue->misses;
+	metrics->collisions = queue->collisions;
 	metrics->evictions = queue->evictions;
 
 	if (reset) {
 		queue->hits = 0;
 		queue->misses = 0;
+		queue->collisions = 0;
 		queue->evictions = 0;
 	}
 }

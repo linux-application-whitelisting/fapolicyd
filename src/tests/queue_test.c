@@ -50,6 +50,7 @@ int main(void)
 	struct queue_metrics metrics;
 	struct queue *q;
 	char report[128];
+	unsigned int run_max, saved;
 
 	q = q_open(2);
 	CHECK(q != NULL, 1, "[ERROR:1] q_open failed");
@@ -79,7 +80,7 @@ int main(void)
 	CHECK(metrics.full_count == 1, 10,
 	      "[ERROR:10] full count incorrect");
 
-	CHECK(q_dequeue(q, &out) == 1, 11,
+	CHECK(q_dequeue(q, &out, NULL) == 1, 11,
 	      "[ERROR:11] dequeue failed");
 	q_metrics_snapshot(q, &metrics);
 	CHECK(metrics.current_depth == 1, 12,
@@ -108,6 +109,33 @@ int main(void)
 	      "[ERROR:20] reset did not restart max depth at current depth");
 	CHECK(metrics.full_count == 0, 21,
 	      "[ERROR:21] reset did not clear full count");
+
+	saved = q_max_depth_snapshot_reset(q);
+	CHECK(saved == 1, 22,
+	      "[ERROR:22] max depth reset returned wrong saved value");
+	CHECK(q_enqueue(q, &event) == 0, 23,
+	      "[ERROR:23] enqueue after max depth reset failed");
+	run_max = q_max_depth_snapshot_restore(q, saved);
+	CHECK(run_max == 2, 24,
+	      "[ERROR:24] max depth restore returned wrong run value");
+	q_metrics_snapshot(q, &metrics);
+	CHECK(metrics.max_depth == 2, 25,
+	      "[ERROR:25] restore changed larger run max depth");
+
+	CHECK(q_dequeue(q, &out, NULL) == 1, 26,
+	      "[ERROR:26] second dequeue failed");
+	saved = q_max_depth_snapshot_reset(q);
+	CHECK(saved == 2, 27,
+	      "[ERROR:27] second max depth reset lost saved high water");
+	q_metrics_snapshot(q, &metrics);
+	CHECK(metrics.max_depth == 1, 28,
+	      "[ERROR:28] max depth reset did not restart at current depth");
+	run_max = q_max_depth_snapshot_restore(q, saved);
+	CHECK(run_max == 1, 29,
+	      "[ERROR:29] restore did not return timing run max depth");
+	q_metrics_snapshot(q, &metrics);
+	CHECK(metrics.max_depth == 2, 30,
+	      "[ERROR:30] restore did not preserve pre-run max depth");
 
 	q_close(q);
 	return 0;

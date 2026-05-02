@@ -30,8 +30,14 @@
 typedef enum { IN_NONE, IN_SIZE, IN_IMA, IN_SHA256 } integrity_t;
 typedef enum { RESET_NEVER, RESET_AUTO, RESET_MANUAL } reset_strategy_t;
 typedef enum {
+	TIMING_COLLECTION_OFF,
+	TIMING_COLLECTION_MANUAL
+} timing_collection_t;
+typedef enum {
 	REPORT_INTENT_STATUS,
-	REPORT_INTENT_RESET_METRICS
+	REPORT_INTENT_RESET_METRICS,
+	REPORT_INTENT_TIMING_ARM,
+	REPORT_INTENT_TIMING_STOP
 } report_intent_t;
 
 typedef struct conf
@@ -56,6 +62,7 @@ typedef struct conf
 	unsigned int allow_filesystem_mark;
 	unsigned int report_interval;
 	reset_strategy_t reset_strategy;
+	timing_collection_t timing_collection;
 } conf_t;
 
 #endif

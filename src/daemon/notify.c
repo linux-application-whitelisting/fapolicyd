@@ -39,6 +39,7 @@
 #include <ctype.h>
 #include <time.h>
 #include "conf.h"
+#include "decision-timing.h"
 #include "failure-action.h"
 #include "policy.h"
 #include "event.h"
@@ -72,6 +73,8 @@ static atomic_long kernel_queue_overflow_last_log;
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
+static unsigned int timing_queue_depth_reset(void *ctx);
+static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
 void fanotify_queue_report_reset(FILE *f, int reset);
 void nudge_queue(void);
 
@@ -206,6 +209,8 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		exit(1);
 	}
 	q_metrics_snapshot(q, &last_queue_metrics);
+	decision_timing_set_queue_depth_hooks(timing_queue_depth_reset,
+					      timing_queue_depth_restore, q);
 	our_pid = getpid();
 
 	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
@@ -403,6 +408,7 @@ void shutdown_fanotify(mlist *m)
 
 	// Clean up
 	q_metrics_snapshot(q, &last_queue_metrics);
+	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
 	q_close(q);
 	q = NULL;
 	close(rpt_timer_fd);
@@ -416,6 +422,27 @@ void shutdown_fanotify(mlist *m)
 void nudge_queue(void)
 {
 	q_shutdown(q);
+}
+
+/*
+ * timing_queue_depth_reset - reset timing run max queue depth.
+ * @ctx: queue pointer.
+ * Returns the max depth value saved before reset.
+ */
+static unsigned int timing_queue_depth_reset(void *ctx)
+{
+	return q_max_depth_snapshot_reset(ctx);
+}
+
+/*
+ * timing_queue_depth_restore - snapshot timing run queue depth and restore.
+ * @ctx: queue pointer.
+ * @saved: max depth value saved before timing reset.
+ * Returns the max depth observed during the timing run.
+ */
+static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved)
+{
+	return q_max_depth_snapshot_restore(ctx, saved);
 }
 
 /*
@@ -537,11 +564,15 @@ static void *decision_thread_main(void *arg)
 	while (!stop) {
 		int rc;
 		struct fanotify_event_metadata metadata;
+		uint64_t enqueue_ns = 0;
+
+		decision_timing_process_requests(&config);
 
 		// if an interval has been configured
 		if (rpt_interval) {
 			errno = 0;
-			rc = q_timed_dequeue(q, &metadata, &rpt_timeout);
+			rc = q_timed_dequeue(q, &metadata, &enqueue_ns,
+					     &rpt_timeout);
 			if (rc == 0) {
 				uint64_t expired = 0;
 
@@ -585,7 +616,7 @@ static void *decision_thread_main(void *arg)
 				continue;
 			}
 		} else {
-			rc = q_dequeue(q, &metadata);
+			rc = q_dequeue(q, &metadata, &enqueue_ns);
 			if (rc == 0) {
 				if (run_stats) {
 					state_report_write(STATE_REPORT_SIGNAL);
@@ -599,9 +630,12 @@ static void *decision_thread_main(void *arg)
 			}
 		}
 
+		decision_timing_decision_begin(0);
+		decision_timing_queue_dequeued(enqueue_ns);
 		atomic_store_explicit(&alive, true, memory_order_relaxed);
 		rpt_is_stale = 1;
 		make_policy_decision(&metadata, fd, mask);
+		decision_timing_decision_end();
 	}
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;

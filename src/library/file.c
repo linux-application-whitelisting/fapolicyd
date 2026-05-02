@@ -43,6 +43,7 @@
 
 #include "file.h"
 #include "database.h"
+#include "decision-timing.h"
 #include "paths.h"
 #include "message.h"
 #include "process.h" // For elf info bit mask
@@ -1085,9 +1086,15 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	char header[512 + 1];
 	size_t header_len = 0;
 	ssize_t header_read;
+	uint32_t elf = 0;
+	struct decision_timing_span timing;
+	struct decision_timing_span fast_timing;
+	struct decision_timing_span gather_timing;
 
 	// libmagic is unpredictable in determining elf files.
 	// We need to do it ourselves for consistency (and speed).
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_MIME_FAST_CLASSIFICATION, &fast_timing);
 	if (i->mode & S_IFREG) {
 		// If its a regular file (block devices have 0 length, too)
 		// check to see if it's empty to skip doing all of the
@@ -1095,16 +1102,23 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 		if (i->size == 0) {
 			strncpy(buf, "application/x-empty", blen-1);
 			buf[blen-1] = 0;
+			decision_timing_stage_end(&fast_timing);
 			return buf;
 		}
 
-		uint32_t elf = gather_elf(fd, i->size);
+		decision_timing_stage_begin(
+			DECISION_TIMING_STAGE_MIME_GATHER_ELF, &gather_timing);
+		elf = gather_elf(fd, i->size);
+		decision_timing_stage_end(&gather_timing);
 		if (elf & IS_ELF) {
 			ptr = classify_elf_info(elf, path);
-			if (ptr == NULL)
+			if (ptr == NULL) {
+				decision_timing_stage_end(&fast_timing);
 				return (char *)ptr;
+			}
 			strncpy(buf, ptr, blen-1);
 			buf[blen-1] = 0;
+			decision_timing_stage_end(&fast_timing);
 			return buf;
 		}
 
@@ -1126,6 +1140,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 				if (ptr) {
 					strncpy(buf, ptr, blen-1);
 					buf[blen-1] = 0;
+					decision_timing_stage_end(&fast_timing);
 					return buf;
 				}
 			}
@@ -1138,6 +1153,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 		if (ptr) {
 			strncpy(buf, ptr, blen-1);
 			buf[blen-1] = 0;
+			decision_timing_stage_end(&fast_timing);
 			return buf;
 		}
 
@@ -1147,6 +1163,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			if (ptr) {
 				strncpy(buf, ptr, blen-1);
 				buf[blen-1] = 0;
+				decision_timing_stage_end(&fast_timing);
 				return buf;
 			}
 		}
@@ -1157,10 +1174,14 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	if (ptr) {
 		strncpy(buf, ptr, blen-1);
 		buf[blen-1] = 0;
+		decision_timing_stage_end(&fast_timing);
 		return buf;
 	}
+	decision_timing_stage_end(&fast_timing);
 
-	// Do the fast classification
+	// Use libmagic when in-house classification did not identify the object.
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_LIBMAGIC_FALLBACK, &timing);
 	ptr = magic_descriptor(magic_fast, fd);
 	if (ptr == NULL ||
 	    (ptr && (memcmp(ptr, "text/plain", 10) == 0 ||
@@ -1168,9 +1189,12 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 		// Fall back to the whole database lookup
 		rewind_fd(fd);
 		ptr = magic_descriptor(magic_full, fd);
-		if (ptr == NULL)
+		if (ptr == NULL) {
+			decision_timing_stage_end(&timing);
 			return NULL;
+		}
 	}
+	decision_timing_stage_end(&timing);
 	char *str;
 	strncpy(buf, ptr, blen-1);
 	buf[blen-1] = 0;
@@ -1234,25 +1258,39 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 	unsigned char *mapped;
 	char *digest = NULL;
 	size_t digest_length;
+	struct decision_timing_span timing;
 
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_HASH_IMA,
+				    &timing);
 	if (size == 0) {
+		char *degenerate;
+
 		switch (alg) {
 		case FILE_HASH_ALG_SHA1:
-			return strdup(degenerate_hash_sha1);
+			degenerate = strdup(degenerate_hash_sha1);
+			break;
 		case FILE_HASH_ALG_SHA256:
-			return strdup(degenerate_hash_sha256);
+			degenerate = strdup(degenerate_hash_sha256);
+			break;
 		case FILE_HASH_ALG_SHA512:
-			return strdup(degenerate_hash_sha512);
+			degenerate = strdup(degenerate_hash_sha512);
+			break;
 		case FILE_HASH_ALG_MD5:
-			return strdup(degenerate_hash_md5);
+			degenerate = strdup(degenerate_hash_md5);
+			break;
 		default:
-			return NULL;
+			degenerate = NULL;
+			break;
 		}
+		decision_timing_stage_end(&timing);
+		return degenerate;
 	}
 
 	digest_length = file_hash_length(alg);
-	if (digest_length == 0)
+	if (digest_length == 0) {
+		decision_timing_stage_end(&timing);
 		return NULL;
+	}
 
 	mapped = mmap(0, size, PROT_READ, MAP_SHARED|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
@@ -1289,6 +1327,7 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 				bytes2hex(digest, hptr, digest_length);
 		}
 	}
+	decision_timing_stage_end(&timing);
 	return digest;
 }
 
@@ -1305,10 +1344,13 @@ int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
 	const struct ima_algo_desc *desc;
 	unsigned char tmp[2 + SHA512_LEN];
 	ssize_t len;
+	struct decision_timing_span timing;
 
 	if (alg)
 		*alg = FILE_HASH_ALG_NONE;
 
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_HASH_IMA,
+				    &timing);
 	/*
 	 * digest-ng places the format type in byte 0 and the hash algorithm in
 	 * byte 1. The remaining bytes hold the binary digest whose length depends
@@ -1318,21 +1360,25 @@ int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
 	len = fgetxattr(fd, "security.ima", tmp, sizeof(tmp));
 	if (len < 2) {
 		msg(LOG_DEBUG, "Can't read ima xattr");
+		decision_timing_stage_end(&timing);
 		return 0;
 	}
 
 	if (tmp[0] != IMA_XATTR_DIGEST_NG) {
 		msg(LOG_DEBUG, "Wrong ima xattr type");
+		decision_timing_stage_end(&timing);
 		return 0;
 	}
 
 	desc = ima_lookup_algo(tmp[1]);
 	if (desc == NULL) {
 		msg(LOG_DEBUG, "Unsupported ima hash algorithm %u", tmp[1]);
+		decision_timing_stage_end(&timing);
 		return 0;
 	}
 	if (len < (ssize_t)(2 + desc->digest_len)) {
 		msg(LOG_DEBUG, "ima xattr too small for alg %u", tmp[1]);
+		decision_timing_stage_end(&timing);
 		return 0;
 	}
 
@@ -1340,6 +1386,7 @@ int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
 	if (alg)
 		*alg = desc->alg;
 
+	decision_timing_stage_end(&timing);
 	return 1;
 }
 

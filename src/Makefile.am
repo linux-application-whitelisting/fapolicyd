@@ -40,6 +40,8 @@ libfapolicyd_la_SOURCES = \
 	library/database.h \
 	library/daemon-config.c \
 	library/daemon-config.h \
+	library/decision-timing.c \
+	library/decision-timing.h \
 	library/escape.c \
 	library/escape.h \
 	library/event.c \

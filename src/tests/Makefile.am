@@ -78,7 +78,8 @@ event_test_LDADD = \
 	${top_builddir}/src/library/libfapolicyd_la-object.o \
 	${top_builddir}/src/library/libfapolicyd_la-object-attr.o \
 	${top_builddir}/src/library/libfapolicyd_la-attr-sets.o \
-	${top_builddir}/src/library/libfapolicyd_la-avl.o
+	${top_builddir}/src/library/libfapolicyd_la-avl.o \
+	${top_builddir}/src/library/libfapolicyd_la-decision-timing.o
 event_test_DEPENDENCIES = $(event_test_LDADD)
 
 if WITH_RPM

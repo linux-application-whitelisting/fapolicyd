@@ -43,6 +43,7 @@
 #include <ctype.h>	/* isspace() */
 
 #include "database.h"
+#include "decision-timing.h"
 #include "failure-action.h"
 #include "message.h"
 #include "file.h"
@@ -1723,13 +1724,25 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 {
 	int retval = 0, error;
 	int res;
+	struct decision_timing_span lock_timing;
+	struct decision_timing_span read_timing;
+	struct decision_timing_span total_timing;
 
 	// this function is going to be used from decision_thread that means
 	// we need to be sure database won't change under our hands.
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_TRUST_DB_LOOKUP,
+				    &total_timing);
+	decision_timing_stage_begin(
+		DECISION_TIMING_STAGE_TRUST_DB_LOCK_WAIT, &lock_timing);
 	lock_update_thread();
+	decision_timing_stage_end(&lock_timing);
 
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_TRUST_DB_READ,
+				    &read_timing);
 	if (start_long_term_read_ops()) {
+		decision_timing_stage_end(&read_timing);
 		unlock_update_thread();
+		decision_timing_stage_end(&total_timing);
 		return -1;
 	}
 
@@ -1763,7 +1776,9 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 	}
 
 	end_long_term_read_ops();
+	decision_timing_stage_end(&read_timing);
 	unlock_update_thread();
+	decision_timing_stage_end(&total_timing);
 
 	return retval;
 }

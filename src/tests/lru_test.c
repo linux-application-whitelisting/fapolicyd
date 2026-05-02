@@ -114,10 +114,42 @@ static void test_metrics_reset(void)
 		error(1, 0, "metrics reset changed cache state");
 	if (metrics.hits != 1 || metrics.misses != 1)
 		error(1, 0, "metrics reset snapshot lost cache counters");
+	if (metrics.collisions != 0)
+		error(1, 0, "metrics reset snapshot invented collisions");
 
 	lru_metrics_snapshot(queue, &metrics, 0);
 	if (metrics.count != 1 || metrics.hits != 0 || metrics.misses != 0)
 		error(1, 0, "metrics reset did not clear counters only");
+
+	destroy_lru(queue);
+}
+
+/*
+ * test_collision_metrics - verify explicit collision counters reset.
+ */
+static void test_collision_metrics(void)
+{
+	struct lru_metrics metrics;
+	Queue *queue;
+	QNode *first;
+
+	queue = init_lru(1, cleanup_item, "collisions", NULL);
+	if (queue == NULL)
+		error(1, 0, "init_lru failed");
+
+	first = check_lru_cache(queue, 0);
+	if (first == NULL)
+		error(1, 0, "check_lru_cache returned NULL");
+	attach_item(first, 50);
+	lru_record_collision(queue);
+
+	lru_metrics_snapshot(queue, &metrics, 1);
+	if (metrics.collisions != 1)
+		error(1, 0, "collision snapshot lost cache counter");
+
+	lru_metrics_snapshot(queue, &metrics, 0);
+	if (metrics.collisions != 0)
+		error(1, 0, "collision counter was not reset");
 
 	destroy_lru(queue);
 }
@@ -127,5 +159,6 @@ int main(void)
 	test_reuse_after_evict();
 	test_pool_exhaustion();
 	test_metrics_reset();
+	test_collision_metrics();
 	return 0;
 }

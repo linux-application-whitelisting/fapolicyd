@@ -44,6 +44,22 @@ When used with \fB\-\-check-rules\fP, also emit policy-shape warnings for execut
 .B \-\-reset-metrics
 Request the metrics to be reset. Runtime metric counters reset after a report is written when the daemon is configured with \fBreset_strategy=manual\fP. The report contains the counter values being reset. The CLI checks the on-disk \fIfapolicyd.conf\fP before requesting the metrics to be reset. If the on-disk \fBreset_strategy\fP is not \fBmanual\fP, or the setting cannot be verified, the command tells the user and sends a plain \fB\-\-check-status\fP request instead. The daemon's active in-memory setting may differ from the file until configuration is reloaded. The command asks for confirmation before sending the reset request unless \fB-y\fP or \fB--yes\fP is used.
 .TP
+.B \-\-timing-start
+Request a manual decision timing run. The daemon honors the request only when
+the active configuration has \fBtiming_collection=manual\fP and the signal
+sender is privileged. Starting resets the fixed per-worker timing aggregates
+and starts collecting timing for subsequent fanotify decisions.
+.TP
+.B \-\-timing-stop
+Stop a manual decision timing run and ask the daemon to write
+\fI/run/fapolicyd/fapolicyd.timing\fP. The command waits for that report and
+writes it to stdout. If timing is not armed, the report says so instead of
+printing timing data. See
+.BR fapolicyd.timing (5)
+for the report fields. The daemon honors the request only when
+the active configuration has \fBtiming_collection=manual\fP and the signal
+sender is privileged.
+.TP
 .B \-y, \-\-yes
 Do not prompt before \fB--reset-metrics\fP sends a reset request.
 .TP
@@ -126,6 +142,7 @@ Operations that completed without making changes, such as attempting to update, 
 .BR fapolicyd (8),
 .BR fapolicyd.rules (5),
 .BR fapolicyd.state (5),
+.BR fapolicyd.timing (5),
 .BR fapolicyd.trust (5),
 and
 .BR fapolicyd.conf (5)

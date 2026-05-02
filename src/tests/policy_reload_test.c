@@ -117,7 +117,7 @@ static decision_t process_capture(event_t *e, char *buf, size_t buflen,
 		error(1, errno, "dup2 failed");
 	close(p[1]);
 
-	decision = process_event_with_source(e, source);
+	decision = process_event_with_source(e, source, NULL);
 
 	fflush(stderr);
 	if (dup2(save, STDERR_FILENO) == -1)

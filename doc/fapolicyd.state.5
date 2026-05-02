@@ -38,7 +38,18 @@ keeps metrics growing for the daemon lifetime,
 .B auto
 resets timer-generated reports, and
 .B manual
-resets signal-generated reports if the signal carries reset intent (only possible programmatically).
+resets signal-generated reports if the signal carries reset intent (only
+possible programmatically).
+.TP
+.B Timing collection mode
+The configured timing collection control mode. A value of
+.B off
+ignores manual timing start and stop requests. A value of
+.B manual
+allows privileged manual timing windows.
+.TP
+.B Timing collection armed
+Whether a manual timing run is currently active.
 .TP
 .B CPU cores
 The number of online processor cores reported by the system.
@@ -119,37 +130,6 @@ executable, programmatic, shared library, or unknown buckets.
 The current in-memory ruleset generation. This value increments each time a
 fully validated ruleset is published by the daemon.
 
-.SH FAILURE ACTION COUNTERS
-Failure action counters record reliability failures that may need stricter
-configured behavior in high-security deployments. In this version every
-failure action is
-.BR observe ,
-meaning the daemon records and reports the failure while preserving existing
-compatibility behavior.
-
-.TP
-.B Failure action queue_full (observe)
-Number of times the internal userspace event queue was full. Current behavior
-is unchanged: enforcing mode denies the event, while permissive mode allows it.
-.TP
-.B Failure action kernel_queue_overflow (observe)
-Number of kernel fanotify queue overflow events. This indicates lost kernel
-visibility and should be treated as a high-severity operational signal.
-.TP
-.B Failure action worker_stall (observe)
-Number of decision worker stall detections. Current behavior remains the
-existing deadman response.
-.TP
-.B Failure action rule_reload_failure (observe)
-Number of rule reload failures. A failed transactional reload preserves the
-previous published policy when one exists.
-.TP
-.B Failure action trust_reload_failure (observe)
-Number of trust database reload failures.
-.TP
-.B Failure action response_write_failure (observe)
-Number of failed or incomplete fanotify response writes to the kernel.
-
 .SH TRUST DATABASE FIELDS
 .TP
 .B Trust database max pages
@@ -183,7 +163,7 @@ report. This field is printed only when the daemon is built with glibc
 .BR mallinfo2 (3)
 support.
 
-.SH CACHE AND MOUNT FIELDS
+.SH CACHE FIELDS
 Interval state reports include aggregate subject and object cache statistics.
 .TP
 .B Subject cache size
@@ -198,6 +178,10 @@ The number of subject cache hits.
 .B Subject misses
 The number of subject cache misses.
 .TP
+.B Subject collisions
+The number of populated subject cache slots whose full process identity did
+not match the current event and therefore had to be evicted before reuse.
+.TP
 .B Subject evictions
 The number of subject cache evictions and the eviction percentage relative
 to subject cache hits.
@@ -205,6 +189,11 @@ to subject cache hits.
 .B Early subject cache evictions
 The number of subject cache entries evicted before process startup state was
 complete.
+.TP
+.B Deferred subject path collections
+The number of subject pattern-state steps where path collection was
+intentionally deferred to a later fanotify event in the process startup
+sequence.
 .TP
 .B Object cache size
 The configured number of entries in the object cache.
@@ -218,9 +207,54 @@ The number of object cache hits.
 .B Object misses
 The number of object cache misses.
 .TP
+.B Object collisions
+The number of populated object cache slots whose full file identity did not
+match the current event and therefore had to be evicted before reuse.
+.TP
 .B Object evictions
 The number of object cache evictions and the eviction percentage relative to
 object cache hits.
+.SH FAILURE ACTION FIELDS
+Failure action counters record reliability failures that may need stricter
+configured behavior in high-security deployments. In this version every
+failure action is
+.BR observe ,
+meaning the daemon records and reports the failure while preserving existing
+compatibility behavior.
+.TP
+.B Failure action queue_full (observe)
+Number of times the internal userspace event queue was full. Current behavior
+is unchanged: enforcing mode denies the event, while permissive mode allows it.
+.TP
+.B Failure action kernel_queue_overflow (observe)
+Number of kernel fanotify queue overflow events. This indicates lost kernel
+visibility and should be treated as a high-severity operational signal.
+.TP
+.B Failure action worker_stall (observe)
+Number of decision worker stall detections. Current behavior remains the
+existing deadman response.
+.TP
+.B Failure action rule_reload_failure (observe)
+Number of rule reload failures. A failed transactional reload preserves the
+previous published policy when one exists.
+.TP
+.B Failure action trust_reload_failure (observe)
+Number of trust database reload failures.
+.TP
+.B Failure action response_write_failure (observe)
+Number of failed or incomplete fanotify response writes to the kernel.
+.SH TIMING HISTORY FIELDS
+.TP
+.B Timing collection last start time
+The wall-clock time of the last successful timing start request, or
+.B never
+when timing has not been started.
+.TP
+.B Timing collection last stop time
+The wall-clock time of the last successful timing stop request, or
+.B never
+when timing has not been stopped.
+.SH MOUNT FIELDS
 .TP
 .B watching mount
 One line is printed for each mount point currently marked for fanotify
@@ -236,11 +270,17 @@ support for
 .TP
 .I /run/fapolicyd/fapolicyd.state
 Runtime state report.
+.TP
+.I /run/fapolicyd/fapolicyd.timing
+Manual decision timing report written when a privileged stop request ends an
+armed timing run, when a stop request finds timing unarmed, or when timing
+collection stops to avoid counter overflow.
 
 .SH SEE ALSO
 .BR fapolicyd (8),
 .BR fapolicyd-cli (8),
 .BR fapolicyd.conf (5),
 .BR fapolicyd.rules (5),
+.BR fapolicyd.timing (5),
 and
 .BR fapolicyd.trust (5).

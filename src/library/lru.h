@@ -49,6 +49,7 @@ typedef struct Queue
 	unsigned int total;  // total number of slots
 	unsigned long hits;  // Number of times object was in cache
 	unsigned long misses;// number of times object was not in cache
+	unsigned long collisions;// cached object was unusable for this key
 	unsigned long evictions;// number of times cached object was not usable
 	QNode *front;
 	QNode *end;
@@ -66,6 +67,7 @@ struct lru_metrics {
 	unsigned int total;
 	unsigned long hits;
 	unsigned long misses;
+	unsigned long collisions;
 	unsigned long evictions;
 };
 
@@ -75,6 +77,7 @@ Queue *init_lru(unsigned int qsize, void (*cleanup)(void *),
 		__attr_dealloc (destroy_lru, 1);
 void lru_metrics_snapshot(Queue *queue, struct lru_metrics *metrics,
 		int reset);
+void lru_record_collision(Queue *queue);
 void lru_evict(Queue *queue, unsigned int key);
 QNode *check_lru_cache(Queue *q, unsigned int key);
 unsigned int compute_subject_key(const Queue *queue, unsigned int pid);

@@ -13,6 +13,7 @@
 #include "failure-action.h"
 #include "notify.h"
 #include "policy.h"
+#include "decision-timing.h"
 #include "state-report.h"
 
 #ifndef FAN_Q_OVERFLOW
@@ -20,6 +21,8 @@
 #endif
 
 extern atomic_bool run_stats;
+extern atomic_uint signal_report_requests;
+extern conf_t config;
 
 #define CHECK(expr, code, msg) \
 	do { \
@@ -162,18 +165,82 @@ int main(void)
 	CHECK(strstr(report, "Ruleset generation: ") != NULL, 23,
 	      "[ERROR:23] status report missing ruleset generation");
 
+	atomic_store(&run_stats, false);
+	atomic_store(&signal_report_requests, 0);
+	siginfo_t info;
+
+	memset(&info, 0, sizeof(info));
+	info.si_code = SI_QUEUE;
+	info.si_pid = 4321;
+	info.si_uid = 0;
+	info.si_value.sival_int = REPORT_INTENT_TIMING_ARM;
+	usr1_handler(SIGUSR1, &info, NULL);
+	CHECK(!atomic_load(&run_stats), 24,
+	      "[ERROR:24] timing start incorrectly requested state report");
+	CHECK(atomic_load(&signal_report_requests) == 0, 25,
+	      "[ERROR:25] timing start incremented state report requests");
+
+	config.timing_collection = TIMING_COLLECTION_OFF;
+	decision_timing_process_requests(&config);
+	FILE *timing = tmpfile();
+	CHECK(timing != NULL, 26, "[ERROR:26] tmpfile failed");
+	decision_timing_control_report(timing, &config);
+	fflush(timing);
+	rewind(timing);
+	size_t used = fread(report, 1, sizeof(report) - 1, timing);
+	report[used] = 0;
+	fclose(timing);
+	CHECK(strstr(report, "Timing collection mode: off") != NULL, 27,
+	      "[ERROR:27] timing mode missing from state report");
+	CHECK(strstr(report, "Timing collection armed: false") != NULL, 28,
+	      "[ERROR:28] timing unexpectedly armed while configured off");
+
+	config.timing_collection = TIMING_COLLECTION_MANUAL;
+	usr1_handler(SIGUSR1, &info, NULL);
+	decision_timing_process_requests(&config);
+	timing = tmpfile();
+	CHECK(timing != NULL, 29, "[ERROR:29] tmpfile failed");
+	decision_timing_control_report(timing, &config);
+	fflush(timing);
+	rewind(timing);
+	used = fread(report, 1, sizeof(report) - 1, timing);
+	report[used] = 0;
+	fclose(timing);
+	CHECK(strstr(report, "Timing collection mode: manual") != NULL, 30,
+	      "[ERROR:30] manual timing mode missing from state report");
+	CHECK(strstr(report, "Timing collection armed: true") != NULL, 31,
+	      "[ERROR:31] privileged manual timing start was not applied");
+	CHECK(strstr(report, "Timing collection last start requester") == NULL,
+	      32, "[ERROR:32] timing start requester still in state report");
+
+	info.si_value.sival_int = REPORT_INTENT_TIMING_STOP;
+	usr1_handler(SIGUSR1, &info, NULL);
+	decision_timing_process_requests(&config);
+	timing = tmpfile();
+	CHECK(timing != NULL, 33, "[ERROR:33] tmpfile failed");
+	decision_timing_control_report(timing, &config);
+	fflush(timing);
+	rewind(timing);
+	used = fread(report, 1, sizeof(report) - 1, timing);
+	report[used] = 0;
+	fclose(timing);
+	CHECK(strstr(report, "Timing collection armed: false") != NULL, 34,
+	      "[ERROR:34] timing stop did not disarm");
+	CHECK(strstr(report, "Timing collection last stop requester") == NULL,
+	      35, "[ERROR:35] timing stop requester still in state report");
+
 	read_decision_report(report, sizeof(report), 1);
 	snprintf(expected, sizeof(expected), "Kernel Queue Overflow: %lu",
 		 overflow_after);
-	CHECK(strstr(report, expected) != NULL, 24,
-	      "[ERROR:24] reset report lost pre-reset overflow count");
+	CHECK(strstr(report, expected) != NULL, 36,
+	      "[ERROR:36] reset report lost pre-reset overflow count");
 	snprintf(expected, sizeof(expected), "Reply Errors: %lu", reply_after);
-	CHECK(strstr(report, expected) != NULL, 25,
-	      "[ERROR:25] reset report lost pre-reset reply count");
-	CHECK(getKernelQueueOverflow() == 0, 26,
-	      "[ERROR:26] reset report did not clear overflow count");
-	CHECK(getReplyErrors() == 0, 27,
-	      "[ERROR:27] reset report did not clear reply count");
+	CHECK(strstr(report, expected) != NULL, 37,
+	      "[ERROR:37] reset report lost pre-reset reply count");
+	CHECK(getKernelQueueOverflow() == 0, 38,
+	      "[ERROR:38] reset report did not clear overflow count");
+	CHECK(getReplyErrors() == 0, 39,
+	      "[ERROR:39] reset report did not clear reply count");
 
 	return 0;
 }

@@ -10,8 +10,8 @@ _fapolicydcli()
 	opts="--check-config --check-path --check-rules --check-status --check-trustdb \
 		--check-watch_fs --check-ignore_mounts --delete-db --dump-db \
 		--file --filter --ftype --help --list --update --reload-rules \
-		--reset-metrics --test-filter --trust-file --lint --verbose \
-		--yes -h -d -D -f -t -l -u -r -y"
+		--reset-metrics --timing-start --timing-stop --test-filter \
+		--trust-file --lint --verbose --yes -h -d -D -f -t -l -u -r -y"
 
 	# Handle file management subcommands specially so we can complete file paths
 	local file_mode=false subcmd="" have_path=0 filter_used=0 trust_used=0

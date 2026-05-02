@@ -34,16 +34,24 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "decision-timing.h"
 #include "queue.h"
 #include "message.h"
+
+struct queue_entry
+{
+	struct fanotify_event_metadata metadata;
+	uint64_t enqueue_ns;
+};
 
 /*
  * Ring buffer queue
  *
- * The queue is a fixed-size ring of struct fanotify_event_metadata.  A
- * semaphore tracks how many events are queued while atomic indices maintain
- * the next slot to use for enqueueing and dequeueing.  This avoids blocking
- * producers and consumers on a mutex which improves latency under load.
+ * The queue is a fixed-size ring of fanotify event metadata plus local enqueue
+ * timestamps for timing diagnostics. A semaphore tracks how many events are
+ * queued while atomic indices maintain the next slot to use for enqueueing and
+ * dequeueing. This avoids blocking producers and consumers on a mutex which
+ * improves latency under load.
  *
  * q_open() allocates the array and initializes the semaphore and indices.
  * q_enqueue() copies a new event into the producer slot, advances it and posts
@@ -63,7 +71,7 @@ struct queue *q_open(size_t num_entries)
 	int saved_errno;
 
 	if (num_entries == 0 || num_entries > UINT32_MAX ||
-	    num_entries > SIZE_MAX / sizeof(struct fanotify_event_metadata)) {
+	    num_entries > SIZE_MAX / sizeof(struct queue_entry)) {
 		errno = EINVAL;
 		return NULL;
 	}
@@ -72,7 +80,7 @@ struct queue *q_open(size_t num_entries)
 	if (q == NULL)
 		return NULL;
 
-	q->events = calloc(num_entries, sizeof(struct fanotify_event_metadata));
+	q->events = calloc(num_entries, sizeof(struct queue_entry));
 	if (q->events == NULL)
 		goto err;
 
@@ -164,6 +172,55 @@ void q_metrics_snapshot_reset(struct queue *q, struct queue_metrics *metrics,
 }
 
 /*
+ * q_max_depth_snapshot_reset - copy and reset only the max queue depth.
+ * @q: queue to read.
+ *
+ * Returns the max depth observed before the reset.
+ */
+unsigned int q_max_depth_snapshot_reset(struct queue *q)
+{
+	unsigned int current, saved;
+
+	current = atomic_load_explicit(&q->queue_length, memory_order_relaxed);
+	saved = atomic_exchange_explicit(&q->max_depth, current,
+					 memory_order_relaxed);
+
+	current = atomic_load_explicit(&q->queue_length, memory_order_relaxed);
+	for (;;) {
+		unsigned int max = atomic_load_explicit(&q->max_depth,
+						       memory_order_relaxed);
+
+		if (max >= current ||
+		    atomic_compare_exchange_weak_explicit(&q->max_depth, &max,
+			current, memory_order_relaxed, memory_order_relaxed))
+			break;
+	}
+
+	return saved;
+}
+
+/*
+ * q_max_depth_snapshot_restore - copy max depth and restore a larger value.
+ * @q: queue to read.
+ * @saved: max depth value saved before a timing run reset.
+ *
+ * Returns the max depth observed for the timing run.
+ */
+unsigned int q_max_depth_snapshot_restore(struct queue *q, unsigned int saved)
+{
+	unsigned int current, reported;
+
+	current = atomic_load_explicit(&q->max_depth, memory_order_relaxed);
+	reported = current;
+	while (saved > current &&
+	       !atomic_compare_exchange_weak_explicit(&q->max_depth, &current,
+			saved, memory_order_relaxed, memory_order_relaxed))
+		;
+
+	return reported;
+}
+
+/*
  * q_metrics_report - write queue metrics in the legacy text format.
  * @f: output stream.
  * @metrics: queue metrics to report.
@@ -208,7 +265,8 @@ int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 	 * a relaxed load of q_next is sufficient here.
 	 */
 	n = atomic_load_explicit(&q->q_next, memory_order_relaxed);
-	q->events[n] = *data;
+	q->events[n].metadata = *data;
+	q->events[n].enqueue_ns = decision_timing_queue_enqueue_time();
 
 	n++;
 	if (n == q->num_entries)
@@ -235,7 +293,8 @@ int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 }
 
 /* remove one event from Q */
-int q_dequeue(struct queue *q, struct fanotify_event_metadata *data)
+int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
+	      uint64_t *enqueue_ns)
 {
 	for (;;) {
 		if (sem_wait(&q->sem)) {
@@ -255,7 +314,9 @@ int q_dequeue(struct queue *q, struct fanotify_event_metadata *data)
 		 */
 		unsigned int n = atomic_load_explicit(&q->q_last,
 						      memory_order_relaxed);
-		*data = q->events[n];
+		*data = q->events[n].metadata;
+		if (enqueue_ns)
+			*enqueue_ns = q->events[n].enqueue_ns;
 		n++;
 		if (n == q->num_entries)
 			n = 0;
@@ -274,7 +335,7 @@ int q_dequeue(struct queue *q, struct fanotify_event_metadata *data)
 }
 
 int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-		     const struct timespec *ts)
+		    uint64_t *enqueue_ns, const struct timespec *ts)
 {
 	for (;;) {
 		if (sem_timedwait(&q->sem, ts)) {
@@ -298,7 +359,9 @@ int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
 	 */
 	unsigned int n = atomic_load_explicit(&q->q_last,
 			                      memory_order_relaxed);
-	*data = q->events[n];
+	*data = q->events[n].metadata;
+	if (enqueue_ns)
+		*enqueue_ns = q->events[n].enqueue_ns;
 	n++;
 	if (n == q->num_entries)
 		n = 0;

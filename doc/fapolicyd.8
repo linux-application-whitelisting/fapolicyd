@@ -87,6 +87,11 @@ See
 When
 .B reset_strategy=manual
 is configured, a SIGUSR1 report that carries reset intent (only possible programmatically) also resets runtime metric counters after the report is written. Plain SIGUSR1 reports do not reset counters.
+SIGUSR1 can also carry timing start and stop intents. Those intents are honored
+only for privileged senders when
+.B timing_collection=manual
+is active; stopped timing runs are written to
+.IR /run/fapolicyd/fapolicyd.timing .
 
 .SH NOTES
 Whatever you do, DO NOT TRY TO ATTACH WITH PTRACE. Ptrace attachment sends a SIGSTOP which cannot be blocked. Since your whole system depends on fapolicyd approving access to glibc and various critical libraries, that will not happen until SIGCONT is sent. The system can deadlock if the continue signal is not sent.
@@ -124,11 +129,16 @@ If you are running in the debug mode and wish to compare rule numbers reported i
 .B /run/fapolicyd/fapolicyd.state
 - internal performance metrics. See
 .BR fapolicyd.state (5).
+.P
+.B /run/fapolicyd/fapolicyd.timing
+- manual decision timing report. See
+.BR fapolicyd.timing (5).
 
 .SH "SEE ALSO"
 .BR fapolicyd-cli (8),
 .BR fapolicyd.rules (5),
 .BR fapolicyd.state (5),
+.BR fapolicyd.timing (5),
 .BR fapolicyd.trust (5),
 .BR fapolicyd-filter.conf (5),
 .BR fagenrules (8),

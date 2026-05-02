@@ -76,6 +76,8 @@ static const char *usage =
 "--check-rules [path]  Validate rules file syntax without loading\n"
 "--lint                Enable policy lint warnings with --check-rules\n"
 "--reset-metrics       Dump status and reset metrics when daemon allows it\n"
+"--timing-start        Start a manual decision timing run\n"
+"--timing-stop         Stop manual decision timing and dump timing report\n"
 "--verbose             Enable verbose output for select commands\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
@@ -105,6 +107,8 @@ static struct option long_opts[] =
 	{"check-rules",  2, NULL, 9 },
 	{"lint",	0, NULL, 10 },
 	{"reset-metrics", 0, NULL, 11 },
+	{"timing-start",	0, NULL, 12 },
+	{"timing-stop",	0, NULL, 13 },
 	{"yes",		0, NULL, 'y'},
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
@@ -988,6 +992,166 @@ static int send_state_report_signal(unsigned int pid, int reset_metrics,
 }
 
 /*
+ * send_timing_signal - send a SIGUSR1 timing intent to fapolicyd.
+ * @pid: daemon PID to signal.
+ * @intent: timing intent to send.
+ * @reason: error text buffer.
+ * @reason_len: size of @reason.
+ * Returns 0 on success, non-zero on failure.
+ */
+static int send_timing_signal(unsigned int pid, report_intent_t intent,
+		char *reason, size_t reason_len)
+{
+	union sigval value;
+
+	value.sival_int = intent;
+	if (sigqueue(pid, SIGUSR1, value)) {
+		snprintf(reason, reason_len, "signal failed: %s",
+			 strerror(errno));
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * get_daemon_pid - read and validate the fapolicyd pid file.
+ * @pid: output pid on success.
+ * @reason: error text buffer.
+ * @reason_len: size of @reason.
+ * Returns 0 on success, non-zero on failure.
+ */
+static int get_daemon_pid(unsigned int *pid, char *reason, size_t reason_len)
+{
+	fd_fgets_state_t *st;
+	int pidfd;
+
+	st = fd_fgets_init();
+	if (!st) {
+		snprintf(reason, reason_len, "internal allocation failure");
+		return 1;
+	}
+
+	pidfd = open(pidfile, O_RDONLY);
+	if (pidfd >= 0) {
+		char pid_buf[16];
+
+		if (fd_fgets_r(st, pid_buf, sizeof(pid_buf), pidfd)) {
+			char exe_buf[64];
+
+			errno = 0;
+			*pid = strtoul(pid_buf, NULL, 10);
+			if (errno) {
+				snprintf(reason, reason_len,
+					 "bad pid in pid file");
+				goto err_out;
+			}
+			if (get_program_from_pid(*pid, sizeof(exe_buf),
+					exe_buf) == NULL) {
+				snprintf(reason, reason_len,
+					 "can't read proc file");
+				goto err_out;
+			}
+			if (strcmp(basename(exe_buf), "fapolicyd")) {
+				snprintf(reason, reason_len,
+					 "pid file doesn't point to fapolicyd");
+				goto err_out;
+			}
+			close(pidfd);
+			fd_fgets_destroy(st);
+			return 0;
+		}
+		snprintf(reason, reason_len, "unreadable pid file");
+	} else
+		snprintf(reason, reason_len, "no pid file");
+
+err_out:
+	if (pidfd >= 0)
+		close(pidfd);
+	fd_fgets_destroy(st);
+	return 1;
+}
+
+/*
+ * display_report_file - wait for a daemon report and write it to stdout.
+ * @path: report path to read.
+ * @reason: output error reason on failure.
+ * Returns 0 on success, non-zero on timeout or I/O failure.
+ */
+static int display_report_file(const char *path, const char **reason)
+{
+	fd_fgets_state_t *st;
+	unsigned int tries = 0;
+	int rpt_fd;
+
+	st = fd_fgets_init();
+	if (!st) {
+		*reason = "internal allocation failure";
+		return 1;
+	}
+
+retry:
+	sleep(1);
+
+	rpt_fd = open(path, O_RDONLY);
+	if (rpt_fd < 0) {
+		if (tries < 25) {
+			tries++;
+			goto retry;
+		}
+		*reason = "timed out waiting for report";
+		fd_fgets_destroy(st);
+		return 1;
+	}
+
+	fd_fgets_clear_r(st);
+	do {
+		char buf[80];
+
+		if (fd_fgets_r(st, buf, sizeof(buf), rpt_fd))
+			write(1, buf, strlen(buf));
+	} while (!fd_fgets_eof_r(st));
+
+	close(rpt_fd);
+	fd_fgets_destroy(st);
+	return 0;
+}
+
+/*
+ * do_timing_control - request a manual decision timing control action.
+ * @intent: timing intent to send.
+ * Returns a CLI_EXIT_* value.
+ */
+static int do_timing_control(report_intent_t intent)
+{
+	const char *reason;
+	unsigned int pid;
+	char signal_reason[80];
+
+	if (get_daemon_pid(&pid, signal_reason, sizeof(signal_reason))) {
+		printf("Can't find fapolicyd: %s\n", signal_reason);
+		return CLI_EXIT_DAEMON_IPC;
+	}
+
+	if (intent == REPORT_INTENT_TIMING_STOP)
+		unlink(TIMING_REPORT);
+
+	if (send_timing_signal(pid, intent, signal_reason,
+			       sizeof(signal_reason))) {
+		printf("Can't signal fapolicyd: %s\n", signal_reason);
+		return CLI_EXIT_DAEMON_IPC;
+	}
+
+	if (intent == REPORT_INTENT_TIMING_ARM)
+		printf("Decision timing start requested\n");
+	else if (display_report_file(TIMING_REPORT, &reason)) {
+		printf("Can't read decision timing report: %s\n", reason);
+		return CLI_EXIT_DAEMON_IPC;
+	}
+
+	return CLI_EXIT_SUCCESS;
+}
+
+/*
  * do_status_report - request and display a daemon state report.
  * @reset_metrics: non-zero when the user requested --reset-metrics.
  * Returns a CLI_EXIT_* value.
@@ -1293,6 +1457,20 @@ int main(int argc, char * const argv[])
 		if (arg_count > 2)
 			goto args_err;
 		return do_status_report(1);
+
+	case 12: // --timing-start
+		if (lint_rules)
+			goto args_err;
+		if (arg_count > 2)
+			goto args_err;
+		return do_timing_control(REPORT_INTENT_TIMING_ARM);
+
+	case 13: // --timing-stop
+		if (lint_rules)
+			goto args_err;
+		if (arg_count > 2)
+			goto args_err;
+		return do_timing_control(REPORT_INTENT_TIMING_STOP);
 
 	case 'y':
 		goto args_err;

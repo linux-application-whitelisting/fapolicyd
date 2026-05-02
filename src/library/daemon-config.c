@@ -101,6 +101,8 @@ static int report_interval_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int reset_strategy_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
+static int timing_collection_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
 
 static const struct kw_pair keywords[] =
 {
@@ -123,6 +125,7 @@ static const struct kw_pair keywords[] =
   {"allow_filesystem_mark",	fs_mark_parser },
   {"report_interval",	report_interval_parser },
   {"reset_strategy",	reset_strategy_parser },
+  {"timing_collection",	timing_collection_parser },
   { NULL,		NULL }
 };
 
@@ -156,6 +159,7 @@ static void clear_daemon_config(conf_t *config)
 	config->allow_filesystem_mark = 0;
 	config->report_interval = 0;
 	config->reset_strategy = RESET_NEVER;
+	config->timing_collection = TIMING_COLLECTION_OFF;
 }
 
 int load_daemon_config(conf_t *config)
@@ -610,6 +614,34 @@ static int reset_strategy_parser(const struct nv_pair *nv, int line,
 	return 1;
 }
 
+static const struct nv_list timing_collections[] =
+{
+  {"off",	TIMING_COLLECTION_OFF },
+  {"manual",	TIMING_COLLECTION_MANUAL },
+  { NULL,	0 }
+};
+
+/*
+ * timing_collection_parser - parse timing collection control mode.
+ * @nv: name/value pair describing the option.
+ * @line: line number where the option was found.
+ * @config: configuration structure to update.
+ * Returns 0 on success and 1 when the value is unknown.
+ */
+static int timing_collection_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	for (int i = 0; timing_collections[i].name != NULL; i++) {
+		if (strcasecmp(nv->value, timing_collections[i].name) == 0) {
+			config->timing_collection = timing_collections[i].option;
+			return 0;
+		}
+	}
+
+	msg(LOG_ERR, "Option %s not found - line %d", nv->value, line);
+	return 1;
+}
+
 
 static int trust_parser(const struct nv_pair *nv, int line,
 			   conf_t *config)
@@ -683,6 +715,19 @@ const char *lookup_reset_strategy(unsigned value)
 		return NULL;
 
 	return reset_strategies[value].name;
+}
+
+/*
+ * lookup_timing_collection - return the timing collection mode name.
+ * @value: timing_collection_t value to describe.
+ * Returns the timing mode name, or NULL when the value is unknown.
+ */
+const char *lookup_timing_collection(unsigned value)
+{
+	if (value > TIMING_COLLECTION_MANUAL)
+		return NULL;
+
+	return timing_collections[value].name;
 }
 
 static int syslog_format_parser(const struct nv_pair *nv, int line,
