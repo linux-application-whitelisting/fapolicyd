@@ -150,17 +150,10 @@ _fapolicydcli()
 
 _fapolicyd()
 {
-	local cur prev opts
+	local cur opts
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
-	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--boost --debug --debug-deny --group --help --mounts= --no-details --permissive --queue --user --version"
-
-	case ${prev} in
-		--boost|--queue|--user|--group)
-			return 0
-		;;
-	esac
+	opts="--debug --debug-deny --help --mounts= --no-details --permissive --version"
 
 	if [[ ${cur} == --mounts=* ]]; then
 		local mount_cur=${cur#--mounts=}

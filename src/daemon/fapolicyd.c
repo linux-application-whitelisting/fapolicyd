@@ -1050,22 +1050,6 @@ int main(int argc, const char *argv[])
 		if (strcmp(argv[i], "--permissive") == 0) {
 			__atomic_store_n(&config.permissive, 1,
 					 __ATOMIC_RELAXED);
-		} else if (strcmp(argv[i], "--boost") == 0) {
-			i++;
-			msg(LOG_ERR, "boost value on the command line is"
-				" deprecated - ignoring");
-		} else if (strcmp(argv[i], "--queue") == 0) {
-			i++;
-			msg(LOG_ERR, "queue value on the command line is"
-				" deprecated - ignoring");
-		} else if (strcmp(argv[i], "--user") == 0) {
-			i++;
-			msg(LOG_ERR, "user value on the command line is"
-				" deprecated - ignoring");
-		} else if (strcmp(argv[i], "--group") == 0) {
-			i++;
-			msg(LOG_ERR, "group value on the command line is"
-				" deprecated - ignoring");
 		} else if (strcmp(argv[i], "--no-details") == 0) {
 			config.detailed_report = 0;
 		} else if (strncmp(argv[i], "--mounts", 8) == 0) {

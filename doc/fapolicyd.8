@@ -8,10 +8,6 @@ fapolicyd \- File Access Policy Daemon
 .RI [ --no-details ]
 .RI [ --mounts=PATH ]
 .RI [ --version ]
-.RI [ --boost VALUE ]
-.RI [ --queue VALUE ]
-.RI [ --user NAME ]
-.RI [ --group NAME ]
 .SH DESCRIPTION
 \fBfapolicyd\fP is a userspace daemon that determines access rights to files based on a trust database and file or process attributes. It can be used to either blacklist or whitelist file access and execution.
 
@@ -62,13 +58,6 @@ the aggregate statistics.
 .TP
 .B \-\-version
 Display version information and exit.
-.TP
-.B \-\-boost ,
-.BR \-\-queue ,
-.BR \-\-user ,
-.B \-\-group
-These legacy options are still accepted for backward compatibility, but the
-current daemon ignores their values and logs that they are deprecated.
 .SH SIGNALS
 .TP
 .B SIGTERM
