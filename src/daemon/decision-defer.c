@@ -20,7 +20,10 @@
  * If the same slot already contains a different pid whose subject state is
  * before STATE_FULL, processing the incoming event would make new_event()
  * evict the in-progress subject. Instead, the decision thread copies the
- * incoming decision_event_t into this fixed-size defer array.
+ * incoming decision_event_t into this fixed-size defer array. Traced or stale
+ * BUILDING occupants are the exception: event.c evicts those subjects and
+ * lets the incoming event process normally because waiting may never
+ * release the slot.
  *
  * A slot is the subject cache hash index. An entry is one position in this
  * defer array. Multiple deferred entries can target the same slot. Entries are

@@ -89,6 +89,8 @@ struct proc_info *stat_proc_entry(pid_t pid)
 		// Make all paths empty
 		info->path1 = NULL;
 		info->path2 = NULL;
+		info->building_started_ns = 0;
+		info->building_event_count = 0;
 		info->state = STATE_COLLECTING;
 		info->elf_info = 0;
 
@@ -380,6 +382,8 @@ int read_proc_status_fd(int fd, unsigned int fields,
 	}
 	if (fields & PROC_STAT_PPID)
 		info->ppid = -1;
+	if (fields & PROC_STAT_TRACER)
+		info->tracer_state = PROC_TRACER_UNKNOWN;
 
 	if (fd < 0) {
 		if (fields & PROC_STAT_UID) {
@@ -438,6 +442,17 @@ int read_proc_status_fd(int fd, unsigned int fields,
 				if (sscanf(buf, "PPid: %ld", &value) == 1)
 					info->ppid = (pid_t)value;
 				found |= PROC_STAT_PPID;
+				continue;
+			}
+			if ((fields & PROC_STAT_TRACER) &&
+				    info->tracer_state == PROC_TRACER_UNKNOWN &&
+				    memcmp(buf, "TracerPid:", 10) == 0) {
+				long value;
+				if (sscanf(buf, "TracerPid: %ld", &value) == 1)
+					info->tracer_state = value > 0 ?
+						PROC_TRACER_TRACED :
+						PROC_TRACER_NOT_TRACED;
+				found |= PROC_STAT_TRACER;
 				continue;
 			}
 			/*

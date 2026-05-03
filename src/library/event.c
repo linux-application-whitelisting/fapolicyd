@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
 #include <errno.h>
 
@@ -51,8 +52,160 @@ static Queue *subj_cache = NULL;
 static Queue *obj_cache = NULL;
 static bool obj_cache_warned = false;
 static unsigned int early_subj_cache_evictions = 0;
+static unsigned int building_tracer_evictions = 0;
+static unsigned int building_stale_evictions = 0;
+static atomic_long building_tracer_last_log;
+static atomic_long building_stale_last_log;
 
 atomic_bool needs_flush = false;
+
+/*
+ * A normal exec/open pattern should complete quickly. Keep this below the
+ * daemon deadman window so one stuck BUILDING slot cannot park permission
+ * events indefinitely.
+ */
+#define SUBJECT_BUILDING_STALE_NS (10ULL * 1000000000ULL)
+#define SUBJECT_BUILDING_LOG_INTERVAL 60
+
+enum building_evict_reason {
+	BUILDING_EVICT_TRACER,
+	BUILDING_EVICT_STALE,
+};
+
+struct building_evict_context {
+	pid_t pid;
+	unsigned int slot;
+	state_t state;
+	const char *path1;
+	uint64_t age_ns;
+	unsigned int event_count;
+};
+
+/*
+ * event_now_ns - read monotonic time for BUILDING age checks.
+ *
+ * Returns monotonic nanoseconds, or zero if the clock cannot be read.
+ */
+static uint64_t event_now_ns(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts))
+		return 0;
+
+	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+/*
+ * subject_building_age_ns - calculate the age of a BUILDING subject.
+ * @info: cached process state to inspect.
+ *
+ * Returns the elapsed BUILDING age in nanoseconds, or zero when no start
+ * time is available.
+ */
+static uint64_t subject_building_age_ns(const struct proc_info *info)
+{
+	uint64_t now;
+
+	if (info == NULL || info->building_started_ns == 0)
+		return 0;
+
+	now = event_now_ns();
+	if (now <= info->building_started_ns)
+		return 0;
+
+	return now - info->building_started_ns;
+}
+
+/*
+ * subject_mark_building_event - record one event seen while BUILDING.
+ * @info: cached process state to update.
+ *
+ * Returns nothing.
+ */
+static void subject_mark_building_event(struct proc_info *info)
+{
+	if (info == NULL || info->state >= STATE_FULL)
+		return;
+
+	if (info->building_started_ns == 0)
+		info->building_started_ns = event_now_ns();
+	if (info->building_event_count != UINT_MAX)
+		info->building_event_count++;
+}
+
+/*
+ * building_evict_should_log - rate limit BUILDING eviction diagnostics.
+ * @last_log: per-reason timestamp of the last emitted warning.
+ *
+ * Returns 1 if the caller should log, 0 if the warning is suppressed.
+ */
+static int building_evict_should_log(atomic_long *last_log)
+{
+	time_t now = time(NULL);
+	long current, last;
+
+	if (now == (time_t)-1)
+		return 1;
+
+	current = (long)now;
+	last = atomic_load_explicit(last_log, memory_order_relaxed);
+	while (last == 0 || current < last ||
+	       current - last >= SUBJECT_BUILDING_LOG_INTERVAL) {
+		if (atomic_compare_exchange_weak_explicit(last_log, &last,
+			    current, memory_order_relaxed,
+			    memory_order_relaxed))
+			return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * building_evict_reason_name - return display text for an eviction reason.
+ * @reason: reason being reported.
+ *
+ * Returns a stable string for logs and reports.
+ */
+static const char *building_evict_reason_name(
+		enum building_evict_reason reason)
+{
+	if (reason == BUILDING_EVICT_TRACER)
+		return "tracer";
+
+	return "stale";
+}
+
+/*
+ * record_building_evict - count and log a traced or stale BUILDING eviction.
+ * @reason: reason the cache occupant is being evicted.
+ * @ctx: immutable details for the diagnostic message.
+ *
+ * Returns nothing.
+ */
+static void record_building_evict(enum building_evict_reason reason,
+		const struct building_evict_context *ctx)
+{
+	atomic_long *last_log;
+
+	if (reason == BUILDING_EVICT_TRACER) {
+		building_tracer_evictions++;
+		last_log = &building_tracer_last_log;
+	} else {
+		building_stale_evictions++;
+		last_log = &building_stale_last_log;
+	}
+
+	if (ctx == NULL || !building_evict_should_log(last_log))
+		return;
+
+	msg(LOG_WARNING,
+	    "BUILDING subject cache eviction: reason=%s pid=%d slot=%u "
+	    "state=%d path1=%s age_ns=%llu events=%u",
+	    building_evict_reason_name(reason), ctx->pid, ctx->slot,
+	    ctx->state, ctx->path1 ? ctx->path1 : "?",
+	    (unsigned long long)ctx->age_ns, ctx->event_count);
+}
 
 /*
  * subject_evict_warn - warn when a subject is evicted before fully built
@@ -255,6 +408,24 @@ unsigned int event_subject_slot(pid_t pid)
 }
 
 /*
+ * subject_slot_info - return cached process state for one subject slot.
+ * @slot: subject cache slot to inspect.
+ *
+ * Returns the cached process metadata, or NULL when the slot is empty.
+ */
+static struct proc_info *subject_slot_info(unsigned int slot)
+{
+	QNode *q_node = lru_peek_slot(subj_cache, slot);
+	s_array *s;
+
+	if (q_node == NULL || q_node->item == NULL)
+		return NULL;
+
+	s = (s_array *)q_node->item;
+	return s->info;
+}
+
+/*
  * subject_slot_state - return the cached subject state for one slot.
  * @slot: subject cache slot to inspect.
  * @pid: optional destination for the cached pid.
@@ -265,19 +436,104 @@ unsigned int event_subject_slot(pid_t pid)
  */
 static state_t subject_slot_state(unsigned int slot, pid_t *pid)
 {
-	QNode *q_node = lru_peek_slot(subj_cache, slot);
-	s_array *s;
+	struct proc_info *info = subject_slot_info(slot);
 
-	if (q_node == NULL || q_node->item == NULL)
-		return STATE_FULL;
-
-	s = (s_array *)q_node->item;
-	if (s->info == NULL)
+	if (info == NULL)
 		return STATE_FULL;
 
 	if (pid)
-		*pid = s->info->pid;
-	return s->info->state;
+		*pid = info->pid;
+	return info->state;
+}
+
+/*
+ * subject_building_is_traced - test if a BUILDING subject has a tracer.
+ * @info: cached process state for the subject cache occupant.
+ *
+ * Returns 1 when /proc reports a nonzero TracerPid, 0 otherwise.
+ */
+static int subject_building_is_traced(const struct proc_info *info)
+{
+	struct proc_status_info status = {
+		.ppid = -1,
+		.tracer_state = PROC_TRACER_UNKNOWN,
+		.uid = NULL,
+		.groups = NULL,
+		.comm = NULL
+	};
+
+	if (info == NULL)
+		return 0;
+
+	if (read_proc_status(info->pid, PROC_STAT_TRACER, &status) != 0)
+		return 0;
+
+	return status.tracer_state == PROC_TRACER_TRACED;
+}
+
+/*
+ * subject_building_is_stale - test if BUILDING metadata is stuck or obsolete.
+ * @info: cached process state for the subject cache occupant.
+ *
+ * Returns 1 when the process disappeared, the PID was reused, or the subject
+ * has stayed BUILDING longer than the bounded stale window.
+ */
+static int subject_building_is_stale(const struct proc_info *info)
+{
+	struct proc_info *current;
+	int stale;
+
+	if (info == NULL)
+		return 0;
+
+	current = stat_proc_entry(info->pid);
+	if (current == NULL)
+		return 1;
+
+	stale = compare_proc_infos(current, info);
+	clear_proc_info(current);
+	free(current);
+	if (stale)
+		return 1;
+
+	return subject_building_age_ns(info) >= SUBJECT_BUILDING_STALE_NS;
+}
+
+/*
+ * evict_building_subject - remove a traced or stale BUILDING occupant.
+ * @slot: subject cache slot to evict.
+ * @info: cached process state expected to occupy @slot.
+ * @reason: eviction reason to count and log.
+ *
+ * Returns nothing.
+ */
+static void evict_building_subject(unsigned int slot, struct proc_info *info,
+		enum building_evict_reason reason)
+{
+	struct building_evict_context ctx;
+	QNode *q_node;
+	s_array *s;
+
+	if (info == NULL)
+		return;
+
+	q_node = check_lru_cache(subj_cache, slot);
+	if (q_node == NULL || q_node->item == NULL)
+		return;
+
+	s = (s_array *)q_node->item;
+	if (s->info != info)
+		return;
+
+	ctx.pid = info->pid;
+	ctx.slot = slot;
+	ctx.state = info->state;
+	ctx.path1 = info->path1;
+	ctx.age_ns = subject_building_age_ns(info);
+	ctx.event_count = info->building_event_count;
+	record_building_evict(reason, &ctx);
+	lru_record_collision(subj_cache);
+	lru_evict(subj_cache, slot);
 }
 
 /*
@@ -295,13 +551,24 @@ static state_t subject_slot_state(unsigned int slot, pid_t *pid)
  */
 int event_subject_slot_is_blocked(unsigned int slot, pid_t pid)
 {
-	pid_t cached_pid = 0;
-	state_t state = subject_slot_state(slot, &cached_pid);
+	struct proc_info *info = subject_slot_info(slot);
 
-	if (cached_pid == pid)
+	if (info == NULL)
 		return 0;
 
-	return state < STATE_FULL;
+	if (info->pid == pid || info->state >= STATE_FULL)
+		return 0;
+
+	if (subject_building_is_traced(info)) {
+		evict_building_subject(slot, info, BUILDING_EVICT_TRACER);
+		return 0;
+	}
+	if (subject_building_is_stale(info)) {
+		evict_building_subject(slot, info, BUILDING_EVICT_STALE);
+		return 0;
+	}
+
+	return 1;
 }
 
 /*
@@ -532,6 +799,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			}
 		}
 	}
+	subject_mark_building_event(pinfo);
 	return 0;
 }
 
@@ -991,13 +1259,22 @@ void do_cache_reports_reset(FILE *f, int reset)
 {
 	struct lru_metrics metrics;
 	unsigned int early_evictions = early_subj_cache_evictions;
+	unsigned int tracer_evictions = building_tracer_evictions;
+	unsigned int stale_evictions = building_stale_evictions;
 
-	if (reset)
+	if (reset) {
 		early_subj_cache_evictions = 0;
+		building_tracer_evictions = 0;
+		building_stale_evictions = 0;
+	}
 
 	lru_metrics_snapshot(subj_cache, &metrics, reset);
 	print_queue_stats(f, &metrics);
 	fprintf(f, "Early subject cache evictions: %u\n", early_evictions);
+	fprintf(f, "Subject BUILDING tracer evictions: %u\n",
+		tracer_evictions);
+	fprintf(f, "Subject BUILDING stale evictions: %u\n",
+		stale_evictions);
 	lru_metrics_snapshot(obj_cache, &metrics, reset);
 	print_queue_stats(f, &metrics);
 }

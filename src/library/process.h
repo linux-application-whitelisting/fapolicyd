@@ -72,13 +72,21 @@ enum {
 	PROC_STAT_UID    = 0x0002,
 	PROC_STAT_GID    = 0x0004,
 	PROC_STAT_COMM   = 0x0008,
+	PROC_STAT_TRACER = 0x0010,
 };
+
+typedef enum {
+	PROC_TRACER_UNKNOWN,
+	PROC_TRACER_NOT_TRACED,
+	PROC_TRACER_TRACED,
+} proc_tracer_state_t;
 
 /*
  * Results from read_proc_status()
  */
 struct proc_status_info {
        pid_t ppid;
+       proc_tracer_state_t tracer_state;
        attr_sets_entry_t *uid;
        attr_sets_entry_t *groups;
        char *comm;
@@ -94,6 +102,8 @@ struct proc_info
 	state_t state;
 	char *path1;
 	char *path2;
+	uint64_t building_started_ns;
+	unsigned int building_event_count;
 	uint32_t elf_info;
 };
 
