@@ -35,6 +35,7 @@
 #include <time.h>
 #include <errno.h>
 
+#include "attr-lookup-metrics.h"
 #include "event.h"
 #include "database.h"
 #include "decision-timing.h"
@@ -886,6 +887,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 	s_array *s = e->s;
 	struct decision_timing_span timing;
 
+	attr_lookup_metrics_count_subject_request(t);
 	sn = subject_access(s, t);
 	if (sn)
 		return sn;
@@ -895,6 +897,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 	subj.str = NULL;
 	switch (t) {
 		case AUID:
+			attr_lookup_metrics_count_subject_lookup(t);
 			decision_timing_stage_begin(
 				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
 				&timing);
@@ -905,6 +908,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		case UID:
 		case GID:
 		case COMM:
+			attr_lookup_metrics_count_subject_lookup(t);
 			/*
 			 * UID/GID credentials may differ between the real,
 			 * effective, saved, and filesystem slots.  Cache all
@@ -914,6 +918,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			return fetch_proc_status(e, t);
 			break;
 		case SESSIONID:
+			attr_lookup_metrics_count_subject_lookup(t);
 			decision_timing_stage_begin(
 				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
 				&timing);
@@ -922,6 +927,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			decision_timing_stage_end(&timing);
 			break;
 		case PID:
+			attr_lookup_metrics_count_subject_lookup(t);
 			subj.pid = e->pid;
 			break;
 		// If these 2 ever get separated, update subject_add
@@ -930,6 +936,7 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		case EXE_DIR: {
 			char buf[PATH_MAX+1], *ptr;
 
+			attr_lookup_metrics_count_subject_lookup(t);
 			errno = 0;
 			decision_timing_stage_begin(
 				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
@@ -956,6 +963,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 		break;
 		case EXE_TYPE: {
 			char buf[128], *ptr;
+
+			attr_lookup_metrics_count_subject_lookup(t);
 			decision_timing_stage_begin(
 				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
 				&timing);
@@ -968,8 +977,10 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			}
 			break;
 		case SUBJ_TRUST: {
-			subject_attr_t *exe = get_subj_attr(e, EXE);
+			subject_attr_t *exe;
 
+			attr_lookup_metrics_count_subject_lookup(t);
+			exe = get_subj_attr(e, EXE);
 			subj.uval = 0;
 			if (exe) {
 				if (exe->str) {
@@ -1015,6 +1026,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 	o_array *o = e->o;
 	struct decision_timing_span timing;
 
+	attr_lookup_metrics_count_object_request(t);
 	on = object_access(o, t);
 	if (on)
 		return on;
@@ -1026,6 +1038,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 	switch (t) {
 		case PATH:
 		case ODIR:
+			attr_lookup_metrics_count_object_lookup(t);
 			// Try to avoid looking up the path if we have it
 			on = object_find_file(o);
 			if (on)
@@ -1044,6 +1057,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			}
 			break;
 		case DEVICE:
+			attr_lookup_metrics_count_object_lookup(t);
 			ptr = get_device_from_stat(o->info->device,
 					sizeof(buf), buf);
 			if (ptr)
@@ -1052,7 +1066,10 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 				obj.o = strdup("?");
 			break;
 		case FTYPE: {
-			object_attr_t *path =  get_obj_attr(e, PATH);
+			object_attr_t *path;
+
+			attr_lookup_metrics_count_object_lookup(t);
+			path =  get_obj_attr(e, PATH);
 			// Attribute MIME lookup to the active logical driver
 			// so rule and response/debug costs stay separate in
 			// timing reports.
@@ -1072,6 +1089,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		case FILE_HASH: {
 			file_hash_alg_t alg = FILE_HASH_ALG_SHA256;
 
+			attr_lookup_metrics_count_object_lookup(t);
 			if (o->info) {
 				if (o->info->digest_alg != FILE_HASH_ALG_NONE)
 					alg = o->info->digest_alg;
@@ -1094,8 +1112,10 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 		}
 		break;
 		case OBJ_TRUST: {
-			object_attr_t *path =  get_obj_attr(e, PATH);
+			object_attr_t *path;
 
+			attr_lookup_metrics_count_object_lookup(t);
+			path =  get_obj_attr(e, PATH);
 			if (path && path->o) {
 				int res = check_trust_database(path->o,
 							       o->info, e->fd);

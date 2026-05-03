@@ -31,6 +31,8 @@ endif
 libfapolicyd_la_SOURCES = \
 	library/avl.c \
 	library/avl.h \
+	library/attr-lookup-metrics.c \
+	library/attr-lookup-metrics.h \
 	library/attr-sets.c \
 	library/attr-sets.h \
 	library/backend-manager.c \

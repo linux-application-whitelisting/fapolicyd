@@ -93,6 +93,7 @@ decision_timing_report_test_CPPFLAGS = \
 	-DTEST_DECISION_TIMING_REPORT
 event_test_SOURCES = event_test.c
 event_test_LDADD = \
+	${top_builddir}/src/library/libfapolicyd_la-attr-lookup-metrics.o \
 	${top_builddir}/src/library/libfapolicyd_la-event.o \
 	${top_builddir}/src/library/libfapolicyd_la-lru.o \
 	${top_builddir}/src/library/libfapolicyd_la-subject.o \

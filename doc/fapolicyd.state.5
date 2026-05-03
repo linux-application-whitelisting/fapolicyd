@@ -150,6 +150,45 @@ executable, programmatic, shared library, or unknown buckets.
 .B Ruleset generation
 The current in-memory ruleset generation. This value increments each time a
 fully validated ruleset is published by the daemon.
+.TP
+.B Subject attribute lookups
+Header for per-subject-attribute request and lookup counters.
+.TP
+.B Subject attr
+One line is printed for each counted subject attribute in the form
+.IR name " requests=" count " lookups=" count .
+The
+.B requests
+count is incremented when policy evaluation or syslog formatting asks for the
+named attribute. The
+.B lookups
+count is incremented only when that requested attribute was absent from the
+event's subject attribute cache and fapolicyd had to compute or fetch it.
+Some subject attributes are filled opportunistically. For example, one
+.IR /proc/ pid /status
+read may populate UID, GID, PPID, and COMM at the same time. Those
+opportunistically filled attributes can later show requests with no lookups
+because another requested attribute paid the lookup cost. PID is normally
+seeded when the subject cache entry is created, so PID requests usually do
+not require a lookup. Pattern is handled by process startup state tracking
+and is not reported as an attribute lookup counter.
+.TP
+.B Object attribute lookups
+Header for per-object-attribute request and lookup counters.
+.TP
+.B Object attr
+One line is printed for each counted object attribute in the form
+.IR name " requests=" count " lookups=" count .
+The
+.B requests
+count is incremented when policy evaluation or syslog formatting asks for the
+named object attribute. The
+.B lookups
+count is incremented only when that requested attribute was absent from the
+event's object attribute cache and fapolicyd had to compute or fetch it.
+Object attributes may also be satisfied from data already held in the cached
+file entry, so requests can exceed lookups even when the attribute is used
+frequently.
 
 .SH TRUST DATABASE FIELDS
 .TP

@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "attr-lookup-metrics.h"
 #include "daemon-config.h"
 #include "decision-timing.h"
 #include "failure-action.h"
@@ -202,6 +203,7 @@ void decision_report_reset_with_failures(FILE *f, int reset,
 	}
 	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
 	policy_rule_hits_report(f);
+	attr_lookup_metrics_report(f, reset);
 }
 
 /*

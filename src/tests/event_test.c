@@ -7,6 +7,7 @@
 #include <stdatomic.h>
 #include <sys/fanotify.h>
 
+#include "attr-lookup-metrics.h"
 #include "event.h"
 #include "conf.h"
 #include "process.h"
@@ -453,6 +454,92 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 		} \
 	} while (0)
 
+struct metric_expectation {
+	unsigned long long requests;
+	unsigned long long lookups;
+};
+
+/*
+ * reset_attr_lookup_metrics - clear all attribute lookup counters.
+ * Returns nothing.
+ */
+static void reset_attr_lookup_metrics(void)
+{
+	struct attr_lookup_metric_snapshot snapshot;
+	unsigned int type;
+
+	for (type = SUBJ_START; type <= SUBJ_END; type++)
+		attr_lookup_metrics_subject_snapshot(type, &snapshot, 1);
+	for (type = OBJ_START; type <= OBJ_END; type++)
+		attr_lookup_metrics_object_snapshot(type, &snapshot, 1);
+}
+
+/*
+ * check_subject_metric - assert one subject attribute metric snapshot.
+ * @type: subject attribute to inspect.
+ * @expected: expected request and lookup counts.
+ * @code: test failure code.
+ * Return codes:
+ * 0 - counters match.
+ * @code - counters differ or snapshot failed.
+ */
+static int check_subject_metric(subject_type_t type,
+		const struct metric_expectation *expected, int code)
+{
+	struct attr_lookup_metric_snapshot snapshot;
+	const char *name = subj_val_to_name(type, RULE_FMT_COLON);
+
+	if (attr_lookup_metrics_subject_snapshot(type, &snapshot, 0)) {
+		fprintf(stderr, "[ERROR:%d] subject metric snapshot failed\n",
+			code);
+		return code;
+	}
+	if (snapshot.requests != expected->requests ||
+	    snapshot.lookups != expected->lookups) {
+		fprintf(stderr,
+			"[ERROR:%d] subject %s metrics %llu/%llu != %llu/%llu\n",
+			code, name ? name : "unknown", snapshot.requests,
+			snapshot.lookups, expected->requests,
+			expected->lookups);
+		return code;
+	}
+
+	return 0;
+}
+
+/*
+ * check_object_metric - assert one object attribute metric snapshot.
+ * @type: object attribute to inspect.
+ * @expected: expected request and lookup counts.
+ * @code: test failure code.
+ * Return codes:
+ * 0 - counters match.
+ * @code - counters differ or snapshot failed.
+ */
+static int check_object_metric(object_type_t type,
+		const struct metric_expectation *expected, int code)
+{
+	struct attr_lookup_metric_snapshot snapshot;
+	const char *name = obj_val_to_name(type);
+
+	if (attr_lookup_metrics_object_snapshot(type, &snapshot, 0)) {
+		fprintf(stderr, "[ERROR:%d] object metric snapshot failed\n",
+			code);
+		return code;
+	}
+	if (snapshot.requests != expected->requests ||
+	    snapshot.lookups != expected->lookups) {
+		fprintf(stderr,
+			"[ERROR:%d] object %s metrics %llu/%llu != %llu/%llu\n",
+			code, name ? name : "unknown", snapshot.requests,
+			snapshot.lookups, expected->requests,
+			expected->lookups);
+		return code;
+	}
+
+	return 0;
+}
+
 struct lmdb_record {
 	unsigned int tsource;
 	off_t size;
@@ -540,6 +627,85 @@ static int init_caches(unsigned int subj_size, unsigned int obj_size)
 	cfg.obj_cache_size = obj_size;
 	atomic_store_explicit(&needs_flush, false, memory_order_relaxed);
 	return init_event_system(&cfg);
+}
+
+/*
+ * test_attr_lookup_metrics - verify request, miss, dependency, and reset data.
+ * Returns 0 on success, test error code otherwise.
+ */
+static int test_attr_lookup_metrics(void)
+{
+	event_t e = { 0 };
+	s_array subjects;
+	o_array objects;
+	struct attr_lookup_metric_snapshot snapshot;
+	subject_attr_t pid_attr = { .type = PID, .pid = 123 };
+	struct metric_expectation expected;
+	int rc;
+
+	reset_attr_lookup_metrics();
+	CHECK(attr_lookup_metrics_subject_snapshot(PATTERN, &snapshot, 0),
+	      99, "[ERROR:99] pattern should not have attr metrics");
+	subject_create(&subjects);
+	object_create(&objects);
+	e.pid = 123;
+	e.fd = 10;
+	e.s = &subjects;
+	e.o = &objects;
+	e.o->info = stat_file_entry(e.fd);
+	CHECK(e.o->info != NULL, 100,
+	      "[ERROR:100] failed to allocate test file info");
+	CHECK(subject_add(e.s, &pid_attr) == 0, 101,
+	      "[ERROR:101] failed to add cached pid");
+
+	CHECK(get_subj_attr(&e, PID) != NULL, 102,
+	      "[ERROR:102] cached pid lookup failed");
+	CHECK(get_subj_attr(&e, EXE) != NULL, 103,
+	      "[ERROR:103] exe lookup failed");
+	CHECK(get_subj_attr(&e, EXE) != NULL, 104,
+	      "[ERROR:104] cached exe lookup failed");
+	CHECK(get_subj_attr(&e, SUBJ_TRUST) != NULL, 105,
+	      "[ERROR:105] subject trust lookup failed");
+	CHECK(get_obj_attr(&e, PATH) != NULL, 106,
+	      "[ERROR:106] path lookup failed");
+	CHECK(get_obj_attr(&e, PATH) != NULL, 107,
+	      "[ERROR:107] cached path lookup failed");
+	CHECK(get_obj_attr(&e, FTYPE) != NULL, 108,
+	      "[ERROR:108] ftype lookup failed");
+
+	expected = (struct metric_expectation){ 1, 0 };
+	rc = check_subject_metric(PID, &expected, 109);
+	if (rc)
+		return rc;
+	expected = (struct metric_expectation){ 3, 1 };
+	rc = check_subject_metric(EXE, &expected, 110);
+	if (rc)
+		return rc;
+	expected = (struct metric_expectation){ 1, 1 };
+	rc = check_subject_metric(SUBJ_TRUST, &expected, 111);
+	if (rc)
+		return rc;
+	expected = (struct metric_expectation){ 3, 1 };
+	rc = check_object_metric(PATH, &expected, 112);
+	if (rc)
+		return rc;
+	expected = (struct metric_expectation){ 1, 1 };
+	rc = check_object_metric(FTYPE, &expected, 113);
+	if (rc)
+		return rc;
+
+	reset_attr_lookup_metrics();
+	expected = (struct metric_expectation){ 0, 0 };
+	rc = check_subject_metric(EXE, &expected, 114);
+	if (rc)
+		return rc;
+	rc = check_object_metric(PATH, &expected, 115);
+	if (rc)
+		return rc;
+
+	subject_clear(&subjects);
+	object_clear(&objects);
+	return 0;
 }
 
 /*
@@ -850,6 +1016,10 @@ int main(void)
 		return rc;
 
 	rc = test_filedb_accepts_sha256();
+	if (rc)
+		return rc;
+
+	rc = test_attr_lookup_metrics();
 	if (rc)
 		return rc;
 

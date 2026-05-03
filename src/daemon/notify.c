@@ -38,6 +38,7 @@
 #include <stdatomic.h>
 #include <ctype.h>
 #include <time.h>
+#include "attr-lookup-metrics.h"
 #include "conf.h"
 #include "decision-defer.h"
 #include "decision-timing.h"
@@ -576,6 +577,7 @@ static void rpt_init(struct timespec *t)
  */
 static void run_decision_event(decision_event_t *event)
 {
+	attr_lookup_metrics_set_worker(0);
 	decision_timing_decision_begin(0);
 	decision_timing_queue_dequeued(event->enqueue_ns);
 	make_policy_decision(event, fd, mask);
