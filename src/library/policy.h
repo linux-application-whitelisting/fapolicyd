@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <sys/fanotify.h>
+#include "decision-event.h"
 #include "event.h"
 
 #ifdef USE_AUDIT
@@ -91,8 +92,8 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 		struct decision_timing_span *response_timing);
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e);
-void make_policy_decision(const struct fanotify_event_metadata *metadata,
-						int fd, uint64_t mask);
+void make_policy_decision(decision_event_t *decision_event, int fd,
+		uint64_t mask);
 unsigned long getAllowed(void);
 unsigned long getDenied(void);
 unsigned long getAllowedReset(int reset);

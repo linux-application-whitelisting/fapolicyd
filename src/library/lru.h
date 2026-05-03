@@ -79,6 +79,7 @@ void lru_metrics_snapshot(Queue *queue, struct lru_metrics *metrics,
 		int reset);
 void lru_record_collision(Queue *queue);
 void lru_evict(Queue *queue, unsigned int key);
+QNode *lru_peek_slot(const Queue *queue, unsigned int key);
 QNode *check_lru_cache(Queue *q, unsigned int key);
 unsigned int compute_subject_key(const Queue *queue, unsigned int pid);
 unsigned long compute_object_key(const Queue *queue, unsigned long num);

@@ -5,7 +5,6 @@
 #include <error.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/fanotify.h>
 
 #include "queue.h"
 
@@ -45,8 +44,8 @@ static void read_queue_report(const struct queue_metrics *metrics, char *buf,
  */
 int main(void)
 {
-	struct fanotify_event_metadata event = { 0 };
-	struct fanotify_event_metadata out = { 0 };
+	decision_event_t event = { 0 };
+	decision_event_t out = { 0 };
 	struct queue_metrics metrics;
 	struct queue *q;
 	char report[128];
@@ -80,7 +79,7 @@ int main(void)
 	CHECK(metrics.full_count == 1, 10,
 	      "[ERROR:10] full count incorrect");
 
-	CHECK(q_dequeue(q, &out, NULL) == 1, 11,
+	CHECK(q_dequeue(q, &out) == 1, 11,
 	      "[ERROR:11] dequeue failed");
 	q_metrics_snapshot(q, &metrics);
 	CHECK(metrics.current_depth == 1, 12,
@@ -122,7 +121,7 @@ int main(void)
 	CHECK(metrics.max_depth == 2, 25,
 	      "[ERROR:25] restore changed larger run max depth");
 
-	CHECK(q_dequeue(q, &out, NULL) == 1, 26,
+	CHECK(q_dequeue(q, &out) == 1, 26,
 	      "[ERROR:26] second dequeue failed");
 	saved = q_max_depth_snapshot_reset(q);
 	CHECK(saved == 2, 27,

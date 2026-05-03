@@ -59,6 +59,27 @@ The configured size of the internal event queue.
 .TP
 .B Inter-thread max queue depth
 The highest internal event queue depth observed since daemon startup.
+.TP
+.B Subject defer array size
+The number of preallocated entries available for subject-slot deferral.
+.TP
+.B Subject deferred events
+The number of fanotify permission events currently deferred because another
+process is still building subject pattern state in the same cache slot.
+.TP
+.B Subject defer max depth
+The highest number of concurrently deferred subject events observed.
+.TP
+.B Subject defer fallbacks
+The number of times the defer array was full and fapolicyd fell back to the
+historical subject cache eviction behavior.
+.TP
+.B Subject defer oldest age
+The age of the oldest currently deferred subject event, formatted with a
+human-readable unit such as
+.B ms
+or
+.BR s .
 
 .SH DECISION AND RELIABILITY COUNTERS
 .TP

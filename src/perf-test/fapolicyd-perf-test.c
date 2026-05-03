@@ -107,11 +107,15 @@ static int do_perf_test(FILE *input)
 			continue;
 		// Build an "event" to exercise fapolicyd's decision making
 		struct fanotify_event_metadata metadata;
+		decision_event_t event;
+
 		metadata.fd = fd; // listener closes after reply
 		metadata.pid = our_pid;
 		metadata.mask = FAN_OPEN_PERM;
 
-		make_policy_decision(&metadata, resp_fd, FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM);
+		decision_event_init(&event, &metadata);
+		make_policy_decision(&event, resp_fd,
+				     FAN_OPEN_PERM | FAN_OPEN_EXEC_PERM);
 	}
 	stop = 1;
 	gettimeofday(&t1, NULL);

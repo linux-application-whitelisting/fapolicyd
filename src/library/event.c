@@ -242,6 +242,80 @@ static inline void reset_subject_attributes(s_array *s)
 	subject_reset(s, SUBJ_TRUST);
 }
 
+/*
+ * event_subject_slot - compute the subject cache slot for a pid.
+ * @pid: process id from fanotify metadata.
+ *
+ * Returns the hash slot used by new_event() for the subject cache. Deferral
+ * must use this helper so it observes the same collision domain as the cache.
+ */
+unsigned int event_subject_slot(pid_t pid)
+{
+	return compute_subject_key(subj_cache, pid);
+}
+
+/*
+ * subject_slot_state - return the cached subject state for one slot.
+ * @slot: subject cache slot to inspect.
+ * @pid: optional destination for the cached pid.
+ *
+ * Returns STATE_FULL when the slot is empty or has no process metadata. That
+ * lets callers treat incomplete cache entries only as blocking when the cache
+ * has a real subject whose startup pattern state is still before STATE_FULL.
+ */
+static state_t subject_slot_state(unsigned int slot, pid_t *pid)
+{
+	QNode *q_node = lru_peek_slot(subj_cache, slot);
+	s_array *s;
+
+	if (q_node == NULL || q_node->item == NULL)
+		return STATE_FULL;
+
+	s = (s_array *)q_node->item;
+	if (s->info == NULL)
+		return STATE_FULL;
+
+	if (pid)
+		*pid = s->info->pid;
+	return s->info->state;
+}
+
+/*
+ * event_subject_slot_is_blocked - test whether an incoming event must wait.
+ * @slot: subject cache slot for the incoming event.
+ * @pid: incoming event pid.
+ *
+ * A different pid in a pre-STATE_FULL slot is still building pattern state and
+ * would be prematurely evicted by new_event(). Same-pid events are allowed to
+ * proceed because they may be the event that advances the subject state.
+ * Deferring same-pid events would park the work needed to move the subject out
+ * of its building state and could deadlock the slot.
+ *
+ * Returns 1 when the incoming event should be deferred, 0 otherwise.
+ */
+int event_subject_slot_is_blocked(unsigned int slot, pid_t pid)
+{
+	pid_t cached_pid = 0;
+	state_t state = subject_slot_state(slot, &cached_pid);
+
+	if (cached_pid == pid)
+		return 0;
+
+	return state < STATE_FULL;
+}
+
+/*
+ * event_subject_slot_is_unblocked - test whether a slot can release defers.
+ * @slot: subject cache slot to inspect.
+ *
+ * Returns 1 when the slot is empty or its current subject has reached
+ * STATE_FULL or a later terminal pattern state.
+ */
+int event_subject_slot_is_unblocked(unsigned int slot)
+{
+	return subject_slot_state(slot, NULL) >= STATE_FULL;
+}
+
 // Return 0 on success and 1 on error
 int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {

@@ -372,6 +372,23 @@ void lru_record_collision(Queue *queue)
 		queue->collisions++;
 }
 
+/*
+ * lru_peek_slot - inspect a cache slot without changing LRU order.
+ * @queue: cache queue to inspect.
+ * @key: hash index to read.
+ *
+ * Returns the node currently stored at @key, or NULL if the slot is empty or
+ * @key is outside the cache. Callers must not free or relink the returned
+ * node.
+ */
+QNode *lru_peek_slot(const Queue *queue, unsigned int key)
+{
+	if (queue == NULL || key >= queue->total)
+		return NULL;
+
+	return queue->hash->array[key];
+}
+
 // Make a new entry with item to be assigned later
 // and setup the hash key
 static void enqueue(Queue *queue, unsigned int key)

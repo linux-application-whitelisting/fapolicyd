@@ -36,6 +36,8 @@
 #define DEFAULT_SECONDS 0
 #define DEFAULT_HASH_MB 16
 #define DEFAULT_CHURN_FILES 2048
+#define GRACEFUL_STOP_NS 5000000000ULL
+#define TERM_STOP_NS 250000000ULL
 #define MAX_COMMANDS 64
 #define CAPTURE_LIMIT (1024 * 1024)
 #define HASH_BLOCK_SIZE 65536
@@ -109,6 +111,10 @@ struct capture {
 struct daemon_metrics {
 	int present;
 	unsigned long long queue_max_depth;
+	unsigned long long subject_defer_current;
+	unsigned long long subject_defer_max_depth;
+	unsigned long long subject_defer_fallbacks;
+	char subject_defer_oldest_age[32];
 	unsigned long long early_subject_evictions;
 	unsigned long long subject_collisions;
 	unsigned long long subject_evictions;
@@ -1410,6 +1416,30 @@ static int roots_done(pid_t *roots, unsigned int count)
 }
 
 /*
+ * wait_roots_until - wait for root processes until a deadline.
+ * @roots: pid array.
+ * @count: number of roots.
+ * @deadline: monotonic nanosecond deadline.
+ *
+ * The shared stop flag tells leaf loops to stop starting new work. Waiting
+ * here gives in-flight exec/open operations time to finish naturally before
+ * the harness has to terminate remaining process groups.
+ *
+ * Returns non-zero when every root has exited.
+ */
+static int wait_roots_until(pid_t *roots, unsigned int count,
+		unsigned long long deadline)
+{
+	while (monotonic_ns() < deadline) {
+		if (roots_done(roots, count))
+			return 1;
+		usleep(10000);
+	}
+
+	return roots_done(roots, count);
+}
+
+/*
  * stop_roots - terminate unfinished root process groups.
  * @roots: pid array.
  * @count: number of roots.
@@ -1478,9 +1508,13 @@ static int run_stress_tree(const struct stress_options *opts,
 	}
 
 	if (shared->stop) {
-		stop_roots(roots, opts->roots, SIGTERM);
-		usleep(250000);
-		stop_roots(roots, opts->roots, SIGKILL);
+		if (!wait_roots_until(roots, opts->roots,
+				      monotonic_ns() + GRACEFUL_STOP_NS)) {
+			stop_roots(roots, opts->roots, SIGTERM);
+			if (!wait_roots_until(roots, opts->roots,
+					      monotonic_ns() + TERM_STOP_NS))
+				stop_roots(roots, opts->roots, SIGKILL);
+		}
 	}
 	wait_remaining_roots(roots, opts->roots);
 	free(roots);
@@ -1932,6 +1966,15 @@ static void parse_daemon_metrics(const char *data,
 	metrics->present = 1;
 	parse_u64_line(data, "Inter-thread max queue depth:",
 		       &metrics->queue_max_depth);
+	parse_u64_line(data, "Subject deferred events:",
+		       &metrics->subject_defer_current);
+	parse_u64_line(data, "Subject defer max depth:",
+		       &metrics->subject_defer_max_depth);
+	parse_u64_line(data, "Subject defer fallbacks:",
+		       &metrics->subject_defer_fallbacks);
+	parse_word_line(data, "Subject defer oldest age:",
+			metrics->subject_defer_oldest_age,
+			sizeof(metrics->subject_defer_oldest_age));
 	parse_u64_line(data, "Early subject cache evictions:",
 		       &metrics->early_subject_evictions);
 	parse_u64_line(data, "Subject collisions:",
@@ -2206,6 +2249,20 @@ static void print_status_summary(const struct daemon_metrics *before,
 	printf("\nDaemon status deltas:\n");
 	printf("Inter-thread max queue depth: before=%llu after=%llu\n",
 	       before->queue_max_depth, after->queue_max_depth);
+	printf("Subject deferred events: before=%llu after=%llu\n",
+	       before->subject_defer_current,
+	       after->subject_defer_current);
+	printf("Subject defer max depth: before=%llu after=%llu\n",
+	       before->subject_defer_max_depth,
+	       after->subject_defer_max_depth);
+	print_metric_delta("Subject defer fallbacks",
+			   before->subject_defer_fallbacks,
+			   after->subject_defer_fallbacks);
+	printf("Subject defer oldest age: before=%s after=%s\n",
+	       before->subject_defer_oldest_age[0] ?
+			before->subject_defer_oldest_age : "0ns",
+	       after->subject_defer_oldest_age[0] ?
+			after->subject_defer_oldest_age : "0ns");
 	print_metric_delta("Early subject cache evictions",
 			   before->early_subject_evictions,
 			   after->early_subject_evictions);

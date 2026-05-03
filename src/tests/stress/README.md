@@ -397,6 +397,10 @@ Important fields:
   early-eviction problem. The `early-evict` preset is built to make this
   counter move.
 
+- `Subject deferred events`, `Subject defer max depth`, and
+  `Subject defer fallbacks`: Subject-slot deferral pressure. Fallbacks mean
+  the defer array was full and the daemon used the historical eviction path.
+
 - `Subject collisions`: Populated subject cache slots whose full process
   identity did not match the current event. This should rise during wide
   process pressure and helps confirm that early evictions were
@@ -568,6 +572,10 @@ Review:
 - `Subject misses`
 - `Subject collisions`
 - `Subject evictions`
+- `Subject deferred events`
+- `Subject defer max depth`
+- `Subject defer fallbacks`
+- `Subject defer oldest age`
 - `Early subject cache evictions`
 - `Object cache size`
 - `Object slots in use`

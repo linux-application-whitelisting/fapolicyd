@@ -1024,10 +1024,46 @@ out:
 	close(metadata->fd);
 }
 
-void make_policy_decision(const struct fanotify_event_metadata *metadata,
-						int fd, uint64_t mask)
+/*
+ * log_event_build_deny - explain a deny before rule evaluation exists.
+ * @decision_event: event envelope that failed construction.
+ *
+ * The normal debug-deny path logs from process_event_with_source(), but event
+ * construction failures deny before there is an event_t or rule context to
+ * format. Emit a minimal diagnostic so denied counters are visible during
+ * --debug-deny runs.
+ */
+static void log_event_build_deny(const decision_event_t *decision_event)
 {
-	event_t e;
+	const struct fanotify_event_metadata *metadata;
+
+	if (debug_mode <= 1 || decision_event == NULL)
+		return;
+
+	metadata = &decision_event->metadata;
+	msg(LOG_DEBUG,
+	    "dec=deny reason=event-build pid=%d fd=%d mask=0x%llx "
+	    "subject_slot=%u",
+	    metadata->pid, metadata->fd, (unsigned long long)metadata->mask,
+	    decision_event->subject_slot);
+}
+
+/*
+ * make_policy_decision - build an event, evaluate policy, and reply.
+ * @decision_event: internal event envelope owning the fanotify metadata fd.
+ * @fd: fanotify listener fd used for permission responses.
+ * @mask: permission-event mask that requires a fanotify reply.
+ *
+ * completed_subject_slot is set when processing leaves the event's subject
+ * slot empty or at STATE_FULL or later, allowing the decision thread to
+ * release deferred events for that slot.
+ */
+void make_policy_decision(decision_event_t *decision_event, int fd,
+		uint64_t mask)
+{
+	const struct fanotify_event_metadata *metadata =
+		&decision_event->metadata;
+	event_t e = { 0 };
 	int decision;
 	event_t *metric_event = NULL;
 	decision_source_t source = DECISION_SOURCE_FALLTHROUGH;
@@ -1038,9 +1074,13 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 
 	decision_timing_stage_begin(DECISION_TIMING_STAGE_EVENT_BUILD,
 				    &event_timing);
-	if (new_event(metadata, &e))
+	if (decision_event->subject_slot == DECISION_EVENT_NO_SLOT)
+		decision_event->subject_slot = event_subject_slot(metadata->pid);
+	decision_event->completed_subject_slot = DECISION_EVENT_NO_SLOT;
+	if (new_event(metadata, &e)) {
 		decision = FAN_DENY;
-	else {
+		log_event_build_deny(decision_event);
+	} else {
 		decision_timing_stage_end(&event_timing);
 		metric_event = &e;
 		decision_timing_stage_begin(
@@ -1070,14 +1110,19 @@ void make_policy_decision(const struct fanotify_event_metadata *metadata,
 		// If permissive, always allow and honor the audit bit
 		// if not in debug mode
 		if (__atomic_load_n(&config.permissive, __ATOMIC_RELAXED))
-			reply_event(fd, metadata,FAN_ALLOW | (decision & AUDIT),
-					&e);
+			reply_event(fd, metadata, FAN_ALLOW | (decision & AUDIT),
+					metric_event);
 		else
 			reply_event(fd, metadata, decision & FAN_RESPONSE_MASK,
-					&e);
+					metric_event);
 		decision_timing_driver_pop(previous_driver);
 	}
 	decision_timing_stage_end(&response_timing);
+
+	if (decision_event->subject_slot != DECISION_EVENT_NO_SLOT &&
+	    event_subject_slot_is_unblocked(decision_event->subject_slot))
+		decision_event->completed_subject_slot =
+			decision_event->subject_slot;
 }
 
 

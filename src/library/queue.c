@@ -40,18 +40,16 @@
 
 struct queue_entry
 {
-	struct fanotify_event_metadata metadata;
-	uint64_t enqueue_ns;
+	decision_event_t event;
 };
 
 /*
  * Ring buffer queue
  *
- * The queue is a fixed-size ring of fanotify event metadata plus local enqueue
- * timestamps for timing diagnostics. A semaphore tracks how many events are
- * queued while atomic indices maintain the next slot to use for enqueueing and
- * dequeueing. This avoids blocking producers and consumers on a mutex which
- * improves latency under load.
+ * The queue is a fixed-size ring of decision event envelopes. A semaphore
+ * tracks how many events are queued while atomic indices maintain the next
+ * slot to use for enqueueing and dequeueing. This avoids blocking producers
+ * and consumers on a mutex which improves latency under load.
  *
  * q_open() allocates the array and initializes the semaphore and indices.
  * q_enqueue() copies a new event into the producer slot, advances it and posts
@@ -246,7 +244,7 @@ void q_report(FILE *f, const struct queue *q)
 }
 
 /* add DATA to Q */
-int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
+int q_enqueue(struct queue *q, const decision_event_t *data)
 {
 	unsigned int n;
 
@@ -265,8 +263,8 @@ int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 	 * a relaxed load of q_next is sufficient here.
 	 */
 	n = atomic_load_explicit(&q->q_next, memory_order_relaxed);
-	q->events[n].metadata = *data;
-	q->events[n].enqueue_ns = decision_timing_queue_enqueue_time();
+	q->events[n].event = *data;
+	q->events[n].event.enqueue_ns = decision_timing_queue_enqueue_time();
 
 	n++;
 	if (n == q->num_entries)
@@ -293,8 +291,7 @@ int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data)
 }
 
 /* remove one event from Q */
-int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-	      uint64_t *enqueue_ns)
+int q_dequeue(struct queue *q, decision_event_t *data)
 {
 	for (;;) {
 		if (sem_wait(&q->sem)) {
@@ -314,9 +311,7 @@ int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
 		 */
 		unsigned int n = atomic_load_explicit(&q->q_last,
 						      memory_order_relaxed);
-		*data = q->events[n].metadata;
-		if (enqueue_ns)
-			*enqueue_ns = q->events[n].enqueue_ns;
+		*data = q->events[n].event;
 		n++;
 		if (n == q->num_entries)
 			n = 0;
@@ -334,8 +329,8 @@ int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
 	}
 }
 
-int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-		    uint64_t *enqueue_ns, const struct timespec *ts)
+int q_timed_dequeue(struct queue *q, decision_event_t *data,
+		    const struct timespec *ts)
 {
 	for (;;) {
 		if (sem_timedwait(&q->sem, ts)) {
@@ -359,9 +354,7 @@ int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
 	 */
 	unsigned int n = atomic_load_explicit(&q->q_last,
 			                      memory_order_relaxed);
-	*data = q->events[n].metadata;
-	if (enqueue_ns)
-		*enqueue_ns = q->events[n].enqueue_ns;
+	*data = q->events[n].event;
 	n++;
 	if (n == q->num_entries)
 		n = 0;

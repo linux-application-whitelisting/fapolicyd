@@ -39,6 +39,7 @@
 #include <ctype.h>
 #include <time.h>
 #include "conf.h"
+#include "decision-defer.h"
 #include "decision-timing.h"
 #include "failure-action.h"
 #include "policy.h"
@@ -60,6 +61,8 @@ extern conf_t config;
 static pid_t our_pid;
 static struct queue *q = NULL;
 static struct queue_metrics last_queue_metrics;
+static struct decision_defer_queue defer_queue;
+static struct decision_defer_metrics last_defer_metrics;
 static pthread_t decision_thread;
 static pthread_t deadmans_switch_thread;
 static atomic_bool alive = true;
@@ -73,6 +76,9 @@ static atomic_long kernel_queue_overflow_last_log;
 // Local functions
 static void *decision_thread_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
+static void dispatch_decision_event(decision_event_t *event,
+				    int *rpt_is_stale);
+static void shutdown_deferred_events(void);
 static unsigned int timing_queue_depth_reset(void *ctx);
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
 void fanotify_queue_report_reset(FILE *f, int reset);
@@ -209,6 +215,15 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		exit(1);
 	}
 	q_metrics_snapshot(q, &last_queue_metrics);
+	if (decision_defer_init(&defer_queue, conf->subj_cache_size)) {
+		msg(LOG_ERR, "Failed setting up subject defer array (%s)",
+			strerror(errno));
+		q_close(q);
+		q = NULL;
+		exit(1);
+	}
+	decision_defer_metrics_snapshot_reset(&defer_queue,
+					      &last_defer_metrics, 0);
 	decision_timing_set_queue_depth_hooks(timing_queue_depth_reset,
 					      timing_queue_depth_restore, q);
 	our_pid = getpid();
@@ -236,6 +251,9 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	if (fd < 0) {
 		msg(LOG_ERR, "Failed opening fanotify fd (%s)",
 			strerror(errno));
+		decision_defer_destroy(&defer_queue);
+		q_close(q);
+		q = NULL;
 		exit(1);
 	}
 
@@ -247,6 +265,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		msg(LOG_ERR, "Failed to create decision thread (%s)",
 			strerror(rc));
 		close(fd);
+		decision_defer_destroy(&defer_queue);
 		q_close(q);
 		exit(1);
 	}
@@ -262,6 +281,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		if (rpt_timer_fd != -1)
 			close(rpt_timer_fd);
 		close(fd);
+		decision_defer_destroy(&defer_queue);
 		q_close(q);
 		exit(1);
 	}
@@ -408,7 +428,10 @@ void shutdown_fanotify(mlist *m)
 
 	// Clean up
 	q_metrics_snapshot(q, &last_queue_metrics);
+	decision_defer_metrics_snapshot_reset(&defer_queue,
+					      &last_defer_metrics, 0);
 	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
+	decision_defer_destroy(&defer_queue);
 	q_close(q);
 	q = NULL;
 	close(rpt_timer_fd);
@@ -468,11 +491,17 @@ void fanotify_queue_report_reset(FILE *f, int reset)
 
 	if (q) {
 		struct queue_metrics metrics;
+		struct decision_defer_metrics defer_metrics;
 
 		q_metrics_snapshot_reset(q, &metrics, reset);
 		q_metrics_report(f, &metrics);
-	} else
+		decision_defer_metrics_snapshot_reset(&defer_queue,
+						      &defer_metrics, reset);
+		decision_defer_metrics_report(f, &defer_metrics);
+	} else {
 		q_metrics_report(f, &last_queue_metrics);
+		decision_defer_metrics_report(f, &last_defer_metrics);
+	}
 }
 
 static void *deadmans_switch_thread_main(void *arg)
@@ -537,6 +566,112 @@ static void rpt_init(struct timespec *t)
 	}
 }
 
+/*
+ * run_decision_event - execute one policy decision for an event envelope.
+ * @event: event to process.
+ *
+ * Timing starts only when an event is actually processed. A deferred event
+ * keeps its original queue timestamp so queue wait includes time spent parked
+ * behind a building subject.
+ */
+static void run_decision_event(decision_event_t *event)
+{
+	decision_timing_decision_begin(0);
+	decision_timing_queue_dequeued(event->enqueue_ns);
+	make_policy_decision(event, fd, mask);
+	decision_timing_decision_end();
+}
+
+/*
+ * dispatch_decision_event - route one dequeued event and release defers.
+ * @event: event envelope from the inter-thread queue.
+ * @rpt_is_stale: interval report dirty flag.
+ *
+ * If another pid owns the same subject slot while its pattern state is still
+ * before STATE_FULL, the event is parked in the bounded defer array. When the
+ * array is full, processing falls back to the historical eviction behavior so
+ * memory and blocked permission events remain bounded.
+ */
+static void dispatch_decision_event(decision_event_t *event, int *rpt_is_stale)
+{
+	// The wrapper may already carry a slot when it comes from the defer list.
+	if (event->subject_slot == DECISION_EVENT_NO_SLOT)
+		event->subject_slot = event_subject_slot(event->metadata.pid);
+
+	/*
+	 * Park only when another pid owns this subject slot and still needs
+	 * its startup pattern state. If the array is full, continue into
+	 * normal processing so new_event() applies the historical eviction
+	 * behavior.
+	 */
+	if (event_subject_slot_is_blocked(event->subject_slot,
+					  event->metadata.pid)) {
+		if (decision_defer_push(&defer_queue, event) == 0) {
+			*rpt_is_stale = 1;
+			return;
+		}
+		decision_defer_count_fallback(&defer_queue);
+	}
+
+	for (;;) {
+		unsigned int slot;
+
+		/*
+		 * Turn one completed subject slot into a chain of policy
+		 * decisions. This lets backed-up events for that slot flow
+		 * through immediately instead of waiting for the next fanotify
+		 * dequeue cycle.
+		 *
+		 * Process the current event. This may be the original queue
+		 * event or a deferred event popped at the bottom of the loop.
+		 */
+		*rpt_is_stale = 1;
+		atomic_store_explicit(&alive, true, memory_order_relaxed);
+		run_decision_event(event);
+
+		/*
+		 * make_policy_decision() sets completed_subject_slot only when
+		 * processing leaves a slot empty, STATE_FULL, or later. Without
+		 * that signal there is no deferred work that can be unblocked.
+		 */
+		slot = event->completed_subject_slot;
+		if (slot == DECISION_EVENT_NO_SLOT)
+			return;
+		/*
+		 * A deferred event can start building a fresh subject in this
+		 * same slot. Stop if it became blocked again. Otherwise pop
+		 * the oldest event waiting for this slot and repeat.
+		 *
+		 * The loop cannot run forever: every iteration either returns
+		 * or removes one entry from the fixed-size defer array.
+		 */
+		if (!event_subject_slot_is_unblocked(slot))
+			return;
+		if (!decision_defer_pop_slot(&defer_queue, slot, event))
+			return;
+	}
+}
+
+/*
+ * shutdown_deferred_events - reply to every event left in the defer array.
+ *
+ * Deferred fanotify permission events still own live fds. During shutdown each
+ * must be answered exactly once, using the same permissive fallback policy as
+ * queue-full handling, so the blocked task and descriptor are released.
+ */
+static void shutdown_deferred_events(void)
+{
+	decision_event_t event;
+
+	while (decision_defer_pop_any(&defer_queue, &event)) {
+		int decision = FAN_DENY;
+
+		if (__atomic_load_n(&config.permissive, __ATOMIC_RELAXED))
+			decision = FAN_ALLOW;
+		reply_event(fd, &event.metadata, decision, NULL);
+	}
+}
+
 static void *decision_thread_main(void *arg)
 {
 	sigset_t sigs;
@@ -563,16 +698,21 @@ static void *decision_thread_main(void *arg)
 
 	while (!stop) {
 		int rc;
-		struct fanotify_event_metadata metadata;
-		uint64_t enqueue_ns = 0;
+		decision_event_t event;
 
+		/*
+		 * Apply asynchronous timing-control work on the decision
+		 * thread. SIGUSR1 handlers and overflow detection only set
+		 * atomic request flags; this call starts/stops manual timing,
+		 * restores queue-depth accounting, and writes any required
+		 * timing report outside signal context.
+		 */
 		decision_timing_process_requests(&config);
 
 		// if an interval has been configured
 		if (rpt_interval) {
 			errno = 0;
-			rc = q_timed_dequeue(q, &metadata, &enqueue_ns,
-					     &rpt_timeout);
+			rc = q_timed_dequeue(q, &event, &rpt_timeout);
 			if (rc == 0) {
 				uint64_t expired = 0;
 
@@ -615,8 +755,10 @@ static void *decision_thread_main(void *arg)
 				}
 				continue;
 			}
+			if (rc < 0)
+				continue;
 		} else {
-			rc = q_dequeue(q, &metadata, &enqueue_ns);
+			rc = q_dequeue(q, &event);
 			if (rc == 0) {
 				if (run_stats) {
 					state_report_write(STATE_REPORT_SIGNAL);
@@ -624,19 +766,18 @@ static void *decision_thread_main(void *arg)
 				}
 				continue;
 			}
+			if (rc < 0)
+				continue;
 			if (run_stats) {
 				state_report_write(STATE_REPORT_SIGNAL);
 				run_stats = 0;
 			}
 		}
 
-		decision_timing_decision_begin(0);
-		decision_timing_queue_dequeued(enqueue_ns);
 		atomic_store_explicit(&alive, true, memory_order_relaxed);
-		rpt_is_stale = 1;
-		make_policy_decision(&metadata, fd, mask);
-		decision_timing_decision_end();
+		dispatch_decision_event(&event, &rpt_is_stale);
 	}
+	shutdown_deferred_events();
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
 }
@@ -681,21 +822,29 @@ void handle_events(void)
 				if (metadata->pid == our_pid)
 					reply_event(fd, metadata, FAN_ALLOW,
 						    NULL);
-				else if (q_enqueue(q, metadata)) {
-					failure_action_record(
-					    FAILURE_REASON_QUEUE_FULL);
-					msg(LOG_ERR,
-					    "Failed to enqueue event for PID %d: "
-					    "queue is full, please consider "
-					    "tuning q_size if issue happens "
-					    "often",
-					    metadata->pid);
-					int decision = FAN_DENY;
-					if (__atomic_load_n(&config.permissive,
+				else {
+					decision_event_t event;
+
+					decision_event_init(&event, metadata);
+					if (q_enqueue(q, &event)) {
+						int decision = FAN_DENY;
+
+						failure_action_record(
+						    FAILURE_REASON_QUEUE_FULL);
+						msg(LOG_ERR,
+						    "Failed to enqueue event "
+						    "for PID %d: queue is "
+						    "full, please consider "
+						    "tuning q_size if issue "
+						    "happens often",
+						    metadata->pid);
+						if (__atomic_load_n(
+							    &config.permissive,
 							    __ATOMIC_RELAXED))
-						decision = FAN_ALLOW;
-					reply_event(fd, metadata, decision,
-						    NULL);
+							decision = FAN_ALLOW;
+						reply_event(fd, metadata,
+							    decision, NULL);
+					}
 				}
 			} else {
 				// This should never happen. Reply with deny

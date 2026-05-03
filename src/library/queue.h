@@ -27,11 +27,10 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/types.h>
-#include <sys/fanotify.h>
 #include <stdatomic.h>
 #include <semaphore.h>
 #include <time.h>
+#include "decision-event.h"
 #include "gcc-attributes.h"
 
 struct queue_entry;
@@ -83,18 +82,16 @@ void q_metrics_report(FILE *f, const struct queue_metrics *metrics);
 void q_report(FILE *f, const struct queue *q);
 
 /* Add DATA to tail of Q. Return 0 on success, -1 on error and set errno. */
-int q_enqueue(struct queue *q, const struct fanotify_event_metadata *data);
+int q_enqueue(struct queue *q, const decision_event_t *data);
 
-/* Remove one event from Q, storing it into DATA and its enqueue timestamp into
- * ENQUEUE_NS when requested. Return 1 on success or 0 if the queue is empty. */
-int q_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-	      uint64_t *enqueue_ns);
+/* Remove one event from Q, storing it into DATA. Return 1 on success or 0 if
+ * the queue is empty. */
+int q_dequeue(struct queue *q, decision_event_t *data);
 
-/* Remove one event from Q, blocking until timeout. Store the enqueue timestamp
- * into ENQUEUE_NS when requested. On success return 1. On timeout return 0 and
- * set errno to ETIMEDOUT. */
-int q_timed_dequeue(struct queue *q, struct fanotify_event_metadata *data,
-		    uint64_t *enqueue_ns, const struct timespec *ts);
+/* Remove one event from Q, blocking until timeout. On success return 1. On
+ * timeout return 0 and set errno to ETIMEDOUT. */
+int q_timed_dequeue(struct queue *q, decision_event_t *data,
+		    const struct timespec *ts);
 
 /* Wake up anyone waiting on the queue. */
 void q_shutdown(struct queue *q);

@@ -46,6 +46,9 @@ typedef struct ev {
 int init_event_system(const conf_t *config);
 void destroy_event_system(void);
 int new_event(const struct fanotify_event_metadata *m, event_t *e);
+unsigned int event_subject_slot(pid_t pid);
+int event_subject_slot_is_blocked(unsigned int slot, pid_t pid);
+int event_subject_slot_is_unblocked(unsigned int slot);
 __attribute__((hot)) subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);
 __attribute__((hot)) object_attr_t *get_obj_attr(event_t *e, object_type_t t);
 void run_usage_report(const conf_t *config, FILE *f);

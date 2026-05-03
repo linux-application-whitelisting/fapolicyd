@@ -2439,8 +2439,16 @@ static void decision_timing_stop(const conf_t *config, int pid, int uid)
 }
 
 /*
- * decision_timing_process_requests - consume pending manual timing requests.
+ * decision_timing_process_requests - apply pending timing control requests.
  * @config: active daemon configuration.
+ *
+ * Signal handlers and overflow detection do not mutate timing state directly.
+ * They update the static atomic request flags above: arm_requests,
+ * stop_requests, overflow_stop_requests, and queue_depth_restore_requests.
+ * The decision thread calls this function from normal process context to drain
+ * those flags, start or stop manual timing, restore queue-depth accounting, and
+ * write reports when a timing run ends.
+ *
  * Returns nothing.
  */
 void decision_timing_process_requests(const conf_t *config)
