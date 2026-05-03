@@ -39,7 +39,6 @@ static const nv_t table[] = {
 {	FTYPE,		"ftype" },
 {	OBJ_TRUST,	"trust"},
 {	FILE_HASH,	"filehash" },
-{	FMODE,		"mode" },
 };
 
 #define MAX_OBJECTS (sizeof(table)/sizeof(table[0]))

@@ -688,8 +688,7 @@ static int assign_object(llist *l, lnode *n, int type,
 	case PATH:
 	case DEVICE:
 	case FTYPE:
-	case FILE_HASH:
-	case FMODE: {
+	case FILE_HASH: {
 		owned_set = attr_set_create(name, STRING);
 		set = owned_set;
 		if (!set)
@@ -1554,8 +1553,7 @@ static decision_t check_object(lnode *r, event_t *e)
 		// fall through
 
 		case DEVICE:
-		case FILE_HASH:
-		case FMODE: {
+		case FILE_HASH: {
 
 			if (!obj->o) {
 				// Treat errors as denial for file hash lookups

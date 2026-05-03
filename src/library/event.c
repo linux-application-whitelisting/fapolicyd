@@ -1128,7 +1128,6 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			}
 			}
 			break;
-		case FMODE:
 		default:
 			obj.o = NULL;
 			return NULL;

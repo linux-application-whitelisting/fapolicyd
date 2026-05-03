@@ -32,9 +32,9 @@
 #include "attr-sets.h"
 
 typedef enum { ALL_OBJ = OBJ_START, PATH, ODIR, DEVICE, FTYPE,
-		OBJ_TRUST, FILE_HASH, FMODE } object_type_t;
+		OBJ_TRUST, FILE_HASH } object_type_t;
 
-#define OBJ_END FMODE
+#define OBJ_END FILE_HASH
 #define OBJ_COUNT (OBJ_END - OBJ_START + 1)
 
 // Retain SHA256HASH as a public alias for backward compatibility
