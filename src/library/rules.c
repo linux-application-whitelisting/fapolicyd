@@ -31,6 +31,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <ctype.h>
+#include <stdint.h>
 
 #include "attr-sets.h"
 #include "policy.h"
@@ -1083,6 +1084,12 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 		memset(newnode, 0, sizeof(lnode));
 		newnode->s_count = 0;
 		newnode->o_count = 0;
+		atomic_init(&newnode->hits, 0);
+		newnode->text = strdup(buf);
+		if (newnode->text == NULL) {
+			free(newnode);
+			return 1;
+		}
 		for (i=0; i<MAX_FIELDS; i++) {
 			newnode->s[i].type = UNUSED;
 			newnode->o[i].type = UNUSED;
@@ -1090,9 +1097,11 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 		enum rule_parse_result rc = nv_split(l, buf, newnode,
 						     lineno);
 		if (rc == RULE_PARSE_SKIP) {
+			free(newnode->text);
 			free(newnode);
 			return 0;
 		} else if (rc == RULE_PARSE_ERROR) {
+			free(newnode->text);
 			free(newnode);
 			return 1;
 		}
@@ -1635,6 +1644,57 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 	return r->d;
 }
 
+/*
+ * rules_record_hit - count a rule that made the final policy decision.
+ * @r: rule whose allow or deny decision ended evaluation.
+ *
+ * Rule hits are per active ruleset generation; publishing a new generation
+ * replaces the rule nodes and starts their counters at zero.
+ */
+void rules_record_hit(lnode *r)
+{
+	if (r)
+		atomic_fetch_add_explicit(&r->hits, 1, memory_order_relaxed);
+}
+
+/*
+ * rules_hits_report - write per-rule hit counters in rule order.
+ * @f: output stream.
+ * @l: active rule list to report.
+ *
+ * Returns nothing.
+ */
+void rules_hits_report(FILE *f, const llist *l)
+{
+	const lnode *r;
+	unsigned long max_hits = 0;
+	int hits_width;
+
+	if (f == NULL || l == NULL)
+		return;
+
+	for (r = rules_first_node(l); r; r = rules_next_node(r)) {
+		unsigned long hits = atomic_load_explicit(&r->hits,
+							memory_order_relaxed);
+
+		if (hits > max_hits)
+			max_hits = hits;
+	}
+
+	if (max_hits < 1000000UL)
+		hits_width = 6;
+	else if (max_hits <= UINT32_MAX)
+		hits_width = 10;
+	else
+		hits_width = 20;
+
+	for (r = rules_first_node(l); r; r = rules_next_node(r))
+		fprintf(f, "Hits/rule: %3u %*lu %s\n", r->num + 1,
+			hits_width,
+			atomic_load_explicit(&r->hits, memory_order_relaxed),
+			r->text ? r->text : "");
+}
+
 
 void rules_unsupport_audit(const llist *l)
 {
@@ -1663,6 +1723,7 @@ void rules_clear(llist *l)
 
 	while (current) {
 		nextnode=current->next;
+		free(current->text);
 		free(current);
 		current=nextnode;
 	}

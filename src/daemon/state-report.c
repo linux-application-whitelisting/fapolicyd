@@ -201,6 +201,7 @@ void decision_report_reset_with_failures(FILE *f, int reset,
 			metrics.fallthrough_other_ftype);
 	}
 	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
+	policy_rule_hits_report(f);
 }
 
 /*

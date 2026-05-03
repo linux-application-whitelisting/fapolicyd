@@ -887,6 +887,8 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 			break;
 		//cnt++;
 	}
+	if (r)
+		rules_record_hit(r);
 	decision_timing_stage_end(&eval_timing);
 	decision_timing_driver_pop(previous_driver);
 
@@ -1130,4 +1132,25 @@ void policy_no_audit(void)
 {
 	if (active_policy)
 		rules_unsupport_audit(&active_policy->rules);
+}
+
+/*
+ * policy_rule_hits_report - write per-rule hit counters for the active policy.
+ * @f: output stream.
+ *
+ * The rule mutex protects the active snapshot from reload destruction while
+ * the report walks rule nodes and source text.
+ */
+void policy_rule_hits_report(FILE *f)
+{
+	struct policy_snapshot *policy;
+
+	if (f == NULL || active_policy == NULL)
+		return;
+
+	lock_rule();
+	policy = active_policy;
+	if (policy)
+		rules_hits_report(f, &policy->rules);
+	unlock_rule();
 }

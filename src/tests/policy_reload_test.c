@@ -133,6 +133,46 @@ static decision_t process_capture(event_t *e, char *buf, size_t buflen,
 }
 
 /*
+ * process_path - evaluate one event for a path.
+ * @path: object path to place on the event.
+ * Returns the policy decision.
+ */
+static decision_t process_path(const char *path)
+{
+	char log[LOGBUF];
+	event_t e;
+	decision_t decision;
+
+	prep_event(&e, 1000, path);
+	decision = process_capture(&e, log, sizeof(log), NULL);
+	free_event(&e);
+	return decision;
+}
+
+/*
+ * read_rule_hits_report - capture the per-rule hit report.
+ * @buf: destination for captured report text.
+ * @buflen: size of @buf.
+ * Returns nothing.
+ */
+static void read_rule_hits_report(char *buf, size_t buflen)
+{
+	FILE *f;
+	size_t used;
+
+	f = tmpfile();
+	if (!f)
+		error(1, errno, "tmpfile failed");
+
+	policy_rule_hits_report(f);
+	fflush(f);
+	rewind(f);
+	used = fread(buf, 1, buflen - 1, f);
+	buf[used] = '\0';
+	fclose(f);
+}
+
+/*
  * require_old_policy - verify the initially loaded policy is still active
  * @phase: label included in failure diagnostics.
  * Returns nothing.
@@ -190,6 +230,58 @@ static void require_decision_sources(void)
 }
 
 /*
+ * require_rule_hit_counters - verify per-rule hits and generation reset.
+ * @cfg: configuration providing syslog_format.
+ * Returns nothing.
+ */
+static void require_rule_hit_counters(const conf_t *cfg)
+{
+	char report[LOGBUF];
+
+	if (load_text_policy(cfg,
+	    "allow perm=any auid=1000 : path=/bin/ls\n"
+	    "deny perm=any auid=1000 : path=/bin/rm\n"))
+		error(1, 0, "rule hit policy load failed");
+
+	if (process_path("/bin/ls") != ALLOW)
+		error(1, 0, "allow rule did not match");
+	if (process_path("/bin/ls") != ALLOW)
+		error(1, 0, "allow rule did not match second event");
+	if (process_path("/bin/rm") != DENY)
+		error(1, 0, "deny rule did not match");
+	if (process_path("/bin/cat") != ALLOW)
+		error(1, 0, "fallthrough path was not allowed");
+
+	read_rule_hits_report(report, sizeof(report));
+	if (strstr(report,
+	    "Hits/rule:   1      2 allow perm=any auid=1000 : path=/bin/ls\n")
+	    == NULL)
+		error(1, 0, "allow rule hit report missing: %s", report);
+	if (strstr(report,
+	    "Hits/rule:   2      1 deny perm=any auid=1000 : path=/bin/rm\n")
+	    == NULL)
+		error(1, 0, "deny rule hit report missing: %s", report);
+	if (strstr(report, "/bin/cat") != NULL)
+		error(1, 0, "fallthrough path appeared in rule hits: %s",
+		      report);
+
+	if (load_text_policy(cfg,
+	    "allow perm=any auid=1000 : path=/bin/ls\n"
+	    "deny perm=any auid=1000 : path=/bin/rm\n"))
+		error(1, 0, "rule hit policy reload failed");
+
+	read_rule_hits_report(report, sizeof(report));
+	if (strstr(report,
+	    "Hits/rule:   1      0 allow perm=any auid=1000 : path=/bin/ls\n")
+	    == NULL)
+		error(1, 0, "allow rule hits did not reset: %s", report);
+	if (strstr(report,
+	    "Hits/rule:   2      0 deny perm=any auid=1000 : path=/bin/rm\n")
+	    == NULL)
+		error(1, 0, "deny rule hits did not reset: %s", report);
+}
+
+/*
  * main - exercise transactional reload failure paths
  * @void: no arguments are required.
  * Returns 0 on success. Exits with error() on test failure.
@@ -219,6 +311,7 @@ int main(void)
 	    "deny_syslog perm=any auid=1000 : path=/bin/ls\n") == 0)
 		error(1, 0, "invalid syslog reload succeeded");
 	require_old_policy("invalid syslog reload");
+	require_rule_hit_counters(&good_cfg);
 
 	atomic_store(&stop, true);
 	destroy_rules();

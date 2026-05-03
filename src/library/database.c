@@ -1887,6 +1887,13 @@ void set_integrity_mode(integrity_t mode)
  * Lock wrapper for rule mutex
  */
 void lock_rule(void) {
+	/*
+	 * Rules load before init_database() creates this mutex, and the final
+	 * shutdown report can run after close_database() destroys it. Those
+	 * phases are single-threaded with no rule reload race to serialize.
+	 */
+	if (!rule_lock_inited)
+		return;
 	pthread_mutex_lock(&rule_lock);
 	//msg(LOG_DEBUG, "lock_rule()");
 }
@@ -1895,6 +1902,8 @@ void lock_rule(void) {
  * Unlock wrapper for rule mutex
  */
 void unlock_rule(void) {
+	if (!rule_lock_inited)
+		return;
 	pthread_mutex_unlock(&rule_lock);
 	//msg(LOG_DEBUG, "unlock_rule()");
 }

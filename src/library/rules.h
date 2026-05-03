@@ -25,6 +25,9 @@
 #ifndef RULES_HEADER
 #define RULES_HEADER
 
+#include <stdatomic.h>
+#include <stdio.h>
+
 #include "policy.h"
 #include "subject-attr.h"
 #include "object-attr.h"
@@ -40,6 +43,8 @@ typedef struct _lnode{
   decision_t d;
   access_t a;
   unsigned int num;
+  atomic_ulong hits;
+  char *text;
   rformat_t format;
   unsigned int s_count;
   unsigned int o_count;
@@ -84,6 +89,8 @@ static inline lnode *rules_next_node(const lnode *n)
 
 int rules_append(llist *l, char *buf, unsigned int lineno) __wur;
 __attribute__((hot)) decision_t rule_evaluate(lnode *r, event_t *e);
+void rules_record_hit(lnode *r);
+void rules_hits_report(FILE *f, const llist *l);
 void rules_unsupport_audit(const llist *l);
 void rules_clear(llist* l);
 unsigned int rules_get_proc_status_mask(const llist *l);
