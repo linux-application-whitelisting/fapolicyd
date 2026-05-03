@@ -15,6 +15,7 @@
 - Add stress test harness
 - fapolicyd, add deferal mechanism for inbound events that evict building events
 - Evict traced and stale subjects if there collision while building the event
+- Add per-rule hit counters state report to improve observability.
 
 1.4.5
 - Inform the admin symlinks were skipped when adding paths
