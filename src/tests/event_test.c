@@ -53,7 +53,8 @@ uint32_t gather_elf(int fd, off_t size);
 void msg(int priority, const char *fmt, ...);
 unsigned int policy_get_rules_proc_status_mask(void);
 unsigned int policy_get_syslog_proc_status_mask(void);
-int read_proc_status(pid_t pid, unsigned int fields, struct proc_status_info *info);
+int read_proc_status(pid_t pid, unsigned int fields,
+		struct proc_status_info *info);
 char *get_program_from_pid(pid_t pid, size_t blen, char *buf);
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf);
 uid_t get_program_auid_from_pid(pid_t pid);
@@ -99,6 +100,8 @@ static const struct stub_file_record file_table[] = {
 	{ 31, 32, 3131, 512,  313, "/stub/bin/fifth" },
 	{ 40, 41, 4040, 256,  404, "/stub/bin/sixth" },
 };
+
+static pid_t traced_proc_pid = -1;
 
 /* --- Stub implementations ------------------------------------------------ */
 
@@ -215,6 +218,8 @@ struct proc_info *stat_proc_entry(pid_t pid)
 	info->state = STATE_COLLECTING;
 	info->path1 = NULL;
 	info->path2 = NULL;
+	info->building_started_ns = 0;
+	info->building_event_count = 0;
 	info->elf_info = 0;
 	return info;
 }
@@ -347,13 +352,18 @@ unsigned int policy_get_syslog_proc_status_mask(void)
 /*
  * Provide an inert implementation for read_proc_status() that always succeeds.
  */
-int read_proc_status(pid_t pid, unsigned int fields, struct proc_status_info *info)
+int read_proc_status(pid_t pid, unsigned int fields,
+		struct proc_status_info *info)
 {
 	(void)pid;
-	(void)fields;
 	if (info == NULL)
 		return -1;
 	info->ppid = -1;
+	if (fields & PROC_STAT_TRACER)
+		info->tracer_state = pid == traced_proc_pid ?
+			PROC_TRACER_TRACED : PROC_TRACER_NOT_TRACED;
+	else
+		info->tracer_state = PROC_TRACER_UNKNOWN;
 	info->uid = NULL;
 	info->groups = NULL;
 	info->comm = NULL;
@@ -533,23 +543,20 @@ static int init_caches(unsigned int subj_size, unsigned int obj_size)
 }
 
 /*
- * read_object_cache_metric - report an object-cache counter from event.c.
- * @metric: printable counter label from do_cache_reports(), e.g. "hits".
+ * read_cache_report_line - report one cache counter from event.c.
+ * @label: printable counter label from do_cache_reports().
  * @value: output location for the parsed counter.
- *
- * The helper captures do_cache_reports() into a temporary stream and extracts
- * a single "Object <metric>: <number>" line for assertions.
  *
  * Returns 0 when @value is populated and 1 on parse or I/O failure.
  */
-static int read_object_cache_metric(const char *metric, unsigned long *value)
+static int read_cache_report_line(const char *label, unsigned long *value)
 {
 	FILE *report;
 	char line[256];
-	char pattern[64];
+	char pattern[96];
 	unsigned long parsed;
 
-	if (metric == NULL || value == NULL)
+	if (label == NULL || value == NULL)
 		return 1;
 
 	report = tmpfile();
@@ -558,7 +565,7 @@ static int read_object_cache_metric(const char *metric, unsigned long *value)
 
 	do_cache_reports(report);
 	rewind(report);
-	snprintf(pattern, sizeof(pattern), "Object %s: %%lu", metric);
+	snprintf(pattern, sizeof(pattern), "%s: %%lu", label);
 
 	while (fgets(line, sizeof(line), report)) {
 		if (sscanf(line, pattern, &parsed) == 1) {
@@ -570,6 +577,43 @@ static int read_object_cache_metric(const char *metric, unsigned long *value)
 
 	fclose(report);
 	return 1;
+}
+
+/*
+ * reset_cache_report_counters - clear interval counters in event.c reports.
+ * Returns 0 on success and 1 on I/O failure.
+ */
+static int reset_cache_report_counters(void)
+{
+	FILE *report = tmpfile();
+
+	if (report == NULL)
+		return 1;
+
+	do_cache_reports_reset(report, 1);
+	fclose(report);
+	return 0;
+}
+
+/*
+ * read_object_cache_metric - report an object-cache counter from event.c.
+ * @metric: printable counter label from do_cache_reports(), e.g. "hits".
+ * @value: output location for the parsed counter.
+ *
+ * The helper captures do_cache_reports() into a temporary stream and extracts
+ * a single "Object <metric>: <number>" line for assertions.
+ *
+ * Returns 0 when @value is populated and 1 on parse or I/O failure.
+ */
+static int read_object_cache_metric(const char *metric, unsigned long *value)
+{
+	char label[64];
+
+	if (metric == NULL || value == NULL)
+		return 1;
+
+	snprintf(label, sizeof(label), "Object %s", metric);
+	return read_cache_report_line(label, value);
 }
 
 /*
@@ -664,6 +708,93 @@ static int test_subject_eviction(void)
 }
 
 /*
+ * Verify that a different pid colliding with a pre-STATE_FULL occupant blocks
+ * instead of evicting the occupant, while same-pid and terminal occupants do
+ * not block.
+ */
+static int test_subject_slot_blocks_pre_full_collision(void)
+{
+	struct fanotify_event_metadata meta = { 0 };
+	event_t first = { 0 };
+	unsigned int slot;
+
+	CHECK(init_caches(1, 2) == 0, 70,
+	      "[ERROR:70] init_event_system failed");
+
+	meta.mask = FAN_OPEN_EXEC_PERM;
+	meta.fd = 30;
+	meta.pid = 300;
+	CHECK(new_event(&meta, &first) == 0, 71,
+	      "[ERROR:71] first new_event failed");
+	CHECK(first.s && first.s->info, 72,
+	      "[ERROR:72] subject missing");
+	CHECK(first.s->info->state < STATE_FULL, 73,
+	      "[ERROR:73] subject unexpectedly reached terminal state");
+
+	slot = event_subject_slot(301);
+	CHECK(slot == event_subject_slot(300), 74,
+	      "[ERROR:74] tiny cache did not force a slot collision");
+	CHECK(event_subject_slot_is_blocked(slot, 301) == 1, 75,
+	      "[ERROR:75] colliding BUILDING subject did not block");
+	CHECK(first.s->info->pid == 300, 76,
+	      "[ERROR:76] blocked collision evicted the occupant");
+	CHECK(event_subject_slot_is_blocked(slot, 300) == 0, 77,
+	      "[ERROR:77] same pid should not block itself");
+	CHECK(event_subject_slot_is_unblocked(slot) == 0, 78,
+	      "[ERROR:78] pre-FULL subject reported unblocked");
+
+	first.s->info->state = STATE_FULL;
+	CHECK(event_subject_slot_is_blocked(slot, 301) == 0, 79,
+	      "[ERROR:79] STATE_FULL subject still blocked collision");
+	CHECK(event_subject_slot_is_unblocked(slot) == 1, 80,
+	      "[ERROR:80] STATE_FULL subject did not release slot");
+
+	destroy_event_system();
+	return 0;
+}
+
+/*
+ * Verify that a traced BUILDING occupant is evicted instead of deferring
+ * incoming work indefinitely, and that the eviction is counted.
+ */
+static int test_traced_building_occupant_eviction(void)
+{
+	struct fanotify_event_metadata meta = { 0 };
+	event_t first = { 0 };
+	unsigned long tracer_evictions = 0;
+	unsigned int slot;
+
+	CHECK(init_caches(1, 2) == 0, 90,
+	      "[ERROR:90] init_event_system failed");
+	CHECK(reset_cache_report_counters() == 0, 91,
+	      "[ERROR:91] failed resetting cache report counters");
+
+	meta.mask = FAN_OPEN_EXEC_PERM;
+	meta.fd = 30;
+	meta.pid = 300;
+	CHECK(new_event(&meta, &first) == 0, 92,
+	      "[ERROR:92] first new_event failed");
+	CHECK(first.s && first.s->info, 93,
+	      "[ERROR:93] subject missing");
+
+	slot = event_subject_slot(301);
+	traced_proc_pid = 300;
+	CHECK(event_subject_slot_is_blocked(slot, 301) == 0, 94,
+	      "[ERROR:94] traced BUILDING occupant blocked collision");
+	traced_proc_pid = -1;
+	CHECK(event_subject_slot_is_unblocked(slot) == 1, 95,
+	      "[ERROR:95] traced BUILDING occupant was not evicted");
+	CHECK(read_cache_report_line("Subject BUILDING tracer evictions",
+				     &tracer_evictions) == 0, 96,
+	      "[ERROR:96] failed reading tracer eviction counter");
+	CHECK(tracer_evictions == 1, 97,
+	      "[ERROR:97] tracer eviction counter mismatch");
+
+	destroy_event_system();
+	return 0;
+}
+
+/*
  * Verify that needs_flush triggers an object cache flush so the next lookup
  * allocates a fresh entry.
  */
@@ -727,6 +858,14 @@ int main(void)
 		return rc;
 
 	rc = test_subject_eviction();
+	if (rc)
+		return rc;
+
+	rc = test_subject_slot_blocks_pre_full_collision();
+	if (rc)
+		return rc;
+
+	rc = test_traced_building_occupant_eviction();
 	if (rc)
 		return rc;
 

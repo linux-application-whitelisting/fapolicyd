@@ -672,6 +672,49 @@ static void shutdown_deferred_events(void)
 	}
 }
 
+#ifdef TEST_SUBJECT_DEFER
+/*
+ * test_notify_defer_reset - initialize notify.c defer state for unit tests.
+ * @subj_cache_size: subject cache size used to derive defer capacity.
+ *
+ * Returns 0 on success and -1 on allocation failure.
+ */
+int test_notify_defer_reset(unsigned int subj_cache_size)
+{
+	decision_defer_destroy(&defer_queue);
+	return decision_defer_init(&defer_queue, subj_cache_size);
+}
+
+/*
+ * test_notify_defer_destroy - release notify.c defer state after unit tests.
+ * Returns nothing.
+ */
+void test_notify_defer_destroy(void)
+{
+	decision_defer_destroy(&defer_queue);
+}
+
+/*
+ * test_notify_defer_push - park an event in notify.c defer state.
+ * @event: event copied into the defer queue.
+ *
+ * Returns 0 on success and -1 when the queue rejects the event.
+ */
+int test_notify_defer_push(const decision_event_t *event)
+{
+	return decision_defer_push(&defer_queue, event);
+}
+
+/*
+ * test_notify_shutdown_deferred_events - run production shutdown cleanup.
+ * Returns nothing.
+ */
+void test_notify_shutdown_deferred_events(void)
+{
+	shutdown_deferred_events();
+}
+#endif
+
 static void *decision_thread_main(void *arg)
 {
 	sigset_t sigs;

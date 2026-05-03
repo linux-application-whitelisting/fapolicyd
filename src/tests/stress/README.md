@@ -71,6 +71,21 @@ prints a warning because the request usually cannot signal a root-owned daemon.
 
 For local workload-only smoke tests, use `--no-status` and omit `--timing`.
 
+## ld_so Regression Stress
+
+The subject-deferral regression workload is a named fork/exec preset:
+
+```
+src/tests/stress/fapolicyd-stress --preset ld-so-regression --timing
+```
+
+It uses the same high-concurrency fork/exec shape as the early-eviction
+workload. Use it to compare a build with subject deferral against one without
+it. A healthy deferral run should show reduced `Early subject cache evictions`
+and `Denied accesses` under the same daemon configuration. `Subject defer max
+depth` may rise during the run, while sustained `Subject defer fallbacks`
+means the fixed defer array or subject cache is too small for the workload.
+
 ## fapolicyd.conf Settings
 
 No special `fapolicyd.conf` setting is required for basic stress generation or

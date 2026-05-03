@@ -13,6 +13,7 @@
 #include "failure-action.h"
 #include "notify.h"
 #include "policy.h"
+#include "decision-defer.h"
 #include "decision-timing.h"
 #include "state-report.h"
 
@@ -23,6 +24,11 @@
 extern atomic_bool run_stats;
 extern atomic_uint signal_report_requests;
 extern conf_t config;
+
+int test_notify_defer_reset(unsigned int subj_cache_size);
+void test_notify_defer_destroy(void);
+int test_notify_defer_push(const decision_event_t *event);
+void test_notify_shutdown_deferred_events(void);
 
 #define CHECK(expr, code, msg) \
 	do { \
@@ -57,6 +63,50 @@ static void read_decision_report(char *buf, size_t size, int reset)
 	used = fread(buf, 1, size - 1, f);
 	buf[used] = 0;
 	fclose(f);
+}
+
+/*
+ * test_shutdown_deferred_events - verify notify shutdown replies once.
+ *
+ * Deferred permission events own their metadata fd until shutdown cleanup
+ * replies and closes it. Use pipe read ends as stand-ins for fanotify fds so
+ * the test can prove the production cleanup path closes each one exactly once.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_shutdown_deferred_events(void)
+{
+	decision_event_t event;
+	int pipes[3][2];
+	unsigned int i;
+
+	CHECK(test_notify_defer_reset(1) == 0, 40,
+	      "[ERROR:40] notify defer reset failed");
+
+	for (i = 0; i < 3; i++) {
+		CHECK(pipe(pipes[i]) == 0, 41,
+		      "[ERROR:41] pipe setup failed");
+		memset(&event, 0, sizeof(event));
+		event.metadata.fd = pipes[i][0];
+		event.metadata.pid = 500 + i;
+		event.metadata.mask = FAN_OPEN_PERM;
+		event.subject_slot = i;
+		event.completed_subject_slot = DECISION_EVENT_NO_SLOT;
+		CHECK(test_notify_defer_push(&event) == 0, 42,
+		      "[ERROR:42] notify defer push failed");
+	}
+
+	__atomic_store_n(&config.permissive, true, __ATOMIC_RELAXED);
+	test_notify_shutdown_deferred_events();
+
+	for (i = 0; i < 3; i++) {
+		errno = 0;
+		CHECK(close(pipes[i][0]) == -1 && errno == EBADF, 43,
+		      "[ERROR:43] deferred fd was not closed exactly once");
+		close(pipes[i][1]);
+	}
+
+	test_notify_defer_destroy();
 }
 
 /*
@@ -241,6 +291,8 @@ int main(void)
 	      "[ERROR:38] reset report did not clear overflow count");
 	CHECK(getReplyErrors() == 0, 39,
 	      "[ERROR:39] reset report did not clear reply count");
+
+	test_shutdown_deferred_events();
 
 	return 0;
 }

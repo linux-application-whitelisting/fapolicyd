@@ -116,6 +116,8 @@ struct daemon_metrics {
 	unsigned long long subject_defer_fallbacks;
 	char subject_defer_oldest_age[32];
 	unsigned long long early_subject_evictions;
+	unsigned long long subject_tracer_evictions;
+	unsigned long long subject_stale_evictions;
 	unsigned long long subject_collisions;
 	unsigned long long subject_evictions;
 	unsigned long long object_collisions;
@@ -175,7 +177,8 @@ static void usage(const char *prog)
 	       DEFAULT_DEPTH);
 	printf("  -i, --iterations N       Iterations per leaf, 0 for timed-only\n");
 	printf("  -s, --seconds N          Timed run length, 0 disables timer\n");
-	printf("      --preset early-evict Aggressive collision workload\n\n");
+	printf("      --preset early-evict Aggressive collision workload\n");
+	printf("      --preset ld-so-regression Fork/exec false ld_so pressure\n\n");
 	printf("Workload inputs:\n");
 	printf("  -c, --command PATH       Add one exec target; repeat as needed\n");
 	printf("      --hash-mb N          Hash file size in MiB (default %u)\n",
@@ -438,7 +441,8 @@ static void set_defaults(struct stress_options *opts)
  */
 static int apply_preset(struct stress_options *opts, const char *name)
 {
-	if (strcmp(name, "early-evict") != 0)
+	if (strcmp(name, "early-evict") != 0 &&
+	    strcmp(name, "ld-so-regression") != 0)
 		return 1;
 
 	opts->workload = WORKLOAD_FORK_EXEC;
@@ -1977,6 +1981,10 @@ static void parse_daemon_metrics(const char *data,
 			sizeof(metrics->subject_defer_oldest_age));
 	parse_u64_line(data, "Early subject cache evictions:",
 		       &metrics->early_subject_evictions);
+	parse_u64_line(data, "Subject BUILDING tracer evictions:",
+		       &metrics->subject_tracer_evictions);
+	parse_u64_line(data, "Subject BUILDING stale evictions:",
+		       &metrics->subject_stale_evictions);
 	parse_u64_line(data, "Subject collisions:",
 		       &metrics->subject_collisions);
 	parse_u64_line(data, "Subject evictions:",
@@ -2266,6 +2274,12 @@ static void print_status_summary(const struct daemon_metrics *before,
 	print_metric_delta("Early subject cache evictions",
 			   before->early_subject_evictions,
 			   after->early_subject_evictions);
+	print_metric_delta("Subject BUILDING tracer evictions",
+			   before->subject_tracer_evictions,
+			   after->subject_tracer_evictions);
+	print_metric_delta("Subject BUILDING stale evictions",
+			   before->subject_stale_evictions,
+			   after->subject_stale_evictions);
 	print_metric_delta("Subject collisions", before->subject_collisions,
 			   after->subject_collisions);
 	print_metric_delta("Subject evictions", before->subject_evictions,
