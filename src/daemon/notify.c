@@ -104,8 +104,10 @@ static int rpt_timer_fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
 static unsigned int rpt_interval;
-static atomic_long kernel_queue_overflow_last_log;
-static atomic_long fanotify_fs_error_last_log;
+static struct message_rate_limit kernel_queue_overflow_log =
+	MESSAGE_RATE_LIMIT_INIT(KERNEL_OVERFLOW_LOG_INTERVAL);
+static struct message_rate_limit fanotify_fs_error_log =
+	MESSAGE_RATE_LIMIT_INIT(FS_ERROR_LOG_INTERVAL);
 static pthread_mutex_t fs_error_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct fanotify_fs_error_details last_fs_error;
 
@@ -140,50 +142,6 @@ unsigned long getKernelQueueOverflow(void)
 unsigned long getFanotifyFilesystemErrors(void)
 {
 	return failure_action_count(FAILURE_REASON_FANOTIFY_FS_ERROR);
-}
-
-/*
- * kernel_overflow_should_log - rate limit kernel overflow diagnostics.
- * @now: current wall clock time.
- * Returns 1 if a critical log should be emitted, 0 otherwise.
- */
-static int kernel_overflow_should_log(time_t now)
-{
-	long current = (long)now;
-	long last = atomic_load_explicit(&kernel_queue_overflow_last_log,
-					 memory_order_relaxed);
-
-	while (last == 0 || current < last ||
-	       current - last >= KERNEL_OVERFLOW_LOG_INTERVAL) {
-		if (atomic_compare_exchange_weak_explicit(
-			    &kernel_queue_overflow_last_log, &last, current,
-			    memory_order_relaxed, memory_order_relaxed))
-			return 1;
-	}
-
-	return 0;
-}
-
-/*
- * fs_error_should_log - rate limit filesystem error diagnostics.
- * @now: current wall clock time.
- * Returns 1 if an error log should be emitted, 0 otherwise.
- */
-static int fs_error_should_log(time_t now)
-{
-	long current = (long)now;
-	long last = atomic_load_explicit(&fanotify_fs_error_last_log,
-					 memory_order_relaxed);
-
-	while (last == 0 || current < last ||
-	       current - last >= FS_ERROR_LOG_INTERVAL) {
-		if (atomic_compare_exchange_weak_explicit(
-			    &fanotify_fs_error_last_log, &last, current,
-			    memory_order_relaxed, memory_order_relaxed))
-			return 1;
-	}
-
-	return 0;
 }
 
 /*
@@ -365,7 +323,7 @@ static void log_fs_error_event(
 
 	if (now == 0)
 		now = time(NULL);
-	if (now != (time_t)-1 && !fs_error_should_log(now))
+	if (!message_rate_limit_allow(&fanotify_fs_error_log, now))
 		return;
 
 	if (details->has_error) {
@@ -481,7 +439,7 @@ int handle_kernel_event(const struct fanotify_event_metadata *metadata)
 		total = failure_action_record(
 			FAILURE_REASON_KERNEL_QUEUE_OVERFLOW);
 		now = time(NULL);
-		if (now == (time_t)-1 || kernel_overflow_should_log(now))
+		if (message_rate_limit_allow(&kernel_queue_overflow_log, now))
 			msg(LOG_CRIT,
 			    "Kernel fanotify queue overflow; events were lost "
 			    "(kernel_queue_overflow=%lu)", total);

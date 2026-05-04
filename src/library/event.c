@@ -49,17 +49,6 @@
 #define ALL_EVENTS (FAN_ALL_EVENTS|FAN_OPEN_PERM|FAN_ACCESS_PERM| \
 	FAN_OPEN_EXEC_PERM)
 
-static Queue *subj_cache = NULL;
-static Queue *obj_cache = NULL;
-static bool obj_cache_warned = false;
-static unsigned int early_subj_cache_evictions = 0;
-static unsigned int building_tracer_evictions = 0;
-static unsigned int building_stale_evictions = 0;
-static atomic_long building_tracer_last_log;
-static atomic_long building_stale_last_log;
-
-atomic_bool needs_flush = false;
-
 /*
  * A normal exec/open pattern should complete quickly. Keep this below the
  * daemon deadman window so one stuck BUILDING slot cannot park permission
@@ -67,6 +56,19 @@ atomic_bool needs_flush = false;
  */
 #define SUBJECT_BUILDING_STALE_NS (10ULL * 1000000000ULL)
 #define SUBJECT_BUILDING_LOG_INTERVAL 60
+
+static Queue *subj_cache = NULL;
+static Queue *obj_cache = NULL;
+static bool obj_cache_warned = false;
+static unsigned int early_subj_cache_evictions = 0;
+static unsigned int building_tracer_evictions = 0;
+static unsigned int building_stale_evictions = 0;
+static struct message_rate_limit building_tracer_log =
+	MESSAGE_RATE_LIMIT_INIT(SUBJECT_BUILDING_LOG_INTERVAL);
+static struct message_rate_limit building_stale_log =
+	MESSAGE_RATE_LIMIT_INIT(SUBJECT_BUILDING_LOG_INTERVAL);
+
+atomic_bool needs_flush = false;
 
 enum building_evict_reason {
 	BUILDING_EVICT_TRACER,
@@ -136,33 +138,6 @@ static void subject_mark_building_event(struct proc_info *info)
 }
 
 /*
- * building_evict_should_log - rate limit BUILDING eviction diagnostics.
- * @last_log: per-reason timestamp of the last emitted warning.
- *
- * Returns 1 if the caller should log, 0 if the warning is suppressed.
- */
-static int building_evict_should_log(atomic_long *last_log)
-{
-	time_t now = time(NULL);
-	long current, last;
-
-	if (now == (time_t)-1)
-		return 1;
-
-	current = (long)now;
-	last = atomic_load_explicit(last_log, memory_order_relaxed);
-	while (last == 0 || current < last ||
-	       current - last >= SUBJECT_BUILDING_LOG_INTERVAL) {
-		if (atomic_compare_exchange_weak_explicit(last_log, &last,
-			    current, memory_order_relaxed,
-			    memory_order_relaxed))
-			return 1;
-	}
-
-	return 0;
-}
-
-/*
  * building_evict_reason_name - return display text for an eviction reason.
  * @reason: reason being reported.
  *
@@ -187,17 +162,17 @@ static const char *building_evict_reason_name(
 static void record_building_evict(enum building_evict_reason reason,
 		const struct building_evict_context *ctx)
 {
-	atomic_long *last_log;
+	struct message_rate_limit *log_limit;
 
 	if (reason == BUILDING_EVICT_TRACER) {
 		building_tracer_evictions++;
-		last_log = &building_tracer_last_log;
+		log_limit = &building_tracer_log;
 	} else {
 		building_stale_evictions++;
-		last_log = &building_stale_last_log;
+		log_limit = &building_stale_log;
 	}
 
-	if (ctx == NULL || !building_evict_should_log(last_log))
+	if (ctx == NULL || !message_rate_limit_allow(log_limit, time(NULL)))
 		return;
 
 	msg(LOG_WARNING,
