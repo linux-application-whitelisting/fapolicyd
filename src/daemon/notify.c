@@ -505,6 +505,101 @@ void fanotify_queue_report_reset(FILE *f, int reset)
 	}
 }
 
+/*
+ * fanotify_defer_config_report - write defer capacity sized at startup.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void fanotify_defer_config_report(FILE *f)
+{
+	struct decision_defer_metrics metrics;
+
+	if (f == NULL)
+		return;
+
+	if (q)
+		decision_defer_metrics_snapshot_reset(&defer_queue,
+						      &metrics, 0);
+	else
+		metrics = last_defer_metrics;
+	decision_defer_config_report(f, &metrics);
+}
+
+/*
+ * fanotify_defer_fallback_report - write defer fallback health indicator.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void fanotify_defer_fallback_report(FILE *f)
+{
+	struct decision_defer_metrics metrics;
+
+	if (f == NULL)
+		return;
+
+	if (q)
+		decision_defer_metrics_snapshot_reset(&defer_queue,
+						      &metrics, 0);
+	else
+		metrics = last_defer_metrics;
+	decision_defer_fallback_report(f, &metrics);
+}
+
+/*
+ * fanotify_defer_age_report - write oldest deferred event age.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void fanotify_defer_age_report(FILE *f)
+{
+	struct decision_defer_metrics metrics;
+
+	if (f == NULL)
+		return;
+
+	if (q)
+		decision_defer_metrics_snapshot_reset(&defer_queue,
+						      &metrics, 0);
+	else
+		metrics = last_defer_metrics;
+	decision_defer_age_report(f, &metrics);
+}
+
+/*
+ * fanotify_defer_health_report - write defer health indicators.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void fanotify_defer_health_report(FILE *f)
+{
+	struct decision_defer_metrics metrics;
+
+	if (f == NULL)
+		return;
+
+	if (q)
+		decision_defer_metrics_snapshot_reset(&defer_queue,
+						      &metrics, 0);
+	else
+		metrics = last_defer_metrics;
+	decision_defer_health_report(f, &metrics);
+}
+
+/*
+ * fanotify_metrics_report_reset - write queue and defer activity metrics.
+ * @f: report stream.
+ * @reset: non-zero resets counters after snapshotting them.
+ * Returns nothing.
+ */
+void fanotify_metrics_report_reset(FILE *f, int reset)
+{
+	if (f == NULL)
+		return;
+
+	fprintf(f, "\nInter-thread queue & defer activity:\n");
+	fanotify_queue_report_reset(f, reset);
+}
+
 static void *deadmans_switch_thread_main(void *arg)
 {
 	sigset_t sigs;

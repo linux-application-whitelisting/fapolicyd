@@ -201,6 +201,7 @@ int decision_defer_push(struct decision_defer_queue *defer,
 		entry->order = defer->next_order++;
 		entry->used = 1;
 		defer->current++;
+		defer->deferred_events++;
 		if (defer->current > defer->max_depth)
 			defer->max_depth = defer->current;
 		return 0;
@@ -344,23 +345,55 @@ void decision_defer_metrics_snapshot_reset(struct decision_defer_queue *defer,
 
 	metrics->capacity = defer->capacity;
 	metrics->current_depth = defer->current;
+	metrics->deferred_events = defer->deferred_events;
 	metrics->max_depth = defer->max_depth;
 	metrics->fallbacks = defer->fallbacks;
 	metrics->oldest_age_ns = oldest_age_ns(defer);
 
 	if (reset) {
+		defer->deferred_events = 0;
 		defer->max_depth = defer->current;
 		defer->fallbacks = 0;
 	}
 }
 
 /*
- * decision_defer_metrics_report - write defer metrics to a state report.
- * @f: output stream.
+ * decision_defer_config_report - write defer capacity sized at startup.
+ * @f: report stream.
  * @metrics: metrics snapshot to report.
  * Returns nothing.
  */
-void decision_defer_metrics_report(FILE *f,
+void decision_defer_config_report(FILE *f,
+		const struct decision_defer_metrics *metrics)
+{
+	if (f == NULL || metrics == NULL)
+		return;
+
+	fprintf(f, "Subject defer array size: %u\n", metrics->capacity);
+}
+
+/*
+ * decision_defer_fallback_report - write defer fallback health indicator.
+ * @f: report stream.
+ * @metrics: metrics snapshot to report.
+ * Returns nothing.
+ */
+void decision_defer_fallback_report(FILE *f,
+		const struct decision_defer_metrics *metrics)
+{
+	if (f == NULL || metrics == NULL)
+		return;
+
+	fprintf(f, "Subject defer fallbacks: %lu\n", metrics->fallbacks);
+}
+
+/*
+ * decision_defer_age_report - write oldest deferred event age.
+ * @f: report stream.
+ * @metrics: metrics snapshot to report.
+ * Returns nothing.
+ */
+void decision_defer_age_report(FILE *f,
 		const struct decision_defer_metrics *metrics)
 {
 	char age[32];
@@ -369,9 +402,36 @@ void decision_defer_metrics_report(FILE *f,
 		return;
 
 	format_age(metrics->oldest_age_ns, age, sizeof(age));
-	fprintf(f, "Subject defer array size: %u\n", metrics->capacity);
-	fprintf(f, "Subject deferred events: %u\n", metrics->current_depth);
+	fprintf(f, "Subject defer oldest age: %s\n", age);
+}
+
+/*
+ * decision_defer_health_report - write defer health indicators.
+ * @f: report stream.
+ * @metrics: metrics snapshot to report.
+ * Returns nothing.
+ */
+void decision_defer_health_report(FILE *f,
+		const struct decision_defer_metrics *metrics)
+{
+	decision_defer_fallback_report(f, metrics);
+	decision_defer_age_report(f, metrics);
+}
+
+/*
+ * decision_defer_metrics_report - write defer activity metrics.
+ * @f: output stream.
+ * @metrics: metrics snapshot to report.
+ * Returns nothing.
+ */
+void decision_defer_metrics_report(FILE *f,
+		const struct decision_defer_metrics *metrics)
+{
+	if (f == NULL || metrics == NULL)
+		return;
+
+	fprintf(f, "Subject deferred events: %lu\n",
+		metrics->deferred_events);
 	fprintf(f, "Subject defer max depth: %u\n", metrics->max_depth);
 	fprintf(f, "Subject defer fallbacks: %lu\n", metrics->fallbacks);
-	fprintf(f, "Subject defer oldest age: %s\n", age);
 }

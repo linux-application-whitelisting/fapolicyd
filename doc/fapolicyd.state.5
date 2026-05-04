@@ -1,27 +1,22 @@
-.TH "FAPOLICYD.STATE" "5" "April 2026" "Red Hat" "File Formats"
+.TH "FAPOLICYD.STATE" "5" "May 2026" "Red Hat" "File Formats"
 .SH NAME
-fapolicyd.state \- fapolicyd runtime state report
+fapolicyd.state \- fapolicyd runtime state report file
 .SH DESCRIPTION
 The
 .I /run/fapolicyd/fapolicyd.state
-file contains a point-in-time runtime state report from
-.BR fapolicyd (8).
-The daemon writes this file when it receives
-.B SIGUSR1
-or when periodic reporting is enabled with
-.B report_interval
-in
-.BR fapolicyd.conf (5).
-Depending on the
-.B reset_strategy
-configuration and report trigger, generating this report can also reset runtime
-metric counters after the report snapshot is written.
+file contains the most recent daemon state report requested through
+.BR fapolicyd-cli\ --check-status
+or periodic interval reporting.
 .PP
-The report is intended for human inspection and operational troubleshooting.
-Each metric is printed as a
+The state report answers whether the daemon is healthy and configured as
+expected. Runtime counters, rule hit counts, cache effectiveness metrics,
+attribute lookup tables, and queue/defer activity are reported in
+.IR /run/fapolicyd/fapolicyd.metrics .
+Each field is printed as a
 .I name: value
-line. The fields below are listed in the order they appear in the report.
-.SH TOP-LEVEL FIELDS
+line. Section headers end in a colon.
+.SH STATE REPORT
+.SS Operating mode
 .TP
 .B Permissive
 Whether the daemon is running in permissive mode. In permissive mode, policy
@@ -32,273 +27,24 @@ allows access.
 The configured file integrity mode used for trust checks.
 .TP
 .B reset_strategy
-The active metrics reset strategy. A value of
+The active metrics reset strategy:
 .B never
 keeps metrics growing for the daemon lifetime,
 .B auto
-resets timer-generated reports, and
+resets timer-generated metrics reports, and
 .B manual
-resets signal-generated reports if the signal carries reset intent (only
-possible programmatically).
-.TP
-.B Timing collection mode
-The configured timing collection control mode. A value of
-.B off
-ignores manual timing start and stop requests. A value of
-.B manual
-allows privileged manual timing windows.
-.TP
-.B Timing collection armed
-Whether a manual timing run is currently active.
-.TP
-.B CPU cores
-The number of online processor cores reported by the system.
-.TP
-.B q_size
-The configured size of the internal event queue.
-.TP
-.B Inter-thread max queue depth
-The highest internal event queue depth observed since daemon startup.
-.TP
-.B Subject defer array size
-The number of preallocated entries available for subject-slot deferral.
-.TP
-.B Subject deferred events
-The number of fanotify permission events currently deferred because another
-process is still building subject pattern state in the same cache slot.
-.TP
-.B Subject defer max depth
-The highest number of concurrently deferred subject events observed.
-.TP
-.B Subject defer fallbacks
-The number of times the defer array was full and fapolicyd fell back to the
-historical subject cache eviction behavior.
-.TP
-.B Subject defer oldest age
-The age of the oldest currently deferred subject event, formatted with a
-human-readable unit such as
-.B ms
-or
-.BR s .
-
-.SH DECISION AND RELIABILITY COUNTERS
-.TP
-.B Kernel Queue Overflow
-The number of
-.B FAN_Q_OVERFLOW
-events reported by the kernel. A non-zero value means kernel fanotify events
-were lost before the daemon could process them.
-.TP
-.B Reply Errors
-The number of failed or short writes when sending fanotify permission
-responses back to the kernel.
-.TP
-.B Allowed accesses
-The number of policy decisions that allowed access. This includes both
-rule-based allows and no-opinion fallthrough allows.
-.TP
-.B Denied accesses
-The number of policy decisions that denied access. In permissive mode these
-decisions are still counted as denials even though the daemon permits the
-kernel access.
-.TP
-.B Allowed by rule
-The number of allow decisions produced by a matching rule.
-.TP
-.B Allowed by fallthrough
-The number of allow decisions produced when no rule had an opinion and the
-daemon used the default allow behavior. When this value is zero, the detailed
-fallthrough fields below are omitted from the report.
-.TP
-.B Allowed by fallthrough open
-The number of fallthrough allows for file open permission events.
-.TP
-.B Allowed by fallthrough execute
-The number of fallthrough allows for file execute permission events.
-.TP
-.B Allowed by fallthrough trusted
-The number of fallthrough allows where the object was known to be trusted.
-.TP
-.B Allowed by fallthrough untrusted
-The number of fallthrough allows where the object was known to be untrusted.
-.TP
-.B Allowed by fallthrough trust unknown
-The number of fallthrough allows where object trust could not be determined
-or was not present in the event attributes.
-.TP
-.B Allowed by fallthrough executable
-The number of fallthrough allows whose object type was classified as
-executable content, including bad ELF content.
-.TP
-.B Allowed by fallthrough programmatic
-The number of fallthrough allows whose object type was classified as content
-commonly consumed by interpreters, such as language source, bytecode, scripts,
-or Java archives.
-.TP
-.B Allowed by fallthrough sharedlib
-The number of fallthrough allows whose object type was classified as a shared
-library.
-.TP
-.B Allowed by fallthrough unknown ftype
-The number of fallthrough allows where the object file type was missing or
-unknown.
-.TP
-.B Allowed by fallthrough other ftype
-The number of fallthrough allows whose object file type did not fit the
-executable, programmatic, shared library, or unknown buckets.
+allows privileged signal-generated reset requests such as
+.BR fapolicyd-cli\ --reset-metrics .
 .TP
 .B Ruleset generation
 The current in-memory ruleset generation. This value increments each time a
 fully validated ruleset is published by the daemon.
 .TP
-.B Subject attribute lookups
-Header for per-subject-attribute request and lookup counters.
+.B Timing collection mode
+The configured timing collection control mode.
 .TP
-.B Subject attr
-One line is printed for each counted subject attribute in the form
-.IR name " requests=" count " lookups=" count .
-The
-.B requests
-count is incremented when policy evaluation or syslog formatting asks for the
-named attribute. The
-.B lookups
-count is incremented only when that requested attribute was absent from the
-event's subject attribute cache and fapolicyd had to compute or fetch it.
-Some subject attributes are filled opportunistically. For example, one
-.IR /proc/ pid /status
-read may populate UID, GID, PPID, and COMM at the same time. Those
-opportunistically filled attributes can later show requests with no lookups
-because another requested attribute paid the lookup cost. PID is normally
-seeded when the subject cache entry is created, so PID requests usually do
-not require a lookup. Pattern is handled by process startup state tracking
-and is not reported as an attribute lookup counter.
-.TP
-.B Object attribute lookups
-Header for per-object-attribute request and lookup counters.
-.TP
-.B Object attr
-One line is printed for each counted object attribute in the form
-.IR name " requests=" count " lookups=" count .
-The
-.B requests
-count is incremented when policy evaluation or syslog formatting asks for the
-named object attribute. The
-.B lookups
-count is incremented only when that requested attribute was absent from the
-event's object attribute cache and fapolicyd had to compute or fetch it.
-Object attributes may also be satisfied from data already held in the cached
-file entry, so requests can exceed lookups even when the attribute is used
-frequently.
-
-.SH TRUST DATABASE FIELDS
-.TP
-.B Trust database max pages
-The configured maximum LMDB page count for the trust database.
-.TP
-.B Trust database pages in use
-The number and percentage of LMDB pages currently used by the trust database.
-
-.SH MEMORY FIELDS
-When fapolicyd is built on a system that provides
-.BR mallinfo2 (3),
-the report includes glibc allocator fields showing current and previous values.
-.TP
-.B glibc arena (total memory) is
-The current total glibc heap arena size in KiB, followed by the value from
-the previous report. This field is printed only when the daemon is built with
-glibc
-.BR mallinfo2 (3)
-support.
-.TP
-.B glibc uordblks (in use memory) is
-The current allocated heap memory in KiB, followed by the value from the
-previous report. This field is printed only when the daemon is built with
-glibc
-.BR mallinfo2 (3)
-support.
-.TP
-.B glibc fordblks (total free space) is
-The current free heap memory in KiB, followed by the value from the previous
-report. This field is printed only when the daemon is built with glibc
-.BR mallinfo2 (3)
-support.
-
-.SH CACHE FIELDS
-Interval state reports include aggregate subject and object cache statistics.
-.TP
-.B Subject cache size
-The configured number of entries in the subject cache.
-.TP
-.B Subject slots in use
-The number and percentage of subject cache slots currently occupied.
-.TP
-.B Subject hits
-The number of subject cache hits.
-.TP
-.B Subject misses
-The number of subject cache misses.
-.TP
-.B Subject collisions
-The number of populated subject cache slots whose full process identity did
-not match the current event and therefore had to be evicted before reuse.
-.TP
-.B Subject evictions
-The number of subject cache evictions and the eviction percentage relative
-to subject cache hits.
-.TP
-.B Early subject cache evictions
-The number of subject cache entries evicted before process startup state was
-complete.
-.TP
-.B Object cache size
-The configured number of entries in the object cache.
-.TP
-.B Object slots in use
-The number and percentage of object cache slots currently occupied.
-.TP
-.B Object hits
-The number of object cache hits.
-.TP
-.B Object misses
-The number of object cache misses.
-.TP
-.B Object collisions
-The number of populated object cache slots whose full file identity did not
-match the current event and therefore had to be evicted before reuse.
-.TP
-.B Object evictions
-The number of object cache evictions and the eviction percentage relative to
-object cache hits.
-.SH FAILURE ACTION FIELDS
-Failure action counters record reliability failures that may need stricter
-configured behavior in high-security deployments. In this version every
-failure action is
-.BR observe ,
-meaning the daemon records and reports the failure while preserving existing
-compatibility behavior.
-.TP
-.B Failure action queue_full (observe)
-Number of times the internal userspace event queue was full. Current behavior
-is unchanged: enforcing mode denies the event, while permissive mode allows it.
-.TP
-.B Failure action kernel_queue_overflow (observe)
-Number of kernel fanotify queue overflow events. This indicates lost kernel
-visibility and should be treated as a high-severity operational signal.
-.TP
-.B Failure action worker_stall (observe)
-Number of decision worker stall detections. Current behavior remains the
-existing deadman response.
-.TP
-.B Failure action rule_reload_failure (observe)
-Number of rule reload failures. A failed transactional reload preserves the
-previous published policy when one exists.
-.TP
-.B Failure action trust_reload_failure (observe)
-Number of trust database reload failures.
-.TP
-.B Failure action response_write_failure (observe)
-Number of failed or incomplete fanotify response writes to the kernel.
-.SH TIMING HISTORY FIELDS
+.B Timing collection armed
+Whether a manual timing run is currently active.
 .TP
 .B Timing collection last start time
 The wall-clock time of the last successful timing start request, or
@@ -309,32 +55,155 @@ when timing has not been started.
 The wall-clock time of the last successful timing stop request, or
 .B never
 when timing has not been stopped.
-.SH MOUNT FIELDS
+.SS Resource configuration
+.TP
+.B CPU cores
+The number of online processor cores reported by the system.
+.TP
+.B q_size
+The configured size of the internal event queue.
+.TP
+.B Subject defer array size
+The number of preallocated entries available for subject-slot deferral.
+.TP
+.B Subject cache size
+The configured number of entries in the subject cache.
+.TP
+.B Object cache size
+The configured number of entries in the object cache.
+.TP
+.B Trust database max pages
+The configured maximum LMDB page count for the trust database.
+.SS Resource utilization
+.TP
+.B Trust database pages in use
+The number and percentage of LMDB pages currently used by the trust database.
+.TP
+.B Subject slots in use
+The number and percentage of subject cache slots currently occupied.
+.TP
+.B Object slots in use
+The number and percentage of object cache slots currently occupied.
+.TP
+.B glibc arena (total memory) is
+The current total glibc heap arena size in KiB, followed by the value from the
+previous report. This field is printed only when the daemon is built with
+.BR mallinfo2 (3)
+support.
+.TP
+.B glibc uordblks (in use memory) is
+The current allocated heap memory in KiB, followed by the value from the
+previous report. This field is printed only when
+.BR mallinfo2 (3)
+support is available.
+.TP
+.B glibc fordblks (total free space) is
+The current free heap memory in KiB, followed by the value from the previous
+report. This field is printed only when
+.BR mallinfo2 (3)
+support is available.
+.SS Headline activity
+.TP
+.B Allowed accesses
+The number of policy decisions that allowed access.
+.TP
+.B Denied accesses
+The number of policy decisions that denied access. In permissive mode these
+decisions are still counted as denials even though the daemon permits kernel
+access.
+.SS Health indicators
+Any non-zero counter in this section warrants investigation.
+.TP
+.B Kernel queue overflow
+The number of
+.B FAN_Q_OVERFLOW
+events reported by the kernel. A non-zero value means kernel fanotify events
+were lost before the daemon could process them.
+.TP
+.B Reply errors
+The number of failed or short writes when sending fanotify permission responses
+back to the kernel.
+.TP
+.B Subject defer fallbacks
+The number of times the defer array was full and fapolicyd fell back to the
+historical subject cache eviction behavior.
+.TP
+.B Early subject cache evictions
+The number of subject cache entries evicted before process startup state was
+complete.
+.TP
+.B Subject BUILDING tracer evictions
+The number of BUILDING subject cache entries evicted because the owning process
+was traced and could hold the slot indefinitely.
+.TP
+.B Subject BUILDING stale evictions
+The number of BUILDING subject cache entries evicted because their startup
+state stayed incomplete past the bounded stale window.
+.TP
+.B Subject defer oldest age
+The age of the oldest currently deferred subject event, formatted with a
+human-readable unit such as
+.B ms
+or
+.BR s .
+.TP
+.B Failure action queue_full (observe)
+Number of times the internal userspace event queue was full.
+.TP
+.B Failure action kernel_queue_overflow (observe)
+Number of kernel fanotify queue overflow events.
+.TP
+.B Failure action worker_stall (observe)
+Number of decision worker stall detections.
+.TP
+.B Failure action rule_reload_failure (observe)
+Number of rule reload failures. A failed transactional reload preserves the
+previous published policy when one exists.
+.TP
+.B Failure action trust_reload_failure (observe)
+Number of trust database reload failures.
+.TP
+.B Failure action response_write_failure (observe)
+Number of failed or incomplete fanotify response writes to the kernel.
+.SS Watched mounts
 .TP
 .B watching mount
 One line is printed for each mount point currently marked for fanotify
 monitoring.
-
 .SH NOTES
-Some detailed fallthrough fields are printed only after at least one
-fallthrough allow has occurred. Memory fields depend on build-time platform
-support for
-.BR mallinfo2 (3).
-
+.B Allowed accesses ,
+.B Denied accesses ,
+.B Ruleset generation ,
+.B Subject defer fallbacks ,
+.B Early subject cache evictions ,
+.B Subject BUILDING tracer evictions ,
+and
+.B Subject BUILDING stale evictions
+intentionally appear in both state and metrics reports. In the state report
+they provide health and activity context; in the metrics report they describe
+the current counter window.
+.PP
+Metrics resets affect counters in the metrics report. Static configuration,
+current utilization snapshots, watched mounts, and health indicators are not
+reset by
+.BR fapolicyd-cli\ --reset-metrics .
 .SH FILES
 .TP
 .I /run/fapolicyd/fapolicyd.state
-Runtime state report.
+Runtime state report file.
+.TP
+.I /run/fapolicyd/fapolicyd.metrics
+Runtime metrics report file.
 .TP
 .I /run/fapolicyd/fapolicyd.timing
 Manual decision timing report written when a privileged stop request ends an
 armed timing run, when a stop request finds timing unarmed, or when timing
 collection stops to avoid counter overflow.
-
 .SH SEE ALSO
 .BR fapolicyd (8),
 .BR fapolicyd-cli (8),
 .BR fapolicyd.conf (5),
+.BR fapolicyd.metrics (5),
 .BR fapolicyd.rules (5),
 .BR fapolicyd.timing (5),
 and

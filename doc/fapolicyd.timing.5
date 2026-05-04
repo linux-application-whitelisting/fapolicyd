@@ -21,6 +21,10 @@ The command
 arms a run, and
 .B fapolicyd-cli --timing-stop
 stops the run and prints this report.
+.B --timer-start
+and
+.B --timer-stop
+are accepted aliases.
 .PP
 The daemon stores aggregate counters only. It does not store one timing record
 per decision. Each decision worker owns local aggregate blocks containing a
@@ -67,6 +71,17 @@ this is worker-time, not elapsed wall-clock time.
 .B Stop reason
 Printed only when the run stopped automatically because a timing counter would
 overflow.
+.SH TL;DR
+The
+.B TL;DR
+section appears immediately after the run summary and before
+.B Overall decision latency .
+It surfaces two or three dominant findings drawn from the same data used by
+the later
+.B Derived observations
+section, such as helper dominance, response formatting cost, or queueing
+health. The detailed observations remain in their original location later in
+the report.
 .SH OVERALL DECISION LATENCY
 The
 .B Overall decision latency
@@ -530,7 +545,7 @@ contributor, and the slowest observed row by maximum time.
 .PP
 For cache hit, miss, collision, eviction, subject deferral, and early subject
 eviction counters, see
-.BR fapolicyd.state (5).
+.BR fapolicyd.metrics (5).
 .PP
 If adding a timing count, total, or bucket counter would overflow, fapolicyd
 disarms timing, records an overflow stop reason, and writes the timing report
@@ -541,11 +556,15 @@ instead of allowing counters to wrap and skew the data.
 Manual decision timing report.
 .TP
 .I /run/fapolicyd/fapolicyd.state
-Runtime state report containing timing control state and cache counters.
+Runtime state report containing timing control state.
+.TP
+.I /run/fapolicyd/fapolicyd.metrics
+Runtime metrics report containing cache counters.
 .SH SEE ALSO
 .BR fapolicyd (8),
 .BR fapolicyd-cli (8),
 .BR fapolicyd.conf (5),
 .BR fapolicyd.state (5),
+.BR fapolicyd.metrics (5),
 and
 .BR fapolicyd.trust (5).

@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 #include "attr-lookup-metrics.h"
 #include "daemon-config.h"
@@ -29,10 +30,13 @@
 
 extern atomic_bool run_stats;
 extern atomic_uint signal_report_requests;
+extern atomic_uint signal_report_intent;
 extern atomic_uint signal_report_reset_requests;
 extern atomic_int signal_report_reset_request_pid;
 extern atomic_int signal_report_reset_request_uid;
 extern conf_t config;
+
+static time_t last_metrics_reset;
 
 /*
  * usr1_handler - request work from SIGUSR1.
@@ -66,11 +70,44 @@ void usr1_handler(int sig __attribute__((unused)),
 				&signal_report_reset_requests, 1,
 				memory_order_relaxed);
 		}
+		if (intent == REPORT_INTENT_STATUS ||
+		    intent == REPORT_INTENT_METRICS ||
+		    intent == REPORT_INTENT_RESET_METRICS)
+			atomic_store_explicit(&signal_report_intent, intent,
+					      memory_order_relaxed);
 	}
 	atomic_fetch_add_explicit(&signal_report_requests, 1,
 				  memory_order_relaxed);
 	run_stats = true;
 	nudge_queue();
+}
+
+/*
+ * format_metrics_reset_time - format the last metric reset timestamp.
+ * @buf: destination buffer.
+ * @buf_size: destination size.
+ * Returns @buf.
+ */
+static const char *format_metrics_reset_time(char *buf, size_t buf_size)
+{
+	struct tm tm;
+
+	if (buf_size == 0)
+		return buf;
+
+	if (last_metrics_reset == 0) {
+		strncpy(buf, "never", buf_size - 1);
+		buf[buf_size - 1] = 0;
+		return buf;
+	}
+
+	if (localtime_r(&last_metrics_reset, &tm) == NULL ||
+	    strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S %z", &tm) == 0) {
+		strncpy(buf, "unavailable", buf_size - 1);
+		buf[buf_size - 1] = 0;
+	}
+
+	return buf;
 }
 
 /*
@@ -97,17 +134,18 @@ void state_report_log_reset_strategy(reset_strategy_t strategy)
 }
 
 /*
- * open_stat_report - open status report file for overwrite without symlinks.
+ * open_report_file - open a report file for overwrite without symlinks.
+ * @path: report path to open.
  * Return codes:
- * >= 0 - writable file descriptor for STAT_REPORT
+ * >= 0 - writable file descriptor
  *  -1 - open or validation failed (errno set)
  */
-static int open_stat_report(void)
+static int open_report_file(const char *path)
 {
 	struct stat st;
 	int sfd;
 
-	sfd = open(STAT_REPORT,
+	sfd = open(path,
 		O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW,
 		0640);
 	if (sfd < 0)
@@ -120,6 +158,33 @@ static int open_stat_report(void)
 	}
 
 	return sfd;
+}
+
+/*
+ * open_report_stream - open a report stream and log failures.
+ * @path: report path to open.
+ * Returns a FILE stream, or NULL on failure.
+ */
+static FILE *open_report_stream(const char *path)
+{
+	int fd = open_report_file(path);
+	FILE *f;
+
+	if (fd < 0) {
+		msg(LOG_WARNING, "cannot open %s: %s",
+			path, strerror(errno));
+		return NULL;
+	}
+
+	f = fdopen(fd, "w");
+	if (!f) {
+		msg(LOG_WARNING, "cannot fdopen %s: %s",
+			path, strerror(errno));
+		close(fd);
+		return NULL;
+	}
+
+	return f;
 }
 
 /*
@@ -148,6 +213,59 @@ void decision_report_reset(FILE *f, int reset)
 	failure_action_snapshot(&failures, reset);
 	decision_report_reset_with_failures(f, reset, &failures);
 	decision_failure_action_report(f, &failures);
+}
+
+/*
+ * decision_report_metrics_reset - write decision outcome metrics.
+ * @f: output stream.
+ * @reset: non-zero resets counters after copying them.
+ * Returns nothing.
+ */
+void decision_report_metrics_reset(FILE *f, int reset)
+{
+	decision_metrics_t metrics;
+	char reset_time[64];
+
+	if (f == NULL)
+		return;
+
+	getDecisionMetricsReset(&metrics, reset);
+
+	fprintf(f, "Last metrics reset: %s\n",
+		format_metrics_reset_time(reset_time, sizeof(reset_time)));
+	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
+
+	fprintf(f, "\nDecision outcomes:\n");
+	fprintf(f, "Allowed accesses: %lu\n", getAllowedReset(reset));
+	fprintf(f, "Denied accesses: %lu\n", getDeniedReset(reset));
+	fprintf(f, "Allowed by rule: %lu\n", metrics.allowed_by_rule);
+	fprintf(f, "Allowed by fallthrough: %lu\n",
+		metrics.allowed_by_fallthrough);
+	if (metrics.allowed_by_fallthrough) {
+		fprintf(f, "Allowed by fallthrough open: %lu\n",
+			metrics.fallthrough_open);
+		fprintf(f, "Allowed by fallthrough execute: %lu\n",
+			metrics.fallthrough_execute);
+		fprintf(f, "Allowed by fallthrough trusted: %lu\n",
+			metrics.fallthrough_trusted);
+		fprintf(f, "Allowed by fallthrough untrusted: %lu\n",
+			metrics.fallthrough_untrusted);
+		fprintf(f, "Allowed by fallthrough trust unknown: %lu\n",
+			metrics.fallthrough_trust_unknown);
+		fprintf(f, "Allowed by fallthrough executable: %lu\n",
+			metrics.fallthrough_executable);
+		fprintf(f, "Allowed by fallthrough programmatic: %lu\n",
+			metrics.fallthrough_programmatic);
+		fprintf(f, "Allowed by fallthrough sharedlib: %lu\n",
+			metrics.fallthrough_sharedlib);
+		fprintf(f, "Allowed by fallthrough unknown ftype: %lu\n",
+			metrics.fallthrough_unknown_ftype);
+		fprintf(f, "Allowed by fallthrough other ftype: %lu\n",
+			metrics.fallthrough_other_ftype);
+	}
+
+	fprintf(f, "\nRule hit counts:\n");
+	policy_rule_hits_report(f);
 }
 
 /*
@@ -272,13 +390,13 @@ static void log_manual_metric_reset(unsigned int reset_requests, int reset)
 		    "Manual metrics reset requested by pid=%d uid=%d "
 		    "(requests=%u): %s",
 		    pid, uid, reset_requests,
-		    reset ? "resetting counters after state report" :
+		    reset ? "resetting counters after metrics report" :
 		    "not resetting counters");
 	else
 		msg(LOG_INFO,
 		    "Manual metrics reset requested (requests=%u): %s",
 		    reset_requests,
-		    reset ? "resetting counters after state report" :
+		    reset ? "resetting counters after metrics report" :
 		    "not resetting counters");
 
 	if (!reset) {
@@ -295,39 +413,115 @@ static void log_manual_metric_reset(unsigned int reset_requests, int reset)
 }
 
 /*
+ * state_report_intent_for_write - consume the pending report intent.
+ * @reason: report trigger used to decide the default.
+ * @requests: number of signal report requests consumed.
+ * Returns the report intent to write.
+ */
+static report_intent_t state_report_intent_for_write(
+		enum state_report_reason reason, unsigned int requests)
+{
+	unsigned int intent;
+
+	if (reason == STATE_REPORT_INTERVAL || requests == 0)
+		return REPORT_INTENT_STATUS;
+
+	intent = atomic_exchange_explicit(&signal_report_intent,
+					  REPORT_INTENT_STATUS,
+					  memory_order_relaxed);
+	switch (intent) {
+	case REPORT_INTENT_STATUS:
+	case REPORT_INTENT_METRICS:
+	case REPORT_INTENT_RESET_METRICS:
+		return intent;
+	case REPORT_INTENT_TIMING_ARM:
+	case REPORT_INTENT_TIMING_STOP:
+		break;
+	}
+
+	return REPORT_INTENT_STATUS;
+}
+
+/*
+ * write_state_report_file - write the daemon state report.
+ * Returns 0 on success, non-zero on open failure.
+ */
+static int write_state_report_file(void)
+{
+	FILE *f = open_report_stream(STAT_REPORT);
+
+	if (!f)
+		return -1;
+
+	do_state_report(f, 0);
+	fclose(f);
+	return 0;
+}
+
+/*
+ * write_metrics_report_file - write the daemon metrics report.
+ * @reset: non-zero resets metrics after snapshotting them.
+ * Returns 0 on success, non-zero on open failure.
+ */
+static int write_metrics_report_file(int reset)
+{
+	FILE *f = open_report_stream(METRICS_REPORT);
+
+	if (!f)
+		return -1;
+
+	do_metrics_report_reset(f, reset);
+	fclose(f);
+	return 0;
+}
+
+/*
+ * record_metrics_reset - remember a successful metrics reset time.
+ * Returns nothing.
+ */
+static void record_metrics_reset(void)
+{
+	time_t now = time(NULL);
+
+	if (now != (time_t)-1)
+		last_metrics_reset = now;
+}
+
+/*
  * state_report_write - write a state report to the standard location.
  * @reason: report trigger used to apply reset_strategy.
  * Returns nothing.
  */
 void state_report_write(enum state_report_reason reason)
 {
-	int sr_fd = open_stat_report();
-	FILE *f;
 	unsigned int reset_requests;
+	unsigned int report_requests;
+	report_intent_t intent;
 	int reset;
 
-	if (sr_fd < 0) {
-		msg(LOG_WARNING, "cannot open %s: %s",
-			STAT_REPORT, strerror(errno));
-		return;
-	}
-
-	f = fdopen(sr_fd, "w");
-	if (!f) {
-		msg(LOG_WARNING, "cannot fdopen %s: %s",
-			STAT_REPORT, strerror(errno));
-		close(sr_fd);
-		return;
-	}
-
-	(void)atomic_exchange_explicit(&signal_report_requests, 0,
-				       memory_order_relaxed);
+	report_requests = atomic_exchange_explicit(&signal_report_requests, 0,
+						  memory_order_relaxed);
 	reset_requests = atomic_exchange_explicit(&signal_report_reset_requests,
 						  0, memory_order_relaxed);
 	reset = metric_reset_allowed(reason, reset_requests);
 	log_manual_metric_reset(reset_requests, reset);
-	do_stat_report_reset(f, 0, reset);
-	fclose(f);
+
+	if (reason == STATE_REPORT_INTERVAL) {
+		write_state_report_file();
+		if (write_metrics_report_file(reset) == 0 && reset)
+			record_metrics_reset();
+		return;
+	}
+
+	intent = state_report_intent_for_write(reason, report_requests);
+	if (intent == REPORT_INTENT_METRICS ||
+	    intent == REPORT_INTENT_RESET_METRICS) {
+		if (write_metrics_report_file(reset) == 0 && reset)
+			record_metrics_reset();
+		return;
+	}
+
+	write_state_report_file();
 }
 
 /*

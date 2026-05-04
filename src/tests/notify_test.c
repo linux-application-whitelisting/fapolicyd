@@ -43,6 +43,18 @@ void do_stat_report_reset(FILE *f, int shutdown, int reset)
 	(void)reset;
 }
 
+void do_state_report(FILE *f, int shutdown)
+{
+	(void)f;
+	(void)shutdown;
+}
+
+void do_metrics_report_reset(FILE *f, int reset)
+{
+	(void)f;
+	(void)reset;
+}
+
 /*
  * read_decision_report - capture decision_report output for assertions.
  * @buf: destination buffer.
@@ -58,6 +70,28 @@ static void read_decision_report(char *buf, size_t size, int reset)
 		error(1, 0, "tmpfile failed");
 
 	decision_report_reset(f, reset);
+	fflush(f);
+	rewind(f);
+	used = fread(buf, 1, size - 1, f);
+	buf[used] = 0;
+	fclose(f);
+}
+
+/*
+ * read_decision_metrics_report - capture metrics decision header output.
+ * @buf: destination buffer.
+ * @size: size of @buf.
+ * Returns nothing. Exits if the temporary stream cannot be used.
+ */
+static void read_decision_metrics_report(char *buf, size_t size)
+{
+	FILE *f = tmpfile();
+	size_t used;
+
+	if (f == NULL)
+		error(1, 0, "tmpfile failed");
+
+	decision_report_metrics_reset(f, 0);
 	fflush(f);
 	rewind(f);
 	used = fread(buf, 1, size - 1, f);
@@ -214,6 +248,12 @@ int main(void)
 	      "[ERROR:22] zero fallthrough report included ftype detail");
 	CHECK(strstr(report, "Ruleset generation: ") != NULL, 23,
 	      "[ERROR:23] status report missing ruleset generation");
+
+	read_decision_metrics_report(report, sizeof(report));
+	CHECK(strstr(report, "Last metrics reset: never") != NULL, 44,
+	      "[ERROR:44] metrics report missing last reset header");
+	CHECK(strstr(report, "Ruleset generation: ") != NULL, 45,
+	      "[ERROR:45] metrics report missing ruleset generation header");
 
 	atomic_store(&run_stats, false);
 	atomic_store(&signal_report_requests, 0);

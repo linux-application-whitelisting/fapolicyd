@@ -1,0 +1,163 @@
+.TH "FAPOLICYD.METRICS" "5" "May 2026" "Red Hat" "File Formats"
+.SH NAME
+fapolicyd.metrics \- fapolicyd runtime metrics report file
+.SH DESCRIPTION
+The
+.I /run/fapolicyd/fapolicyd.metrics
+file contains the most recent daemon metrics report requested through
+.BR fapolicyd-cli\ --check-metrics ,
+.BR fapolicyd-cli\ --reset-metrics ,
+or periodic interval reporting.
+.PP
+The metrics report answers where runtime hot paths and cache effects are. The
+state report, written to
+.IR /run/fapolicyd/fapolicyd.state ,
+answers whether the daemon is healthy and configured as expected.
+Each field is printed as a
+.I name: value
+line. Section headers end in a colon.
+.SH HEADER
+.TP
+.B Last metrics reset
+The wall-clock time of the last successful metrics reset, or
+.B never
+when metrics have not been reset since daemon start. Reset reports show the
+counter window that is about to be reset; later metrics reports show the new
+reset time.
+.TP
+.B Ruleset generation
+The active ruleset generation that the counters and rule hit table apply to.
+.SH Decision outcomes
+.TP
+.B Allowed accesses
+The number of policy decisions that allowed access.
+.TP
+.B Denied accesses
+The number of policy decisions that denied access.
+.TP
+.B Allowed by rule
+The number of allow decisions produced by a matching rule.
+.TP
+.B Allowed by fallthrough
+The number of allow decisions produced when no rule had an opinion and the
+daemon used the default allow behavior. Detailed fallthrough dimensions are
+printed when this value is non-zero.
+.SH Rule hit counts
+.TP
+.B Hits/rule
+One line per configured rule in rule order. The line includes the one-based
+rule number, hit count, and rule text.
+.SH Subject cache effectiveness
+.TP
+.B Subject hits
+The number of subject cache hits.
+.TP
+.B Subject misses
+The number of subject cache misses.
+.TP
+.B Subject collisions
+The number of populated subject cache slots whose full process identity did
+not match the current event and therefore had to be evicted before reuse.
+.TP
+.B Subject evictions
+The number of subject cache evictions and the eviction percentage relative to
+subject cache hits.
+.TP
+.B Early subject cache evictions
+The number of subject cache entries evicted before process startup state was
+complete. This field also appears in the state report because non-zero values
+are health indicators.
+.TP
+.B Subject BUILDING tracer evictions
+The number of BUILDING subject cache entries evicted because the owning process
+was traced and could hold the slot indefinitely. This field also appears in
+the state report because non-zero values are health indicators.
+.TP
+.B Subject BUILDING stale evictions
+The number of BUILDING subject cache entries evicted because their startup
+state stayed incomplete past the bounded stale window. This field also appears
+in the state report because non-zero values are health indicators.
+.SH Object cache effectiveness
+.TP
+.B Object hits
+The number of object cache hits.
+.TP
+.B Object misses
+The number of object cache misses.
+.TP
+.B Object collisions
+The number of populated object cache slots whose full file identity did not
+match the current event and therefore had to be evicted before reuse.
+.TP
+.B Object evictions
+The number of object cache evictions and the eviction percentage relative to
+object cache hits.
+.SH Subject attribute lookups
+.TP
+.B Subject attr
+One line is printed for each counted subject attribute in the form
+.IR name " requests=" count " lookups=" count .
+The
+.B requests
+count increments when policy evaluation or syslog formatting asks for the
+attribute. The
+.B lookups
+count increments only when that attribute was absent from the event subject
+cache and fapolicyd had to compute or fetch it.
+.SH Object attribute lookups
+.TP
+.B Object attr
+One line is printed for each counted object attribute in the form
+.IR name " requests=" count " lookups=" count .
+The
+.B requests
+count increments when policy evaluation or syslog formatting asks for the
+attribute. The
+.B lookups
+count increments only when that attribute was absent from the event object
+cache and fapolicyd had to compute or fetch it.
+.SH Inter-thread queue and defer activity
+.TP
+.B Inter-thread max queue depth
+The highest internal event queue depth observed since the last metrics reset.
+.TP
+.B Subject deferred events
+The cumulative number of fanotify permission events deferred since the last
+metrics reset because another process was still building subject pattern state
+in the same cache slot.
+.TP
+.B Subject defer max depth
+The highest number of concurrently deferred subject events observed since the
+last metrics reset.
+.TP
+.B Subject defer fallbacks
+The cumulative number of defer-array-full fallbacks since the last metrics
+reset. This field also appears in the state report because non-zero values are
+health indicators.
+.SH NOTES
+Metrics resets affect counters in this report. Static configuration, current
+utilization snapshots, watched mounts, and health indicators are reported in
+.BR fapolicyd.state (5)
+and are not reset by
+.BR fapolicyd-cli\ --reset-metrics .
+.SH FILES
+.TP
+.I /run/fapolicyd/fapolicyd.metrics
+Runtime metrics report file.
+.TP
+.I /run/fapolicyd/fapolicyd.state
+Runtime state report file.
+.TP
+.I /run/fapolicyd/fapolicyd.timing
+Manual decision timing report written when a privileged stop request ends an
+armed timing run, when a stop request finds timing unarmed, or when timing
+collection stops to avoid counter overflow.
+.SH SEE ALSO
+.BR fapolicyd (8),
+.BR fapolicyd-cli (8),
+.BR fapolicyd.conf (5),
+.BR fapolicyd.rules (5),
+.BR fapolicyd.state (5),
+.BR fapolicyd.timing (5),
+and
+.BR fapolicyd.trust (5).

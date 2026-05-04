@@ -17,9 +17,30 @@ Opens fapolicyd.conf and parses it to see if there are any syntax errors in the 
 Check the PATH environmental variable against the trustdb to look for file not in the trustdb which could cause problems at run time.
 .TP
 .B \-\-check-status
-Dump the daemon's internal performance statistics. See
+Dump the daemon's health and configuration state. This report is for checking
+whether the daemon is healthy and configured as expected. It includes operating
+mode, startup-sized resources, current resource utilization, headline allow and
+deny activity, health indicators, and watched mounts. Runtime counters,
+attribute lookup tables, cache effectiveness metrics, and rule hit counts are
+reported by
+.BR \-\-check-metrics .
+See
 .BR fapolicyd.state (5)
-for the report fields. See also the fapolicyd.conf options \fBreport_interval\fP and \fBreset_strategy\fP. This command requests a plain state report and does not ask the daemon to reset runtime metric counters.
+for the state report fields. This command requests a plain state report and
+does not ask the daemon to reset runtime metric counters.
+.TP
+.B \-\-check-metrics
+Dump the daemon's runtime metrics report from
+\fI/run/fapolicyd/fapolicyd.metrics\fP. The report starts with
+.B Last metrics reset
+and
+.B Ruleset generation
+headers so the counter window and active policy generation are explicit. It
+then prints decision outcome counters, rule hit counts, subject and object
+cache effectiveness, subject and object attribute lookup tables, and queue and
+defer activity. See
+.BR fapolicyd.metrics (5)
+for the metrics report fields.
 .TP
 .B \-\-check-trustdb
 Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.
@@ -42,21 +63,38 @@ Parse the rules file and validate its syntax without loading it into the daemon.
 When used with \fB\-\-check-rules\fP, also emit policy-shape warnings for executable or programmatic content that can reach the default-allow path. The option may be placed before or after \fB\-\-check-rules\fP. A warning causes a non-zero exit status.
 .TP
 .B \-\-reset-metrics
-Request the metrics to be reset. Runtime metric counters reset after a report is written when the daemon is configured with \fBreset_strategy=manual\fP. The report contains the counter values being reset. The CLI checks the on-disk \fIfapolicyd.conf\fP before requesting the metrics to be reset. If the on-disk \fBreset_strategy\fP is not \fBmanual\fP, or the setting cannot be verified, the command tells the user and sends a plain \fB\-\-check-status\fP request instead. The daemon's active in-memory setting may differ from the file until configuration is reloaded. The command asks for confirmation before sending the reset request unless \fB-y\fP or \fB--yes\fP is used.
+Request the metrics to be reset. Runtime metric counters reset after a metrics
+report is written when the daemon is configured with
+\fBreset_strategy=manual\fP. The report contains the counter values being
+reset. A successful reset also updates the
+.B Last metrics reset
+timestamp shown by later metrics reports. If metrics have never been reset
+since daemon start, the header says
+.BR never .
+The CLI checks the on-disk \fIfapolicyd.conf\fP before requesting the metrics
+to be reset. If the on-disk \fBreset_strategy\fP is not \fBmanual\fP, or the
+setting cannot be verified, the command tells the user and sends a plain
+\fB\-\-check-metrics\fP request instead. The daemon's active in-memory setting
+may differ from the file until configuration is reloaded. The command asks for
+confirmation before sending the reset request unless \fB-y\fP or \fB--yes\fP
+is used.
 .TP
-.B \-\-timing-start
+.B \-\-timing-start, \-\-timer-start
 Request a manual decision timing run. The daemon honors the request only when
 the active configuration has \fBtiming_collection=manual\fP and the signal
 sender is privileged. Starting resets the fixed per-worker timing aggregates
 and starts collecting timing for subsequent fanotify decisions.
 .TP
-.B \-\-timing-stop
+.B \-\-timing-stop, \-\-timer-stop
 Stop a manual decision timing run and ask the daemon to write
 \fI/run/fapolicyd/fapolicyd.timing\fP. The command waits for that report and
 writes it to stdout. If timing is not armed, the report says so instead of
 printing timing data. See
 .BR fapolicyd.timing (5)
-for the report fields. The daemon honors the request only when
+for the report fields, including the
+.B TL;DR
+summary printed before the detailed latency sections. The daemon honors the
+request only when
 the active configuration has \fBtiming_collection=manual\fP and the signal
 sender is privileged.
 .TP
@@ -142,6 +180,7 @@ Operations that completed without making changes, such as attempting to update, 
 .BR fapolicyd (8),
 .BR fapolicyd.rules (5),
 .BR fapolicyd.state (5),
+.BR fapolicyd.metrics (5),
 .BR fapolicyd.timing (5),
 .BR fapolicyd.trust (5),
 and

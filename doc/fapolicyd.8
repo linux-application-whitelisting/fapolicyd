@@ -69,10 +69,14 @@ causes fapolicyd to reload the trust database.
 
 .TP
 .B SIGUSR1
-causes fapolicyd to dump its internal statistics to
-.IR /run/fapolicyd/fapolicyd.state .
+causes fapolicyd to dump the requested report to
+.IR /run/fapolicyd/fapolicyd.state
+or
+.IR /run/fapolicyd/fapolicyd.metrics .
 See
-.BR fapolicyd.state (5).
+.BR fapolicyd.state (5)
+and
+.BR fapolicyd.metrics (5).
 When
 .B reset_strategy=manual
 is configured, a SIGUSR1 report that carries reset intent (only possible programmatically) also resets runtime metric counters after the report is written. Plain SIGUSR1 reports do not reset counters.
@@ -116,8 +120,12 @@ If you are running in the debug mode and wish to compare rule numbers reported i
 - information about what was being accessed.
 .P
 .B /run/fapolicyd/fapolicyd.state
-- internal performance metrics. See
+- daemon state report. See
 .BR fapolicyd.state (5).
+.P
+.B /run/fapolicyd/fapolicyd.metrics
+- runtime metrics report. See
+.BR fapolicyd.metrics (5).
 .P
 .B /run/fapolicyd/fapolicyd.timing
 - manual decision timing report. See
@@ -127,6 +135,7 @@ If you are running in the debug mode and wish to compare rule numbers reported i
 .BR fapolicyd-cli (8),
 .BR fapolicyd.rules (5),
 .BR fapolicyd.state (5),
+.BR fapolicyd.metrics (5),
 .BR fapolicyd.timing (5),
 .BR fapolicyd.trust (5),
 .BR fapolicyd-filter.conf (5),

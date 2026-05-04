@@ -48,6 +48,8 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 	__nonnull ((1));
 void set_reload_trust_database(void);
 void close_database(void);
+void database_config_report(FILE *f);
+void database_utilization_report(FILE *f);
 void database_report(FILE *f);
 int unlink_db(void) __wur;
 void unlink_fifo(void);

@@ -493,7 +493,8 @@ Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 |------------------------|--------------------------------------------|
 | --check-config         | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                     |
 | --check-path           | Check that every file in $PATH is in the trustdb. (New in 1.1.5)                                          |
-| --check-status         | Output internal metrics kept by the daemon. (New in 1.1.4)                                                |
+| --check-status         | Output daemon health and configuration state. (New in 1.1.4)                                              |
+| --check-metrics        | Output runtime counters, rule hits, cache effectiveness, and attribute lookup metrics.                    |
 | --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
 | --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
 | --check-ignore_mounts  | Check the configured mounts that are ignored to see that they are mounted noexec and there are no suspicious files in the partition. (New in 1.4)                                       |
@@ -750,4 +751,3 @@ if OK, then
 ```
 
 [1] - https://git.kernel.org/pub/scm/linux/kernel/git/jack/linux-fs.git/commit/?id=66917a3130f218dcef9eeab4fd11a71cd00cd7c9
-

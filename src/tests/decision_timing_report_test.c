@@ -176,13 +176,14 @@ static void test_full_report(void)
 		.sample_count = ARRAY_SIZE(full_samples),
 		.input = &full_input,
 	};
-	const char *overall, *queueing, *phases, *helper_intro, *helpers;
+	const char *tldr, *overall, *queueing, *phases, *helper_intro, *helpers;
 	const char *observations, *drivers, *detailed, *tail;
 	const char *not_observed, *notes;
 	char report[16384];
 
 	read_test_report(&test, report, sizeof(report));
 
+	tldr = require_text(report, "\nTL;DR:", 43);
 	overall = require_text(report, "\nOverall decision latency:", 1);
 	queueing = require_text(report, "\nQueueing:", 2);
 	phases = require_text(report, "\nDecision phase timing:", 3);
@@ -198,7 +199,7 @@ static void test_full_report(void)
 	not_observed = require_text(report, "\nNot observed:", 9);
 	notes = require_text(report, "\nNotes:", 10);
 
-	CHECK(overall < queueing && queueing < phases &&
+	CHECK(tldr < overall && overall < queueing && queueing < phases &&
 	      phases < helper_intro && helper_intro < drivers &&
 	      drivers < helpers &&
 	      helpers < observations && observations < detailed &&
@@ -206,6 +207,9 @@ static void test_full_report(void)
 	      not_observed < notes, 11,
 	      "[ERROR:11] report sections are out of order");
 	require_text(report, "max queue depth: 7", 12);
+	require_text(tldr, "MIME detection dominates helper time", 44);
+	require_text(tldr, "Manual/debug response formatting accounts", 45);
+	require_text(tldr, "Queueing is healthy", 46);
 	require_text(detailed, "decision:total", 30);
 	require_text(report, "event_build", 13);
 	require_text(report, "evaluation", 14);
@@ -255,6 +259,9 @@ static void test_sparse_report(void)
 	char report[8192];
 
 	read_test_report(&test, report, sizeof(report));
+	require_text(report,
+		     "\nTL;DR:\n  - No dominant timing findings observed.\n",
+		     47);
 	require_text(report, "\nQueueing:\n  not observed\n  max queue depth: 0",
 		     24);
 	require_text(report, "\nLazy helper attribution by driver:", 25);

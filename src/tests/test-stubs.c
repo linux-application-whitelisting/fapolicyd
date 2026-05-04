@@ -13,6 +13,7 @@
 atomic_bool stop;
 atomic_bool run_stats;
 atomic_uint signal_report_requests;
+atomic_uint signal_report_intent;
 atomic_uint signal_report_reset_requests;
 atomic_int signal_report_reset_request_pid;
 atomic_int signal_report_reset_request_uid;

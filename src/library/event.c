@@ -1157,6 +1157,48 @@ static void print_queue_stats(FILE *f, const struct lru_metrics *metrics)
 		metrics->hits ? (100*metrics->evictions)/metrics->hits : 0);
 }
 
+/*
+ * print_cache_config - write cache capacity from a metrics snapshot.
+ * @f: report stream.
+ * @metrics: cache metrics snapshot.
+ * Returns nothing.
+ */
+static void print_cache_config(FILE *f, const struct lru_metrics *metrics)
+{
+	fprintf(f, "%s cache size: %u\n", metrics->name, metrics->total);
+}
+
+/*
+ * print_cache_utilization - write current cache occupancy.
+ * @f: report stream.
+ * @metrics: cache metrics snapshot.
+ * Returns nothing.
+ */
+static void print_cache_utilization(FILE *f,
+		const struct lru_metrics *metrics)
+{
+	fprintf(f, "%s slots in use: %u (%u%%)\n", metrics->name,
+		metrics->count,
+		metrics->total ? (100*metrics->count)/metrics->total : 0);
+}
+
+/*
+ * print_cache_metrics - write resettable cache effectiveness counters.
+ * @f: report stream.
+ * @metrics: cache metrics snapshot.
+ * Returns nothing.
+ */
+static void print_cache_metrics(FILE *f, const struct lru_metrics *metrics)
+{
+	fprintf(f, "%s hits: %lu\n", metrics->name, metrics->hits);
+	fprintf(f, "%s misses: %lu\n", metrics->name, metrics->misses);
+	fprintf(f, "%s collisions: %lu\n", metrics->name,
+		metrics->collisions);
+	fprintf(f, "%s evictions: %lu (%lu%%)\n", metrics->name,
+		metrics->evictions,
+		metrics->hits ? (100*metrics->evictions)/metrics->hits : 0);
+}
+
 void run_usage_report(const conf_t *config, FILE *f)
 {
 	time_t t;
@@ -1268,6 +1310,96 @@ void do_cache_reports(FILE *f)
 }
 
 /*
+ * do_cache_config_report - write cache capacities sized at startup.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void do_cache_config_report(FILE *f)
+{
+	struct lru_metrics metrics;
+
+	if (f == NULL)
+		return;
+
+	lru_metrics_snapshot(subj_cache, &metrics, 0);
+	print_cache_config(f, &metrics);
+	lru_metrics_snapshot(obj_cache, &metrics, 0);
+	print_cache_config(f, &metrics);
+}
+
+/*
+ * do_cache_utilization_report - write current cache slot utilization.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void do_cache_utilization_report(FILE *f)
+{
+	struct lru_metrics metrics;
+
+	if (f == NULL)
+		return;
+
+	lru_metrics_snapshot(subj_cache, &metrics, 0);
+	print_cache_utilization(f, &metrics);
+	lru_metrics_snapshot(obj_cache, &metrics, 0);
+	print_cache_utilization(f, &metrics);
+}
+
+/*
+ * do_cache_health_report - write cache counters that warrant investigation.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void do_cache_health_report(FILE *f)
+{
+	if (f == NULL)
+		return;
+
+	fprintf(f, "Early subject cache evictions: %u\n",
+		early_subj_cache_evictions);
+	fprintf(f, "Subject BUILDING tracer evictions: %u\n",
+		building_tracer_evictions);
+	fprintf(f, "Subject BUILDING stale evictions: %u\n",
+		building_stale_evictions);
+}
+
+/*
+ * do_cache_metrics_report_reset - write cache effectiveness counters.
+ * @f: report stream.
+ * @reset: non-zero resets counters after snapshotting them.
+ * Returns nothing.
+ */
+void do_cache_metrics_report_reset(FILE *f, int reset)
+{
+	struct lru_metrics metrics;
+	unsigned int early_evictions = early_subj_cache_evictions;
+	unsigned int tracer_evictions = building_tracer_evictions;
+	unsigned int stale_evictions = building_stale_evictions;
+
+	if (f == NULL)
+		return;
+
+	if (reset) {
+		early_subj_cache_evictions = 0;
+		building_tracer_evictions = 0;
+		building_stale_evictions = 0;
+	}
+
+	fprintf(f, "\nSubject cache effectiveness:\n");
+	lru_metrics_snapshot(subj_cache, &metrics, reset);
+	print_cache_metrics(f, &metrics);
+	fprintf(f, "Early subject cache evictions: %u\n", early_evictions);
+	fprintf(f, "Subject BUILDING tracer evictions: %u\n",
+		tracer_evictions);
+	fprintf(f, "Subject BUILDING stale evictions: %u\n",
+		stale_evictions);
+
+	fprintf(f, "\nObject cache effectiveness:\n");
+	lru_metrics_snapshot(obj_cache, &metrics, reset);
+	print_cache_metrics(f, &metrics);
+}
+
+/*
  * do_cache_reports_reset - write cache metrics and optionally reset counters.
  * @f: output stream.
  * @reset: non-zero resets interval counters after copying them.
@@ -1276,24 +1408,7 @@ void do_cache_reports(FILE *f)
  */
 void do_cache_reports_reset(FILE *f, int reset)
 {
-	struct lru_metrics metrics;
-	unsigned int early_evictions = early_subj_cache_evictions;
-	unsigned int tracer_evictions = building_tracer_evictions;
-	unsigned int stale_evictions = building_stale_evictions;
-
-	if (reset) {
-		early_subj_cache_evictions = 0;
-		building_tracer_evictions = 0;
-		building_stale_evictions = 0;
-	}
-
-	lru_metrics_snapshot(subj_cache, &metrics, reset);
-	print_queue_stats(f, &metrics);
-	fprintf(f, "Early subject cache evictions: %u\n", early_evictions);
-	fprintf(f, "Subject BUILDING tracer evictions: %u\n",
-		tracer_evictions);
-	fprintf(f, "Subject BUILDING stale evictions: %u\n",
-		stale_evictions);
-	lru_metrics_snapshot(obj_cache, &metrics, reset);
-	print_queue_stats(f, &metrics);
+	do_cache_config_report(f);
+	do_cache_utilization_report(f);
+	do_cache_metrics_report_reset(f, reset);
 }

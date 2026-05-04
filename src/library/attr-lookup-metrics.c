@@ -265,7 +265,7 @@ static void report_object_attrs(FILE *f, int reset)
 {
 	unsigned int type;
 
-	fprintf(f, "Object attribute lookups:\n");
+	fprintf(f, "\nObject attribute lookups:\n");
 	for (type = OBJ_START; type <= OBJ_END; type++) {
 		const char *name = obj_val_to_name(type);
 		struct attr_lookup_metric_snapshot snapshot;

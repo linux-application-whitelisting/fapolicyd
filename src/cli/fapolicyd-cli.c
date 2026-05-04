@@ -69,15 +69,18 @@ static const char *usage =
 "Fapolicyd CLI Tool\n\n"
 "--check-config        Check the daemon config for syntax errors\n"
 "--check-path          Check files in $PATH against the trustdb for problems\n"
-"--check-status        Dump the deamon's internal performance statistics\n"
+"--check-status        Dump daemon health and configuration state\n"
+"--check-metrics       Dump daemon runtime counters and cache metrics\n"
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
 "--check-rules [path]  Validate rules file syntax without loading\n"
 "--lint                Enable policy lint warnings with --check-rules\n"
-"--reset-metrics       Dump status and reset metrics when daemon allows it\n"
+"--reset-metrics       Dump metrics and reset counters when daemon allows it\n"
 "--timing-start        Start a manual decision timing run\n"
 "--timing-stop         Stop manual decision timing and dump timing report\n"
+"--timer-start         Alias for --timing-start\n"
+"--timer-stop          Alias for --timing-stop\n"
 "--verbose             Enable verbose output for select commands\n"
 "-d, --delete-db       Delete the trust database\n"
 "-D, --dump-db         Dump the trust database contents\n"
@@ -104,11 +107,14 @@ static struct option long_opts[] =
 	{"check-trustdb",0, NULL,  3 },
 	{"check-status",0, NULL,  4 },
 	{"check-path",  0, NULL,  5 },
+	{"check-metrics",0, NULL, 14 },
 	{"check-rules",  2, NULL, 9 },
 	{"lint",	0, NULL, 10 },
 	{"reset-metrics", 0, NULL, 11 },
 	{"timing-start",	0, NULL, 12 },
 	{"timing-stop",	0, NULL, 13 },
+	{"timer-start",	0, NULL, 12 },
+	{"timer-stop",	0, NULL, 13 },
 	{"yes",		0, NULL, 'y'},
 	{"delete-db",	0, NULL, 'd'},
 	{"dump-db",	0, NULL, 'D'},
@@ -916,7 +922,7 @@ static int confirm_metric_reset(void)
 	char answer[8];
 
 	fprintf(stderr,
-		"Request runtime metrics reset with this state report? [y/N] ");
+		"Request runtime metrics reset with this metrics report? [y/N] ");
 	fflush(stderr);
 	if (fgets(answer, sizeof(answer), stdin) == NULL)
 		return 0;
@@ -942,7 +948,7 @@ static void check_metric_reset_strategy(int *reset_metrics)
 	if (load_daemon_config(&disk_config)) {
 		fprintf(stderr,
 			"Unable to verify reset_strategy in %s; sending a "
-			"plain --check-status request.\n", CONFIG_FILE);
+			"plain --check-metrics request.\n", CONFIG_FILE);
 		fprintf(stderr,
 			"The daemon's active setting may differ from the "
 			"on-disk configuration.\n");
@@ -959,7 +965,7 @@ static void check_metric_reset_strategy(int *reset_metrics)
 			"--reset-metrics appears unable to reset metrics.\n",
 			strategy ? strategy : "unknown");
 		fprintf(stderr,
-			"Sending a plain --check-status request. The daemon's "
+			"Sending a plain --check-metrics request. The daemon's "
 			"active setting may differ until config is reloaded.\n");
 		*reset_metrics = 0;
 	}
@@ -969,20 +975,19 @@ static void check_metric_reset_strategy(int *reset_metrics)
 }
 
 /*
- * send_state_report_signal - request a state report from fapolicyd.
+ * send_state_report_signal - request a report from fapolicyd.
  * @pid: daemon PID to signal.
- * @reset_metrics: non-zero adds reset intent to the signal.
+ * @intent: report intent to send.
  * @reason: error text buffer.
  * @reason_len: size of @reason.
  * Returns 0 on success, non-zero on failure.
  */
-static int send_state_report_signal(unsigned int pid, int reset_metrics,
+static int send_state_report_signal(unsigned int pid, report_intent_t intent,
 		char *reason, size_t reason_len)
 {
 	union sigval value;
 
-	value.sival_int = reset_metrics ? REPORT_INTENT_RESET_METRICS :
-					  REPORT_INTENT_STATUS;
+	value.sival_int = intent;
 	if (sigqueue(pid, SIGUSR1, value)) {
 		snprintf(reason, reason_len, "signal failed: %s",
 			 strerror(errno));
@@ -1152,106 +1157,55 @@ static int do_timing_control(report_intent_t intent)
 }
 
 /*
- * do_status_report - request and display a daemon state report.
- * @reset_metrics: non-zero when the user requested --reset-metrics.
+ * do_status_report - request and display a daemon report.
+ * @intent: report intent to send.
+ * @reset_metrics: non-zero when the user requested a metrics reset.
  * Returns a CLI_EXIT_* value.
  */
-static int do_status_report(int reset_metrics)
+static int do_status_report(report_intent_t intent, int reset_metrics)
 {
 	const char *reason = "no pid file";
+	const char *report_path;
+	unsigned int pid;
 	char signal_reason[80];
+	int fd;
 
-	fd_fgets_state_t *st = fd_fgets_init();
-	if (!st)
-		return CLI_EXIT_INTERNAL;
-
-	// open pid file
-	int pidfd = open(pidfile, O_RDONLY);
-	if (pidfd >= 0) {
-		char pid_buf[16];
-
-		// read contents
-		if (fd_fgets_r(st, pid_buf, sizeof(pid_buf), pidfd)) {
-			int rpt_fd;
-			unsigned int pid, tries = 0;
-			char exe_buf[64];
-
-			// convert to integer
-			errno = 0;
-			pid = strtoul(pid_buf, NULL, 10);
-			if (errno) {
-				reason = "bad pid in pid file";
-				goto err_out;
-			}
-
-			// verify it really is fapolicyd
-			if (get_program_from_pid(pid,
-					sizeof(exe_buf), exe_buf) == NULL) {
-				reason = "can't read proc file";
-				goto err_out;
-			}
-			if (strcmp(basename(exe_buf), "fapolicyd")) {
-				reason = "pid file doesn't point to fapolicyd";
-				goto err_out;
-			}
-
-			check_metric_reset_strategy(&reset_metrics);
-			if (reset_metrics && !assume_yes &&
-			    !confirm_metric_reset()) {
-				close(pidfd);
-				fd_fgets_destroy(st);
-				return CLI_EXIT_NOOP;
-			}
-
-			// delete the old report
-			unlink(STAT_REPORT);
-
-			// send the signal for the report
-			if (send_state_report_signal(pid, reset_metrics,
-						     signal_reason,
-						     sizeof(signal_reason))) {
-				reason = signal_reason;
-				goto err_out;
-			}
-
-			// Access a file to provoke a response
-			int fd = open(CONFIG_FILE, O_RDONLY);
-			if (fd >= 0)
-				close(fd);
-
-retry:
-			// wait for it
-			sleep(1);
-
-			// display the report
-			rpt_fd = open(STAT_REPORT, O_RDONLY);
-			if (rpt_fd < 0) {
-				if (tries < 25) {
-					tries++;
-					goto retry;
-				} else {
-					reason = "timed out waiting for report";
-					goto err_out;
-				}
-			}
-			fd_fgets_clear_r(st);
-			do {
-				char buf[80];
-				if (fd_fgets_r(st, buf, sizeof(buf), rpt_fd))
-					write(1, buf, strlen(buf));
-			} while (!fd_fgets_eof_r(st));
-			close(rpt_fd);
-		}
-		close(pidfd);
-		fd_fgets_destroy(st);
-		return CLI_EXIT_SUCCESS;
+	if (get_daemon_pid(&pid, signal_reason, sizeof(signal_reason))) {
+		printf("Can't find fapolicyd: %s\n", signal_reason);
+		return CLI_EXIT_DAEMON_IPC;
 	}
-err_out:
-	fd_fgets_destroy(st);
-	if (pidfd >= 0)
-		close(pidfd);
-	printf("Can't find fapolicyd: %s\n", reason);
-	return CLI_EXIT_DAEMON_IPC;
+
+	check_metric_reset_strategy(&reset_metrics);
+	if (reset_metrics && !assume_yes && !confirm_metric_reset())
+		return CLI_EXIT_NOOP;
+	if (reset_metrics)
+		intent = REPORT_INTENT_RESET_METRICS;
+	else if (intent == REPORT_INTENT_RESET_METRICS)
+		intent = REPORT_INTENT_METRICS;
+	report_path = intent == REPORT_INTENT_STATUS ?
+		STAT_REPORT : METRICS_REPORT;
+
+	// delete the old report
+	unlink(report_path);
+
+	// send the signal for the report
+	if (send_state_report_signal(pid, intent, signal_reason,
+				     sizeof(signal_reason))) {
+		printf("Can't signal fapolicyd: %s\n", signal_reason);
+		return CLI_EXIT_DAEMON_IPC;
+	}
+
+	// Access a file to provoke a response
+	fd = open(CONFIG_FILE, O_RDONLY);
+	if (fd >= 0)
+		close(fd);
+
+	if (display_report_file(report_path, &reason)) {
+		printf("Can't read daemon report: %s\n", reason);
+		return CLI_EXIT_DAEMON_IPC;
+	}
+
+	return CLI_EXIT_SUCCESS;
 }
 
 #ifdef HAVE_LIBRPM
@@ -1412,7 +1366,7 @@ int main(int argc, char * const argv[])
 			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
-		return do_status_report(0);
+		return do_status_report(REPORT_INTENT_STATUS, 0);
 		break;
 	case 5: // --check-path
 		if (lint_rules)
@@ -1420,6 +1374,14 @@ int main(int argc, char * const argv[])
 		if (arg_count > 2)
 			goto args_err;
 		return check_path();
+		break;
+
+	case 14: // --check-metrics
+		if (lint_rules)
+			goto args_err;
+		if (arg_count > 2)
+			goto args_err;
+		return do_status_report(REPORT_INTENT_METRICS, 0);
 		break;
 
 	case 7: { // --check-ignore_mounts
@@ -1456,7 +1418,7 @@ int main(int argc, char * const argv[])
 			goto args_err;
 		if (arg_count > 2)
 			goto args_err;
-		return do_status_report(1);
+		return do_status_report(REPORT_INTENT_RESET_METRICS, 1);
 
 	case 12: // --timing-start
 		if (lint_rules)

@@ -52,6 +52,10 @@ int event_subject_slot_is_unblocked(unsigned int slot);
 __attribute__((hot)) subject_attr_t *get_subj_attr(event_t *e, subject_type_t t);
 __attribute__((hot)) object_attr_t *get_obj_attr(event_t *e, object_type_t t);
 void run_usage_report(const conf_t *config, FILE *f);
+void do_cache_config_report(FILE *f);
+void do_cache_utilization_report(FILE *f);
+void do_cache_health_report(FILE *f);
+void do_cache_metrics_report_reset(FILE *f, int reset);
 void do_cache_reports(FILE *f);
 void do_cache_reports_reset(FILE *f, int reset);
 

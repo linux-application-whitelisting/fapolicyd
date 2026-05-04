@@ -23,6 +23,7 @@
 struct decision_defer_metrics {
 	unsigned int capacity;
 	unsigned int current_depth;
+	unsigned long deferred_events;
 	unsigned int max_depth;
 	unsigned long fallbacks;
 	uint64_t oldest_age_ns;
@@ -34,6 +35,7 @@ struct decision_defer_queue {
 	struct decision_defer_entry *entries;
 	unsigned int capacity;
 	unsigned int current;
+	unsigned long deferred_events;
 	unsigned int max_depth;
 	unsigned long fallbacks;
 	uint64_t next_order;
@@ -51,6 +53,14 @@ int decision_defer_pop_any(struct decision_defer_queue *defer,
 void decision_defer_count_fallback(struct decision_defer_queue *defer);
 void decision_defer_metrics_snapshot_reset(struct decision_defer_queue *defer,
 		struct decision_defer_metrics *metrics, int reset);
+void decision_defer_config_report(FILE *f,
+		const struct decision_defer_metrics *metrics);
+void decision_defer_fallback_report(FILE *f,
+		const struct decision_defer_metrics *metrics);
+void decision_defer_age_report(FILE *f,
+		const struct decision_defer_metrics *metrics);
+void decision_defer_health_report(FILE *f,
+		const struct decision_defer_metrics *metrics);
 void decision_defer_metrics_report(FILE *f,
 		const struct decision_defer_metrics *metrics);
 

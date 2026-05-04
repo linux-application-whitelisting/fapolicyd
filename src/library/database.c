@@ -509,13 +509,32 @@ static void check_db_size(const conf_t *config)
 	}
 }
 
-void database_report(FILE *f)
+/*
+ * database_config_report - write trust database configured size.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void database_config_report(FILE *f)
 {
 	fprintf(f, "Trust database max pages: %lu\n", max_pages);
+}
+
+/*
+ * database_utilization_report - write current trust database utilization.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void database_utilization_report(FILE *f)
+{
 	fprintf(f, "Trust database pages in use: %lu (%lu%%)\n", pages,
 		max_pages ? ((100*pages)/max_pages) : 0);
 }
 
+void database_report(FILE *f)
+{
+	database_config_report(f);
+	database_utilization_report(f);
+}
 
 /*
  * A DBI has to be associated with any new txn instance. It can be

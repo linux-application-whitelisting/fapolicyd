@@ -7,10 +7,12 @@ _fapolicydcli()
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts="--check-config --check-path --check-rules --check-status --check-trustdb \
-		--check-watch_fs --check-ignore_mounts --delete-db --dump-db \
+	opts="--check-config --check-path --check-rules --check-status --check-metrics \
+		--check-trustdb --check-watch_fs --check-ignore_mounts \
+		--delete-db --dump-db \
 		--file --filter --ftype --help --list --update --reload-rules \
-		--reset-metrics --timing-start --timing-stop --test-filter \
+		--reset-metrics --timing-start --timing-stop --timer-start \
+		--timer-stop --test-filter \
 		--trust-file --lint --verbose --yes -h -d -D -f -t -l -u -r -y"
 
 	# Handle file management subcommands specially so we can complete file paths

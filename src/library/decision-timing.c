@@ -1708,6 +1708,142 @@ static bool write_trust_db_observation(
 }
 
 /*
+ * write_tldr_mime - write a compact MIME helper timing finding.
+ * @ctx: report context.
+ * Returns true when a finding was written.
+ */
+static bool write_tldr_mime(const struct decision_timing_report_ctx *ctx)
+{
+	struct decision_timing_stage_snapshot mime;
+	struct decision_timing_stage_snapshot fallback;
+	struct decision_timing_stage_snapshot fast;
+	struct decision_timing_stage_snapshot gather;
+	struct decision_timing_stage_snapshot largest_sample;
+	unsigned int largest;
+	char total[32];
+
+	helper_snapshot(ctx, &helper_rows[HELPER_ROW_MIME_TOTAL], &mime);
+	if (mime.count == 0)
+		return false;
+	if (!find_largest_helper(ctx, &largest, &largest_sample) ||
+	    largest != HELPER_ROW_MIME_TOTAL)
+		return false;
+
+	helper_snapshot(ctx, &helper_rows[HELPER_ROW_MIME_LIBMAGIC],
+			&fallback);
+	helper_snapshot(ctx, &helper_rows[HELPER_ROW_MIME_FAST], &fast);
+	helper_snapshot(ctx, &helper_rows[HELPER_ROW_MIME_GATHER], &gather);
+	format_human_duration(largest_sample.total_ns, total, sizeof(total));
+	if (fallback.count && fallback.total_ns >= fast.total_ns &&
+	    fallback.total_ns >= gather.total_ns)
+		fprintf(ctx->f,
+			"  - MIME detection dominates helper time (%s); "
+			"libmagic fallback is the biggest contributor.\n",
+			total);
+	else
+		fprintf(ctx->f,
+			"  - MIME detection is the largest helper cost (%s).\n",
+			total);
+
+	return true;
+}
+
+/*
+ * write_tldr_response - write a compact response formatting finding.
+ * @ctx: report context.
+ * Returns true when a finding was written.
+ */
+static bool write_tldr_response(
+		const struct decision_timing_report_ctx *ctx)
+{
+	char debug_total[32], response_total[32];
+
+	if (!stage_observed(ctx, DECISION_TIMING_STAGE_RESPONSE_TOTAL) ||
+	    !stage_observed(ctx, DECISION_TIMING_STAGE_SYSLOG_DEBUG_FORMAT))
+		return false;
+	if (stage_time_share(ctx, DECISION_TIMING_STAGE_SYSLOG_DEBUG_FORMAT,
+			DECISION_TIMING_STAGE_RESPONSE_TOTAL) <
+			RESPONSE_FORMATTING_DOMINANT)
+		return false;
+
+	format_human_duration(
+		ctx->totals[DECISION_TIMING_STAGE_SYSLOG_DEBUG_FORMAT].total_ns,
+		debug_total, sizeof(debug_total));
+	format_human_duration(
+		ctx->totals[DECISION_TIMING_STAGE_RESPONSE_TOTAL].total_ns,
+		response_total, sizeof(response_total));
+	fprintf(ctx->f,
+		"  - Manual/debug response formatting accounts for %s "
+		"of %s response time.\n",
+		debug_total, response_total);
+	return true;
+}
+
+/*
+ * write_tldr_queueing - write a compact queueing finding.
+ * @ctx: report context.
+ * Returns true when a finding was written.
+ */
+static bool write_tldr_queueing(
+		const struct decision_timing_report_ctx *ctx)
+{
+	const struct decision_timing_stage_snapshot *queue =
+		&ctx->totals[DECISION_TIMING_STAGE_QUEUE_WAIT];
+	const char *p95;
+	char max[32];
+	double fullness = 0.0;
+
+	if (queue->count == 0)
+		return false;
+
+	p95 = percentile_bucket(queue, 95);
+	format_human_duration(queue->max_ns, max, sizeof(max));
+	if (ctx->q_size)
+		fullness = ((double)ctx->max_queue_depth * 100.0) /
+			(double)ctx->q_size;
+
+	if (ctx->q_size && fullness < 25.0 &&
+	    percentile_bucket_index(queue, 95) <= 4)
+		fprintf(ctx->f,
+			"  - Queueing is healthy; max queue depth %u of %u, "
+			"p95 wait %s.\n",
+			ctx->max_queue_depth, ctx->q_size, p95);
+	else if (ctx->q_size)
+		fprintf(ctx->f,
+			"  - Queueing pressure reached max depth %u of %u "
+			"(%.1f%%), p95 wait %s, max wait %s.\n",
+			ctx->max_queue_depth, ctx->q_size, fullness, p95,
+			max);
+	else
+		fprintf(ctx->f,
+			"  - Queueing p95 wait %s, max wait %s, "
+			"max queue depth %u.\n",
+			p95, max, ctx->max_queue_depth);
+
+	return true;
+}
+
+/*
+ * write_tldr - write dominant timing findings near the report top.
+ * @ctx: report context.
+ * Returns nothing.
+ */
+static void write_tldr(const struct decision_timing_report_ctx *ctx)
+{
+	unsigned int findings = 0;
+
+	fprintf(ctx->f, "\nTL;DR:\n");
+	if (write_tldr_mime(ctx))
+		findings++;
+	if (write_tldr_response(ctx))
+		findings++;
+	if (write_tldr_queueing(ctx))
+		findings++;
+	if (findings == 0)
+		fprintf(ctx->f, "  - No dominant timing findings observed.\n");
+}
+
+/*
  * write_derived_observations - write deterministic report observations.
  * @ctx: report context.
  * Returns nothing.
@@ -2053,6 +2189,7 @@ static void write_notes(const struct decision_timing_report_ctx *ctx)
  */
 static void write_report_sections(const struct decision_timing_report_ctx *ctx)
 {
+	write_tldr(ctx);
 	write_overall_latency(ctx->f, &ctx->totals[DECISION_TIMING_STAGE_TOTAL]);
 	write_queueing(ctx);
 	write_phase_timing(ctx);

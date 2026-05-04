@@ -29,6 +29,7 @@ man_MANS = \
 	fapolicyd.rules.5 \
 	fapolicyd.trust.5 \
 	fapolicyd.state.5 \
+	fapolicyd.metrics.5 \
 	fapolicyd.timing.5 \
 	fapolicyd.conf.5 \
 	rpm-filter.conf.5 \

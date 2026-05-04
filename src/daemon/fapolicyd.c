@@ -49,6 +49,7 @@
 #include <malloc.h>
 #endif
 #include "notify.h"
+#include "attr-lookup-metrics.h"
 #include "policy.h"
 #include "event.h"
 #include "escape.h"
@@ -74,6 +75,7 @@ const char* mounts = MOUNTS_FILE;
 // Signal handler notifications
 atomic_bool stop = false, hup = false, run_stats = false;
 atomic_uint signal_report_requests;
+atomic_uint signal_report_intent;
 atomic_uint signal_report_reset_requests;
 atomic_int signal_report_reset_request_pid = -1;
 atomic_int signal_report_reset_request_uid = -1;
@@ -864,6 +866,11 @@ static void usage(void)
 
 #ifdef HAVE_MALLINFO2
 static struct mallinfo2 last_mi;
+/*
+ * memory_use_report - write current glibc allocator utilization.
+ * @f: report stream.
+ * Returns nothing.
+ */
 static void memory_use_report(FILE *f)
 {
 	struct mallinfo2 mi = mallinfo2();
@@ -897,6 +904,103 @@ void do_stat_report(FILE *f, int shutdown)
 }
 
 /*
+ * do_state_report - write health and configuration state.
+ * @f: report stream.
+ * @shutdown: non-zero when writing final shutdown report.
+ * Returns nothing.
+ */
+void do_state_report(FILE *f, int shutdown)
+{
+	const char *ptr = lookup_integrity(config.integrity);
+	reset_strategy_t strategy;
+	failure_action_metrics_t failures;
+	decision_metrics_t decisions;
+	const char *reset_ptr;
+
+	if (f == NULL)
+		return;
+
+	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
+	reset_ptr = lookup_reset_strategy(strategy);
+	failure_action_snapshot(&failures, 0);
+	getDecisionMetrics(&decisions);
+
+	fprintf(f, "Operating mode:\n");
+	fprintf(f, "Permissive: %s\n",
+		__atomic_load_n(&config.permissive,
+				__ATOMIC_RELAXED) ? "true" : "false");
+	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
+	fprintf(f, "reset_strategy: %s\n",
+		reset_ptr ? reset_ptr : "unknown");
+	fprintf(f, "Ruleset generation: %u\n", decisions.ruleset_generation);
+	decision_timing_control_report(f, &config);
+	decision_timing_history_report(f);
+
+	fprintf(f, "\nResource configuration:\n");
+	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
+	fprintf(f, "q_size: %u\n", config.q_size);
+	fanotify_defer_config_report(f);
+	do_cache_config_report(f);
+	database_config_report(f);
+
+	fprintf(f, "\nResource utilization:\n");
+	database_utilization_report(f);
+	do_cache_utilization_report(f);
+#ifdef HAVE_MALLINFO2
+	memory_use_report(f);
+#endif
+
+	fprintf(f, "\nHeadline activity:\n");
+	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
+	fprintf(f, "Denied accesses: %lu\n", getDenied());
+
+	fprintf(f, "\nHealth indicators:\n");
+	fprintf(f, "Kernel queue overflow: %lu\n",
+		failure_action_metrics_count(&failures,
+			FAILURE_REASON_KERNEL_QUEUE_OVERFLOW));
+	fprintf(f, "Reply errors: %lu\n",
+		failure_action_metrics_count(&failures,
+			FAILURE_REASON_RESPONSE_WRITE_FAILURE));
+	fanotify_defer_fallback_report(f);
+	do_cache_health_report(f);
+	fanotify_defer_age_report(f);
+	decision_failure_action_report(f, &failures);
+
+	fprintf(f, "\nWatched mounts:\n");
+	// Report mounts under fanotify watch.
+	pthread_mutex_lock(&mlist_lock);
+	if (m) {
+		const char *path = mlist_first(m);
+		while (path) {
+			fprintf(f, "watching mount: %s\n", path);
+			path = mlist_next(m);
+		}
+	}
+	pthread_mutex_unlock(&mlist_lock);
+
+	if (shutdown)
+		fputs("\n", f);
+}
+
+/*
+ * do_metrics_report_reset - write resettable runtime metrics.
+ * @f: report stream.
+ * @reset: non-zero resets counters after snapshotting them.
+ * Returns nothing.
+ */
+void do_metrics_report_reset(FILE *f, int reset)
+{
+	if (f == NULL)
+		return;
+
+	decision_report_metrics_reset(f, reset);
+	do_cache_metrics_report_reset(f, reset);
+	fputs("\n", f);
+	attr_lookup_metrics_report(f, reset);
+	fanotify_metrics_report_reset(f, reset);
+}
+
+/*
  * do_stat_report_reset - write state report and optionally reset metrics.
  * @f: output stream.
  * @shutdown: non-zero when writing final shutdown report.
@@ -908,46 +1012,10 @@ void do_stat_report(FILE *f, int shutdown)
  */
 void do_stat_report_reset(FILE *f, int shutdown, int reset)
 {
-	const char *ptr = lookup_integrity(config.integrity);
-	reset_strategy_t strategy;
-	failure_action_metrics_t failures;
-	const char *reset_ptr;
-
-	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
-	reset_ptr = lookup_reset_strategy(strategy);
-	failure_action_snapshot(&failures, reset);
-
-	fprintf(f, "Permissive: %s\n",
-		__atomic_load_n(&config.permissive,
-				__ATOMIC_RELAXED) ? "true" : "false");
-	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
-	fprintf(f, "reset_strategy: %s\n",
-		reset_ptr ? reset_ptr : "unknown");
-	decision_timing_control_report(f, &config);
-	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
-	fprintf(f, "q_size: %u\n", config.q_size);
-	fanotify_queue_report_reset(f, reset);
-	decision_report_reset_with_failures(f, reset, &failures);
-	database_report(f);
-#ifdef HAVE_MALLINFO2
-	memory_use_report(f);
-#endif
+	do_state_report(f, shutdown);
 	if (!shutdown)
-		do_cache_reports_reset(f, reset);
-	decision_failure_action_report(f, &failures);
-	decision_timing_history_report(f);
-
-	// Report mounts under fanotify watch
-	pthread_mutex_lock(&mlist_lock);
-	if (m) {
-		const char *path = mlist_first(m);
-		while (path) {
-			fprintf(f, "watching mount: %s\n", path);
-			path = mlist_next(m);
-		}
-	}
-	pthread_mutex_unlock(&mlist_lock);
-
+		fputs("\n", f);
+	do_metrics_report_reset(f, reset);
 	if (shutdown)
 		fputs("\n", f);
 }

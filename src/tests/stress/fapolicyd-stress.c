@@ -1958,8 +1958,8 @@ static void copy_token_until(char *dst, const char *src, char delim)
 }
 
 /*
- * parse_daemon_metrics - extract status metrics used by this harness.
- * @data: fapolicyd state report text.
+ * parse_daemon_metrics - extract daemon report metrics used by this harness.
+ * @data: fapolicyd state and metrics report text.
  * @metrics: metric snapshot to fill.
  * Returns nothing.
  */
@@ -1995,9 +1995,9 @@ static void parse_daemon_metrics(const char *data,
 		       &metrics->object_evictions);
 	parse_u64_line(data, "Allowed accesses:", &metrics->allowed);
 	parse_u64_line(data, "Denied accesses:", &metrics->denied);
-	parse_u64_line(data, "Kernel Queue Overflow:",
+	parse_u64_line(data, "Kernel queue overflow:",
 		       &metrics->kernel_overflow);
-	parse_u64_line(data, "Reply Errors:", &metrics->reply_errors);
+	parse_u64_line(data, "Reply errors:", &metrics->reply_errors);
 
 	if (parse_word_line(data, "Timing collection mode:",
 			    metrics->timing_mode,
@@ -2049,7 +2049,7 @@ static void parse_timing_metrics(const char *data,
 }
 
 /*
- * collect_status - ask fapolicyd-cli for a state report and parse it.
+ * collect_status - ask fapolicyd-cli for state and metrics and parse them.
  * @cli_path: fapolicyd-cli executable.
  * @metrics: destination metrics.
  * @verbose: non-zero prints failures.
@@ -2059,13 +2059,25 @@ static int collect_status(const char *cli_path, struct daemon_metrics *metrics,
 		int verbose)
 {
 	struct capture capture;
-	char *const argv[] = {(char *)cli_path, "--check-status", NULL};
+	char *const state_argv[] = {(char *)cli_path, "--check-status", NULL};
+	char *const metrics_argv[] = {(char *)cli_path, "--check-metrics", NULL};
 	int rc;
 
-	rc = run_capture(cli_path, argv, &capture);
+	rc = run_capture(cli_path, state_argv, &capture);
 	if (rc) {
 		if (verbose)
 			fprintf(stderr, "status capture failed: %s\n",
+				capture.data ? capture.data : "no output");
+		capture_free(&capture);
+		return 1;
+	}
+	parse_daemon_metrics(capture.data, metrics);
+	capture_free(&capture);
+
+	rc = run_capture(cli_path, metrics_argv, &capture);
+	if (rc) {
+		if (verbose)
+			fprintf(stderr, "metrics capture failed: %s\n",
 				capture.data ? capture.data : "no output");
 		capture_free(&capture);
 		return 1;

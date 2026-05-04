@@ -133,6 +133,7 @@ static int test_full_array_fallback_metrics(void)
 	struct decision_defer_queue defer;
 	struct decision_defer_metrics metrics;
 	decision_event_t event;
+	char expected[64];
 	unsigned int i;
 
 	CHECK(decision_defer_init(&defer, 1) == 0, 20,
@@ -159,25 +160,35 @@ static int test_full_array_fallback_metrics(void)
 	      "[ERROR:25] metrics capacity mismatch");
 	CHECK(metrics.current_depth == defer.capacity, 26,
 	      "[ERROR:26] metrics current depth mismatch");
-	CHECK(metrics.max_depth == defer.capacity, 27,
-	      "[ERROR:27] metrics max depth mismatch");
-	CHECK(metrics.fallbacks == 1, 28,
-	      "[ERROR:28] metrics fallback count mismatch");
-	CHECK(report_contains(&metrics, "Subject defer fallbacks: 1"), 29,
-	      "[ERROR:29] metrics report missing fallback count");
+	CHECK(metrics.deferred_events == defer.capacity, 27,
+	      "[ERROR:27] metrics deferred events mismatch");
+	CHECK(metrics.max_depth == defer.capacity, 28,
+	      "[ERROR:28] metrics max depth mismatch");
+	CHECK(metrics.fallbacks == 1, 29,
+	      "[ERROR:29] metrics fallback count mismatch");
+	snprintf(expected, sizeof(expected), "Subject deferred events: %u",
+		 defer.capacity);
+	CHECK(report_contains(&metrics, expected), 30,
+	      "[ERROR:30] metrics report missing deferred event count");
+	CHECK(report_contains(&metrics, "Subject defer fallbacks: 1"), 31,
+	      "[ERROR:31] metrics report missing fallback count");
 
 	decision_defer_metrics_snapshot_reset(&defer, &metrics, 1);
-	CHECK(metrics.fallbacks == 1, 30,
-	      "[ERROR:30] reset snapshot lost fallback count");
-	CHECK(defer.fallbacks == 0, 31,
-	      "[ERROR:31] reset did not clear fallback counter");
-	CHECK(defer.max_depth == defer.current, 32,
-	      "[ERROR:32] reset did not leave max depth at live depth");
+	CHECK(metrics.deferred_events == defer.capacity, 32,
+	      "[ERROR:32] reset snapshot lost deferred event count");
+	CHECK(metrics.fallbacks == 1, 33,
+	      "[ERROR:33] reset snapshot lost fallback count");
+	CHECK(defer.deferred_events == 0, 34,
+	      "[ERROR:34] reset did not clear deferred event counter");
+	CHECK(defer.fallbacks == 0, 35,
+	      "[ERROR:35] reset did not clear fallback counter");
+	CHECK(defer.max_depth == defer.current, 36,
+	      "[ERROR:36] reset did not leave max depth at live depth");
 
 	while (decision_defer_pop_any(&defer, &event))
 		;
-	CHECK(defer.current == 0, 33,
-	      "[ERROR:33] defer array did not drain");
+	CHECK(defer.current == 0, 37,
+	      "[ERROR:37] defer array did not drain");
 
 	decision_defer_destroy(&defer);
 	return 0;
