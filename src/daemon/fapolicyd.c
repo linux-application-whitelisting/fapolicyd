@@ -1267,7 +1267,15 @@ int main(int argc, const char *argv[])
 	install_syscall_filter();
 
 	// Setup lru caches
-	init_event_system(&config);
+	if (init_event_system(&config)) {
+		msg(LOG_ERR, "Cannot initialize event caches");
+		destroy_rules();
+		destroy_fs_list(&filesystems);
+		destroy_fs_list(&ignored_mounts);
+		free_daemon_config(&config);
+		unlink(pidfile);
+		exit(1);
+	}
 
 	// Init the database
 	if (init_database(&config)) {

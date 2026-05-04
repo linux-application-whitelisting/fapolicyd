@@ -1,5 +1,6 @@
 #include <error.h>
 #include <stdlib.h>
+#include <string.h>
 #include "lru.h"
 
 static unsigned int cleaned;
@@ -154,11 +155,27 @@ static void test_collision_metrics(void)
 	destroy_lru(queue);
 }
 
+/*
+ * test_null_queue_metrics - verify missing caches produce printable metrics.
+ */
+static void test_null_queue_metrics(void)
+{
+	struct lru_metrics metrics;
+
+	lru_metrics_snapshot(NULL, &metrics, 1);
+	if (metrics.name == NULL || strcmp(metrics.name, "Unknown"))
+		error(1, 0, "null queue snapshot did not set a cache name");
+	if (metrics.count || metrics.total || metrics.hits || metrics.misses ||
+			metrics.collisions || metrics.evictions)
+		error(1, 0, "null queue snapshot did not clear counters");
+}
+
 int main(void)
 {
 	test_reuse_after_evict();
 	test_pool_exhaustion();
 	test_metrics_reset();
 	test_collision_metrics();
+	test_null_queue_metrics();
 	return 0;
 }

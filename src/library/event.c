@@ -361,6 +361,8 @@ void destroy_event_system(void)
 		  "object cache eviction ratios high: increase obj_cache_size");
 	destroy_lru(subj_cache);
 	destroy_lru(obj_cache);
+	subj_cache = NULL;
+	obj_cache = NULL;
 }
 
 static inline void reset_subject_attributes(s_array *s)

@@ -485,14 +485,22 @@ void destroy_lru(Queue *queue)
  * @reset: non-zero resets interval counters after copying them.
  *
  * Cache occupancy and capacity are state values and are never reset.
+ * A missing queue produces an empty "Unknown" snapshot so callers can report
+ * partial startup or teardown state without reading uninitialized data.
  */
 void lru_metrics_snapshot(Queue *queue, struct lru_metrics *metrics,
 		int reset)
 {
-	if (queue == NULL || metrics == NULL)
+	if (metrics == NULL)
 		return;
 
-	metrics->name = queue->name;
+	memset(metrics, 0, sizeof(*metrics));
+	metrics->name = "Unknown";
+
+	if (queue == NULL)
+		return;
+
+	metrics->name = queue->name ? queue->name : "Unknown";
 	metrics->count = queue->count;
 	metrics->total = queue->total;
 	metrics->hits = queue->hits;
