@@ -91,7 +91,12 @@ int main(int argc, char * const argv[])
 
 	msg(LOG_INFO, "Loaded files %ld", rpm_backend.entries);
 
-	fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE);
+	/* Seal the snapshot so readers see a stable view. */
+	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |
+		  F_SEAL_GROW | F_SEAL_WRITE) == -1)
+		// Not a fatal error
+		msg(LOG_WARNING, "Failed to seal rpm backend memfd (%s)",
+		    strerror(errno));
 	lseek(memfd, 0, SEEK_SET);            /* rewind – not strictly needed */
 
 	// send the FD
@@ -124,4 +129,3 @@ int main(int argc, char * const argv[])
 	free_daemon_config(&config);
 	return 0;
 }
-
