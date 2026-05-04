@@ -2149,6 +2149,7 @@ static int reload_rules_from_file(conf_t *config)
 static void *update_thread_main(void *arg)
 {
 	int rc;
+	int flags;
 	sigset_t sigs;
 	char buff[BUFFER_SIZE];
 	char err_buff[BUFFER_SIZE];
@@ -2174,7 +2175,21 @@ static void *update_thread_main(void *arg)
 			return NULL;
 	}
 
-	fcntl(ffd[0].fd, F_SETFL, O_NONBLOCK);
+	/*
+	 * fd_fgets_r() must not block if poll readiness is consumed or only
+	 * a partial line is available.
+	 */
+	flags = fcntl(ffd[0].fd, F_GETFL);
+	if (flags == -1) {
+		msg(LOG_ERR, "Failed to read pipe flags (%s)",
+		    strerror_r(errno, err_buff, BUFFER_SIZE));
+		goto finalize;
+	}
+	if (fcntl(ffd[0].fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+		msg(LOG_ERR, "Failed to set non-blocking pipe mode (%s)",
+		    strerror_r(errno, err_buff, BUFFER_SIZE));
+		goto finalize;
+	}
 	ffd[0].events = POLLIN;
 
 	while (!stop) {
