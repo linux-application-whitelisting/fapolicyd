@@ -236,6 +236,19 @@ should make managing the configuration easier.
 The files in the rules.d directory are processed in a specific order. See the
 [rules.d README](rules.d/README-rules) file for more information.
 
+Rules can be validated before they are installed or reloaded by running:
+
+```
+fapolicyd-cli --check-rules [path]
+```
+
+If no path is given, the active rules file is checked. The `--lint` option
+adds policy-shape warnings for rules that may unintentionally allow executable
+or programmatic content to reach the default allow decision. Runtime rule
+reloads are transactional: a candidate ruleset is parsed and validated before
+it replaces the active policy, so a failed reload preserves the previous
+published ruleset.
+
 
 REPORT
 ------
@@ -301,10 +314,25 @@ had a common denominator. Some primes you might consider for cache size are:
 2039, 4099, 6143, 8191, 10243, 12281, 16381, 20483, 24571, 28669, 32687,
 40961, 49157, 57347, 65353, etc.
 
-This report can be scheduled to be written periodically by setting the
-configuration option `report_interval`. This option is set to `0` by default
+For day to day monitoring, `fapolicyd-cli --check-status` reports daemon
+health and configuration state, while `fapolicyd-cli --check-metrics` reports
+runtime counters. The status report includes health indicators such as kernel
+queue overflows, filesystem health events, reply errors, and deferred-subject
+pressure. The metrics report includes rule hit counts, default-allow
+fallthrough decisions, cache effectiveness, and subject/object attribute
+lookup activity.
+
+State and metrics reports can be scheduled periodically by setting the
+configuration option `report_interval`. This option is set to `0` by default,
 which disables the reporting interval. A positive value for this option
-specifies the number of seconds to wait between reports.
+specifies the number of seconds to wait between reports. Runtime metric
+counters can be reset with `fapolicyd-cli --reset-metrics` when the daemon is
+configured with `reset_strategy=manual`.
+
+For bounded latency investigations, set `timing_collection=manual` and use
+`fapolicyd-cli --timing-start` followed by `fapolicyd-cli --timing-stop`.
+This produces a decision timing report with aggregate queue, decision, and
+helper latency information without storing one timing record per decision.
 
 Also, it should be mentioned that the more rules in the policy, the more
 rules it will have to iterate over to make a decision. As for the system
@@ -489,16 +517,17 @@ to list out any events since boot by the fapolicyd service.
 
 Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 
-|         Option         |              What it does                  |
-|------------------------|--------------------------------------------|
-| --check-config         | Opens fapolicyd.conf and parses it to see if there are any syntax errors in the file.                     |
-| --check-path           | Check that every file in $PATH is in the trustdb. (New in 1.1.5)                                          |
-| --check-status         | Output daemon health and configuration state. (New in 1.1.4)                                              |
-| --check-metrics        | Output runtime counters, rule hits, cache effectiveness, and attribute lookup metrics.                    |
-| --check-trustdb        | Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.  |
-| --check-watch_fs       | Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.                                           |
-| --check-ignore_mounts  | Check the configured mounts that are ignored to see that they are mounted noexec and there are no suspicious files in the partition. (New in 1.4)                                       |
-| --test-filter          | Test a path to a file against the filter rules to determine if a file will be trusted. (New in 1.3.7)     |
+| Option                 | Added in | What it does |
+|------------------------|----------|--------------|
+| --check-config         | 1.1      | Parse fapolicyd.conf for syntax errors. |
+| --check-trustdb        | 1.1      | Check the trustdb against files on disk for mismatches that can cause run time problems. |
+| --check-watch_fs       | 1.1      | Compare mounted file systems with the watch_fs daemon configuration. |
+| --check-status         | 1.1.4    | Output daemon health and configuration state. |
+| --check-path           | 1.1.5    | Check that every file in $PATH is in the trustdb. |
+| --test-filter          | 1.3.6    | Test a path against filter rules to see whether it will be trusted. |
+| --check-ignore_mounts  | 1.4      | Check ignored mounts for noexec and suspicious files. |
+| --check-metrics        | 1.5      | Output runtime counters, rule hits, cache effectiveness, and attribute lookup metrics. |
+| --check-rules [path]   | 1.5      | Validate rule syntax without loading the rules; use --lint for policy-shape warnings. |
 
 
 
