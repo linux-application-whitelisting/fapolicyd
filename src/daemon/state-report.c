@@ -289,6 +289,9 @@ void decision_report_reset_with_failures(FILE *f, int reset,
 	fprintf(f, "Kernel Queue Overflow: %lu\n",
 		failure_action_metrics_count(failures,
 			FAILURE_REASON_KERNEL_QUEUE_OVERFLOW));
+	fprintf(f, "Filesystem Errors: %lu\n",
+		failure_action_metrics_count(failures,
+			FAILURE_REASON_FANOTIFY_FS_ERROR));
 	fprintf(f, "Reply Errors: %lu\n",
 		failure_action_metrics_count(failures,
 			FAILURE_REASON_RESPONSE_WRITE_FAILURE));

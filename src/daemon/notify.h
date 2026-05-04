@@ -42,8 +42,12 @@ void fanotify_defer_age_report(FILE *f);
 void fanotify_defer_health_report(FILE *f);
 void fanotify_metrics_report_reset(FILE *f, int reset);
 void handle_events(void);
+void handle_fs_error_events(void);
 int handle_kernel_event(const struct fanotify_event_metadata *metadata);
+int fanotify_fs_error_fd(void);
 unsigned long getKernelQueueOverflow(void);
+unsigned long getFanotifyFilesystemErrors(void);
+void fanotify_fs_error_report(FILE *f);
 void nudge_queue(void);
 
 #endif

@@ -958,6 +958,10 @@ void do_state_report(FILE *f, int shutdown)
 	fprintf(f, "Kernel queue overflow: %lu\n",
 		failure_action_metrics_count(&failures,
 			FAILURE_REASON_KERNEL_QUEUE_OVERFLOW));
+	fprintf(f, "Filesystem errors: %lu\n",
+		failure_action_metrics_count(&failures,
+			FAILURE_REASON_FANOTIFY_FS_ERROR));
+	fanotify_fs_error_report(f);
 	fprintf(f, "Reply errors: %lu\n",
 		failure_action_metrics_count(&failures,
 			FAILURE_REASON_RESPONSE_WRITE_FAILURE));
@@ -1082,9 +1086,10 @@ err_out: // At this point, we have a pid file, let's just assume it's alive
 
 int main(int argc, const char *argv[])
 {
-	struct pollfd pfd[2];
+	struct pollfd pfd[3];
 	struct sigaction sa;
 	struct rlimit limit;
+	nfds_t pfd_count = 2;
 
 	setlocale(LC_TIME, "");
 
@@ -1307,6 +1312,11 @@ int main(int argc, const char *argv[])
 	handle_mounts(pfd[0].fd);
 	pfd[1].fd = init_fanotify(&config, m);
 	pfd[1].events = POLLIN;
+	pfd[2].fd = fanotify_fs_error_fd();
+	if (pfd[2].fd >= 0) {
+		pfd[2].events = POLLIN;
+		pfd_count = 3;
+	}
 
 	msg(LOG_INFO, "Starting to listen for events");
 	while (!stop) {
@@ -1316,7 +1326,7 @@ int main(int argc, const char *argv[])
 			msg(LOG_DEBUG, "Got SIGHUP");
 			maybe_start_reconfigure_thread();
 		}
-		rc = poll(pfd, 2, -1);
+		rc = poll(pfd, pfd_count, -1);
 
 #ifdef DEBUG
 		msg(LOG_DEBUG, "Main poll interrupted");
@@ -1335,6 +1345,9 @@ int main(int argc, const char *argv[])
 		} else if (rc > 0) {
 			if (pfd[1].revents & POLLIN) {
 				handle_events();
+			}
+			if (pfd_count > 2 && pfd[2].revents & POLLIN) {
+				handle_fs_error_events();
 			}
 			if (pfd[0].revents & POLLPRI) {
 				msg(LOG_DEBUG, "Mount change detected");

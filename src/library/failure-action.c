@@ -44,6 +44,9 @@ static const struct failure_definition failure_definitions[] = {
 	[FAILURE_REASON_RESPONSE_WRITE_FAILURE] = {
 		"response_write_failure", FAILURE_ACTION_OBSERVE
 	},
+	[FAILURE_REASON_FANOTIFY_FS_ERROR] = {
+		"fanotify_filesystem_error", FAILURE_ACTION_OBSERVE
+	},
 };
 
 static atomic_ulong failure_counts[FAILURE_REASON_MAX];

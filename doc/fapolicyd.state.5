@@ -120,6 +120,37 @@ The number of
 events reported by the kernel. A non-zero value means kernel fanotify events
 were lost before the daemon could process them.
 .TP
+.B Filesystem errors
+The number of
+.B FAN_FS_ERROR
+events reported by the kernel. These are filesystem health events, not policy
+decisions.
+.TP
+.B Filesystem error last status
+Parser status for the most recent
+.B FAN_FS_ERROR
+event:
+.B none ,
+.B ok ,
+.B missing_error_record ,
+or
+.B malformed .
+.TP
+.B Filesystem error last seen
+The wall-clock time of the most recent
+.B FAN_FS_ERROR
+event, or
+.B never
+when no filesystem error has been reported.
+.TP
+.B Filesystem error last errno
+The errno-style error code from the most recent parseable filesystem error
+event.
+.TP
+.B Filesystem error last suppressed count
+The kernel-reported count of additional filesystem errors suppressed behind
+the most recent error notification.
+.TP
 .B Reply errors
 The number of failed or short writes when sending fanotify permission responses
 back to the kernel.
@@ -165,6 +196,11 @@ Number of trust database reload failures.
 .TP
 .B Failure action response_write_failure (observe)
 Number of failed or incomplete fanotify response writes to the kernel.
+.TP
+.B Failure action fanotify_filesystem_error (observe)
+Number of
+.B FAN_FS_ERROR
+filesystem health events reported by the kernel.
 .SS Watched mounts
 .TP
 .B watching mount

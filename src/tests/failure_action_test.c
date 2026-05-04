@@ -77,6 +77,10 @@ int main(void)
 	CHECK(strstr(report,
 		     "Failure action trust_reload_failure (observe): ") != NULL,
 	      9, "[ERROR:9] report missing trust reload counter");
+	CHECK(strstr(report,
+		     "Failure action fanotify_filesystem_error (observe): ")
+	      != NULL, 12,
+	      "[ERROR:12] report missing FAN_FS_ERROR counter");
 
 	failure_action_snapshot(&metrics, 1);
 	CHECK(failure_action_metrics_count(&metrics,
