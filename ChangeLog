@@ -17,6 +17,7 @@
 - Evict traced and stale subjects if there collision while building the event
 - Add per-rule hit counters state report to improve observability.
 - Add per-attribute cache hit and lookup counters to improve observability.
+- Split CLI state and metrics reports
 
 1.4.5
 - Inform the admin symlinks were skipped when adding paths
