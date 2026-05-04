@@ -55,14 +55,17 @@ void stack_push(stack_t *_stack, const void *_data)
 // pop the the top without returning what was on the top
 void stack_pop(stack_t *_stack)
 {
-	if (_stack == NULL)
+	if (_stack == NULL || _stack->first == NULL)
 		return;
 
 	list_item_t *first = _stack->first;
 	_stack->first = first->next;
+	if (_stack->first == NULL)
+		_stack->last = NULL;
 	first->data = NULL;
 	list_destroy_item(&first);
-	_stack->count--;
+	if (_stack->count > 0)
+		_stack->count--;
 
 	return;
 }
