@@ -116,6 +116,36 @@ static void read_decision_metrics_report(char *buf, size_t size)
 }
 
 /*
+ * read_operating_mode_report - capture the state operating mode section.
+ * @buf: destination buffer.
+ * @size: size of @buf.
+ * Returns nothing. Exits if the temporary stream cannot be used.
+ */
+static void read_operating_mode_report(char *buf, size_t size)
+{
+	struct state_report_operating_mode mode = {
+		.permissive = false,
+		.integrity = "sha256",
+		.reset_strategy = "manual",
+		.ruleset_generation = 7,
+		.config = &config,
+	};
+	FILE *f = tmpfile();
+	size_t used;
+
+	if (f == NULL)
+		error(1, 0, "tmpfile failed");
+
+	config.timing_collection = TIMING_COLLECTION_MANUAL;
+	state_report_operating_mode(f, &mode);
+	fflush(f);
+	rewind(f);
+	used = fread(buf, 1, size - 1, f);
+	buf[used] = 0;
+	fclose(f);
+}
+
+/*
  * read_fs_error_report - capture recent FAN_FS_ERROR detail output.
  * @buf: destination buffer.
  * @size: size of @buf.
@@ -135,6 +165,31 @@ static void read_fs_error_report(char *buf, size_t size)
 	used = fread(buf, 1, size - 1, f);
 	buf[used] = 0;
 	fclose(f);
+}
+
+/*
+ * test_operating_mode_report_order - verify state field order.
+ *
+ * The operating mode group keeps the timing control fields together. Ruleset
+ * generation is last so readers see the active policy after all control
+ * state in the same group.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_operating_mode_report_order(void)
+{
+	const char *ruleset, *last_stop;
+	char report[1024];
+
+	read_operating_mode_report(report, sizeof(report));
+	last_stop = strstr(report, "Timing collection last stop time: never\n");
+	ruleset = strstr(report, "Ruleset generation: 7\n");
+	CHECK(last_stop != NULL, 58,
+	      "[ERROR:58] operating mode report missing timing stop field");
+	CHECK(ruleset != NULL, 59,
+	      "[ERROR:59] operating mode report missing ruleset field");
+	CHECK(last_stop < ruleset, 60,
+	      "[ERROR:60] ruleset generation was not last in group");
 }
 
 /*
@@ -198,6 +253,8 @@ int main(void)
 	unsigned long fs_error_after = 0;
 	char report[4096], expected[128];
 	int event_pipe[2];
+
+	test_operating_mode_report_order();
 
 	before = getKernelQueueOverflow();
 	metadata.mask = 0;

@@ -14,6 +14,7 @@
 
 #include "conf.h"
 #include "failure-action.h"
+#include <stdbool.h>
 #include <signal.h>
 #include <stdio.h>
 
@@ -22,10 +23,20 @@ enum state_report_reason {
 	STATE_REPORT_INTERVAL,
 };
 
+struct state_report_operating_mode {
+	bool permissive;
+	const char *integrity;
+	const char *reset_strategy;
+	unsigned int ruleset_generation;
+	const conf_t *config;
+};
+
 void usr1_handler(int sig, siginfo_t *info, void *context);
 void state_report_log_reset_strategy(reset_strategy_t strategy);
 enum state_report_reason state_report_reason_for_triggers(int expired);
 void state_report_write(enum state_report_reason reason);
+void state_report_operating_mode(FILE *f,
+		const struct state_report_operating_mode *mode);
 void do_state_report(FILE *f, int shutdown);
 void do_stat_report(FILE *f, int shutdown);
 void do_metrics_report_reset(FILE *f, int reset);

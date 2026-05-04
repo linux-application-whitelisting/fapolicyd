@@ -36,10 +36,6 @@ resets timer-generated metrics reports, and
 allows privileged signal-generated reset requests such as
 .BR fapolicyd-cli\ --reset-metrics .
 .TP
-.B Ruleset generation
-The current in-memory ruleset generation. This value increments each time a
-fully validated ruleset is published by the daemon.
-.TP
 .B Timing collection mode
 The configured timing collection control mode.
 .TP
@@ -55,6 +51,10 @@ when timing has not been started.
 The wall-clock time of the last successful timing stop request, or
 .B never
 when timing has not been stopped.
+.TP
+.B Ruleset generation
+The current in-memory ruleset generation. This value increments each time a
+fully validated ruleset is published by the daemon.
 .SS Resource configuration
 .TP
 .B CPU cores

@@ -39,6 +39,30 @@ extern conf_t config;
 static time_t last_metrics_reset;
 
 /*
+ * state_report_operating_mode - write health and control state.
+ * @f: report stream.
+ * @mode: operating mode snapshot and active timing configuration.
+ * Returns nothing.
+ */
+void state_report_operating_mode(FILE *f,
+		const struct state_report_operating_mode *mode)
+{
+	if (f == NULL || mode == NULL)
+		return;
+
+	fprintf(f, "Operating mode:\n");
+	fprintf(f, "Permissive: %s\n",
+		mode->permissive ? "true" : "false");
+	fprintf(f, "Integrity: %s\n",
+		mode->integrity ? mode->integrity : "unknown");
+	fprintf(f, "reset_strategy: %s\n",
+		mode->reset_strategy ? mode->reset_strategy : "unknown");
+	decision_timing_control_report(f, mode->config);
+	decision_timing_history_report(f);
+	fprintf(f, "Ruleset generation: %u\n", mode->ruleset_generation);
+}
+
+/*
  * usr1_handler - request work from SIGUSR1.
  * @sig: signal number.
  * @info: sender identity supplied by sigaction.

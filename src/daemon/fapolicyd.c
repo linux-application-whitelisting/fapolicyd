@@ -916,6 +916,7 @@ void do_state_report(FILE *f, int shutdown)
 	failure_action_metrics_t failures;
 	decision_metrics_t decisions;
 	const char *reset_ptr;
+	struct state_report_operating_mode mode;
 
 	if (f == NULL)
 		return;
@@ -925,16 +926,13 @@ void do_state_report(FILE *f, int shutdown)
 	failure_action_snapshot(&failures, 0);
 	getDecisionMetrics(&decisions);
 
-	fprintf(f, "Operating mode:\n");
-	fprintf(f, "Permissive: %s\n",
-		__atomic_load_n(&config.permissive,
-				__ATOMIC_RELAXED) ? "true" : "false");
-	fprintf(f, "Integrity: %s\n", ptr ? ptr : "unknown");
-	fprintf(f, "reset_strategy: %s\n",
-		reset_ptr ? reset_ptr : "unknown");
-	fprintf(f, "Ruleset generation: %u\n", decisions.ruleset_generation);
-	decision_timing_control_report(f, &config);
-	decision_timing_history_report(f);
+	mode.permissive = __atomic_load_n(&config.permissive,
+					  __ATOMIC_RELAXED);
+	mode.integrity = ptr;
+	mode.reset_strategy = reset_ptr;
+	mode.ruleset_generation = decisions.ruleset_generation;
+	mode.config = &config;
+	state_report_operating_mode(f, &mode);
 
 	fprintf(f, "\nResource configuration:\n");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
