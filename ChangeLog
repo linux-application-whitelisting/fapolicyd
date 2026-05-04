@@ -1,4 +1,4 @@
-1.4.6
+1.5
 - Increase the line length of config files (Renaud Métrich)
 - Add fapolicyd-cli --check-rules to validate rules
 - Fix fapolicyd-cli --check-rules --lint without an explicit path
