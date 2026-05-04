@@ -71,6 +71,7 @@ lru_test_SOURCES = lru_test.c test-stubs.c
 lru_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 notify_test_SOURCES = notify_test.c test-stubs.c \
 	${top_srcdir}/src/daemon/decision-defer.c \
+	${top_srcdir}/src/daemon/fanotify-fs-error.c \
 	${top_srcdir}/src/daemon/notify.c \
 	${top_srcdir}/src/daemon/mounts.c \
 	${top_srcdir}/src/daemon/state-report.c

@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include "failure-action.h"
+#include "fanotify-fs-error.h"
 #include "notify.h"
 #include "policy.h"
 #include "decision-defer.h"
@@ -320,7 +321,8 @@ int main(void)
 
 		before = getFanotifyFilesystemErrors();
 		atomic_store(&run_stats, false);
-		CHECK(handle_kernel_event(&fs_error_event.metadata) == 1, 46,
+		CHECK(fanotify_fs_error_handle_event(
+		      &fs_error_event.metadata) == 1, 46,
 		      "[ERROR:46] FAN_FS_ERROR event was not consumed");
 		after = getFanotifyFilesystemErrors();
 		fs_error_after = after;

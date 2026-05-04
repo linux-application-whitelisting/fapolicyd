@@ -48,6 +48,7 @@
 #ifdef HAVE_MALLINFO2
 #include <malloc.h>
 #endif
+#include "fanotify-fs-error.h"
 #include "notify.h"
 #include "attr-lookup-metrics.h"
 #include "policy.h"
@@ -1345,7 +1346,7 @@ int main(int argc, const char *argv[])
 				handle_events();
 			}
 			if (pfd_count > 2 && pfd[2].revents & POLLIN) {
-				handle_fs_error_events();
+				fanotify_fs_error_handle_events();
 			}
 			if (pfd[0].revents & POLLPRI) {
 				msg(LOG_DEBUG, "Mount change detected");

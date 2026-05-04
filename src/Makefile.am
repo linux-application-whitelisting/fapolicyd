@@ -128,6 +128,8 @@ libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread
 fapolicyd_SOURCES = \
 	daemon/decision-defer.c \
 	daemon/decision-defer.h \
+	daemon/fanotify-fs-error.c \
+	daemon/fanotify-fs-error.h \
 	daemon/fapolicyd.c \
 	daemon/mounts.c \
 	daemon/mounts.h \

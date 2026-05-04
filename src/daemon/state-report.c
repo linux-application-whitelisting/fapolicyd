@@ -22,6 +22,7 @@
 #include "daemon-config.h"
 #include "decision-timing.h"
 #include "failure-action.h"
+#include "fanotify-fs-error.h"
 #include "message.h"
 #include "notify.h"
 #include "paths.h"

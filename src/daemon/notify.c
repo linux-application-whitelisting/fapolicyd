@@ -44,6 +44,7 @@
 #include "decision-defer.h"
 #include "decision-timing.h"
 #include "failure-action.h"
+#include "fanotify-fs-error.h"
 #include "policy.h"
 #include "event.h"
 #include "escape.h"
@@ -54,36 +55,6 @@
 
 #define FANOTIFY_BUFFER_SIZE 8192
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
-#define FS_ERROR_LOG_INTERVAL 60
-
-#if defined(FAN_FS_ERROR) && defined(FAN_REPORT_FID) && \
-	defined(FAN_MARK_FILESYSTEM) && \
-	defined(FAN_EVENT_INFO_TYPE_ERROR) && \
-	defined(FAN_EVENT_INFO_TYPE_FID)
-#define FAPOLICYD_HAVE_FANOTIFY_FS_ERROR 1
-
-struct fanotify_fs_error_info_record {
-	struct fanotify_event_info_header hdr;
-	int32_t error;
-	uint32_t error_count;
-};
-#else
-#define FAPOLICYD_HAVE_FANOTIFY_FS_ERROR 0
-#endif
-
-struct fanotify_fs_error_details {
-	int valid;
-	int has_error;
-	int malformed;
-	int error;
-	unsigned int error_count;
-	unsigned int info_records;
-	unsigned int fid_records;
-	uint32_t event_len;
-	uint16_t metadata_len;
-	pid_t pid;
-	time_t when;
-};
 
 // External variables
 extern atomic_bool stop, run_stats;
@@ -99,17 +70,12 @@ static pthread_t decision_thread;
 static pthread_t deadmans_switch_thread;
 static atomic_bool alive = true;
 static int fd = -1;
-static int fs_error_fd = -1;
 static int rpt_timer_fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
 static unsigned int rpt_interval;
 static struct message_rate_limit kernel_queue_overflow_log =
 	MESSAGE_RATE_LIMIT_INIT(KERNEL_OVERFLOW_LOG_INTERVAL);
-static struct message_rate_limit fanotify_fs_error_log =
-	MESSAGE_RATE_LIMIT_INIT(FS_ERROR_LOG_INTERVAL);
-static pthread_mutex_t fs_error_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct fanotify_fs_error_details last_fs_error;
 
 // Local functions
 static void *decision_thread_main(void *arg);
@@ -117,12 +83,9 @@ static void *deadmans_switch_thread_main(void *arg);
 static void dispatch_decision_event(decision_event_t *event,
 				    int *rpt_is_stale);
 static void fanotify_failure_action(failure_reason_t reason);
-static void handle_events_from_fd(int event_fd);
 static void shutdown_deferred_events(void);
 static unsigned int timing_queue_depth_reset(void *ctx);
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
-static void init_fanotify_fs_error(mlist *m);
-static int mark_fanotify_fs_error(const char *path);
 void fanotify_queue_report_reset(FILE *f, int reset);
 void nudge_queue(void);
 
@@ -133,277 +96,6 @@ void nudge_queue(void);
 unsigned long getKernelQueueOverflow(void)
 {
 	return failure_action_count(FAILURE_REASON_KERNEL_QUEUE_OVERFLOW);
-}
-
-/*
- * getFanotifyFilesystemErrors - return FAN_FS_ERROR health event count.
- * Returns the number of FAN_FS_ERROR events reported by the kernel.
- */
-unsigned long getFanotifyFilesystemErrors(void)
-{
-	return failure_action_count(FAILURE_REASON_FANOTIFY_FS_ERROR);
-}
-
-/*
- * fs_error_status - return a parse status name for status output.
- * @details: most recent FAN_FS_ERROR details.
- * Returns a stable status string.
- */
-static const char *fs_error_status(
-		const struct fanotify_fs_error_details *details)
-{
-	if (!details->valid)
-		return "none";
-	if (details->malformed)
-		return "malformed";
-	if (!details->has_error)
-		return "missing_error_record";
-	return "ok";
-}
-
-/*
- * fs_error_code_text - return printable text for a FAN_FS_ERROR errno.
- * @error: errno-style value reported by the kernel.
- * Returns strerror text for @error.
- */
-static const char *fs_error_code_text(int error)
-{
-	if (error < 0)
-		error = -error;
-	return strerror(error);
-}
-
-/*
- * format_fs_error_time - format a filesystem error timestamp.
- * @when: timestamp saved with the error details.
- * @buf: destination buffer.
- * @buf_size: destination size.
- * Returns @buf.
- */
-static const char *format_fs_error_time(time_t when, char *buf,
-					size_t buf_size)
-{
-	struct tm tm;
-
-	if (buf_size == 0)
-		return buf;
-
-	if (when == 0) {
-		strncpy(buf, "never", buf_size - 1);
-		buf[buf_size - 1] = 0;
-		return buf;
-	}
-
-	if (localtime_r(&when, &tm) == NULL ||
-	    strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S %z", &tm) == 0) {
-		strncpy(buf, "unavailable", buf_size - 1);
-		buf[buf_size - 1] = 0;
-	}
-
-	return buf;
-}
-
-#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
-/*
- * parse_fs_error_record - parse FAN_FS_ERROR info records.
- * @metadata: fanotify event metadata from the kernel.
- * @details: destination for recent error details.
- * Returns 0 when the event was well-formed and -1 when it was malformed.
- */
-static int parse_fs_error_record(
-		const struct fanotify_event_metadata *metadata,
-		struct fanotify_fs_error_details *details)
-{
-	const char *event = (const char *)metadata;
-	size_t offset, end;
-
-	details->event_len = metadata->event_len;
-	details->metadata_len = metadata->metadata_len;
-	details->pid = metadata->pid;
-	details->when = time(NULL);
-	if (details->when == (time_t)-1)
-		details->when = 0;
-
-	if (metadata->metadata_len < sizeof(*metadata) ||
-	    metadata->metadata_len > metadata->event_len) {
-		details->malformed = 1;
-		return -1;
-	}
-
-	end = metadata->event_len;
-	offset = metadata->metadata_len;
-	while (offset + sizeof(struct fanotify_event_info_header) <= end) {
-		const struct fanotify_event_info_header *info;
-
-		info = (const struct fanotify_event_info_header *)
-			(event + offset);
-		if (info->len < sizeof(*info) || offset + info->len > end) {
-			details->malformed = 1;
-			return -1;
-		}
-
-		details->info_records++;
-		switch (info->info_type) {
-		case FAN_EVENT_INFO_TYPE_ERROR:
-			if (info->len <
-			    sizeof(struct fanotify_fs_error_info_record)) {
-				details->malformed = 1;
-				return -1;
-			} else {
-				const struct fanotify_fs_error_info_record *err;
-
-				err = (const struct fanotify_fs_error_info_record *)
-					info;
-				details->has_error = 1;
-				details->error = err->error;
-				details->error_count = err->error_count;
-			}
-			break;
-		case FAN_EVENT_INFO_TYPE_FID:
-			details->fid_records++;
-			break;
-		default:
-			break;
-		}
-
-		offset += info->len;
-	}
-
-	if (offset != end) {
-		details->malformed = 1;
-		return -1;
-	}
-
-	if (!details->has_error)
-		return -1;
-
-	return 0;
-}
-#else
-/*
- * parse_fs_error_record - older headers cannot expose FAN_FS_ERROR details.
- * @metadata: unused fanotify event metadata.
- * @details: unused details destination.
- * Returns -1 because this build cannot parse FAN_FS_ERROR records.
- */
-static int parse_fs_error_record(
-		const struct fanotify_event_metadata *metadata,
-		struct fanotify_fs_error_details *details)
-{
-	(void)metadata;
-	(void)details;
-	return -1;
-}
-#endif
-
-/*
- * save_fs_error_details - publish recent filesystem error details.
- * @details: details parsed from the current kernel event.
- * Returns nothing.
- */
-static void save_fs_error_details(
-		const struct fanotify_fs_error_details *details)
-{
-	pthread_mutex_lock(&fs_error_lock);
-	last_fs_error = *details;
-	pthread_mutex_unlock(&fs_error_lock);
-}
-
-/*
- * log_fs_error_event - log one rate-limited filesystem health event.
- * @details: parsed details from the kernel event.
- * @total: total FAN_FS_ERROR events observed.
- * Returns nothing.
- */
-static void log_fs_error_event(
-		const struct fanotify_fs_error_details *details,
-		unsigned long total)
-{
-	time_t now = details->when;
-
-	if (now == 0)
-		now = time(NULL);
-	if (!message_rate_limit_allow(&fanotify_fs_error_log, now))
-		return;
-
-	if (details->has_error) {
-		msg(LOG_ERR,
-		    "Filesystem error reported by fanotify: error=%d (%s) "
-		    "suppressed=%u pid=%d status=%s "
-		    "(fanotify_filesystem_errors=%lu)",
-		    details->error, fs_error_code_text(details->error),
-		    details->error_count, details->pid,
-		    fs_error_status(details), total);
-	} else {
-		msg(LOG_ERR,
-		    "Filesystem error reported by fanotify without a "
-		    "parseable error record: status=%s event_len=%u "
-		    "metadata_len=%u (fanotify_filesystem_errors=%lu)",
-		    fs_error_status(details), details->event_len,
-		    details->metadata_len, total);
-	}
-}
-
-/*
- * record_fs_error_event - count and publish a FAN_FS_ERROR health event.
- * @metadata: fanotify event metadata from the kernel.
- * Returns nothing.
- */
-static void record_fs_error_event(
-		const struct fanotify_event_metadata *metadata)
-{
-	struct fanotify_fs_error_details details = { 0 };
-	unsigned long total;
-
-	details.valid = 1;
-	parse_fs_error_record(metadata, &details);
-
-	total = failure_action_record(FAILURE_REASON_FANOTIFY_FS_ERROR);
-	save_fs_error_details(&details);
-	log_fs_error_event(&details, total);
-	fanotify_failure_action(FAILURE_REASON_FANOTIFY_FS_ERROR);
-}
-
-/*
- * fanotify_fs_error_report - write recent FAN_FS_ERROR details.
- * @f: report stream.
- * Returns nothing.
- */
-void fanotify_fs_error_report(FILE *f)
-{
-	struct fanotify_fs_error_details details;
-	char when[64];
-
-	if (f == NULL)
-		return;
-
-	pthread_mutex_lock(&fs_error_lock);
-	details = last_fs_error;
-	pthread_mutex_unlock(&fs_error_lock);
-
-	fprintf(f, "Filesystem error last status: %s\n",
-		fs_error_status(&details));
-	fprintf(f, "Filesystem error last seen: %s\n",
-		format_fs_error_time(details.when, when, sizeof(when)));
-	if (!details.valid)
-		return;
-
-	if (details.has_error) {
-		fprintf(f, "Filesystem error last errno: %d\n", details.error);
-		fprintf(f, "Filesystem error last errno text: %s\n",
-			fs_error_code_text(details.error));
-		fprintf(f, "Filesystem error last suppressed count: %u\n",
-			details.error_count);
-	}
-	fprintf(f, "Filesystem error last pid: %d\n", details.pid);
-	fprintf(f, "Filesystem error last info records: %u\n",
-		details.info_records);
-	fprintf(f, "Filesystem error last fid records: %u\n",
-		details.fid_records);
-	fprintf(f, "Filesystem error last event length: %u\n",
-		details.event_len);
-	fprintf(f, "Filesystem error last metadata length: %u\n",
-		details.metadata_len);
 }
 
 /*
@@ -433,7 +125,6 @@ int handle_kernel_event(const struct fanotify_event_metadata *metadata)
 {
 	unsigned long total;
 	time_t now;
-	int consumed = 0;
 
 	if (metadata->mask & FAN_Q_OVERFLOW) {
 		total = failure_action_record(
@@ -445,17 +136,10 @@ int handle_kernel_event(const struct fanotify_event_metadata *metadata)
 			    "(kernel_queue_overflow=%lu)", total);
 
 		fanotify_failure_action(FAILURE_REASON_KERNEL_QUEUE_OVERFLOW);
-		consumed = 1;
+		return 1;
 	}
 
-#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
-	if (metadata->mask & FAN_FS_ERROR) {
-		record_fs_error_event(metadata);
-		consumed = 1;
-	}
-#endif
-
-	return consumed;
+	return 0;
 }
 
 /*
@@ -501,162 +185,6 @@ static int ignore_mounts_configured(const char *list)
 	}
 
 	return 0;
-}
-
-#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
-/*
- * close_fanotify_fs_error - close the filesystem error fanotify group.
- * Returns nothing.
- */
-static void close_fanotify_fs_error(void)
-{
-	if (fs_error_fd >= 0) {
-		close(fs_error_fd);
-		fs_error_fd = -1;
-	}
-}
-
-/*
- * mark_fanotify_fs_error - add one FAN_FS_ERROR filesystem mark.
- * @path: mount path whose filesystem should be monitored.
- * Returns 0 on success, -2 when FAN_FS_ERROR is unsupported, and -1 for
- * per-filesystem failures or disabled monitoring.
- */
-static int mark_fanotify_fs_error(const char *path)
-{
-	char *escaped_path = NULL;
-	const char *safe_path;
-	int saved_errno;
-
-	if (fs_error_fd < 0 || path == NULL)
-		return -1;
-
-	safe_path = escape_path_for_log(path, &escaped_path);
-	if (fanotify_mark(fs_error_fd, FAN_MARK_ADD | FAN_MARK_FILESYSTEM,
-			  FAN_FS_ERROR, AT_FDCWD, path) == -1) {
-		saved_errno = errno;
-		switch (saved_errno) {
-		case EINVAL:
-		case ENOSYS:
-			msg(LOG_INFO,
-			    "FAN_FS_ERROR marks unsupported by running kernel");
-			free(escaped_path);
-			return -2;
-		case ENODEV:
-#ifdef EOPNOTSUPP
-		case EOPNOTSUPP:
-#endif
-		case EXDEV:
-			msg(LOG_DEBUG,
-			    "FAN_FS_ERROR monitoring unavailable for %s (%s)",
-			    safe_path, strerror(saved_errno));
-			break;
-		default:
-			msg(LOG_WARNING,
-			    "Error (%s) adding FAN_FS_ERROR mark for %s",
-			    strerror(saved_errno), safe_path);
-			break;
-		}
-		free(escaped_path);
-		return -1;
-	}
-
-	msg(LOG_DEBUG, "added %s filesystem error monitor", safe_path);
-	free(escaped_path);
-	return 0;
-}
-
-/*
- * init_fanotify_fs_error - initialize notification-only FS error monitoring.
- * @m: watched mount list.
- * Returns nothing. Monitoring is disabled when unsupported.
- */
-static void init_fanotify_fs_error(mlist *m)
-{
-	const char *path;
-	unsigned int marked = 0;
-
-	if (m == NULL)
-		return;
-
-	fs_error_fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_NOTIF |
-				    FAN_NONBLOCK | FAN_REPORT_FID,
-				    O_RDONLY | O_LARGEFILE | O_CLOEXEC |
-				    O_NOATIME);
-	if (fs_error_fd < 0) {
-		if (errno == EINVAL || errno == ENOSYS)
-			msg(LOG_INFO,
-			    "FAN_FS_ERROR monitoring unsupported by running "
-			    "kernel; disabled");
-		else
-			msg(LOG_WARNING,
-			    "Failed opening FAN_FS_ERROR fanotify fd (%s)",
-			    strerror(errno));
-		return;
-	}
-
-	path = mlist_first(m);
-	while (path && fs_error_fd >= 0) {
-		int rc = mark_fanotify_fs_error(path);
-
-		if (rc == 0)
-			marked++;
-		else if (rc == -2) {
-			close_fanotify_fs_error();
-			break;
-		}
-		path = mlist_next(m);
-	}
-
-	if (fs_error_fd >= 0 && marked == 0) {
-		msg(LOG_INFO,
-		    "FAN_FS_ERROR monitoring disabled; no watched "
-		    "filesystems accepted error marks");
-		close_fanotify_fs_error();
-	}
-}
-#else
-/*
- * close_fanotify_fs_error - no-op for builds without FAN_FS_ERROR headers.
- * Returns nothing.
- */
-static void close_fanotify_fs_error(void)
-{
-	fs_error_fd = -1;
-}
-
-/*
- * mark_fanotify_fs_error - no-op for builds without FAN_FS_ERROR headers.
- * @path: unused path.
- * Returns -1 because monitoring is unavailable.
- */
-static int mark_fanotify_fs_error(const char *path)
-{
-	(void)path;
-	return -1;
-}
-
-/*
- * init_fanotify_fs_error - report compile-time FAN_FS_ERROR unavailability.
- * @m: unused watched mount list.
- * Returns nothing.
- */
-static void init_fanotify_fs_error(mlist *m)
-{
-	(void)m;
-	msg(LOG_INFO,
-	    "FAN_FS_ERROR monitoring disabled; kernel headers do not provide "
-	    "the required fanotify info records");
-}
-#endif
-
-/*
- * fanotify_fs_error_fd - return filesystem error notification fd.
- * Returns a fanotify fd when monitoring is active, or -1 when disabled.
- */
-int fanotify_fs_error_fd(void)
-{
-	return fs_error_fd;
 }
 
 int init_fanotify(const conf_t *conf, mlist *m)
@@ -796,7 +324,7 @@ retry_mark:
 		path = mlist_next(m);
 	}
 
-	init_fanotify_fs_error(m);
+	fanotify_fs_error_init(m);
 	return fd;
 }
 
@@ -827,7 +355,7 @@ void fanotify_update(mlist *m)
 				msg(LOG_DEBUG, "Added %s mount point",
 					safe_path);
 			}
-			mark_fanotify_fs_error(cur->path);
+			fanotify_fs_error_mark(cur->path);
 		}
 
 		// Now remove the deleted mount point - NOTE: the kernel
@@ -871,15 +399,7 @@ void unmark_fanotify(mlist *m)
 				  0, -1, path) == -1)
 			msg(LOG_ERR, "Failed flushing path %s  (%s)",
 				safe_path, strerror(errno));
-#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
-		if (fs_error_fd >= 0 &&
-		    fanotify_mark(fs_error_fd,
-				  FAN_MARK_FLUSH | FAN_MARK_FILESYSTEM,
-				  0, -1, path) == -1)
-			msg(LOG_ERR,
-			    "Failed flushing FAN_FS_ERROR path %s  (%s)",
-			    safe_path, strerror(errno));
-#endif
+		fanotify_fs_error_unmark(path);
 		free(escaped_path);
 		path = mlist_next(m);
 	}
@@ -903,7 +423,7 @@ void shutdown_fanotify(mlist *m)
 	q_close(q);
 	q = NULL;
 	close(rpt_timer_fd);
-	close_fanotify_fs_error();
+	fanotify_fs_error_close();
 	close(fd);
 
 	// Report results
@@ -1391,22 +911,21 @@ static void *decision_thread_main(void *arg)
 }
 
 /*
- * handle_events_from_fd - read and dispatch one fanotify group.
- * @event_fd: fanotify fd that became readable.
+ * handle_events - read policy permission fanotify events.
  * Returns nothing.
  */
-static void handle_events_from_fd(int event_fd)
+void handle_events(void)
 {
 	const struct fanotify_event_metadata *metadata;
 	struct fanotify_event_metadata buf[FANOTIFY_BUFFER_SIZE];
 	ssize_t len = -2;
 
-	if (event_fd < 0)
+	if (fd < 0)
 		return;
 
 	while (len < 0) {
 		do {
-			len = read(event_fd, (void *) buf, sizeof(buf));
+			len = read(fd, (void *) buf, sizeof(buf));
 		} while (len == -1 && errno == EINTR && stop == false);
 		if (len == -1 && errno != EAGAIN) {
 			// If we get this, we have no access to the file. We
@@ -1436,8 +955,8 @@ static void handle_events_from_fd(int event_fd)
 		if (metadata->fd >= 0) {
 			if (metadata->mask & mask) {
 				if (metadata->pid == our_pid)
-					reply_event(event_fd, metadata,
-						    FAN_ALLOW, NULL);
+					reply_event(fd, metadata, FAN_ALLOW,
+						    NULL);
 				else {
 					decision_event_t event;
 
@@ -1458,7 +977,7 @@ static void handle_events_from_fd(int event_fd)
 							    &config.permissive,
 							    __ATOMIC_RELAXED))
 							decision = FAN_ALLOW;
-						reply_event(event_fd, metadata,
+						reply_event(fd, metadata,
 							    decision, NULL);
 					}
 				}
@@ -1466,27 +985,9 @@ static void handle_events_from_fd(int event_fd)
 				// This should never happen. Reply with deny
 				// which releases the descriptor and kernel
 				// memory. Continue processing what was read.
-				reply_event(event_fd, metadata, FAN_DENY, NULL);
+				reply_event(fd, metadata, FAN_DENY, NULL);
 			}
 		}
 		metadata = FAN_EVENT_NEXT(metadata, len);
 	}
-}
-
-/*
- * handle_events - read policy permission fanotify events.
- * Returns nothing.
- */
-void handle_events(void)
-{
-	handle_events_from_fd(fd);
-}
-
-/*
- * handle_fs_error_events - read filesystem health fanotify events.
- * Returns nothing.
- */
-void handle_fs_error_events(void)
-{
-	handle_events_from_fd(fs_error_fd);
 }
