@@ -288,9 +288,6 @@ void decision_report_metrics_reset(FILE *f, int reset)
 		fprintf(f, "Allowed by fallthrough other ftype: %lu\n",
 			metrics.fallthrough_other_ftype);
 	}
-
-	fprintf(f, "\nRule hit counts:\n");
-	policy_rule_hits_report(f);
 }
 
 /*

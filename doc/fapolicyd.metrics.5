@@ -42,11 +42,6 @@ The number of allow decisions produced by a matching rule.
 The number of allow decisions produced when no rule had an opinion and the
 daemon used the default allow behavior. Detailed fallthrough dimensions are
 printed when this value is non-zero.
-.SH Rule hit counts
-.TP
-.B Hits/rule
-One line per configured rule in rule order. The line includes the one-based
-rule number, hit count, and rule text.
 .SH Subject cache effectiveness
 .TP
 .B Subject hits
@@ -92,6 +87,11 @@ match the current event and therefore had to be evicted before reuse.
 .B Object evictions
 The number of object cache evictions and the eviction percentage relative to
 object cache hits.
+.SH Rule hit counts
+.TP
+.B Hits/rule
+One line per configured rule in rule order. The line includes the one-based
+rule number, hit count, and rule text.
 .SH Subject attribute lookups
 .TP
 .B Subject attr

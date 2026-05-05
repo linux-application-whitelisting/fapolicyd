@@ -999,6 +999,9 @@ void do_metrics_report_reset(FILE *f, int reset)
 	decision_report_metrics_reset(f, reset);
 	do_cache_metrics_report_reset(f, reset);
 	fputs("\n", f);
+	fputs("Rule hit counts:\n", f);
+	policy_rule_hits_report(f);
+	fputs("\n", f);
 	attr_lookup_metrics_report(f, reset);
 	fanotify_metrics_report_reset(f, reset);
 }
