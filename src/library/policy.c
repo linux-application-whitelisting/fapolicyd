@@ -1143,6 +1143,20 @@ void policy_no_audit(void)
  */
 void policy_rule_hits_report(FILE *f)
 {
+	policy_rule_hits_report_reset(f, 0);
+}
+
+/*
+ * policy_rule_hits_report_reset - write per-rule hit counters.
+ * @f: output stream.
+ * @reset: non-zero resets counters after copying them.
+ *
+ * Rule hit counters naturally start fresh when a new ruleset generation is
+ * published. Manual metric resets also clear them so operators can run a
+ * focused test against the currently loaded rules without reloading policy.
+ */
+void policy_rule_hits_report_reset(FILE *f, int reset)
+{
 	struct policy_snapshot *policy;
 
 	if (f == NULL || active_policy == NULL)
@@ -1151,6 +1165,6 @@ void policy_rule_hits_report(FILE *f)
 	lock_rule();
 	policy = active_policy;
 	if (policy)
-		rules_hits_report(f, &policy->rules);
+		rules_hits_report_reset(f, &policy->rules, reset);
 	unlock_rule();
 }

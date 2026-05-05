@@ -91,7 +91,11 @@ object cache hits.
 .TP
 .B Hits/rule
 One line per configured rule in rule order. The line includes the one-based
-rule number, hit count, and rule text.
+rule number, hit count, and rule text. Rule hit counters are naturally scoped
+to the active ruleset generation and start at zero when a new ruleset is
+loaded. A metrics reset also clears the counters after reporting them, which
+allows focused tests against the currently loaded rules without forcing a rule
+reload.
 .SH Subject attribute lookups
 .TP
 .B Subject attr

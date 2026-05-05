@@ -102,6 +102,7 @@ unsigned long getReplyErrors(void);
 void getDecisionMetrics(decision_metrics_t *metrics);
 void getDecisionMetricsReset(decision_metrics_t *metrics, int reset);
 void policy_rule_hits_report(FILE *f);
+void policy_rule_hits_report_reset(FILE *f, int reset);
 void policy_no_audit(void);
 void destroy_rules(void);
 unsigned int policy_get_rules_proc_status_mask(void);

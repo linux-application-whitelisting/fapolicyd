@@ -91,6 +91,7 @@ int rules_append(llist *l, char *buf, unsigned int lineno) __wur;
 __attribute__((hot)) decision_t rule_evaluate(lnode *r, event_t *e);
 void rules_record_hit(lnode *r);
 void rules_hits_report(FILE *f, const llist *l);
+void rules_hits_report_reset(FILE *f, const llist *l, int reset);
 void rules_unsupport_audit(const llist *l);
 void rules_clear(llist* l);
 unsigned int rules_get_proc_status_mask(const llist *l);

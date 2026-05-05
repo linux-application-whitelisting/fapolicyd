@@ -1656,15 +1656,31 @@ void rules_record_hit(lnode *r)
 }
 
 /*
- * rules_hits_report - write per-rule hit counters in rule order.
+ * rule_hits_snapshot - copy one rule hit counter and optionally reset it.
+ * @r: rule whose hit counter should be copied.
+ * @reset: non-zero resets the counter after copying.
+ * Returns the copied hit count.
+ */
+static unsigned long rule_hits_snapshot(lnode *r, int reset)
+{
+	if (reset)
+		return atomic_exchange_explicit(&r->hits, 0,
+						memory_order_relaxed);
+
+	return atomic_load_explicit(&r->hits, memory_order_relaxed);
+}
+
+/*
+ * rules_hits_report_reset - write per-rule hit counters in rule order.
  * @f: output stream.
  * @l: active rule list to report.
+ * @reset: non-zero resets counters after copying them.
  *
  * Returns nothing.
  */
-void rules_hits_report(FILE *f, const llist *l)
+void rules_hits_report_reset(FILE *f, const llist *l, int reset)
 {
-	const lnode *r;
+	lnode *r;
 	unsigned long max_hits = 0;
 	int hits_width;
 
@@ -1689,8 +1705,20 @@ void rules_hits_report(FILE *f, const llist *l)
 	for (r = rules_first_node(l); r; r = rules_next_node(r))
 		fprintf(f, "Hits/rule: %3u %*lu %s\n", r->num + 1,
 			hits_width,
-			atomic_load_explicit(&r->hits, memory_order_relaxed),
+			rule_hits_snapshot(r, reset),
 			r->text ? r->text : "");
+}
+
+/*
+ * rules_hits_report - write per-rule hit counters in rule order.
+ * @f: output stream.
+ * @l: active rule list to report.
+ *
+ * Returns nothing.
+ */
+void rules_hits_report(FILE *f, const llist *l)
+{
+	rules_hits_report_reset(f, l, 0);
 }
 
 

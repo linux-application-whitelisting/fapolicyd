@@ -65,8 +65,11 @@ When used with \fB\-\-check-rules\fP, also emit policy-shape warnings for execut
 .B \-\-reset-metrics
 Request the metrics to be reset. Runtime metric counters reset after a metrics
 report is written when the daemon is configured with
-\fBreset_strategy=manual\fP. The report contains the counter values being
-reset. A successful reset also updates the
+\fBreset_strategy=manual\fP. Rule hit counters normally reset when a new
+ruleset generation is loaded, but this command also clears them after
+reporting so the current rules can be tested from a fresh counter window. The
+report contains the counter values being reset. A successful reset also updates
+the
 .B Last metrics reset
 timestamp shown by later metrics reports. If metrics have never been reset
 since daemon start, the header says

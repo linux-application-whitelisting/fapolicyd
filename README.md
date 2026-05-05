@@ -327,7 +327,9 @@ configuration option `report_interval`. This option is set to `0` by default,
 which disables the reporting interval. A positive value for this option
 specifies the number of seconds to wait between reports. Runtime metric
 counters can be reset with `fapolicyd-cli --reset-metrics` when the daemon is
-configured with `reset_strategy=manual`.
+configured with `reset_strategy=manual`. Rule hit counters naturally reset
+when a new ruleset is loaded, and `--reset-metrics` also clears them after
+reporting so the current rules can be tested from a fresh counter window.
 
 For bounded latency investigations, set `timing_collection=manual` and use
 `fapolicyd-cli --timing-start` followed by `fapolicyd-cli --timing-stop`.

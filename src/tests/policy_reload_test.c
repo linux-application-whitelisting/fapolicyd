@@ -153,9 +153,10 @@ static decision_t process_path(const char *path)
  * read_rule_hits_report - capture the per-rule hit report.
  * @buf: destination for captured report text.
  * @buflen: size of @buf.
+ * @reset: non-zero resets counters after copying them.
  * Returns nothing.
  */
-static void read_rule_hits_report(char *buf, size_t buflen)
+static void read_rule_hits_report(char *buf, size_t buflen, int reset)
 {
 	FILE *f;
 	size_t used;
@@ -164,7 +165,7 @@ static void read_rule_hits_report(char *buf, size_t buflen)
 	if (!f)
 		error(1, errno, "tmpfile failed");
 
-	policy_rule_hits_report(f);
+	policy_rule_hits_report_reset(f, reset);
 	fflush(f);
 	rewind(f);
 	used = fread(buf, 1, buflen - 1, f);
@@ -252,7 +253,7 @@ static void require_rule_hit_counters(const conf_t *cfg)
 	if (process_path("/bin/cat") != ALLOW)
 		error(1, 0, "fallthrough path was not allowed");
 
-	read_rule_hits_report(report, sizeof(report));
+	read_rule_hits_report(report, sizeof(report), 0);
 	if (strstr(report,
 	    "Hits/rule:   1      2 allow perm=any auid=1000 : path=/bin/ls\n")
 	    == NULL)
@@ -265,12 +266,43 @@ static void require_rule_hit_counters(const conf_t *cfg)
 		error(1, 0, "fallthrough path appeared in rule hits: %s",
 		      report);
 
+	read_rule_hits_report(report, sizeof(report), 1);
+	if (strstr(report,
+	    "Hits/rule:   1      2 allow perm=any auid=1000 : path=/bin/ls\n")
+	    == NULL)
+		error(1, 0, "reset report lost allow rule hits: %s", report);
+	if (strstr(report,
+	    "Hits/rule:   2      1 deny perm=any auid=1000 : path=/bin/rm\n")
+	    == NULL)
+		error(1, 0, "reset report lost deny rule hits: %s", report);
+
+	read_rule_hits_report(report, sizeof(report), 0);
+	if (strstr(report,
+	    "Hits/rule:   1      0 allow perm=any auid=1000 : path=/bin/ls\n")
+	    == NULL)
+		error(1, 0, "manual reset did not clear allow hits: %s",
+		      report);
+	if (strstr(report,
+	    "Hits/rule:   2      0 deny perm=any auid=1000 : path=/bin/rm\n")
+	    == NULL)
+		error(1, 0, "manual reset did not clear deny hits: %s", report);
+
+	if (process_path("/bin/rm") != DENY)
+		error(1, 0, "deny rule did not match after manual reset");
+
+	read_rule_hits_report(report, sizeof(report), 0);
+	if (strstr(report,
+	    "Hits/rule:   2      1 deny perm=any auid=1000 : path=/bin/rm\n")
+	    == NULL)
+		error(1, 0, "deny rule did not count after manual reset: %s",
+		      report);
+
 	if (load_text_policy(cfg,
 	    "allow perm=any auid=1000 : path=/bin/ls\n"
 	    "deny perm=any auid=1000 : path=/bin/rm\n"))
 		error(1, 0, "rule hit policy reload failed");
 
-	read_rule_hits_report(report, sizeof(report));
+	read_rule_hits_report(report, sizeof(report), 0);
 	if (strstr(report,
 	    "Hits/rule:   1      0 allow perm=any auid=1000 : path=/bin/ls\n")
 	    == NULL)
