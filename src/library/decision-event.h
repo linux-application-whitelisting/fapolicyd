@@ -19,6 +19,19 @@
 
 #define DECISION_EVENT_NO_SLOT UINT_MAX
 
+/*
+ * decision_event - userspace envelope for one fanotify permission event.
+ *
+ * This is the "event envelope" referenced by the queue, defer, and policy
+ * decision paths. It is called an envelope because it carries the original
+ * kernel fanotify metadata, including the permission fd, together with the
+ * daemon-only bookkeeping that must travel with that kernel event before an
+ * event_t can be built or while processing is deferred.
+ *
+ * event_t is the constructed event used for rule evaluation. decision_event_t
+ * is the outer carrier used while the raw fanotify event is queued, deferred,
+ * timed, and finally answered.
+ */
 typedef struct decision_event {
 	/*
 	 * Original fanotify metadata from the kernel. Permission event fd
