@@ -52,9 +52,13 @@
 /*
  * A normal exec/open pattern should complete quickly. Keep this below the
  * daemon deadman window so one stuck BUILDING slot cannot park permission
- * events indefinitely.
+ * events indefinitely. The stale timeout is 10 seconds, expressed in
+ * milliseconds so the intended window is easy to read.
  */
-#define SUBJECT_BUILDING_STALE_NS (10ULL * 1000000000ULL)
+#define SUBJECT_BUILDING_STALE_MS 10000ULL
+#define NSEC_PER_MSEC 1000000ULL
+#define SUBJECT_BUILDING_STALE_NS \
+	(SUBJECT_BUILDING_STALE_MS * NSEC_PER_MSEC)
 #define SUBJECT_BUILDING_LOG_INTERVAL 60
 
 static Queue *subj_cache = NULL;
