@@ -2056,10 +2056,19 @@ static void do_reload_db(conf_t* config)
 		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 			config->db_max_size);
 
+		/*
+		 * LMDB may unmap/remap the environment during resize. Use
+		 * the same lock that protects decision reads and rebuild
+		 * writes before touching the live map.
+		 */
 		if (config->db_max_size < old_db_max_size) {
+			lock_update_thread();
 			close_env(0);
 
-			if ((rc = init_db(config))) {
+			rc = init_db(config);
+			unlock_update_thread();
+
+			if (rc) {
 				msg(LOG_ERR,
 			     "Cannot open the trust database, init_db() (%d)",
 					rc);
@@ -2073,8 +2082,10 @@ static void do_reload_db(conf_t* config)
 				exit(rc);
 			}
 		} else if (config->db_max_size > old_db_max_size) {
+			lock_update_thread();
 			rc = mdb_env_set_mapsize(env,
 				(size_t)config->db_max_size * MEGABYTE);
+			unlock_update_thread();
 			if (rc) {
 				config->db_max_size = old_db_max_size;
 				msg(LOG_ERR,
