@@ -2323,6 +2323,7 @@ static void print_timing_summary(const struct timing_metrics *timing)
 	}
 
 	printf("\nDecision timing:\n");
+	printf("Full report: %s\n", TIMING_REPORT);
 	printf("Decisions: %llu\n", timing->decisions);
 	printf("Max queue depth during timing: %llu\n",
 	       timing->max_queue_depth);

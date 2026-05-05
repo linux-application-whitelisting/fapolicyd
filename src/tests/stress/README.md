@@ -473,7 +473,8 @@ fapolicyd-cli --timing-stop
 ```
 
 The daemon writes `/run/fapolicyd/fapolicyd.timing`, and the CLI prints it.
-The harness parses a short summary from that report:
+The harness consumes that CLI output, prints the report path, and parses a
+short summary from that report:
 
 - `Decisions`: Number of completed daemon decisions timed during the run.
 
