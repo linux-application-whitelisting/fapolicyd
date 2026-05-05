@@ -42,6 +42,24 @@ The number of allow decisions produced by a matching rule.
 The number of allow decisions produced when no rule had an opinion and the
 daemon used the default allow behavior. Detailed fallthrough dimensions are
 printed when this value is non-zero.
+.SH Inter-thread queue & defer activity
+.TP
+.B Inter-thread max queue depth
+The highest internal event queue depth observed since the last metrics reset.
+.TP
+.B Subject deferred events
+The cumulative number of fanotify permission events deferred since the last
+metrics reset because another process was still building subject pattern state
+in the same cache slot.
+.TP
+.B Subject defer max depth
+The highest number of concurrently deferred subject events observed since the
+last metrics reset.
+.TP
+.B Subject defer fallbacks
+The cumulative number of defer-array-full fallbacks since the last metrics
+reset. This field also appears in the state report because non-zero values are
+health indicators.
 .SH Subject cache effectiveness
 .TP
 .B Subject hits
@@ -120,24 +138,6 @@ attribute. The
 .B lookups
 count increments only when that attribute was absent from the event object
 cache and fapolicyd had to compute or fetch it.
-.SH Inter-thread queue and defer activity
-.TP
-.B Inter-thread max queue depth
-The highest internal event queue depth observed since the last metrics reset.
-.TP
-.B Subject deferred events
-The cumulative number of fanotify permission events deferred since the last
-metrics reset because another process was still building subject pattern state
-in the same cache slot.
-.TP
-.B Subject defer max depth
-The highest number of concurrently deferred subject events observed since the
-last metrics reset.
-.TP
-.B Subject defer fallbacks
-The cumulative number of defer-array-full fallbacks since the last metrics
-reset. This field also appears in the state report because non-zero values are
-health indicators.
 .SH NOTES
 Metrics resets affect counters in this report. Static configuration, current
 utilization snapshots, watched mounts, and health indicators are reported in
