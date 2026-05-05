@@ -935,6 +935,10 @@ void do_state_report(FILE *f, int shutdown)
 	mode.config = &config;
 	state_report_operating_mode(f, &mode);
 
+	fprintf(f, "\nHeadline activity:\n");
+	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
+	fprintf(f, "Denied accesses: %lu\n", getDenied());
+
 	fprintf(f, "\nResource configuration:\n");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "q_size: %u\n", config.q_size);
@@ -948,10 +952,6 @@ void do_state_report(FILE *f, int shutdown)
 #ifdef HAVE_MALLINFO2
 	memory_use_report(f);
 #endif
-
-	fprintf(f, "\nHeadline activity:\n");
-	fprintf(f, "Allowed accesses: %lu\n", getAllowed());
-	fprintf(f, "Denied accesses: %lu\n", getDenied());
 
 	fprintf(f, "\nHealth indicators:\n");
 	fprintf(f, "Kernel queue overflow: %lu\n",

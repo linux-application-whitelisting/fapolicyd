@@ -55,6 +55,15 @@ when timing has not been stopped.
 .B Ruleset generation
 The current in-memory ruleset generation. This value increments each time a
 fully validated ruleset is published by the daemon.
+.SS Headline activity
+.TP
+.B Allowed accesses
+The number of policy decisions that allowed access.
+.TP
+.B Denied accesses
+The number of policy decisions that denied access. In permissive mode these
+decisions are still counted as denials even though the daemon permits kernel
+access.
 .SS Resource configuration
 .TP
 .B CPU cores
@@ -102,15 +111,6 @@ The current free heap memory in KiB, followed by the value from the previous
 report. This field is printed only when
 .BR mallinfo2 (3)
 support is available.
-.SS Headline activity
-.TP
-.B Allowed accesses
-The number of policy decisions that allowed access.
-.TP
-.B Denied accesses
-The number of policy decisions that denied access. In permissive mode these
-decisions are still counted as denials even though the daemon permits kernel
-access.
 .SS Health indicators
 Any non-zero counter in this section warrants investigation.
 .TP
