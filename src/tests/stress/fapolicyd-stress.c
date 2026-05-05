@@ -1958,15 +1958,14 @@ static void copy_token_until(char *dst, const char *src, char delim)
 }
 
 /*
- * parse_daemon_metrics - extract daemon report metrics used by this harness.
+ * parse_daemon_metrics - merge daemon report metrics used by this harness.
  * @data: fapolicyd state and metrics report text.
- * @metrics: metric snapshot to fill.
+ * @metrics: metric snapshot to update.
  * Returns nothing.
  */
 static void parse_daemon_metrics(const char *data,
 		struct daemon_metrics *metrics)
 {
-	memset(metrics, 0, sizeof(*metrics));
 	metrics->present = 1;
 	parse_u64_line(data, "Inter-thread max queue depth:",
 		       &metrics->queue_max_depth);
@@ -2062,6 +2061,8 @@ static int collect_status(const char *cli_path, struct daemon_metrics *metrics,
 	char *const state_argv[] = {(char *)cli_path, "--check-status", NULL};
 	char *const metrics_argv[] = {(char *)cli_path, "--check-metrics", NULL};
 	int rc;
+
+	memset(metrics, 0, sizeof(*metrics));
 
 	rc = run_capture(cli_path, state_argv, &capture);
 	if (rc) {
