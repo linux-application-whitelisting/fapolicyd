@@ -180,24 +180,32 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 {
 	int fd;
 	const char *type_path;
+	char fd_path[64];
 	char exe_path[PATH_MAX];
 
 	if (blen == 0)
 		return NULL;
 
 	const char *path = proc_path(pid, "/exe");
-	ssize_t path_len = readlink(path, exe_path, sizeof(exe_path) - 1);
-	if (path_len > 0) {
-		exe_path[path_len] = '\0';
-		type_path = exe_path;
-	} else
-		type_path = path;
-
 	fd = open(path, O_RDONLY|O_NOATIME|O_CLOEXEC);
 	if (fd >= 0) {
 		const char *ptr;
 		struct stat sb;
 		struct file_info i;
+		int len;
+		ssize_t path_len;
+
+		type_path = path;
+		// Resolve through our fd so the type hint matches the opened file.
+		len = snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", fd);
+		if (len > 0 && (size_t)len < sizeof(fd_path)) {
+			path_len = readlink(fd_path, exe_path,
+					    sizeof(exe_path) - 1);
+			if (path_len > 0) {
+				exe_path[path_len] = '\0';
+				type_path = exe_path;
+			}
+		}
 
 		// We have to wait for stat to finish so we can set file_info values
 		// for get_file_type_from_fd.
