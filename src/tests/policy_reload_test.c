@@ -14,7 +14,9 @@
 #include <stdatomic.h>
 
 #include "conf.h"
+#include "attr-lookup-metrics.h"
 #include "policy.h"
+#include "policy-metrics.h"
 #include "subject.h"
 #include "object.h"
 #include "event.h"
@@ -89,6 +91,74 @@ static void free_event(event_t *e)
 	object_clear(e->o);
 	free(e->s);
 	free(e->o);
+}
+
+/*
+ * add_cached_object_attrs - add attributes policy metrics may summarize
+ * @e: event receiving cached object attributes.
+ * Returns nothing.
+ */
+static void add_cached_object_attrs(event_t *e)
+{
+	object_attr_t trust = { .type = OBJ_TRUST, .val = 1 };
+	object_attr_t ftype = {
+		.type = FTYPE,
+		.o = strdup("application/x-executable")
+	};
+
+	if (!ftype.o)
+		error(1, errno, "ftype allocation failed");
+	if (object_add(e->o, &trust))
+		error(1, 0, "object_add trust failed");
+	if (object_add(e->o, &ftype))
+		error(1, 0, "object_add ftype failed");
+}
+
+/*
+ * reset_object_attr_metrics - clear object lookup metrics used by this test
+ * Returns nothing.
+ */
+static void reset_object_attr_metrics(void)
+{
+	struct attr_lookup_metric_snapshot snapshot;
+
+	attr_lookup_metrics_object_snapshot(PATH, &snapshot, 1);
+	attr_lookup_metrics_object_snapshot(OBJ_TRUST, &snapshot, 1);
+	attr_lookup_metrics_object_snapshot(FTYPE, &snapshot, 1);
+}
+
+/*
+ * require_no_object_attr_metrics - verify no lazy object getter was invoked
+ * @phase: diagnostic label included in failure messages.
+ * Returns nothing.
+ */
+static void require_no_object_attr_metrics(const char *phase)
+{
+	struct attr_lookup_metric_snapshot snapshot;
+	object_type_t types[] = { PATH, OBJ_TRUST, FTYPE };
+	unsigned int i;
+
+	for (i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+		if (attr_lookup_metrics_object_snapshot(types[i], &snapshot, 0))
+			error(1, 0, "%s: object metric snapshot failed", phase);
+		if (snapshot.requests || snapshot.lookups)
+			error(1, 0, "%s: %s getter used by metrics: %llu/%llu",
+			      phase, obj_val_to_name(types[i]), snapshot.requests,
+			      snapshot.lookups);
+	}
+}
+
+/*
+ * reset_policy_metrics - clear counters that this test inspects
+ * Returns nothing.
+ */
+static void reset_policy_metrics(void)
+{
+	decision_metrics_t metrics;
+
+	getAllowedReset(1);
+	getDeniedReset(1);
+	getDecisionMetricsReset(&metrics, 1);
 }
 
 /*
@@ -231,6 +301,40 @@ static void require_decision_sources(void)
 }
 
 /*
+ * require_fallthrough_metrics_use_cached_attrs - prevent lazy metric lookups
+ * @void: no arguments are required.
+ * Returns nothing.
+ */
+static void require_fallthrough_metrics_use_cached_attrs(void)
+{
+	decision_metrics_t metrics;
+	event_t e;
+
+	reset_policy_metrics();
+	reset_object_attr_metrics();
+
+	prep_event(&e, 1000, "/bin/ls");
+	e.type = FAN_OPEN_EXEC_PERM;
+	add_cached_object_attrs(&e);
+	policy_metrics_record_decision(ALLOW, &e,
+				       DECISION_SOURCE_FALLTHROUGH);
+	free_event(&e);
+
+	require_no_object_attr_metrics("fallthrough metrics");
+	getDecisionMetricsReset(&metrics, 1);
+	getAllowedReset(1);
+
+	if (metrics.allowed_by_fallthrough != 1 ||
+	    metrics.fallthrough_execute != 1 ||
+	    metrics.fallthrough_trusted != 1 ||
+	    metrics.fallthrough_executable != 1)
+		error(1, 0, "fallthrough metrics did not use cached attrs");
+	if (metrics.fallthrough_unknown_ftype ||
+	    metrics.fallthrough_trust_unknown)
+		error(1, 0, "cached fallthrough attrs reported as unknown");
+}
+
+/*
  * require_rule_hit_counters - verify per-rule hits and generation reset.
  * @cfg: configuration providing syslog_format.
  * Returns nothing.
@@ -333,6 +437,7 @@ int main(void)
 		error(1, 0, "initial policy load failed");
 	require_old_policy("initial load");
 	require_decision_sources();
+	require_fallthrough_metrics_use_cached_attrs();
 
 	if (load_text_policy(&pid_cfg,
 	    "deny_syslog perm=any auid=1000 uid=-1 : path=/bin/ls\n") == 0)

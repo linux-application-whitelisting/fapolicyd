@@ -41,6 +41,20 @@ void policy_metrics_record_ruleset_update(void)
 }
 
 /*
+ * cached_object_attr - read an object attribute without lazy materialization
+ * @e: event whose cached object attribute list should be inspected.
+ * @type: object attribute type to read.
+ * Returns the cached attribute, or NULL when the event never needed it.
+ */
+static object_attr_t *cached_object_attr(const event_t *e, object_type_t type)
+{
+	if (!e || !e->o)
+		return NULL;
+
+	return object_access(e->o, type);
+}
+
+/*
  * ftype_is_programmatic - classify ftypes commonly loaded by interpreters
  * @ftype: MIME type reported for the object.
  * Returns 1 when @ftype names language source, bytecode, jars, or scripts.
@@ -66,13 +80,13 @@ static int ftype_is_programmatic(const char *ftype)
 }
 
 /*
- * count_fallthrough_ftype - bucket object ftype for default-allow reporting
- * @e: event whose object ftype should be classified.
+ * count_fallthrough_ftype - bucket cached object ftype for reporting
+ * @e: event whose object ftype should be classified if it is already cached.
  * Returns nothing.
  */
 static void count_fallthrough_ftype(event_t *e)
 {
-	object_attr_t *ftype = get_obj_attr(e, FTYPE);
+	object_attr_t *ftype = cached_object_attr(e, FTYPE);
 	const char *name = ftype ? ftype->o : NULL;
 
 	if (!name || name[0] == 0) {
@@ -118,7 +132,12 @@ static void count_fallthrough_details(event_t *e)
 		atomic_fetch_add_explicit(&fallthrough_open, 1,
 					  memory_order_relaxed);
 
-	trust = get_obj_attr(e, OBJ_TRUST);
+	/*
+	 * Decision metrics run before the fanotify response is written. Use only
+	 * cached attributes from policy evaluation; get_obj_attr() can perform
+	 * trust database, integrity hash, and MIME/libmagic work here.
+	 */
+	trust = cached_object_attr(e, OBJ_TRUST);
 	if (!trust)
 		atomic_fetch_add_explicit(&fallthrough_trust_unknown, 1,
 					  memory_order_relaxed);
