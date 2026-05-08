@@ -995,9 +995,8 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		decision_timing_stage_begin(
 			DECISION_TIMING_STAGE_FANOTIFY_RESPONSE_WRITE,
 			&write_timing);
-		if (write(fd, &f, sizeof(struct fan_audit_response)) <
-				(ssize_t)sizeof(struct fanotify_response) ||
-				errno)
+		// FAN_INFO replies include the audit record after the base response.
+		if (write(fd, &f, sizeof(f)) < (ssize_t)sizeof(f) || errno)
 			failure_action_record(
 			    FAILURE_REASON_RESPONSE_WRITE_FAILURE);
 		decision_timing_stage_end(&write_timing);
