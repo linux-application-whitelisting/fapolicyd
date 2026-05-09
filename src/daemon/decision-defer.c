@@ -252,6 +252,46 @@ int decision_defer_pop_slot(struct decision_defer_queue *defer,
 }
 
 /*
+ * decision_defer_pop_if - remove the oldest deferred event matching a test.
+ * @defer: queue state to pop from.
+ * @match: predicate called for each deferred event.
+ * @ctx: caller data passed to @match.
+ * @event: destination for the deferred event.
+ *
+ * The match predicate may inspect external state before deciding whether an
+ * event is ready. The oldest matching event is removed so deferral preserves
+ * arrival order among events that can run.
+ *
+ * Returns 1 when an event was removed, 0 when no matching event exists.
+ */
+int decision_defer_pop_if(struct decision_defer_queue *defer,
+		decision_defer_match_fn match, void *ctx,
+		decision_event_t *event)
+{
+	struct decision_defer_entry *oldest = NULL;
+	unsigned int i;
+	unsigned int seen = 0;
+
+	if (defer == NULL || match == NULL || defer->current == 0)
+		return 0;
+
+	for (i = 0; i < defer->capacity; i++) {
+		struct decision_defer_entry *entry = &defer->entries[i];
+
+		if (!entry->used)
+			continue;
+		seen++;
+		if (match(&entry->event, ctx) &&
+		    (oldest == NULL || entry->order < oldest->order))
+			oldest = entry;
+		if (seen == defer->current)
+			break;
+	}
+
+	return pop_entry(defer, oldest, event);
+}
+
+/*
  * decision_defer_pop_any - remove the oldest deferred event.
  * @defer: queue state to pop from.
  * @event: destination for the deferred event.

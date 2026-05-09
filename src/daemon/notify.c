@@ -55,6 +55,7 @@
 
 #define FANOTIFY_BUFFER_SIZE 8192
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
+#define DEFER_RECHECK_INTERVAL_SEC 1
 
 // External variables
 extern atomic_bool stop, run_stats;
@@ -83,7 +84,9 @@ static void *deadmans_switch_thread_main(void *arg);
 static void dispatch_decision_event(decision_event_t *event,
 				    int *rpt_is_stale);
 static void fanotify_failure_action(failure_reason_t reason);
-static void shutdown_deferred_events(void);
+static unsigned int release_ready_deferred_events(int *rpt_is_stale);
+static unsigned int shutdown_deferred_events(void);
+static unsigned int shutdown_queued_events(void);
 static unsigned int timing_queue_depth_reset(void *ctx);
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
 void fanotify_queue_report_reset(FILE *f, int reset);
@@ -738,26 +741,160 @@ static void dispatch_decision_event(decision_event_t *event, int *rpt_is_stale)
 }
 
 /*
+ * deferred_event_is_ready - test whether a parked event can run now.
+ * @event: deferred event to inspect.
+ * @ctx: unused predicate context.
+ *
+ * Calling event_subject_slot_is_blocked() intentionally reuses the same
+ * traced/stale BUILDING eviction check used by fresh events. Without this
+ * recheck, a deferred event can wait forever when no later event collides with
+ * the same subject slot.
+ *
+ * Returns 1 when the event can run, 0 when it must remain deferred.
+ */
+static int deferred_event_is_ready(const decision_event_t *event, void *ctx)
+{
+	(void)ctx;
+
+	return !event_subject_slot_is_blocked(event->subject_slot,
+					      event->metadata.pid);
+}
+
+/*
+ * release_ready_deferred_events - run deferred events that are unblocked.
+ * @rpt_is_stale: interval report dirty flag.
+ *
+ * Periodic rechecks keep the 10 second BUILDING stale timeout effective even
+ * when no new fanotify event arrives for the same subject slot. Each pass pops
+ * the oldest ready event and dispatches it through the normal decision path.
+ *
+ * Returns the number of deferred events released.
+ */
+static unsigned int release_ready_deferred_events(int *rpt_is_stale)
+{
+	decision_event_t event;
+	unsigned int count = 0;
+
+	while (defer_queue.current &&
+	       decision_defer_pop_if(&defer_queue, deferred_event_is_ready,
+				     NULL, &event)) {
+		dispatch_decision_event(&event, rpt_is_stale);
+		count++;
+	}
+
+	if (count)
+		msg(LOG_DEBUG, "Released %u deferred fanotify events", count);
+	return count;
+}
+
+/*
+ * shutdown_fallback_decision - get the shutdown reply decision.
+ * Returns FAN_ALLOW in permissive mode and FAN_DENY otherwise.
+ */
+static int shutdown_fallback_decision(void)
+{
+	if (__atomic_load_n(&config.permissive, __ATOMIC_RELAXED))
+		return FAN_ALLOW;
+	return FAN_DENY;
+}
+
+/*
+ * shutdown_queued_events - reply to every event left in the input queue.
+ *
+ * The decision thread exits its main loop as soon as stop is observed. Any
+ * permission event that reached the inter-thread queue but was not processed
+ * yet still owns a live fd and can leave the requesting task blocked. During
+ * shutdown, answer those queued events with the same permissive fallback policy
+ * used for other bounded failure paths.
+ *
+ * Returns the number of events answered.
+ */
+static unsigned int shutdown_queued_events(void)
+{
+	decision_event_t event;
+	unsigned int count = 0;
+	int decision = shutdown_fallback_decision();
+
+	while (q != NULL && q_queue_length(q) > 0) {
+		if (q_dequeue(q, &event) != 1)
+			break;
+		reply_event(fd, &event.metadata, decision, NULL);
+		count++;
+	}
+
+	return count;
+}
+
+/*
  * shutdown_deferred_events - reply to every event left in the defer array.
  *
  * Deferred fanotify permission events still own live fds. During shutdown each
  * must be answered exactly once, using the same permissive fallback policy as
  * queue-full handling, so the blocked task and descriptor are released.
+ *
+ * Returns the number of events answered.
  */
-static void shutdown_deferred_events(void)
+static unsigned int shutdown_deferred_events(void)
 {
 	decision_event_t event;
+	unsigned int count = 0;
+	int decision = shutdown_fallback_decision();
 
 	while (decision_defer_pop_any(&defer_queue, &event)) {
-		int decision = FAN_DENY;
-
-		if (__atomic_load_n(&config.permissive, __ATOMIC_RELAXED))
-			decision = FAN_ALLOW;
 		reply_event(fd, &event.metadata, decision, NULL);
+		count++;
 	}
+
+	return count;
 }
 
 #ifdef TEST_SUBJECT_DEFER
+/*
+ * test_notify_queue_reset - initialize notify.c queue state for unit tests.
+ * @entries: fixed queue capacity.
+ *
+ * Returns 0 on success and -1 on allocation failure.
+ */
+int test_notify_queue_reset(unsigned int entries)
+{
+	if (q != NULL)
+		q_close(q);
+	q = q_open(entries);
+	return q == NULL ? -1 : 0;
+}
+
+/*
+ * test_notify_queue_destroy - release notify.c queue state after unit tests.
+ * Returns nothing.
+ */
+void test_notify_queue_destroy(void)
+{
+	if (q == NULL)
+		return;
+	q_close(q);
+	q = NULL;
+}
+
+/*
+ * test_notify_queue_push - enqueue an event in notify.c queue state.
+ * @event: event copied into the queue.
+ *
+ * Returns 0 on success and -1 when the queue rejects the event.
+ */
+int test_notify_queue_push(const decision_event_t *event)
+{
+	return q_enqueue(q, event);
+}
+
+/*
+ * test_notify_shutdown_queued_events - run production queue cleanup.
+ * Returns the number of queued events answered.
+ */
+unsigned int test_notify_shutdown_queued_events(void)
+{
+	return shutdown_queued_events();
+}
+
 /*
  * test_notify_defer_reset - initialize notify.c defer state for unit tests.
  * @subj_cache_size: subject cache size used to derive defer capacity.
@@ -792,11 +929,11 @@ int test_notify_defer_push(const decision_event_t *event)
 
 /*
  * test_notify_shutdown_deferred_events - run production shutdown cleanup.
- * Returns nothing.
+ * Returns the number of deferred events answered.
  */
-void test_notify_shutdown_deferred_events(void)
+unsigned int test_notify_shutdown_deferred_events(void)
 {
-	shutdown_deferred_events();
+	return shutdown_deferred_events();
 }
 #endif
 
@@ -886,12 +1023,28 @@ static void *decision_thread_main(void *arg)
 			if (rc < 0)
 				continue;
 		} else {
-			rc = q_dequeue(q, &event);
+			int timed_for_defer = 0;
+			struct timespec defer_timeout;
+
+			if (defer_queue.current &&
+			    clock_gettime(CLOCK_REALTIME, &defer_timeout) == 0) {
+				defer_timeout.tv_sec +=
+					DEFER_RECHECK_INTERVAL_SEC;
+				errno = 0;
+				rc = q_timed_dequeue(q, &event,
+						     &defer_timeout);
+				timed_for_defer = 1;
+			} else {
+				rc = q_dequeue(q, &event);
+			}
 			if (rc == 0) {
 				if (run_stats) {
 					state_report_write(STATE_REPORT_SIGNAL);
 					run_stats = 0;
 				}
+				if (timed_for_defer && errno == ETIMEDOUT)
+					release_ready_deferred_events(
+						&rpt_is_stale);
 				continue;
 			}
 			if (rc < 0)
@@ -905,7 +1058,15 @@ static void *decision_thread_main(void *arg)
 		atomic_store_explicit(&alive, true, memory_order_relaxed);
 		dispatch_decision_event(&event, &rpt_is_stale);
 	}
-	shutdown_deferred_events();
+	unsigned int queued = shutdown_queued_events();
+	unsigned int deferred = shutdown_deferred_events();
+
+	if (queued || deferred)
+		msg(LOG_INFO,
+		    "Replied to %u queued and %u deferred fanotify events during shutdown",
+		    queued, deferred);
+	msg(LOG_DEBUG, "Decision thread shutdown backlog: queued=%u deferred=%u",
+	    queued, deferred);
 	msg(LOG_DEBUG, "Exiting decision thread");
 	return NULL;
 }

@@ -243,6 +243,61 @@ static int test_shutdown_pop_any_cleanup(void)
 	return 0;
 }
 
+/*
+ * match_slot - predicate used by pop_if tests.
+ * @event: deferred event candidate.
+ * @ctx: pointer to the slot number that should match.
+ *
+ * Returns 1 when @event uses the requested subject slot, 0 otherwise.
+ */
+static int match_slot(const decision_event_t *event, void *ctx)
+{
+	unsigned int slot = *(unsigned int *)ctx;
+
+	return event->subject_slot == slot;
+}
+
+/*
+ * test_pop_if_keeps_matching_order - pop oldest matching deferred event.
+ *
+ * Periodic defer rechecks need to release the oldest event that is now ready
+ * without disturbing older events for slots that are still blocked.
+ *
+ * Returns 0 on success, or a distinct failure code.
+ */
+static int test_pop_if_keeps_matching_order(void)
+{
+	struct decision_defer_queue defer;
+	decision_event_t event, out;
+	unsigned int slot = 5;
+
+	CHECK(decision_defer_init(&defer, 1) == 0, 60,
+	      "[ERROR:60] decision_defer_init failed");
+
+	event = make_event(400, 40, 4);
+	CHECK(decision_defer_push(&defer, &event) == 0, 61,
+	      "[ERROR:61] first defer push failed");
+	event = make_event(401, 41, 5);
+	CHECK(decision_defer_push(&defer, &event) == 0, 62,
+	      "[ERROR:62] matching defer push failed");
+	event = make_event(402, 42, 5);
+	CHECK(decision_defer_push(&defer, &event) == 0, 63,
+	      "[ERROR:63] second matching defer push failed");
+
+	CHECK(decision_defer_pop_if(&defer, match_slot, &slot, &out) == 1,
+	      64, "[ERROR:64] pop_if did not pop a matching event");
+	CHECK(out.metadata.pid == 401 && defer.current == 2, 65,
+	      "[ERROR:65] pop_if did not pop oldest matching event");
+
+	CHECK(decision_defer_pop_any(&defer, &out) == 1, 66,
+	      "[ERROR:66] pop_any missed oldest remaining event");
+	CHECK(out.metadata.pid == 400, 67,
+	      "[ERROR:67] pop_if disturbed unrelated older event");
+
+	decision_defer_destroy(&defer);
+	return 0;
+}
+
 /* main - run defer queue unit tests. */
 int main(void)
 {
@@ -257,6 +312,10 @@ int main(void)
 		return rc;
 
 	rc = test_shutdown_pop_any_cleanup();
+	if (rc)
+		return rc;
+
+	rc = test_pop_if_keeps_matching_order();
 	if (rc)
 		return rc;
 

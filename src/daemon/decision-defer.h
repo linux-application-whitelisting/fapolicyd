@@ -41,6 +41,9 @@ struct decision_defer_queue {
 	uint64_t next_order;
 };
 
+typedef int (*decision_defer_match_fn)(const decision_event_t *event,
+		void *ctx);
+
 int decision_defer_init(struct decision_defer_queue *defer,
 		unsigned int subj_cache_size);
 void decision_defer_destroy(struct decision_defer_queue *defer);
@@ -48,6 +51,9 @@ int decision_defer_push(struct decision_defer_queue *defer,
 		const decision_event_t *event);
 int decision_defer_pop_slot(struct decision_defer_queue *defer,
 		unsigned int slot, decision_event_t *event);
+int decision_defer_pop_if(struct decision_defer_queue *defer,
+		decision_defer_match_fn match, void *ctx,
+		decision_event_t *event);
 int decision_defer_pop_any(struct decision_defer_queue *defer,
 		decision_event_t *event);
 void decision_defer_count_fallback(struct decision_defer_queue *defer);

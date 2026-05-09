@@ -42,10 +42,14 @@ extern atomic_bool run_stats;
 extern atomic_uint signal_report_requests;
 extern conf_t config;
 
+int test_notify_queue_reset(unsigned int entries);
+void test_notify_queue_destroy(void);
+int test_notify_queue_push(const decision_event_t *event);
+unsigned int test_notify_shutdown_queued_events(void);
 int test_notify_defer_reset(unsigned int subj_cache_size);
 void test_notify_defer_destroy(void);
 int test_notify_defer_push(const decision_event_t *event);
-void test_notify_shutdown_deferred_events(void);
+unsigned int test_notify_shutdown_deferred_events(void);
 
 #define CHECK(expr, code, msg) \
 	do { \
@@ -225,7 +229,8 @@ static void test_shutdown_deferred_events(void)
 	}
 
 	__atomic_store_n(&config.permissive, true, __ATOMIC_RELAXED);
-	test_notify_shutdown_deferred_events();
+	CHECK(test_notify_shutdown_deferred_events() == 3, 61,
+	      "[ERROR:61] deferred shutdown count mismatch");
 
 	for (i = 0; i < 3; i++) {
 		errno = 0;
@@ -235,6 +240,51 @@ static void test_shutdown_deferred_events(void)
 	}
 
 	test_notify_defer_destroy();
+}
+
+/*
+ * test_shutdown_queued_events - verify notify shutdown drains queue fds.
+ *
+ * The decision thread can observe stop before it processes every event already
+ * accepted from fanotify. Those queued permission events must still be answered
+ * during shutdown or their requesting tasks can remain blocked.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_shutdown_queued_events(void)
+{
+	decision_event_t event;
+	int pipes[3][2];
+	unsigned int i;
+
+	CHECK(test_notify_queue_reset(4) == 0, 62,
+	      "[ERROR:62] notify queue reset failed");
+
+	for (i = 0; i < 3; i++) {
+		CHECK(pipe(pipes[i]) == 0, 63,
+		      "[ERROR:63] queue pipe setup failed");
+		memset(&event, 0, sizeof(event));
+		event.metadata.fd = pipes[i][0];
+		event.metadata.pid = 600 + i;
+		event.metadata.mask = FAN_OPEN_PERM;
+		event.subject_slot = i;
+		event.completed_subject_slot = DECISION_EVENT_NO_SLOT;
+		CHECK(test_notify_queue_push(&event) == 0, 64,
+		      "[ERROR:64] notify queue push failed");
+	}
+
+	__atomic_store_n(&config.permissive, true, __ATOMIC_RELAXED);
+	CHECK(test_notify_shutdown_queued_events() == 3, 65,
+	      "[ERROR:65] queued shutdown count mismatch");
+
+	for (i = 0; i < 3; i++) {
+		errno = 0;
+		CHECK(close(pipes[i][0]) == -1 && errno == EBADF, 66,
+		      "[ERROR:66] queued fd was not closed exactly once");
+		close(pipes[i][1]);
+	}
+
+	test_notify_queue_destroy();
 }
 
 /*
@@ -505,6 +555,7 @@ int main(void)
 #endif
 
 	test_shutdown_deferred_events();
+	test_shutdown_queued_events();
 
 	return 0;
 }
