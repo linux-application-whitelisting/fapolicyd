@@ -4,7 +4,7 @@
 %if %{defined eln_build}
 %global selinuxtype targeted
 %global moduletype contrib
-%define semodule_version master
+%define semodule_version main
 %endif
 
 Summary: Application Whitelisting Daemon
@@ -38,9 +38,6 @@ Requires(pre): shadow-utils
 Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units
-
-# applied in CI only
-Patch2: fapolicyd-selinux-var-run.patch
 
 %description
 Fapolicyd (File Access Policy Daemon) implements application whitelisting
@@ -79,20 +76,6 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 %setup -q -D -T -a 1
 %endif
 
-
-%if %{defined eln_build}
-%if 0%{?fedora} < 40
-%define selinux_var_run 1
-%endif
-
-%if 0%{?rhel} < 10
-%define selinux_var_run 1
-%endif
-
-%if %{defined selinux_var_run}
-%patch -P2 -R -p1 -b .selinux
-%endif
-%endif
 
 # generate rules for python
 sed -i "s|%python2_path%|`readlink -f %{__python2}`|g" rules.d/*.rules
