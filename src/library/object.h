@@ -36,7 +36,7 @@ typedef struct {
   struct file_info *info; // unique file fingerprint
 } o_array;
 
-void object_create(o_array *a);
+int object_create(o_array *a);
 object_attr_t *object_access(const o_array *a, object_type_t t);
 int object_add(o_array *a, const object_attr_t *obj);
 object_attr_t *object_find_file(const o_array *a);

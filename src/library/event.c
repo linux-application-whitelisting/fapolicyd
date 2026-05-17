@@ -570,7 +570,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 {
 	subject_attr_t subj;
 	QNode *q_node;
-	unsigned int key, rc, evict = 1, skip_path = 0;
+	unsigned int key, subject_key, rc, evict = 1, skip_path = 0;
 	s_array *s;
 	o_array *o;
 	struct proc_info *pinfo;
@@ -592,6 +592,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	e->num = 0;
 
 	key = compute_subject_key(subj_cache, m->pid);
+	subject_key = key;
 	q_node = check_lru_cache(subj_cache, key);
 	s = (s_array *)q_node->item;
 
@@ -687,10 +688,25 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	if (evict) {
 		// If empty, setup the subject with what we currently have
 		e->s = malloc(sizeof(s_array));
-		subject_create(e->s);
+		if (e->s == NULL || subject_create(e->s)) {
+			free(e->s);
+			e->s = NULL;
+			clear_proc_info(pinfo);
+			free(pinfo);
+			lru_evict(subj_cache, key);
+			return 1;
+		}
 		subj.type = PID;
 		subj.pid = e->pid;
-		subject_add(e->s, &subj);
+		if (subject_add(e->s, &subj)) {
+			subject_clear(e->s);
+			free(e->s);
+			e->s = NULL;
+			clear_proc_info(pinfo);
+			free(pinfo);
+			lru_evict(subj_cache, key);
+			return 1;
+		}
 
 		// give custody of the list to the cache
 		q_node->item = e->s;
@@ -745,7 +761,17 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	if (rc) {
 		// If empty, setup the object with what we currently have
 		e->o = malloc(sizeof(o_array));
-		object_create(e->o);
+		if (e->o == NULL || object_create(e->o)) {
+			free(e->o);
+			e->o = NULL;
+			free(finfo);
+			lru_evict(obj_cache, key);
+			if (evict) {
+				lru_evict(subj_cache, subject_key);
+				e->s = NULL;
+			}
+			return 1;
+		}
 
 		// give custody of the list to the cache
 		q_node->item = e->o;

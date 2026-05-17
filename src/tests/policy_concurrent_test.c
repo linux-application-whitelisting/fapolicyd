@@ -59,7 +59,7 @@ static void make_policy_text(char *buf, size_t buflen)
 
 	len = snprintf(buf + off, buflen - off,
 		       "deny perm=any auid=%u : path=%s\n",
-		       TARGET_AUID, TARGET_PATH);
+		       (unsigned int)TARGET_AUID, TARGET_PATH);
 	if (len < 0 || (size_t)len >= buflen - off)
 		error(1, 0, "policy buffer overflow");
 }
@@ -104,8 +104,8 @@ static void prep_event(event_t *e)
 	if (!e->s || !e->o || !oattr.o)
 		error(1, errno, "event allocation failed");
 
-	subject_create(e->s);
-	object_create(e->o);
+	if (subject_create(e->s) || object_create(e->o))
+		error(1, errno, "event array allocation failed");
 
 	e->s->info = calloc(1, sizeof(struct proc_info));
 	if (!e->s->info)

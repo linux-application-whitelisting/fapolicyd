@@ -67,8 +67,8 @@ static void prep_event(event_t *e, unsigned int auid, const char *path)
 	if (!e->s || !e->o || !oattr.o)
 		error(1, errno, "event allocation failed");
 
-	subject_create(e->s);
-	object_create(e->o);
+	if (subject_create(e->s) || object_create(e->o))
+		error(1, errno, "event array allocation failed");
 
 	e->s->info = calloc(1, sizeof(struct proc_info));
 	if (!e->s->info)

@@ -577,8 +577,8 @@ static int test_rpm_accepts_sha512(void)
 		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-	snprintf(record, sizeof(record), DATA_FORMAT, SRC_RPM, 8192UL,
-		 sha512);
+	snprintf(record, sizeof(record), DATA_FORMAT, (unsigned int)SRC_RPM,
+		 (size_t)8192, sha512);
 	CHECK(parse_record(record, &parsed) == 0, 40,
 	      "[ERROR:40] parse failed for RPM SHA512 digest");
 	CHECK(parsed.alg == FILE_HASH_ALG_SHA512, 41,
@@ -596,8 +596,8 @@ static int test_filedb_rejects_sha512(void)
 		"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 		"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
-	snprintf(record, sizeof(record), DATA_FORMAT, SRC_FILE_DB, 4096UL,
-		 sha512);
+	snprintf(record, sizeof(record), DATA_FORMAT, (unsigned int)SRC_FILE_DB,
+		 (size_t)4096, sha512);
 	CHECK(parse_record(record, &parsed) != 0, 50,
 	      "[ERROR:50] filedb SHA512 digest unexpectedly accepted");
 	return 0;
@@ -610,8 +610,8 @@ static int test_filedb_accepts_sha256(void)
 	const char *sha256 =
 		"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
-	snprintf(record, sizeof(record), DATA_FORMAT, SRC_FILE_DB, 1024UL,
-		 sha256);
+	snprintf(record, sizeof(record), DATA_FORMAT, (unsigned int)SRC_FILE_DB,
+		 (size_t)1024, sha256);
 	CHECK(parse_record(record, &parsed) == 0, 60,
 	      "[ERROR:60] filedb SHA256 digest rejected");
 	CHECK(parsed.alg == FILE_HASH_ALG_SHA256, 61,
@@ -646,60 +646,62 @@ static int test_attr_lookup_metrics(void)
 	reset_attr_lookup_metrics();
 	CHECK(attr_lookup_metrics_subject_snapshot(PATTERN, &snapshot, 0),
 	      99, "[ERROR:99] pattern should not have attr metrics");
-	subject_create(&subjects);
-	object_create(&objects);
+	CHECK(subject_create(&subjects) == 0, 100,
+	      "[ERROR:100] failed to allocate subject array");
+	CHECK(object_create(&objects) == 0, 101,
+	      "[ERROR:101] failed to allocate object array");
 	e.pid = 123;
 	e.fd = 10;
 	e.s = &subjects;
 	e.o = &objects;
 	e.o->info = stat_file_entry(e.fd);
-	CHECK(e.o->info != NULL, 100,
-	      "[ERROR:100] failed to allocate test file info");
-	CHECK(subject_add(e.s, &pid_attr) == 0, 101,
-	      "[ERROR:101] failed to add cached pid");
+	CHECK(e.o->info != NULL, 102,
+	      "[ERROR:102] failed to allocate test file info");
+	CHECK(subject_add(e.s, &pid_attr) == 0, 103,
+	      "[ERROR:103] failed to add cached pid");
 
-	CHECK(get_subj_attr(&e, PID) != NULL, 102,
-	      "[ERROR:102] cached pid lookup failed");
-	CHECK(get_subj_attr(&e, EXE) != NULL, 103,
-	      "[ERROR:103] exe lookup failed");
-	CHECK(get_subj_attr(&e, EXE) != NULL, 104,
-	      "[ERROR:104] cached exe lookup failed");
-	CHECK(get_subj_attr(&e, SUBJ_TRUST) != NULL, 105,
-	      "[ERROR:105] subject trust lookup failed");
-	CHECK(get_obj_attr(&e, PATH) != NULL, 106,
-	      "[ERROR:106] path lookup failed");
-	CHECK(get_obj_attr(&e, PATH) != NULL, 107,
-	      "[ERROR:107] cached path lookup failed");
-	CHECK(get_obj_attr(&e, FTYPE) != NULL, 108,
-	      "[ERROR:108] ftype lookup failed");
+	CHECK(get_subj_attr(&e, PID) != NULL, 104,
+	      "[ERROR:104] cached pid lookup failed");
+	CHECK(get_subj_attr(&e, EXE) != NULL, 105,
+	      "[ERROR:105] exe lookup failed");
+	CHECK(get_subj_attr(&e, EXE) != NULL, 106,
+	      "[ERROR:106] cached exe lookup failed");
+	CHECK(get_subj_attr(&e, SUBJ_TRUST) != NULL, 107,
+	      "[ERROR:107] subject trust lookup failed");
+	CHECK(get_obj_attr(&e, PATH) != NULL, 108,
+	      "[ERROR:108] path lookup failed");
+	CHECK(get_obj_attr(&e, PATH) != NULL, 109,
+	      "[ERROR:109] cached path lookup failed");
+	CHECK(get_obj_attr(&e, FTYPE) != NULL, 110,
+	      "[ERROR:110] ftype lookup failed");
 
 	expected = (struct metric_expectation){ 1, 0 };
-	rc = check_subject_metric(PID, &expected, 109);
+	rc = check_subject_metric(PID, &expected, 111);
 	if (rc)
 		return rc;
 	expected = (struct metric_expectation){ 3, 1 };
-	rc = check_subject_metric(EXE, &expected, 110);
+	rc = check_subject_metric(EXE, &expected, 112);
 	if (rc)
 		return rc;
 	expected = (struct metric_expectation){ 1, 1 };
-	rc = check_subject_metric(SUBJ_TRUST, &expected, 111);
+	rc = check_subject_metric(SUBJ_TRUST, &expected, 113);
 	if (rc)
 		return rc;
 	expected = (struct metric_expectation){ 3, 1 };
-	rc = check_object_metric(PATH, &expected, 112);
+	rc = check_object_metric(PATH, &expected, 114);
 	if (rc)
 		return rc;
 	expected = (struct metric_expectation){ 1, 1 };
-	rc = check_object_metric(FTYPE, &expected, 113);
+	rc = check_object_metric(FTYPE, &expected, 115);
 	if (rc)
 		return rc;
 
 	reset_attr_lookup_metrics();
 	expected = (struct metric_expectation){ 0, 0 };
-	rc = check_subject_metric(EXE, &expected, 114);
+	rc = check_subject_metric(EXE, &expected, 116);
 	if (rc)
 		return rc;
-	rc = check_object_metric(PATH, &expected, 115);
+	rc = check_object_metric(PATH, &expected, 117);
 	if (rc)
 		return rc;
 

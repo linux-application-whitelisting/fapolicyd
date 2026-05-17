@@ -32,15 +32,18 @@
 
 //#define DEBUG
 
-void object_create(o_array *a)
+int object_create(o_array *a)
 {
-	int i;
+	if (a == NULL)
+		return 1;
 
-	a->obj = malloc(sizeof(object_attr_t *) * OBJ_COUNT);
-	for (i = 0; i < OBJ_COUNT; i++)
-		a->obj[i] = NULL;
 	a->cnt = 0;
 	a->info = NULL;
+	a->obj = calloc(OBJ_COUNT, sizeof(object_attr_t *));
+	if (a->obj == NULL)
+		return 1;
+
+	return 0;
 }
 
 #ifdef DEBUG
@@ -62,6 +65,8 @@ static void sanity_check_array(o_array *a, const char *id)
 
 object_attr_t *object_access(const o_array *a, object_type_t t)
 {
+	if (a == NULL || a->obj == NULL)
+		return NULL;
 	sanity_check_array(a, "object_access");
 	if (t >= OBJ_START && t <= OBJ_END)
 		return a->obj[t - OBJ_START];
@@ -74,6 +79,8 @@ int object_add(o_array *a, const object_attr_t *obj)
 {
 	object_attr_t *newnode;
 
+	if (a == NULL || a->obj == NULL)
+		return 1;
 	sanity_check_array(a, "object_add 1");
 	if (obj) {
 		if (obj->type >= OBJ_START && obj->type <= OBJ_END) {
@@ -96,6 +103,8 @@ int object_add(o_array *a, const object_attr_t *obj)
 
 object_attr_t *object_find_file(const o_array *a)
 {
+	if (a == NULL || a->obj == NULL)
+		return NULL;
 	sanity_check_array(a, "object_find_file");
 	if (a->obj[PATH - OBJ_START])
 		return a->obj[PATH - OBJ_START];
@@ -112,14 +121,19 @@ void object_clear(o_array *a)
 	if (a == NULL)
 		return;
 
-	for (i = 0; i < OBJ_COUNT; i++) {
-		current = a->obj[i];
-		if (current == NULL)
-			continue;
-		free(current->o);
-		free(current);
+	if (a->obj) {
+		for (i = 0; i < OBJ_COUNT; i++) {
+			current = a->obj[i];
+			if (current == NULL)
+				continue;
+			free(current->o);
+			free(current);
+			a->obj[i] = NULL;
+		}
+		free(a->obj);
 	}
 	free(a->info);
-	free(a->obj);
+	a->info = NULL;
+	a->obj = NULL;
 	a->cnt = 0;
 }

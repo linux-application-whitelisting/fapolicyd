@@ -36,7 +36,7 @@ typedef struct {
   struct proc_info *info;	// unique proc fingerprint
 } s_array;
 
-void subject_create(s_array *a);
+int subject_create(s_array *a);
 subject_attr_t *subject_access(const s_array *a, subject_type_t t);
 int subject_add(s_array *a, const subject_attr_t *subj);
 subject_attr_t *subject_find_exe(const s_array *a);
@@ -46,4 +46,3 @@ void subject_clear(s_array* a);
 static inline int type_is_subj(int type) {if (type < OBJ_START) return 1; else return 0;}
 
 #endif
-

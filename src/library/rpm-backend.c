@@ -400,18 +400,32 @@ int do_rpm_load_list(const conf_t *conf, int memfd)
 				// getting rid of the duplicates
 				struct _hash_record *rcd = NULL;
 				char key[4096];
-				snprintf(key, 4095, "%s %s", file_name, data);
+				snprintf(key, sizeof(key), "%s %s",
+					 file_name, data);
 
 				HASH_FIND_STR( hashtable, key, rcd );
 
 				if (!rcd) {
 					rcd = (struct _hash_record*)
 					     malloc(sizeof(struct _hash_record));
+					if (rcd == NULL) {
+						free((void*)file_name);
+						free((void*)data);
+						rc = 1;
+						goto out;
+					}
 					rcd->key = strdup(key);
+					if (rcd->key == NULL) {
+						free(rcd);
+						free((void*)file_name);
+						free((void*)data);
+						rc = 1;
+						goto out;
+					}
 					HASH_ADD_KEYPTR( hh, hashtable,
 							 rcd->key,
 							 strlen(rcd->key),
-							  rcd );
+							 rcd );
 					if (dprintf(memfd, "%s %s\n",
 						    file_name, data) < 0) {
 						msg(LOG_ERR,

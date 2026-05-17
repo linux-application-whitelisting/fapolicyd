@@ -102,6 +102,9 @@ struct proc_info *stat_proc_entry(pid_t pid)
 
 void clear_proc_info(struct proc_info *info)
 {
+	if (info == NULL)
+		return;
+
 	free(info->path1);
 	free(info->path2);
 	info->path1 = NULL;

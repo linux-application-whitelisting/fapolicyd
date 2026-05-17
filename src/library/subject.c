@@ -32,15 +32,18 @@
 
 //#define DEBUG
 
-void subject_create(s_array *a)
+int subject_create(s_array *a)
 {
-	int i;
+	if (a == NULL)
+		return 1;
 
-	a->subj = malloc(sizeof(subject_attr_t *) * SUBJ_COUNT);
-	for (i = 0; i < SUBJ_COUNT; i++)
-		a->subj[i] = NULL;
 	a->cnt = 0;
 	a->info = NULL;
+	a->subj = calloc(SUBJ_COUNT, sizeof(subject_attr_t *));
+	if (a->subj == NULL)
+		return 1;
+
+	return 0;
 }
 
 #ifdef DEBUG
@@ -66,6 +69,8 @@ static void sanity_check_array(const s_array *a, const char *id)
 
 subject_attr_t *subject_access(const s_array *a, subject_type_t t)
 {
+	if (a == NULL || a->subj == NULL)
+		return NULL;
 	sanity_check_array(a, "subject_access");
 	// These store the same info, see get_subj_attr in event.c
 	if (t == EXE_DIR)
@@ -82,6 +87,8 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 	subject_attr_t* newnode;
 	subject_type_t t;
 
+	if (a == NULL || a->subj == NULL)
+		return 1;
 	sanity_check_array(a, "subject_add 1");
 	if (subj) {
 		t = subj->type;
@@ -120,18 +127,22 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 
 subject_attr_t *subject_find_exe(const s_array *a)
 {
+	if (a == NULL || a->subj == NULL)
+		return NULL;
 	sanity_check_array(a, "subject_find_exe");
-        if (a && a->subj[EXE - SUBJ_START])
-                return a->subj[EXE - SUBJ_START];
+	if (a->subj[EXE - SUBJ_START])
+		return a->subj[EXE - SUBJ_START];
 
 	return NULL;
 }
 
 subject_attr_t *subject_find_comm(const s_array *a)
 {
+	if (a == NULL || a->subj == NULL)
+		return NULL;
 	sanity_check_array(a, "subject_find_comm");
-        if (a && a->subj[COMM - SUBJ_START])
-                return a->subj[COMM - SUBJ_START];
+	if (a->subj[COMM - SUBJ_START])
+		return a->subj[COMM - SUBJ_START];
 
 	return NULL;
 }
@@ -144,34 +155,36 @@ void subject_clear(s_array* a)
 	if (a == NULL)
 		return;
 
-	sanity_check_array(a, "subject_clear");
-	for (i = 0; i < SUBJ_COUNT; i++) {
-		current = a->subj[i];
-		if (current == NULL)
-			continue;
-		if (current->type == GID || current->type == UID) {
-			/*
-			 * GID/UID attributes own dynamically allocated
-			 * sets; attr_set_destroy() releases contents and
-			 * container.
-			 */
-			attr_set_destroy(current->set);
-		} else if (current->type >= COMM)
-			free(current->str);
-		free(current);
-		a->subj[i] = NULL;
+	if (a->subj) {
+		sanity_check_array(a, "subject_clear");
+		for (i = 0; i < SUBJ_COUNT; i++) {
+			current = a->subj[i];
+			if (current == NULL)
+				continue;
+			if (current->type == GID || current->type == UID) {
+				/*
+				 * GID/UID attributes own dynamically allocated
+				 * sets; attr_set_destroy() releases contents and
+				 * container.
+				 */
+				attr_set_destroy(current->set);
+			} else if (current->type >= COMM)
+				free(current->str);
+			free(current);
+			a->subj[i] = NULL;
+		}
+		free(a->subj);
+		a->subj = NULL;
 	}
 	clear_proc_info(a->info);
 	free(a->info);
 	a->info = NULL;
-	free(a->subj);
-	a->subj = NULL;
 	a->cnt = 0;
 }
 
 void subject_reset(s_array *a, subject_type_t t)
 {
-	if (a == NULL)
+	if (a == NULL || a->subj == NULL)
 		return;
 
 	sanity_check_array(a, "subject_reset1");
