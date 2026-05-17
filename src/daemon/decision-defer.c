@@ -50,6 +50,7 @@
 #include <string.h>
 #include <time.h>
 #include "decision-defer.h"
+#include "gcc-attributes.h"
 
 struct decision_defer_entry {
 	/* Event envelope and permission fd owned while this entry is used. */
@@ -61,6 +62,9 @@ struct decision_defer_entry {
 	/* Non-zero when this array entry currently owns a deferred event. */
 	int used;
 };
+
+static void format_age(uint64_t age_ns, char *buf, size_t buf_size)
+	__attr_access ((__write_only__, 2, 3));
 
 /*
  * defer_now_ns - read monotonic time for defer age reporting.

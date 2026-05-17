@@ -23,6 +23,7 @@
 #include "decision-timing.h"
 #include "failure-action.h"
 #include "fanotify-fs-error.h"
+#include "gcc-attributes.h"
 #include "message.h"
 #include "notify.h"
 #include "paths.h"
@@ -38,6 +39,9 @@ extern atomic_int signal_report_reset_request_uid;
 extern conf_t config;
 
 static time_t last_metrics_reset;
+
+static const char *format_metrics_reset_time(char *buf, size_t buf_size)
+	__attr_access ((__write_only__, 1, 2));
 
 /*
  * state_report_operating_mode - write health and control state.

@@ -62,6 +62,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "decision-timing.h"
+#include "gcc-attributes.h"
 #include "message.h"
 #include "paths.h"
 
@@ -264,6 +265,17 @@ static atomic_int stop_reason_stage = -1;
 static atomic_bool missing_helper_driver_logged;
 
 __thread struct decision_timing_context decision_timing_tls;
+
+static const char *format_report_time(long when, char *buf, size_t buf_len)
+	__attr_access ((__write_only__, 2, 3));
+static void format_count(unsigned long long value, char *buf, size_t buf_len)
+	__attr_access ((__write_only__, 2, 3));
+static void format_scaled_time(double value, const char *unit, char *buf,
+		size_t buf_len) __attr_access ((__write_only__, 3, 4));
+static void format_human_duration(unsigned long long ns, char *buf,
+		size_t buf_len) __attr_access ((__write_only__, 2, 3));
+static void format_hms_duration(unsigned long long ns, char *buf,
+		size_t buf_len) __attr_access ((__write_only__, 2, 3));
 
 /*
  * ns_now - read monotonic time in nanoseconds.

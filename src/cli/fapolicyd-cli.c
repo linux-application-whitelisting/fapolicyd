@@ -51,6 +51,7 @@
 #include "fapolicyd-backend.h"
 #include "string-util.h"
 #include "daemon-config.h"
+#include "gcc-attributes.h"
 #include "message.h"
 #include "llist.h"
 #include "avl.h"
@@ -64,6 +65,15 @@
 bool verbose = false;
 static bool lint_rules = false;
 static bool assume_yes = false;
+
+static int send_state_report_signal(unsigned int pid, report_intent_t intent,
+		char *reason, size_t reason_len)
+	__attr_access ((__write_only__, 3, 4));
+static int send_timing_signal(unsigned int pid, report_intent_t intent,
+		char *reason, size_t reason_len)
+	__attr_access ((__write_only__, 3, 4));
+static int get_daemon_pid(unsigned int *pid, char *reason, size_t reason_len)
+	__attr_access ((__write_only__, 2, 3));
 
 static const char *usage =
 "Fapolicyd CLI Tool\n\n"

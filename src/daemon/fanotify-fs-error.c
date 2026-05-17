@@ -55,6 +55,7 @@
 #include "escape.h"
 #include "failure-action.h"
 #include "fanotify-fs-error.h"
+#include "gcc-attributes.h"
 #include "message.h"
 #include "notify.h"
 
@@ -107,7 +108,8 @@ static const char *fs_error_status(
 		const struct fanotify_fs_error_details *details);
 static const char *fs_error_code_text(int error);
 static const char *format_fs_error_time(time_t when, char *buf,
-					size_t buf_size);
+					size_t buf_size)
+	__attr_access ((__write_only__, 2, 3));
 #if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
 static int parse_fs_error_record(
 		const struct fanotify_event_metadata *metadata,
@@ -173,7 +175,7 @@ static const char *format_fs_error_time(time_t when, char *buf,
 {
 	struct tm tm;
 
-	if (buf_size == 0)
+	if (buf_size < 11)
 		return buf;
 
 	if (when == 0) {
