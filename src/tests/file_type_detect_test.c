@@ -21,6 +21,11 @@ extern magic_t magic_fast, magic_full;
 #define TEST_BASE "."
 #endif
 
+// RHEL8 does not have this. Remove when RHEL 8 goes EOL.
+#ifndef MAGIC_NO_CHECK_JSON
+#define MAGIC_NO_CHECK_JSON 0
+#endif
+
 static void expect_extract(const char *label, const char *script,
 	const char *expected)
 {
