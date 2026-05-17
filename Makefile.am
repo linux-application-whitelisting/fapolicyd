@@ -1,5 +1,6 @@
 
-SUBDIRS = src init doc rules.d
+# src/tests/file_type_detect_test loads the generated init/fapolicyd-magic.mgc.
+SUBDIRS = init src doc rules.d
 
 TEST_FIXTURES = \
 src/tests/fixtures/filter-minimal.conf \
