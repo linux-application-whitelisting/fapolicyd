@@ -87,6 +87,10 @@ static inline void rewind_fd(int fd)
 	lseek(fd, 0, SEEK_SET);
 }
 
+// RHEL 8 does not have this define. Remove when RHEL 8 is EOL.
+#ifndef MAGIC_NO_CHECK_JSON
+#define MAGIC_NO_CHECK_JSON 0
+#endif
 
 // Initialize what we can now so that its not done each call
 int file_init(void)
