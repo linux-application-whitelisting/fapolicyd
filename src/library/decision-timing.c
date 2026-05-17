@@ -492,12 +492,15 @@ static int open_timing_report(void)
  * @when: timestamp to format.
  * @buf: destination buffer.
  * @buf_len: size of @buf.
- * Returns @buf.
+ * Returns @buf on success, or NULL when @buf cannot be initialized.
  */
 static const char *format_report_time(long when, char *buf, size_t buf_len)
 {
 	struct tm tm;
 	time_t t = (time_t)when;
+
+	if (buf == NULL || buf_len == 0)
+		return NULL;
 
 	if (when <= 0) {
 		strncpy(buf, "never", buf_len - 1);
@@ -2276,6 +2279,7 @@ static void write_timing_report(const conf_t *config)
 	FILE *f;
 	unsigned int worker, stage, worker_count;
 	char decisions[32], duration[32], start_time[64], stop_time[64];
+	const char *start_text, *stop_text;
 	const char *mode = decision_timing_mode_name(
 		config_timing_mode(config));
 	unsigned long long duration_ns = 0;
@@ -2339,11 +2343,16 @@ static void write_timing_report(const conf_t *config)
 
 	format_count(decision_count, decisions, sizeof(decisions));
 	format_hms_duration(duration_ns, duration, sizeof(duration));
+	start_text = format_report_time(started, start_time,
+					sizeof(start_time));
+	if (start_text == NULL)
+		start_text = "unavailable";
+	stop_text = format_report_time(stopped, stop_time, sizeof(stop_time));
+	if (stop_text == NULL)
+		stop_text = "unavailable";
 
 	fprintf(f, "Mode: %s\n", mode);
-	fprintf(f, "Timing run: %s to %s\n",
-		format_report_time(started, start_time, sizeof(start_time)),
-		format_report_time(stopped, stop_time, sizeof(stop_time)));
+	fprintf(f, "Timing run: %s to %s\n", start_text, stop_text);
 	fprintf(f, "Duration: %s\n", duration);
 	fprintf(f, "Workers: %u\n", worker_count);
 	fprintf(f, "Max queue depth: %u\n", max_queue_depth);
@@ -2679,17 +2688,22 @@ void decision_timing_control_report(FILE *f, const conf_t *config)
  */
 void decision_timing_history_report(FILE *f)
 {
+	const char *arm_text, *stop_text;
 	char arm_time[64], stop_time[64];
 
 	if (f == NULL)
 		return;
 
-	fprintf(f, "Timing collection last start time: %s\n",
-		format_report_time(atomic_load_explicit(&last_arm_time,
-			memory_order_relaxed), arm_time, sizeof(arm_time)));
-	fprintf(f, "Timing collection last stop time: %s\n",
-		format_report_time(atomic_load_explicit(&last_stop_time,
-			memory_order_relaxed), stop_time, sizeof(stop_time)));
+	arm_text = format_report_time(atomic_load_explicit(&last_arm_time,
+			memory_order_relaxed), arm_time, sizeof(arm_time));
+	if (arm_text == NULL)
+		arm_text = "unavailable";
+	stop_text = format_report_time(atomic_load_explicit(&last_stop_time,
+			memory_order_relaxed), stop_time, sizeof(stop_time));
+	if (stop_text == NULL)
+		stop_text = "unavailable";
+	fprintf(f, "Timing collection last start time: %s\n", arm_text);
+	fprintf(f, "Timing collection last stop time: %s\n", stop_text);
 }
 
 /*

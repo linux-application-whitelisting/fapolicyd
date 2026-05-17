@@ -115,14 +115,14 @@ void usr1_handler(int sig __attribute__((unused)),
  * format_metrics_reset_time - format the last metric reset timestamp.
  * @buf: destination buffer.
  * @buf_size: destination size.
- * Returns @buf.
+ * Returns @buf on success, or NULL when @buf cannot be initialized.
  */
 static const char *format_metrics_reset_time(char *buf, size_t buf_size)
 {
 	struct tm tm;
 
-	if (buf_size == 0)
-		return buf;
+	if (buf == NULL || buf_size == 0)
+		return NULL;
 
 	if (last_metrics_reset == 0) {
 		strncpy(buf, "never", buf_size - 1);
@@ -253,6 +253,7 @@ void decision_report_reset(FILE *f, int reset)
 void decision_report_metrics_reset(FILE *f, int reset)
 {
 	decision_metrics_t metrics;
+	const char *reset_text;
 	char reset_time[64];
 
 	if (f == NULL)
@@ -260,8 +261,11 @@ void decision_report_metrics_reset(FILE *f, int reset)
 
 	getDecisionMetricsReset(&metrics, reset);
 
+	reset_text = format_metrics_reset_time(reset_time, sizeof(reset_time));
+	if (reset_text == NULL)
+		reset_text = "unavailable";
 	fprintf(f, "Last metrics reset: %s\n",
-		format_metrics_reset_time(reset_time, sizeof(reset_time)));
+		reset_text);
 	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
 
 	fprintf(f, "\nDecision outcomes:\n");

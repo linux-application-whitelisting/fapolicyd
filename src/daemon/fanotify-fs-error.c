@@ -168,15 +168,15 @@ static const char *fs_error_code_text(int error)
  * @when: timestamp saved with the error details.
  * @buf: destination buffer.
  * @buf_size: destination size.
- * Returns @buf.
+ * Returns @buf on success, or NULL when @buf cannot be initialized.
  */
 static const char *format_fs_error_time(time_t when, char *buf,
 					size_t buf_size)
 {
 	struct tm tm;
 
-	if (buf_size < 11)
-		return buf;
+	if (buf == NULL || buf_size < 11)
+		return NULL;
 
 	if (when == 0) {
 		strncpy(buf, "never", buf_size - 1);
@@ -347,6 +347,7 @@ static void record_fs_error_event(
 void fanotify_fs_error_report(FILE *f)
 {
 	struct fanotify_fs_error_details details;
+	const char *when_text;
 	char when[64];
 
 	if (f == NULL)
@@ -358,8 +359,11 @@ void fanotify_fs_error_report(FILE *f)
 
 	fprintf(f, "Filesystem error last status: %s\n",
 		fs_error_status(&details));
+	when_text = format_fs_error_time(details.when, when, sizeof(when));
+	if (when_text == NULL)
+		when_text = "unavailable";
 	fprintf(f, "Filesystem error last seen: %s\n",
-		format_fs_error_time(details.when, when, sizeof(when)));
+		when_text);
 	if (!details.valid)
 		return;
 
