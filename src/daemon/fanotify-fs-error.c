@@ -90,11 +90,16 @@ struct fanotify_fs_error_details {
 	time_t when;
 };
 
-extern atomic_bool stop, run_stats;
+extern atomic_bool stop;
+#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
+extern atomic_bool run_stats;
+#endif
 
 static int fs_error_fd = -1;
+#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
 static struct message_rate_limit fanotify_fs_error_log =
 	MESSAGE_RATE_LIMIT_INIT(FS_ERROR_LOG_INTERVAL);
+#endif
 static pthread_mutex_t fs_error_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct fanotify_fs_error_details last_fs_error;
 
@@ -103,6 +108,7 @@ static const char *fs_error_status(
 static const char *fs_error_code_text(int error);
 static const char *format_fs_error_time(time_t when, char *buf,
 					size_t buf_size);
+#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
 static int parse_fs_error_record(
 		const struct fanotify_event_metadata *metadata,
 		struct fanotify_fs_error_details *details);
@@ -115,6 +121,7 @@ static void record_fs_error_event(
 		const struct fanotify_event_metadata *metadata);
 static void fanotify_fs_error_failure_action(void);
 static const char *escape_path_for_log(const char *path, char **escaped);
+#endif
 
 /*
  * getFanotifyFilesystemErrors - return FAN_FS_ERROR health event count.
@@ -260,22 +267,6 @@ static int parse_fs_error_record(
 
 	return 0;
 }
-#else
-/*
- * parse_fs_error_record - older headers cannot expose FAN_FS_ERROR details.
- * @metadata: unused fanotify event metadata.
- * @details: unused details destination.
- * Returns -1 because this build cannot parse FAN_FS_ERROR records.
- */
-static int parse_fs_error_record(
-		const struct fanotify_event_metadata *metadata,
-		struct fanotify_fs_error_details *details)
-{
-	(void)metadata;
-	(void)details;
-	return -1;
-}
-#endif
 
 /*
  * save_fs_error_details - publish recent filesystem error details.
@@ -344,6 +335,7 @@ static void record_fs_error_event(
 	log_fs_error_event(&details, total);
 	fanotify_fs_error_failure_action();
 }
+#endif
 
 /*
  * fanotify_fs_error_report - write recent FAN_FS_ERROR details.
@@ -387,6 +379,7 @@ void fanotify_fs_error_report(FILE *f)
 		details.metadata_len);
 }
 
+#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
 /*
  * fanotify_fs_error_failure_action - run the observe-only failure response.
  * Returns nothing.
@@ -427,7 +420,6 @@ static const char *escape_path_for_log(const char *path, char **escaped)
 	return "<unavailable>";
 }
 
-#if FAPOLICYD_HAVE_FANOTIFY_FS_ERROR
 /*
  * fanotify_fs_error_close - close the filesystem error fanotify group.
  * Returns nothing.
