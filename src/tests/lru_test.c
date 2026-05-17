@@ -52,6 +52,32 @@ static void test_reuse_after_evict(void)
 	destroy_lru(queue);
 }
 
+static void test_empty_after_single_evict(void)
+{
+	Queue *queue;
+	QNode *first;
+
+	cleaned = 0;
+	queue = init_lru(1, cleanup_item, "empty", NULL);
+	if (queue == NULL)
+		error(1, 0, "init_lru failed");
+
+	first = check_lru_cache(queue, 0);
+	if (first == NULL)
+		error(1, 0, "check_lru_cache returned NULL");
+	attach_item(first, 5);
+
+	lru_evict(queue, 0);
+	if (queue->front != NULL || queue->end != NULL || queue->count != 0)
+		error(1, 0, "single eviction left non-empty queue state");
+
+	lru_evict(queue, 0);
+	if (cleaned != 1)
+		error(1, 0, "empty eviction ran cleanup again");
+
+	destroy_lru(queue);
+}
+
 static void test_pool_exhaustion(void)
 {
 	Queue *queue;
@@ -173,6 +199,7 @@ static void test_null_queue_metrics(void)
 int main(void)
 {
 	test_reuse_after_evict();
+	test_empty_after_single_evict();
 	test_pool_exhaustion();
 	test_metrics_reset();
 	test_collision_metrics();

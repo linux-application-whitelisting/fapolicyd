@@ -265,6 +265,8 @@ static void remove_node(Queue *queue, const QNode *node)
 		queue->front = node->next;
 		if (queue->front)
 			queue->front->prev = NULL;
+		else
+			queue->end = NULL;
 		goto out;
 	} else {
 		if (node->prev->next != node) {
