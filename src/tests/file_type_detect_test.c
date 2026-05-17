@@ -3,6 +3,8 @@
  */
 
 #define _GNU_SOURCE
+#include "config.h"
+
 #include <errno.h>
 #include <error.h>
 #include <fcntl.h>
@@ -271,10 +273,17 @@ int main(void)
 		"text/x-perl");
 	close(fd);
 
+#ifndef FAPOLICYD_RHEL8
+	/*
+	 * RHEL 8 libmagic reports this as text/x-python. Keep the current
+	 * expectation for newer systems and drop this guard when RHEL 8
+	 * support is no longer needed.
+	 */
 	fd = create_tmp_file("#!/usr/bin/python3\nprint(1)\n");
 	expect_magic_descriptor("full-python-usr-bin", magic_full, fd,
 		"text/x-script.python");
 	close(fd);
+#endif
 
 	fd = create_tmp_file("#!/usr/bin/R\nprint(1)\n");
 	expect_magic_descriptor("full-r-usr-bin", magic_full, fd, "text/plain");

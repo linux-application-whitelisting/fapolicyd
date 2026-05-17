@@ -11,6 +11,31 @@ AM_INIT_AUTOMAKE(foreign subdir-objects)
 LT_INIT
 AC_SUBST(LIBTOOL_DEPS)
 
+AC_MSG_CHECKING([whether build host is RHEL 8])
+fapolicyd_rhel8=no
+if test -r /etc/os-release; then
+	fapolicyd_rhel8=`(
+		. /etc/os-release
+		if test "x$ID" = xrhel; then
+			case "$VERSION_ID" in
+			8|8.*)
+				echo yes
+				;;
+			*)
+				echo no
+				;;
+			esac
+		else
+			echo no
+		fi
+	)`
+fi
+AC_MSG_RESULT([$fapolicyd_rhel8])
+if test "x$fapolicyd_rhel8" = xyes; then
+	AC_DEFINE([FAPOLICYD_RHEL8], [1],
+		[Define if the build host is Red Hat Enterprise Linux 8])
+fi
+
 echo .
 echo Checking for programs
 AC_PROG_CC
