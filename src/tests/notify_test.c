@@ -1,6 +1,7 @@
 /*
  * notify_test.c - unit tests for daemon fanotify metadata handling
  */
+#include "config.h"
 #include <error.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -23,7 +24,8 @@
 #define FAN_Q_OVERFLOW		0x00004000
 #endif
 
-#if defined(FAN_FS_ERROR) && defined(FAN_REPORT_FID) && \
+#if defined(FAPOLICYD_ENABLE_FANOTIFY_FS_ERROR) && \
+	defined(FAN_FS_ERROR) && defined(FAN_REPORT_FID) && \
 	defined(FAN_MARK_FILESYSTEM) && \
 	defined(FAN_EVENT_INFO_TYPE_ERROR) && \
 	defined(FAN_EVENT_INFO_TYPE_FID)

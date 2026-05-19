@@ -36,9 +36,9 @@
  * queue handled by notify.c.
  *
  * Header and kernel support vary across supported build targets. Public entry
- * points stay available even when FAN_FS_ERROR symbols are absent; in that case
- * initialization reports that monitoring is unavailable and all other helpers
- * become harmless no-ops.
+ * points stay available even when FAN_FS_ERROR symbols are absent or configure
+ * disables this monitor; in that case initialization reports that monitoring is
+ * unavailable and all other helpers become harmless no-ops.
  */
 
 #include "config.h" /* Needed to get O_LARGEFILE definition */
@@ -62,7 +62,8 @@
 #define FANOTIFY_FS_ERROR_BUFFER_SIZE 8192
 #define FS_ERROR_LOG_INTERVAL 60
 
-#if defined(FAN_FS_ERROR) && defined(FAN_REPORT_FID) && \
+#if defined(FAPOLICYD_ENABLE_FANOTIFY_FS_ERROR) && \
+	defined(FAN_FS_ERROR) && defined(FAN_REPORT_FID) && \
 	defined(FAN_MARK_FILESYSTEM) && \
 	defined(FAN_EVENT_INFO_TYPE_ERROR) && \
 	defined(FAN_EVENT_INFO_TYPE_FID)
@@ -599,9 +600,14 @@ void fanotify_fs_error_unmark(const char *path)
 int fanotify_fs_error_init(mlist *m)
 {
 	(void)m;
+#if defined(FAPOLICYD_ENABLE_FANOTIFY_FS_ERROR)
 	msg(LOG_INFO,
 	    "FAN_FS_ERROR monitoring disabled; kernel headers do not provide "
 	    "the required fanotify info records");
+#else
+	msg(LOG_INFO,
+	    "FAN_FS_ERROR monitoring disabled by configure option");
+#endif
 	return -1;
 }
 #endif
