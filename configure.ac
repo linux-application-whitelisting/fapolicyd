@@ -151,6 +151,23 @@ if test $perm = "no"; then
 fi
 AC_CHECK_DECLS([FAN_MARK_FILESYSTEM], [], [], [[#include <linux/fanotify.h>]])
 
+AC_ARG_ENABLE(fanotify-fs-error,
+AS_HELP_STRING([--disable-fanotify-fs-error],
+[disable FAN_FS_ERROR health monitoring even when supported]),
+[enable_fanotify_fs_error=$enableval],
+[enable_fanotify_fs_error=yes])
+case x$enable_fanotify_fs_error in
+	xyes)
+		AC_DEFINE([FAPOLICYD_ENABLE_FANOTIFY_FS_ERROR], [1],
+			[Define to enable FAN_FS_ERROR health monitoring])
+		;;
+	xno)
+		;;
+	*)
+		AC_MSG_ERROR([bad value $enableval for --enable-fanotify-fs-error])
+		;;
+esac
+
 withval=""
 AC_ARG_WITH(rpm,
 AS_HELP_STRING([--with-rpm],[Use the rpm database as a trust source]),
@@ -238,5 +255,6 @@ echo "
 `echo $LDFLAGS | fmt -w 50 | sed 's,^,                          ,'`
   __attr_access support:  $ACCESS
   __attr_dealloc_free support: $DEALLOC
+  FAN_FS_ERROR monitoring: $enable_fanotify_fs_error
 "
  
