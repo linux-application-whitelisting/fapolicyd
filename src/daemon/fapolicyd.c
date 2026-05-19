@@ -1322,11 +1322,13 @@ int main(int argc, const char *argv[])
 	handle_mounts(pfd[0].fd);
 	pfd[1].fd = init_fanotify(&config, m);
 	pfd[1].events = POLLIN;
+#ifdef FAPOLICYD_ENABLE_FANOTIFY_FS_ERROR
 	pfd[2].fd = fanotify_fs_error_fd();
 	if (pfd[2].fd >= 0) {
 		pfd[2].events = POLLIN;
 		pfd_count = 3;
 	}
+#endif
 
 	msg(LOG_INFO, "Starting to listen for events");
 	while (!stop) {
