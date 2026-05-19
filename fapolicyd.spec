@@ -99,7 +99,7 @@ EOF
 
 %build
 ./autogen.sh
-configure_flags="--with-perf-test --with-audit --with-rpm --disable-shared"
+configure_flags="--with-perf-test --with-audit --with-rpm --disable-shared --disable-fanotify-fs-error"
 
 %if %{defined asan_build}
 configure_flags="$configure_flags --with-asan"
