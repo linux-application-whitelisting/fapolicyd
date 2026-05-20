@@ -606,7 +606,7 @@ int fanotify_fs_error_init(mlist *m)
 	    "the required fanotify info records");
 #else
 	msg(LOG_INFO,
-	    "FAN_FS_ERROR monitoring disabled by configure option");
+	    "FAN_FS_ERROR monitoring disabled");
 #endif
 	return -1;
 }
