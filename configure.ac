@@ -151,22 +151,25 @@ if test $perm = "no"; then
 fi
 AC_CHECK_DECLS([FAN_MARK_FILESYSTEM], [], [], [[#include <linux/fanotify.h>]])
 
-AC_ARG_ENABLE(fanotify-fs-error,
-AS_HELP_STRING([--disable-fanotify-fs-error],
-[disable FAN_FS_ERROR health monitoring even when supported]),
-[enable_fanotify_fs_error=$enableval],
-[enable_fanotify_fs_error=yes])
-case x$enable_fanotify_fs_error in
-	xyes)
-		AC_DEFINE([FAPOLICYD_ENABLE_FANOTIFY_FS_ERROR], [1],
-			[Define to enable FAN_FS_ERROR health monitoring])
-		;;
-	xno)
-		;;
-	*)
-		AC_MSG_ERROR([bad value $enableval for --enable-fanotify-fs-error])
-		;;
-esac
+enable_fanotify_fs_error=no
+dnl FAN_FS_ERROR shutdown currently exposes a kernel close(2) hang. Keep the
+dnl monitor compiled out until the kernel problem is understood.
+dnl AC_ARG_ENABLE(fanotify-fs-error,
+dnl AS_HELP_STRING([--disable-fanotify-fs-error],
+dnl [disable FAN_FS_ERROR health monitoring even when supported]),
+dnl [enable_fanotify_fs_error=$enableval],
+dnl [enable_fanotify_fs_error=yes])
+dnl case x$enable_fanotify_fs_error in
+dnl 	xyes)
+dnl 		AC_DEFINE([FAPOLICYD_ENABLE_FANOTIFY_FS_ERROR], [1],
+dnl 			[Define to enable FAN_FS_ERROR health monitoring])
+dnl 		;;
+dnl 	xno)
+dnl 		;;
+dnl 	*)
+dnl 		AC_MSG_ERROR([bad value $enableval for --enable-fanotify-fs-error])
+dnl 		;;
+dnl esac
 
 withval=""
 AC_ARG_WITH(rpm,
