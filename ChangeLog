@@ -1,3 +1,5 @@
+1.6
+
 1.5
 - Increase the line length of config files (Renaud Métrich)
 - Add fapolicyd-cli --check-rules to validate rules
