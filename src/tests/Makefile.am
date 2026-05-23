@@ -70,7 +70,6 @@ trustdb_lmdb_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 lru_test_SOURCES = lru_test.c test-stubs.c
 lru_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 notify_test_SOURCES = notify_test.c test-stubs.c \
-	${top_srcdir}/src/daemon/decision-defer.c \
 	${top_srcdir}/src/daemon/fanotify-fs-error.c \
 	${top_srcdir}/src/daemon/notify.c \
 	${top_srcdir}/src/daemon/mounts.c \
@@ -81,7 +80,7 @@ notify_test_CPPFLAGS = \
 	-I${top_srcdir}/src/daemon/ \
 	-DTEST_SUBJECT_DEFER
 decision_defer_test_SOURCES = decision_defer_test.c \
-	${top_srcdir}/src/daemon/decision-defer.c
+	${top_srcdir}/src/library/decision-defer.c
 decision_defer_test_CPPFLAGS = \
 	-I${top_builddir} \
 	-I${top_srcdir}/src/library/ \
@@ -95,6 +94,7 @@ decision_timing_report_test_CPPFLAGS = \
 event_test_SOURCES = event_test.c
 event_test_LDADD = \
 	${top_builddir}/src/library/libfapolicyd_la-attr-lookup-metrics.o \
+	${top_builddir}/src/library/libfapolicyd_la-decision-defer.o \
 	${top_builddir}/src/library/libfapolicyd_la-event.o \
 	${top_builddir}/src/library/libfapolicyd_la-lru.o \
 	${top_builddir}/src/library/libfapolicyd_la-subject.o \

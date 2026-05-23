@@ -41,6 +41,7 @@
 #include <time.h>
 #include "attr-lookup-metrics.h"
 #include "conf.h"
+#include "decision-context.h"
 #include "decision-defer.h"
 #include "decision-timing.h"
 #include "failure-action.h"
@@ -65,8 +66,6 @@ extern conf_t config;
 static pid_t our_pid;
 static struct queue *q = NULL;
 static struct queue_metrics last_queue_metrics;
-static struct decision_defer_queue defer_queue;
-static struct decision_defer_metrics last_defer_metrics;
 static pthread_t decision_thread;
 static pthread_t deadmans_switch_thread;
 static atomic_bool alive = true;
@@ -77,6 +76,9 @@ static unsigned int mark_flag;
 static unsigned int rpt_interval;
 static struct message_rate_limit kernel_queue_overflow_log =
 	MESSAGE_RATE_LIMIT_INIT(KERNEL_OVERFLOW_LOG_INTERVAL);
+
+#define defer_queue (decision_context_current()->defer_queue)
+#define last_defer_metrics (decision_context_current()->last_defer_metrics)
 
 // Local functions
 static void *decision_thread_main(void *arg);
@@ -203,7 +205,8 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		exit(1);
 	}
 	q_metrics_snapshot(q, &last_queue_metrics);
-	if (decision_defer_init(&defer_queue, conf->subj_cache_size)) {
+	if (defer_queue.entries == NULL &&
+	    decision_defer_init(&defer_queue, conf->subj_cache_size)) {
 		msg(LOG_ERR, "Failed setting up subject defer array (%s)",
 			strerror(errno));
 		q_close(q);
@@ -239,7 +242,6 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	if (fd < 0) {
 		msg(LOG_ERR, "Failed opening fanotify fd (%s)",
 			strerror(errno));
-		decision_defer_destroy(&defer_queue);
 		q_close(q);
 		q = NULL;
 		exit(1);
@@ -253,7 +255,6 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		msg(LOG_ERR, "Failed to create decision thread (%s)",
 			strerror(rc));
 		close(fd);
-		decision_defer_destroy(&defer_queue);
 		q_close(q);
 		exit(1);
 	}
@@ -269,7 +270,6 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		if (rpt_timer_fd != -1)
 			close(rpt_timer_fd);
 		close(fd);
-		decision_defer_destroy(&defer_queue);
 		q_close(q);
 		exit(1);
 	}
@@ -422,7 +422,6 @@ void shutdown_fanotify(mlist *m)
 	decision_defer_metrics_snapshot_reset(&defer_queue,
 					      &last_defer_metrics, 0);
 	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
-	decision_defer_destroy(&defer_queue);
 	q_close(q);
 	q = NULL;
 	close(rpt_timer_fd);

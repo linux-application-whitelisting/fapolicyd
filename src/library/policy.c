@@ -37,6 +37,7 @@
 #include <stdatomic.h>
 
 #include "database.h"
+#include "decision-context.h"
 #include "decision-timing.h"
 #include "escape.h"
 #include "failure-action.h"
@@ -127,7 +128,6 @@ struct fan_audit_response
 #endif
 
 #define WB_SIZE 512
-static char *working_buffer = NULL;
 
 // This function returns 1 on success and 0 on failure
 static int parsing_obj;
@@ -563,6 +563,8 @@ int load_rules_from_stream(const conf_t *_config, FILE *f)
 
 void destroy_rules(void)
 {
+	struct decision_context *ctx = decision_context_current();
+
 	policy_snapshot_destroy(active_policy);
 	active_policy = NULL;
 	atomic_store_explicit(&active_rules_proc_status_mask, 0,
@@ -571,8 +573,8 @@ void destroy_rules(void)
 			      memory_order_release);
 
 	if (stop) {
-		free(working_buffer);
-		working_buffer = NULL;
+		free(ctx->working_buffer);
+		ctx->working_buffer = NULL;
 	}
 }
 
@@ -785,6 +787,7 @@ static void *fmemccpy(void* restrict dst, const void* restrict src, size_t n)
 static void log_it(const struct policy_snapshot *policy, unsigned int num,
 		   decision_t results, event_t *e)
 {
+	struct decision_context *ctx = decision_context_current();
 	struct decision_timing_span timing;
 	int mode = results & SYSLOG ? LOG_INFO : LOG_DEBUG;
 	unsigned int i;
@@ -794,9 +797,9 @@ static void log_it(const struct policy_snapshot *policy, unsigned int num,
 
 	decision_timing_stage_begin(
 		DECISION_TIMING_STAGE_SYSLOG_DEBUG_FORMAT, &timing);
-	if (working_buffer == NULL) {
-		working_buffer = malloc(WB_SIZE);
-		if (working_buffer == NULL) {
+	if (ctx->working_buffer == NULL) {
+		ctx->working_buffer = malloc(WB_SIZE);
+		if (ctx->working_buffer == NULL) {
 			msg(LOG_ERR, "No working buffer for logging");
 			decision_timing_stage_end(&timing);
 			return;
@@ -804,7 +807,7 @@ static void log_it(const struct policy_snapshot *policy, unsigned int num,
 	}
 
 	dsize = WB_SIZE;
-	p1 = p2 = working_buffer; // Dummy assignment for p1 to quiet warnings
+	p1 = p2 = ctx->working_buffer; // Dummy assignment for p1 to quiet warnings
 	for (i = 0; i < policy->num_fields && dsize; i++)
 	{
 		if (dsize < WB_SIZE) {
@@ -838,8 +841,8 @@ static void log_it(const struct policy_snapshot *policy, unsigned int num,
 			free(val);
 		}
 	}
-	working_buffer[WB_SIZE-1] = 0;	// Just in case
-	msg(mode, "%s", working_buffer);
+	ctx->working_buffer[WB_SIZE-1] = 0;	// Just in case
+	msg(mode, "%s", ctx->working_buffer);
 	decision_timing_stage_end(&timing);
 }
 

@@ -36,6 +36,7 @@
 #include <errno.h>
 
 #include "attr-lookup-metrics.h"
+#include "decision-context.h"
 #include "event.h"
 #include "database.h"
 #include "decision-timing.h"
@@ -61,16 +62,28 @@
 	(SUBJECT_BUILDING_STALE_MS * NSEC_PER_MSEC)
 #define SUBJECT_BUILDING_LOG_INTERVAL 60
 
-static Queue *subj_cache = NULL;
-static Queue *obj_cache = NULL;
-static bool obj_cache_warned = false;
-static unsigned int early_subj_cache_evictions = 0;
-static unsigned int building_tracer_evictions = 0;
-static unsigned int building_stale_evictions = 0;
-static struct message_rate_limit building_tracer_log =
-	MESSAGE_RATE_LIMIT_INIT(SUBJECT_BUILDING_LOG_INTERVAL);
-static struct message_rate_limit building_stale_log =
-	MESSAGE_RATE_LIMIT_INIT(SUBJECT_BUILDING_LOG_INTERVAL);
+static struct decision_context default_decision_context = {
+	.building_tracer_rate_limit =
+		MESSAGE_RATE_LIMIT_INIT(SUBJECT_BUILDING_LOG_INTERVAL),
+	.building_stale_rate_limit =
+		MESSAGE_RATE_LIMIT_INIT(SUBJECT_BUILDING_LOG_INTERVAL),
+};
+static struct decision_context *current_decision_context =
+	&default_decision_context;
+
+#define subj_cache (current_decision_context->subject_cache)
+#define obj_cache (current_decision_context->object_cache)
+#define obj_cache_warned (current_decision_context->object_cache_warned)
+#define early_subj_cache_evictions \
+	(current_decision_context->early_subject_cache_evictions)
+#define building_tracer_evictions \
+	(current_decision_context->building_tracer_evict_count)
+#define building_stale_evictions \
+	(current_decision_context->building_stale_evict_count)
+#define building_tracer_log \
+	(current_decision_context->building_tracer_rate_limit)
+#define building_stale_log \
+	(current_decision_context->building_stale_rate_limit)
 
 atomic_bool needs_flush = false;
 
@@ -87,6 +100,68 @@ struct building_evict_context {
 	uint64_t age_ns;
 	unsigned int event_count;
 };
+
+/*
+ * decision_context_current - return active mutable decision state.
+ *
+ * A default empty context is available before the daemon initializes the real
+ * caches so policy-only tests can still use the logging buffer.
+ */
+struct decision_context *decision_context_current(void)
+{
+	return current_decision_context;
+}
+
+/*
+ * decision_context_set_current - publish the active decision context.
+ * @ctx: context to use, or NULL to restore the default empty context.
+ * Returns nothing.
+ */
+void decision_context_set_current(struct decision_context *ctx)
+{
+	if (ctx == NULL)
+		current_decision_context = &default_decision_context;
+	else
+		current_decision_context = ctx;
+}
+
+/*
+ * decision_context_init_rate_limits - initialize per-context log throttles.
+ * @ctx: context to initialize.
+ * Returns nothing.
+ */
+static void decision_context_init_rate_limits(struct decision_context *ctx)
+{
+	atomic_init(&ctx->building_tracer_rate_limit.last_log, 0);
+	ctx->building_tracer_rate_limit.interval =
+		SUBJECT_BUILDING_LOG_INTERVAL;
+	atomic_init(&ctx->building_stale_rate_limit.last_log, 0);
+	ctx->building_stale_rate_limit.interval = SUBJECT_BUILDING_LOG_INTERVAL;
+}
+
+/*
+ * decision_context_init_policy_counters - initialize policy metric counters.
+ * @counters: policy counter block to initialize.
+ * Returns nothing.
+ */
+static void decision_context_init_policy_counters(
+		struct decision_policy_counters *counters)
+{
+	atomic_init(&counters->allowed, 0);
+	atomic_init(&counters->denied, 0);
+	atomic_init(&counters->allowed_by_rule, 0);
+	atomic_init(&counters->allowed_by_fallthrough, 0);
+	atomic_init(&counters->fallthrough_open, 0);
+	atomic_init(&counters->fallthrough_execute, 0);
+	atomic_init(&counters->fallthrough_trusted, 0);
+	atomic_init(&counters->fallthrough_untrusted, 0);
+	atomic_init(&counters->fallthrough_trust_unknown, 0);
+	atomic_init(&counters->fallthrough_executable, 0);
+	atomic_init(&counters->fallthrough_programmatic, 0);
+	atomic_init(&counters->fallthrough_sharedlib, 0);
+	atomic_init(&counters->fallthrough_unknown_ftype, 0);
+	atomic_init(&counters->fallthrough_other_ftype, 0);
+}
 
 /*
  * event_now_ns - read monotonic time for BUILDING age checks.
@@ -302,27 +377,47 @@ static void obj_evict_warn(void *unused)
 // Return 0 on success and 1 on error
 int init_event_system(const conf_t *config)
 {
+	struct decision_context *ctx;
+
+	ctx = calloc(1, sizeof(*ctx));
+	if (ctx == NULL)
+		return 1;
+	decision_context_init_rate_limits(ctx);
+	decision_context_init_policy_counters(&ctx->policy_counters);
+
 	/*
 	 * Attach subject_evict_warn so we can see when fast PID turnover
 	 * drops a subject before classification completes.  Without all the
 	 * paths collected ld.so can report spurious access denials.  A larger
 	 * subj_cache_size lengthens the window and avoids this condition.
 	 */
-	subj_cache=init_lru(config->subj_cache_size,
+	ctx->subject_cache = init_lru(config->subj_cache_size,
 				(void (*)(void *))subject_clear, "Subject",
 				(void (*)(void *))subject_evict_warn);
-	if (!subj_cache)
-		return 1;
-
-	obj_cache = init_lru(config->obj_cache_size,
-				(void (*)(void *))object_clear, "Object",
-				obj_evict_warn);
-	if (!obj_cache) {
-		destroy_lru(subj_cache);
-		subj_cache = NULL;
+	if (!ctx->subject_cache) {
+		free(ctx);
 		return 1;
 	}
 
+	ctx->object_cache = init_lru(config->obj_cache_size,
+				(void (*)(void *))object_clear, "Object",
+				obj_evict_warn);
+	if (!ctx->object_cache) {
+		destroy_lru(ctx->subject_cache);
+		free(ctx);
+		return 1;
+	}
+
+	if (decision_defer_init(&ctx->defer_queue, config->subj_cache_size)) {
+		destroy_lru(ctx->subject_cache);
+		destroy_lru(ctx->object_cache);
+		free(ctx);
+		return 1;
+	}
+	decision_defer_metrics_snapshot_reset(&ctx->defer_queue,
+					      &ctx->last_defer_metrics, 0);
+
+	decision_context_set_current(ctx);
 	return 0;
 }
 
@@ -350,23 +445,31 @@ static int flush_cache(void)
 
 void destroy_event_system(void)
 {
+	struct decision_context *ctx = current_decision_context;
+
+	if (ctx == &default_decision_context)
+		return;
+
 	/* We're intentionally clearing the caches; disable warnings */
-	if (subj_cache)
-		subj_cache->evict_cb = NULL;
-	if (early_subj_cache_evictions)
+	if (ctx->subject_cache)
+		ctx->subject_cache->evict_cb = NULL;
+	if (ctx->early_subject_cache_evictions)
 		msg(LOG_WARNING,
 		   "Processes are being evicted from the subject cache before "
 		   "pattern detection completes: increase subj_cache_size "
-		   "(total early evictions: %u)", early_subj_cache_evictions);
-	if (obj_cache)
-		obj_cache->evict_cb = NULL;
-	if (obj_cache_warned)
+		   "(total early evictions: %u)",
+		   ctx->early_subject_cache_evictions);
+	if (ctx->object_cache)
+		ctx->object_cache->evict_cb = NULL;
+	if (ctx->object_cache_warned)
 		msg(LOG_WARNING,
 		  "object cache eviction ratios high: increase obj_cache_size");
-	destroy_lru(subj_cache);
-	destroy_lru(obj_cache);
-	subj_cache = NULL;
-	obj_cache = NULL;
+	destroy_lru(ctx->subject_cache);
+	destroy_lru(ctx->object_cache);
+	decision_defer_destroy(&ctx->defer_queue);
+	free(ctx->working_buffer);
+	decision_context_set_current(NULL);
+	free(ctx);
 }
 
 static inline void reset_subject_attributes(s_array *s)

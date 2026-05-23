@@ -42,6 +42,9 @@ libfapolicyd_la_SOURCES = \
 	library/database.h \
 	library/daemon-config.c \
 	library/daemon-config.h \
+	library/decision-context.h \
+	library/decision-defer.c \
+	library/decision-defer.h \
 	library/decision-event.h \
 	library/decision-timing.c \
 	library/decision-timing.h \
@@ -126,8 +129,6 @@ libfapolicyd_la_CFLAGS = $(fapolicyd_CFLAGS)
 libfapolicyd_la_LDFLAGS = $(fapolicyd_LDFLAGS) -lpthread
 
 fapolicyd_SOURCES = \
-	daemon/decision-defer.c \
-	daemon/decision-defer.h \
 	daemon/fanotify-fs-error.c \
 	daemon/fanotify-fs-error.h \
 	daemon/fapolicyd.c \

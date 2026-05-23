@@ -12,22 +12,10 @@
 #include "config.h"
 #include <stdatomic.h>
 #include <string.h>
+#include "decision-context.h"
 #include "event.h"
 #include "policy-metrics.h"
 
-static atomic_ulong allowed = 0, denied = 0;
-static atomic_ulong allowed_by_rule;
-static atomic_ulong allowed_by_fallthrough;
-static atomic_ulong fallthrough_open;
-static atomic_ulong fallthrough_execute;
-static atomic_ulong fallthrough_trusted;
-static atomic_ulong fallthrough_untrusted;
-static atomic_ulong fallthrough_trust_unknown;
-static atomic_ulong fallthrough_executable;
-static atomic_ulong fallthrough_programmatic;
-static atomic_ulong fallthrough_sharedlib;
-static atomic_ulong fallthrough_unknown_ftype;
-static atomic_ulong fallthrough_other_ftype;
 static atomic_uint ruleset_generation;
 
 /*
@@ -81,55 +69,61 @@ static int ftype_is_programmatic(const char *ftype)
 
 /*
  * count_fallthrough_ftype - bucket cached object ftype for reporting
+ * @counters: decision counter block to update.
  * @e: event whose object ftype should be classified if it is already cached.
  * Returns nothing.
  */
-static void count_fallthrough_ftype(event_t *e)
+static void count_fallthrough_ftype(struct decision_policy_counters *counters,
+		event_t *e)
 {
 	object_attr_t *ftype = cached_object_attr(e, FTYPE);
 	const char *name = ftype ? ftype->o : NULL;
 
 	if (!name || name[0] == 0) {
-		atomic_fetch_add_explicit(&fallthrough_unknown_ftype, 1,
-					  memory_order_relaxed);
+		atomic_fetch_add_explicit(
+			&counters->fallthrough_unknown_ftype, 1,
+			memory_order_relaxed);
 		return;
 	}
 
 	if (strcmp(name, "application/x-sharedlib") == 0) {
-		atomic_fetch_add_explicit(&fallthrough_sharedlib, 1,
+		atomic_fetch_add_explicit(&counters->fallthrough_sharedlib, 1,
 					  memory_order_relaxed);
 		return;
 	}
 	if (strstr(name, "executable") ||
 	    strcmp(name, "application/x-bad-elf") == 0) {
-		atomic_fetch_add_explicit(&fallthrough_executable, 1,
+		atomic_fetch_add_explicit(&counters->fallthrough_executable, 1,
 					  memory_order_relaxed);
 		return;
 	}
 	if (ftype_is_programmatic(name)) {
-		atomic_fetch_add_explicit(&fallthrough_programmatic, 1,
-					  memory_order_relaxed);
+		atomic_fetch_add_explicit(
+			&counters->fallthrough_programmatic, 1,
+			memory_order_relaxed);
 		return;
 	}
 
-	atomic_fetch_add_explicit(&fallthrough_other_ftype, 1,
+	atomic_fetch_add_explicit(&counters->fallthrough_other_ftype, 1,
 				  memory_order_relaxed);
 }
 
 /*
  * count_fallthrough_details - record low-cardinality default-allow dimensions
+ * @counters: decision counter block to update.
  * @e: event that reached the no-opinion allow path.
  * Returns nothing.
  */
-static void count_fallthrough_details(event_t *e)
+static void count_fallthrough_details(
+		struct decision_policy_counters *counters, event_t *e)
 {
 	object_attr_t *trust;
 
 	if (e->type & FAN_OPEN_EXEC_PERM)
-		atomic_fetch_add_explicit(&fallthrough_execute, 1,
+		atomic_fetch_add_explicit(&counters->fallthrough_execute, 1,
 					  memory_order_relaxed);
 	else
-		atomic_fetch_add_explicit(&fallthrough_open, 1,
+		atomic_fetch_add_explicit(&counters->fallthrough_open, 1,
 					  memory_order_relaxed);
 
 	/*
@@ -139,36 +133,39 @@ static void count_fallthrough_details(event_t *e)
 	 */
 	trust = cached_object_attr(e, OBJ_TRUST);
 	if (!trust)
-		atomic_fetch_add_explicit(&fallthrough_trust_unknown, 1,
-					  memory_order_relaxed);
+		atomic_fetch_add_explicit(
+			&counters->fallthrough_trust_unknown, 1,
+			memory_order_relaxed);
 	else if (trust->val)
-		atomic_fetch_add_explicit(&fallthrough_trusted, 1,
+		atomic_fetch_add_explicit(&counters->fallthrough_trusted, 1,
 					  memory_order_relaxed);
 	else
-		atomic_fetch_add_explicit(&fallthrough_untrusted, 1,
+		atomic_fetch_add_explicit(&counters->fallthrough_untrusted, 1,
 					  memory_order_relaxed);
 
-	count_fallthrough_ftype(e);
+	count_fallthrough_ftype(counters, e);
 }
 
 /*
  * count_allow_source - record whether an allow came from a rule or fallback
+ * @counters: decision counter block to update.
  * @e: event that was allowed.
  * @source: source reported by process_event_with_source().
  * Returns nothing.
  */
-static void count_allow_source(event_t *e, decision_source_t source)
+static void count_allow_source(struct decision_policy_counters *counters,
+		event_t *e, decision_source_t source)
 {
 	if (source == DECISION_SOURCE_RULE) {
-		atomic_fetch_add_explicit(&allowed_by_rule, 1,
+		atomic_fetch_add_explicit(&counters->allowed_by_rule, 1,
 					  memory_order_relaxed);
 		return;
 	}
 
-	atomic_fetch_add_explicit(&allowed_by_fallthrough, 1,
+	atomic_fetch_add_explicit(&counters->allowed_by_fallthrough, 1,
 				  memory_order_relaxed);
 	if (e)
-		count_fallthrough_details(e);
+		count_fallthrough_details(counters, e);
 }
 
 /*
@@ -181,13 +178,18 @@ static void count_allow_source(event_t *e, decision_source_t source)
 void policy_metrics_record_decision(decision_t decision, event_t *e,
 		decision_source_t source)
 {
+	struct decision_policy_counters *counters =
+		&decision_context_current()->policy_counters;
+
 	if ((decision & DENY) == DENY) {
-		atomic_fetch_add_explicit(&denied, 1, memory_order_relaxed);
+		atomic_fetch_add_explicit(&counters->denied, 1,
+					  memory_order_relaxed);
 		return;
 	}
 
-	atomic_fetch_add_explicit(&allowed, 1, memory_order_relaxed);
-	count_allow_source(e, source);
+	atomic_fetch_add_explicit(&counters->allowed, 1,
+				  memory_order_relaxed);
+	count_allow_source(counters, e, source);
 }
 
 /*
@@ -230,7 +232,8 @@ static unsigned long policy_counter_snapshot(atomic_ulong *counter, int reset)
  */
 unsigned long getAllowedReset(int reset)
 {
-	return policy_counter_snapshot(&allowed, reset);
+	return policy_counter_snapshot(
+		&decision_context_current()->policy_counters.allowed, reset);
 }
 
 /*
@@ -240,7 +243,8 @@ unsigned long getAllowedReset(int reset)
  */
 unsigned long getDeniedReset(int reset)
 {
-	return policy_counter_snapshot(&denied, reset);
+	return policy_counter_snapshot(
+		&decision_context_current()->policy_counters.denied, reset);
 }
 
 /*
@@ -263,33 +267,44 @@ void getDecisionMetrics(decision_metrics_t *metrics)
  */
 void getDecisionMetricsReset(decision_metrics_t *metrics, int reset)
 {
+	struct decision_policy_counters *counters =
+		&decision_context_current()->policy_counters;
+
 	if (!metrics)
 		return;
 
 	metrics->allowed_by_rule =
-		policy_counter_snapshot(&allowed_by_rule, reset);
+		policy_counter_snapshot(&counters->allowed_by_rule, reset);
 	metrics->allowed_by_fallthrough =
-		policy_counter_snapshot(&allowed_by_fallthrough, reset);
+		policy_counter_snapshot(&counters->allowed_by_fallthrough,
+					reset);
 	metrics->fallthrough_open =
-		policy_counter_snapshot(&fallthrough_open, reset);
+		policy_counter_snapshot(&counters->fallthrough_open, reset);
 	metrics->fallthrough_execute =
-		policy_counter_snapshot(&fallthrough_execute, reset);
+		policy_counter_snapshot(&counters->fallthrough_execute, reset);
 	metrics->fallthrough_trusted =
-		policy_counter_snapshot(&fallthrough_trusted, reset);
+		policy_counter_snapshot(&counters->fallthrough_trusted, reset);
 	metrics->fallthrough_untrusted =
-		policy_counter_snapshot(&fallthrough_untrusted, reset);
+		policy_counter_snapshot(&counters->fallthrough_untrusted,
+					reset);
 	metrics->fallthrough_trust_unknown =
-		policy_counter_snapshot(&fallthrough_trust_unknown, reset);
+		policy_counter_snapshot(&counters->fallthrough_trust_unknown,
+					reset);
 	metrics->fallthrough_executable =
-		policy_counter_snapshot(&fallthrough_executable, reset);
+		policy_counter_snapshot(&counters->fallthrough_executable,
+					reset);
 	metrics->fallthrough_programmatic =
-		policy_counter_snapshot(&fallthrough_programmatic, reset);
+		policy_counter_snapshot(&counters->fallthrough_programmatic,
+					reset);
 	metrics->fallthrough_sharedlib =
-		policy_counter_snapshot(&fallthrough_sharedlib, reset);
+		policy_counter_snapshot(&counters->fallthrough_sharedlib,
+					reset);
 	metrics->fallthrough_unknown_ftype =
-		policy_counter_snapshot(&fallthrough_unknown_ftype, reset);
+		policy_counter_snapshot(&counters->fallthrough_unknown_ftype,
+					reset);
 	metrics->fallthrough_other_ftype =
-		policy_counter_snapshot(&fallthrough_other_ftype, reset);
+		policy_counter_snapshot(&counters->fallthrough_other_ftype,
+					reset);
 	metrics->ruleset_generation =
 		atomic_load_explicit(&ruleset_generation,
 				     memory_order_relaxed);
