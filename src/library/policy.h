@@ -90,6 +90,7 @@ void set_reload_rules(void);
 decision_t process_event(event_t *e);
 decision_t process_event_with_source(event_t *e, decision_source_t *source,
 		struct decision_timing_span *response_timing);
+int reply_event_init(int fd);
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e);
 void make_policy_decision(decision_event_t *decision_event, int fd,

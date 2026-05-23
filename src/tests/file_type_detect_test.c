@@ -15,9 +15,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "decision-context.h"
 #include "file.h"
-
-extern magic_t magic_fast, magic_full;
 
 #ifndef TEST_BASE
 #define TEST_BASE "."
@@ -104,11 +103,12 @@ static void expect_text(const char *label, const char *buf, size_t len,
 }
 
 /*
- * init_magic_handles - initialize the libmagic handles used by file.c globals.
+ * init_magic_handles - initialize libmagic handles in the default context.
  * Returns 0 on success, -1 on failure.
  */
 static int init_magic_handles(void)
 {
+	struct decision_context *ctx = decision_context_current();
 	char path[512];
 	const char *fast_db[] = {
 		TEST_BASE "/init/fapolicyd-magic",
@@ -120,7 +120,7 @@ static int init_magic_handles(void)
 	int i;
 
 	unsetenv("MAGIC");
-	magic_fast = magic_open(
+	ctx->magic_fast = magic_open(
 		MAGIC_MIME |
 		MAGIC_ERROR |
 		MAGIC_NO_CHECK_CDF |
@@ -131,24 +131,30 @@ static int init_magic_handles(void)
 		MAGIC_NO_CHECK_TOKENS |
 		MAGIC_NO_CHECK_JSON
 	);
-	if (!magic_fast)
+	if (!ctx->magic_fast)
 		return -1;
 
 	for (i = 0; fast_db[i]; i++) {
 		(void)snprintf(path, sizeof(path), "%s", fast_db[i]);
-		if (magic_load(magic_fast, path) == 0)
+		if (magic_load(ctx->magic_fast, path) == 0)
 			break;
 	}
-	if (!fast_db[i])
+	if (!fast_db[i]) {
+		file_close();
 		return -1;
+	}
 
-	magic_full = magic_open(MAGIC_MIME | MAGIC_ERROR |
+	ctx->magic_full = magic_open(MAGIC_MIME | MAGIC_ERROR |
 		MAGIC_NO_CHECK_CDF | MAGIC_NO_CHECK_ELF);
-	if (!magic_full)
+	if (!ctx->magic_full) {
+		file_close();
 		return -1;
+	}
 
-	if (magic_load(magic_full, NULL) != 0)
+	if (magic_load(ctx->magic_full, NULL) != 0) {
+		file_close();
 		return -1;
+	}
 
 	return 0;
 }
@@ -158,10 +164,7 @@ static int init_magic_handles(void)
  */
 static void close_magic_handles(void)
 {
-	if (magic_fast)
-		magic_close(magic_fast);
-	if (magic_full)
-		magic_close(magic_full);
+	file_close();
 }
 
 /*
@@ -222,6 +225,7 @@ static void expect_magic_descriptor(const char *label, magic_t cookie,
 
 int main(void)
 {
+	struct decision_context *ctx;
 	int fd;
 	const unsigned char png_hdr[] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n' };
 	const unsigned char jpg_hdr[] = { 0xFF, 0xD8, 0xFF, 0xE0 };
@@ -229,6 +233,7 @@ int main(void)
 
 	if (init_magic_handles() != 0)
 		error(1, 0, "failed to initialize test libmagic handles");
+	ctx = decision_context_current();
 
 	expect_extract("bash", "#!/bin/bash\n", "bash");
 	expect_extract("env-python", "#! /usr/bin/env -S python3 -u\n", "python3");
@@ -260,16 +265,17 @@ int main(void)
 		error(1, 0, "classify_device: expected inode/fifo");
 
 	fd = create_tmp_file("#!/bin/awk\nBEGIN { print 1 }\n");
-	expect_magic_descriptor("full-awk-bin", magic_full, fd, "text/x-awk");
+	expect_magic_descriptor("full-awk-bin", ctx->magic_full, fd,
+		"text/x-awk");
 	close(fd);
 
 	fd = create_tmp_file("#!/usr/bin/gawk\nBEGIN { print 1 }\n");
-	expect_magic_descriptor("full-gawk-usr-bin", magic_full, fd,
+	expect_magic_descriptor("full-gawk-usr-bin", ctx->magic_full, fd,
 		"text/x-gawk");
 	close(fd);
 
 	fd = create_tmp_file("#!/usr/bin/perl\nprint qq(hi);\n");
-	expect_magic_descriptor("full-perl-usr-bin", magic_full, fd,
+	expect_magic_descriptor("full-perl-usr-bin", ctx->magic_full, fd,
 		"text/x-perl");
 	close(fd);
 
@@ -280,27 +286,28 @@ int main(void)
 	 * support is no longer needed.
 	 */
 	fd = create_tmp_file("#!/usr/bin/python3\nprint(1)\n");
-	expect_magic_descriptor("full-python-usr-bin", magic_full, fd,
+	expect_magic_descriptor("full-python-usr-bin", ctx->magic_full, fd,
 		"text/x-script.python");
 	close(fd);
 #endif
 
 	fd = create_tmp_file("#!/usr/bin/R\nprint(1)\n");
-	expect_magic_descriptor("full-r-usr-bin", magic_full, fd, "text/plain");
+	expect_magic_descriptor("full-r-usr-bin", ctx->magic_full, fd,
+		"text/plain");
 	close(fd);
 
 	fd = create_tmp_file("#!/usr/bin/guile\n(display 1)\n");
-	expect_magic_descriptor("fast-guile-usr-bin", magic_fast, fd,
+	expect_magic_descriptor("fast-guile-usr-bin", ctx->magic_fast, fd,
 		"text/x-script.guile");
 	close(fd);
 
 	fd = create_tmp_file("#!/usr/bin/gjs\nprint(1);\n");
-	expect_magic_descriptor("fast-gjs-usr-bin", magic_fast, fd,
+	expect_magic_descriptor("fast-gjs-usr-bin", ctx->magic_fast, fd,
 		"application/javascript");
 	close(fd);
 
 	fd = create_tmp_file("#!/usr/sbin/nft\nadd table inet t\n");
-	expect_magic_descriptor("fast-nft-usr-sbin", magic_fast, fd,
+	expect_magic_descriptor("fast-nft-usr-sbin", ctx->magic_fast, fd,
 		"text/x-nftables");
 	close(fd);
 

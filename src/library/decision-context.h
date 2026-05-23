@@ -15,9 +15,18 @@
 
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <sys/types.h>
+#include <magic.h>
 #include "decision-defer.h"
 #include "lru.h"
 #include "message.h"
+
+struct udev;
+
+struct file_device_cache {
+	dev_t device;
+	char *devname;
+};
 
 /*
  * decision_policy_counters - policy metrics updated by decision processing.
@@ -62,6 +71,11 @@ struct decision_context {
 	struct decision_defer_queue defer_queue;
 	struct decision_defer_metrics last_defer_metrics;
 	struct decision_policy_counters policy_counters;
+	/* File helpers keep mutable parser/cache state private to a worker. */
+	struct udev *file_udev;
+	magic_t magic_fast;
+	magic_t magic_full;
+	struct file_device_cache device_cache;
 };
 
 struct decision_context *decision_context_current(void);

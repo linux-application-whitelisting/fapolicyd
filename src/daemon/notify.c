@@ -247,6 +247,13 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		exit(1);
 	}
 
+	if (reply_event_init(fd)) {
+		close(fd);
+		q_close(q);
+		q = NULL;
+		exit(1);
+	}
+
 	// Start decision thread so its ready when first event comes
 	rpt_interval = conf->report_interval;
 	int rc = pthread_create(&decision_thread, NULL,

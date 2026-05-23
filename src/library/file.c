@@ -43,6 +43,7 @@
 
 #include "file.h"
 #include "database.h"
+#include "decision-context.h"
 #include "decision-timing.h"
 #include "paths.h"
 #include "message.h"
@@ -52,12 +53,6 @@
 // Local defines
 #define IMA_XATTR_DIGEST_NG 0x04	// security/integrity/integrity.h
 
-// Local variables
-static struct udev *udev;
-magic_t magic_fast, magic_full;
-struct cache { dev_t device; const char *devname; };
-static struct cache c = { 0, NULL };
-
 // Local declarations
 static ssize_t safe_read(int fd, char *buf, size_t size)
 				__attr_access ((__write_only__, 2, 3));
@@ -65,6 +60,30 @@ static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 				__attr_access ((__write_only__, 3, 2));
 static void resolve_path(const char *pcwd, char *path, size_t len)
 				__attr_access ((__write_only__, 2, 3));
+
+/*
+ * file_close_context - release file helper state owned by a decision context.
+ * @ctx: context whose libmagic, udev, and device cache state should be freed.
+ * Returns nothing.
+ */
+static void file_close_context(struct decision_context *ctx)
+{
+	if (ctx->file_udev) {
+		udev_unref(ctx->file_udev);
+		ctx->file_udev = NULL;
+	}
+	if (ctx->magic_fast) {
+		magic_close(ctx->magic_fast);
+		ctx->magic_fast = NULL;
+	}
+	if (ctx->magic_full) {
+		magic_close(ctx->magic_full);
+		ctx->magic_full = NULL;
+	}
+	free(ctx->device_cache.devname);
+	ctx->device_cache.devname = NULL;
+	ctx->device_cache.device = 0;
+}
 
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
@@ -95,13 +114,17 @@ static inline void rewind_fd(int fd)
 // Initialize what we can now so that its not done each call
 int file_init(void)
 {
+	struct decision_context *ctx = decision_context_current();
+
+	file_close_context(ctx);
+
 	// Setup udev
-	udev = udev_new();
+	ctx->file_udev = udev_new();
 
 	// Setup libmagic
 	unsetenv("MAGIC");
 	// Fast magic: minimal rules, all expensive checks disabled
-	magic_fast = magic_open(
+	ctx->magic_fast = magic_open(
 		MAGIC_MIME |
 		MAGIC_ERROR |
 		MAGIC_NO_CHECK_CDF |
@@ -112,31 +135,31 @@ int file_init(void)
 		MAGIC_NO_CHECK_TOKENS |    /* Skip text tokens */
 		MAGIC_NO_CHECK_JSON        /* Skip JSON validation */
 		);
-	if (magic_fast == NULL) {
+	if (ctx->magic_fast == NULL) {
 		msg(LOG_ERR, "Unable to init libmagic");
+		file_close_context(ctx);
 		return 1;
 	}
 
 	// Load only essential magic rules
-	if (magic_load(magic_fast, MAGIC_PATH) != 0) {
+	if (magic_load(ctx->magic_fast, MAGIC_PATH) != 0) {
 		msg(LOG_ERR, "Unable to load fast magic database");
-		magic_close(magic_fast);
+		file_close_context(ctx);
 		return 2;
 	}
 
 	// Full magic: normal operation
-	magic_full = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
+	ctx->magic_full = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
 			MAGIC_NO_CHECK_ELF);
-	if (magic_full == NULL) {
+	if (ctx->magic_full == NULL) {
 		msg(LOG_ERR, "Unable to init libmagic");
-		magic_close(magic_fast);
+		file_close_context(ctx);
 		return 3;
 	}
 	// System default
-	if (magic_load(magic_full, NULL) != 0) {
+	if (magic_load(ctx->magic_full, NULL) != 0) {
 		msg(LOG_ERR, "Unable to load default magic database");
-		magic_close(magic_fast);
-		magic_close(magic_full);
+		file_close_context(ctx);
 		return 4;
 	}
 	return 0;
@@ -146,10 +169,7 @@ int file_init(void)
 // Release memory during shutdown
 void file_close(void)
 {
-	udev_unref(udev);
-	magic_close(magic_fast);
-	magic_close(magic_full);
-	free((void *)c.devname);
+	file_close_context(decision_context_current());
 }
 
 
@@ -587,19 +607,26 @@ char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
 
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 {
+	struct decision_context *ctx = decision_context_current();
+	struct file_device_cache *cache = &ctx->device_cache;
 	struct udev_device *dev;
 	const char *node;
 
-	if (c.device) {
-		if (c.device == device) {
-			strncpy(buf, c.devname, blen-1);
+	if (cache->device) {
+		if (cache->device == device) {
+			strncpy(buf, cache->devname, blen-1);
 			buf[blen-1] = 0;
 			return buf;
 		}
 	}
 
+	if (ctx->file_udev == NULL)
+		return NULL;
+
 	// Create udev_device from the dev_t obtained from stat
-	dev = udev_device_new_from_devnum(udev, 'b', device);
+	dev = udev_device_new_from_devnum(ctx->file_udev, 'b', device);
+	if (dev == NULL)
+		return NULL;
 	node = udev_device_get_devnode(dev);
 	if (node == NULL) {
 		udev_device_unref(dev);
@@ -610,9 +637,12 @@ char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 	udev_device_unref(dev);
 
 	// Update saved values
-	free((void *)c.devname);
-	c.device = device;
-	c.devname = strdup(buf);
+	free(cache->devname);
+	cache->devname = strdup(buf);
+	if (cache->devname)
+		cache->device = device;
+	else
+		cache->device = 0;
 
 	return buf;
 }
@@ -1086,6 +1116,7 @@ const char *detect_text_format(const char *hdr, size_t len)
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf)
 {
+	struct decision_context *ctx = decision_context_current();
 	const char *ptr;
 	char header[512 + 1];
 	size_t header_len = 0;
@@ -1184,15 +1215,18 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	decision_timing_stage_end(&fast_timing);
 
 	// Use libmagic when in-house classification did not identify the object.
+	if (ctx->magic_fast == NULL || ctx->magic_full == NULL)
+		return NULL;
+
 	decision_timing_mime_stage_begin(
 		DECISION_TIMING_MIME_LIBMAGIC_FALLBACK, &timing);
-	ptr = magic_descriptor(magic_fast, fd);
+	ptr = magic_descriptor(ctx->magic_fast, fd);
 	if (ptr == NULL ||
 	    (ptr && (memcmp(ptr, "text/plain", 10) == 0 ||
 		    memcmp(ptr, "application/octet-stream", 24) == 0))) {
 		// Fall back to the whole database lookup
 		rewind_fd(fd);
-		ptr = magic_descriptor(magic_full, fd);
+		ptr = magic_descriptor(ctx->magic_full, fd);
 		if (ptr == NULL) {
 			decision_timing_stage_end(&timing);
 			return NULL;
@@ -1395,14 +1429,14 @@ int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
 }
 
 
-static unsigned char e_ident[EI_NIDENT];
-static inline ssize_t read_preliminary_header(int fd)
+static inline ssize_t read_preliminary_header(int fd, unsigned char *e_ident)
 {
 	return safe_read(fd, (char *)e_ident, EI_NIDENT);
 }
 
 
-static Elf32_Ehdr *read_header32(int fd, Elf32_Ehdr *ptr)
+static Elf32_Ehdr *read_header32(int fd, Elf32_Ehdr *ptr,
+				 const unsigned char *e_ident)
 {
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
 	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
@@ -1413,7 +1447,8 @@ static Elf32_Ehdr *read_header32(int fd, Elf32_Ehdr *ptr)
 }
 
 
-static Elf64_Ehdr *read_header64(int fd, Elf64_Ehdr *ptr)
+static Elf64_Ehdr *read_header64(int fd, Elf64_Ehdr *ptr,
+				 const unsigned char *e_ident)
 {
 	memcpy(ptr->e_ident, e_ident, EI_NIDENT);
 	ssize_t rc = safe_read(fd, (char *)ptr + EI_NIDENT,
@@ -1496,10 +1531,11 @@ static int looks_like_text_script(int fd)
 // size is the file size from fstat done when event was received
 uint32_t gather_elf(int fd, off_t size)
 {
+	unsigned char e_ident[EI_NIDENT];
 	uint32_t info = 0;
 	ssize_t rc;
 
-	rc = read_preliminary_header(fd);
+	rc = read_preliminary_header(fd, e_ident);
 	if (rc < 2)
 		goto rewind_out;
 
@@ -1527,7 +1563,7 @@ uint32_t gather_elf(int fd, off_t size)
 		Elf32_Phdr *ph_tbl = NULL;
 		Elf32_Ehdr hdr_buf;
 
-		Elf32_Ehdr *hdr = read_header32(fd, &hdr_buf);
+		Elf32_Ehdr *hdr = read_header32(fd, &hdr_buf, e_ident);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
 			goto rewind_out;
@@ -1682,7 +1718,7 @@ done32_obj:
 		Elf64_Phdr *ph_tbl;
 		Elf64_Ehdr hdr_buf;
 
-		Elf64_Ehdr *hdr = read_header64(fd, &hdr_buf);
+		Elf64_Ehdr *hdr = read_header64(fd, &hdr_buf, e_ident);
 		if (hdr == NULL) {
 			info |= HAS_ERROR;
 			goto rewind_out;

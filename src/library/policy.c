@@ -933,6 +933,8 @@ decision_t process_event(event_t *e)
 }
 
 #ifdef FAN_AUDIT_RULE_NUM
+static int response_info_supported = 0;
+
 static int test_info_api(int fd)
 {
 	int rc;
@@ -955,6 +957,38 @@ static int test_info_api(int fd)
 }
 #endif
 
+/*
+ * reply_event_init - pre-probe extended fanotify response support.
+ * @fd: fanotify listener fd used for permission responses.
+ * Returns 0 on success or 1 when initialization cannot be attempted.
+ */
+int reply_event_init(int fd)
+{
+#ifdef FAN_AUDIT_RULE_NUM
+	if (fd < 0) {
+		errno = EBADF;
+		msg(LOG_ERR,
+		    "Cannot initialize fanotify response info support: "
+		    "bad fd (%s)", strerror(errno));
+		response_info_supported = 0;
+		return 1;
+	}
+
+	if (fcntl(fd, F_GETFD) < 0) {
+		msg(LOG_ERR,
+		    "Cannot initialize fanotify response info support: "
+		    "bad fd (%s)", strerror(errno));
+		response_info_supported = 0;
+		return 1;
+	}
+
+	response_info_supported = test_info_api(fd);
+#else
+	(void)fd;
+#endif
+	return 0;
+}
+
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 		unsigned reply, event_t *e)
 {
@@ -962,10 +996,7 @@ void reply_event(int fd, const struct fanotify_event_metadata *metadata,
 	struct decision_timing_span write_timing;
 
 #ifdef FAN_AUDIT_RULE_NUM
-	static int use_new = 2;
-	if (use_new == 2)
-		use_new = test_info_api(fd);
-	if (reply & FAN_AUDIT && use_new) {
+	if (reply & FAN_AUDIT && response_info_supported) {
 		struct fan_audit_response f;
 		subject_attr_t *sn;
 		object_attr_t *obj;
