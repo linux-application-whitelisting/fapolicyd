@@ -50,6 +50,7 @@ void close_database(void);
 void database_config_report(FILE *f);
 void database_utilization_report(FILE *f);
 void database_report(FILE *f);
+void database_metrics_report_reset(FILE *f, int reset);
 int unlink_db(void) __wur;
 void unlink_fifo(void);
 unsigned get_default_db_max_size(void);

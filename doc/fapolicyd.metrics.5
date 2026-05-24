@@ -110,6 +110,19 @@ match the current event and therefore had to be evicted before reuse.
 .B Object evictions
 The number of object cache evictions and the eviction percentage relative to
 object cache hits.
+.SH Trust database lookups
+.TP
+.B Trust DB lookups
+The number of trust database lookup attempts since the last metrics reset.
+.TP
+.B Trust DB reader slots full
+The number of lookup attempts that could not open an LMDB read transaction
+because all LMDB reader slots were in use.
+.PP
+Trust database lookup latency is reported by
+.BR fapolicyd.timing (5)
+only while manual timing collection is armed, so normal metrics collection does
+not add per-lookup clock reads.
 .SH Rule hit counts
 .TP
 .B Hits/rule

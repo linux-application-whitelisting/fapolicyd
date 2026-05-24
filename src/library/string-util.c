@@ -81,3 +81,28 @@ char *fapolicyd_strnchr(const char *s, int c, size_t len)
 	}
 	return NULL;
 }
+
+/*
+ * fapolicyd_format_ns - format nanoseconds for compact reports.
+ * @ns: duration or age in nanoseconds.
+ * @buf: destination buffer.
+ * @buf_size: destination size.
+ *
+ * Returns nothing.
+ */
+void fapolicyd_format_ns(uint64_t ns, char *buf, size_t buf_size)
+{
+	if (buf == NULL || buf_size == 0)
+		return;
+
+	if (ns == 0)
+		snprintf(buf, buf_size, "0 ns");
+	else if (ns < 1000ULL)
+		snprintf(buf, buf_size, "%llu ns", (unsigned long long)ns);
+	else if (ns < 1000000ULL)
+		snprintf(buf, buf_size, "%.3fus", (double)ns / 1000.0);
+	else if (ns < 1000000000ULL)
+		snprintf(buf, buf_size, "%.3fms", (double)ns / 1000000.0);
+	else
+		snprintf(buf, buf_size, "%.3fs", (double)ns / 1000000000.0);
+}

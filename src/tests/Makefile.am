@@ -67,6 +67,7 @@ queue_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 trustdb_format_test_SOURCES = trustdb_format_test.c
 trustdb_lmdb_test_SOURCES = trustdb_lmdb_test.c test-stubs.c
 trustdb_lmdb_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+trustdb_lmdb_test_LDFLAGS = -pthread
 lru_test_SOURCES = lru_test.c test-stubs.c
 lru_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 notify_test_SOURCES = notify_test.c test-stubs.c \
@@ -80,7 +81,8 @@ notify_test_CPPFLAGS = \
 	-I${top_srcdir}/src/daemon/ \
 	-DTEST_SUBJECT_DEFER
 decision_defer_test_SOURCES = decision_defer_test.c \
-	${top_srcdir}/src/library/decision-defer.c
+	${top_srcdir}/src/library/decision-defer.c \
+	${top_srcdir}/src/library/string-util.c
 decision_defer_test_CPPFLAGS = \
 	-I${top_builddir} \
 	-I${top_srcdir}/src/library/ \
@@ -105,7 +107,8 @@ event_test_LDADD = \
 	${top_builddir}/src/library/libfapolicyd_la-object-attr.o \
 	${top_builddir}/src/library/libfapolicyd_la-attr-sets.o \
 	${top_builddir}/src/library/libfapolicyd_la-avl.o \
-	${top_builddir}/src/library/libfapolicyd_la-decision-timing.o
+	${top_builddir}/src/library/libfapolicyd_la-decision-timing.o \
+	${top_builddir}/src/library/libfapolicyd_la-string-util.o
 event_test_DEPENDENCIES = $(event_test_LDADD)
 
 if WITH_RPM

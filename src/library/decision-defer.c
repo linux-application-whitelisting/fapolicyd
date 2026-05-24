@@ -50,7 +50,7 @@
 #include <string.h>
 #include <time.h>
 #include "decision-defer.h"
-#include "gcc-attributes.h"
+#include "string-util.h"
 
 struct decision_defer_entry {
 	/* Event envelope and permission fd owned while this entry is used. */
@@ -62,9 +62,6 @@ struct decision_defer_entry {
 	/* Non-zero when this array entry currently owns a deferred event. */
 	int used;
 };
-
-static void format_age(uint64_t age_ns, char *buf, size_t buf_size)
-	__attr_access ((__write_only__, 2, 3));
 
 /*
  * defer_now_ns - read monotonic time for defer age reporting.
@@ -342,33 +339,6 @@ static uint64_t oldest_age_ns(struct decision_defer_queue *defer)
 }
 
 /*
- * format_age - convert a nanosecond age into compact human-readable text.
- * @age_ns: age in nanoseconds.
- * @buf: destination buffer.
- * @buf_size: destination size.
- * Returns nothing.
- */
-static void format_age(uint64_t age_ns, char *buf, size_t buf_size)
-{
-	if (buf == NULL || buf_size == 0)
-		return;
-
-	if (age_ns == 0)
-		snprintf(buf, buf_size, "0 ns");
-	else if (age_ns < 1000ULL)
-		snprintf(buf, buf_size, "%llu ns",
-			 (unsigned long long)age_ns);
-	else if (age_ns < 1000000ULL)
-		snprintf(buf, buf_size, "%.3fus", (double)age_ns / 1000.0);
-	else if (age_ns < 1000000000ULL)
-		snprintf(buf, buf_size, "%.3fms",
-			 (double)age_ns / 1000000.0);
-	else
-		snprintf(buf, buf_size, "%.3fs",
-			 (double)age_ns / 1000000000.0);
-}
-
-/*
  * decision_defer_metrics_snapshot_reset - copy defer metrics.
  * @defer: queue state to read.
  * @metrics: destination for the snapshot.
@@ -445,7 +415,7 @@ void decision_defer_age_report(FILE *f,
 	if (f == NULL || metrics == NULL)
 		return;
 
-	format_age(metrics->oldest_age_ns, age, sizeof(age));
+	fapolicyd_format_ns(metrics->oldest_age_ns, age, sizeof(age));
 	fprintf(f, "Subject defer oldest age: %s\n", age);
 }
 

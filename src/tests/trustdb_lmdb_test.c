@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #define _GNU_SOURCE
+#include <stdatomic.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +17,9 @@
 #include "database.h"
 #include "fapolicyd-backend.h"
 
+#define CONCURRENT_READERS 32
+#define CONCURRENT_ITERATIONS 64
+
 #define CHECK(cond, code, msg) \
 	do { \
 		if (!(cond)) { \
@@ -22,6 +27,12 @@
 			return code; \
 		} \
 	} while (0)
+
+struct concurrent_lookup {
+	const char *path;
+	atomic_bool *start;
+	int failed;
+};
 
 static int remove_lmdb_files(const char *dir)
 {
@@ -99,6 +110,56 @@ static int import_records(const char *payload, long *entries)
 	rc = do_memfd_update(fd, entries);
 	close(fd);
 	return rc;
+}
+
+/*
+ * read_database_metrics_report - capture trust DB metrics text.
+ * @buf: output buffer for report text.
+ * @size: size of @buf.
+ * @reset: non-zero resets metrics after snapshotting.
+ *
+ * Returns 0 on success and 1 on failure.
+ */
+static int read_database_metrics_report(char *buf, size_t size, int reset)
+{
+	FILE *report;
+	size_t used;
+
+	report = tmpfile();
+	if (report == NULL)
+		return 1;
+
+	database_metrics_report_reset(report, reset);
+	fflush(report);
+	rewind(report);
+	used = fread(buf, 1, size - 1, report);
+	fclose(report);
+	buf[used] = '\0';
+
+	return 0;
+}
+
+/*
+ * concurrent_lookup_worker - repeatedly read one trust DB key.
+ * @arg: struct concurrent_lookup pointer.
+ *
+ * Returns NULL after recording any lookup failure in @arg.
+ */
+static void *concurrent_lookup_worker(void *arg)
+{
+	struct concurrent_lookup *lookup = arg;
+
+	while (!atomic_load_explicit(lookup->start, memory_order_acquire))
+		;
+
+	for (unsigned int i = 0; i < CONCURRENT_ITERATIONS; i++) {
+		if (check_trust_database(lookup->path, NULL, -1) != 1) {
+			lookup->failed = 1;
+			break;
+		}
+	}
+
+	return NULL;
 }
 
 static int with_temp_db(char *tmpdir, size_t tmpdir_sz, conf_t *cfg)
@@ -360,6 +421,87 @@ static int test_lmdb_long_path_negative_lookup(void)
 	return 0;
 }
 
+/*
+ * test_lmdb_concurrent_read_handles - exercise per-call LMDB readers.
+ *
+ * Returns 0 when concurrent trust lookups all succeed and lookup metrics are
+ * reported/reset correctly.
+ */
+static int test_lmdb_concurrent_read_handles(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	const char *path = "/usr/bin/concurrent-reader";
+	const char *digest =
+		"9999999999999999999999999999999999999999999999999999999999999999";
+	char payload[256];
+	char report[512];
+	char expected[64];
+	pthread_t readers[CONCURRENT_READERS];
+	struct concurrent_lookup lookup[CONCURRENT_READERS];
+	atomic_bool start = false;
+	unsigned long expected_lookups =
+		CONCURRENT_READERS * CONCURRENT_ITERATIONS;
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 70, "[ERROR:70] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
+		 SRC_FILE_DB, (size_t)555, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 71,
+	      "[ERROR:71] concurrent record import failed");
+
+	CHECK(read_database_metrics_report(report, sizeof(report), 1) == 0,
+	      72, "[ERROR:72] metrics reset report failed");
+
+	for (unsigned int i = 0; i < CONCURRENT_READERS; i++) {
+		lookup[i].path = path;
+		lookup[i].start = &start;
+		lookup[i].failed = 0;
+		rc = pthread_create(&readers[i], NULL,
+				    concurrent_lookup_worker, &lookup[i]);
+		CHECK(rc == 0, 73,
+		      "[ERROR:73] failed to create lookup reader");
+	}
+
+	atomic_store_explicit(&start, true, memory_order_release);
+
+	for (unsigned int i = 0; i < CONCURRENT_READERS; i++) {
+		rc = pthread_join(readers[i], NULL);
+		CHECK(rc == 0, 74,
+		      "[ERROR:74] failed to join lookup reader");
+		CHECK(lookup[i].failed == 0, 75,
+		      "[ERROR:75] concurrent lookup failed");
+	}
+
+	CHECK(read_database_metrics_report(report, sizeof(report), 1) == 0,
+	      76, "[ERROR:76] metrics report failed");
+	snprintf(expected, sizeof(expected), "Trust DB lookups: %lu",
+		 expected_lookups);
+	CHECK(strstr(report, expected) != NULL, 77,
+	      "[ERROR:77] lookup metrics count mismatch");
+	CHECK(strstr(report, "Trust DB reader slots full: 0") != NULL, 78,
+	      "[ERROR:78] reader slots full metric changed");
+	CHECK(strstr(report, "Trust DB lookup average") == NULL, 79,
+	      "[ERROR:79] lookup average latency metric in metrics report");
+	CHECK(strstr(report, "Trust DB lookup max") == NULL, 80,
+	      "[ERROR:80] lookup max latency metric in metrics report");
+
+	CHECK(read_database_metrics_report(report, sizeof(report), 0) == 0,
+	      81, "[ERROR:81] post-reset metrics report failed");
+	CHECK(strstr(report, "Trust DB lookups: 0") != NULL, 82,
+	      "[ERROR:82] lookup metrics reset failed");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 83,
+	      "[ERROR:83] concurrent cleanup failed");
+	return 0;
+}
+
 int main(void)
 {
 	int rc;
@@ -385,6 +527,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_readonly_probe_does_not_break_live_env();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_concurrent_read_handles();
 	if (rc)
 		return rc;
 

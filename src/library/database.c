@@ -64,11 +64,19 @@ typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops
 #define MAX_DELIMS  3	// Trustdb has 4 fields - therefore 3 delimiters
 #define DEFAULT_DB_MAX_SIZE_MB 100
 #define WRITE_DB_MAP_FULL 6
+/*
+ * The decision worker configuration is added later in the worker-pool
+ * roadmap. Size LMDB readers now for that planned cap plus maintenance users
+ * so read-side concurrency does not immediately trip MDB_READERS_FULL.
+ */
+#define TRUST_DB_DECISION_READER_CAP 32
+#define TRUST_DB_MAINTENANCE_READERS 8
 
 // Local variables
 static MDB_env *env;
 static MDB_dbi dbi;
 static int dbi_init = 0;
+static unsigned int db_max_readers;
 static unsigned MDB_maxkeysize;
 static const char *data_dir = DB_DIR;
 static const char *db = DB_NAME;
@@ -87,10 +95,33 @@ static int ima_mismatch_silenced;
 
 static pthread_t update_thread;
 static int update_thread_created;
-static pthread_mutex_t update_lock;
+static pthread_rwlock_t update_lock;
 static pthread_mutex_t rule_lock;
-static MDB_txn *lt_txn = NULL;
-static MDB_cursor *lt_cursor = NULL;
+
+struct trust_db_read_handle {
+	MDB_txn *txn;
+	MDB_cursor *cursor;
+};
+
+struct trust_db_lookup {
+	const char *path;
+	struct file_info *info;
+	int fd;
+	int *error;
+};
+
+struct trust_db_metrics_snapshot {
+	unsigned long lookups;
+	unsigned long reader_slots_full;
+};
+
+struct trust_db_metrics {
+	atomic_ulong lookups;
+	atomic_ulong reader_slots_full;
+};
+
+static struct trust_db_metrics trust_metrics;
+static struct trust_db_read_handle walk_read;
 
 /*
  * lmdb_record - Parsed representation of a single LMDB value payload.
@@ -113,6 +144,8 @@ static void *update_thread_main(void *arg);
 static int update_database(conf_t *config);
 static int write_db(const char *idx, size_t idx_len, const char *data)
 	__attr_access ((__read_only__, 1, 2))  __wur;
+static void lock_trust_database_reader(void);
+static void unlock_trust_database_reader(void);
 
 // External variables
 extern atomic_bool stop;
@@ -227,6 +260,44 @@ int database_set_location(const char *dir, const char *name)
 unsigned get_default_db_max_size(void)
 {
 	return DEFAULT_DB_MAX_SIZE_MB; /* 100 MiB baseline */
+}
+
+/*
+ * configured_reader_limit - compute LMDB reader slots to reserve.
+ * @config: active daemon configuration. The future decision_threads setting
+ *          will feed this calculation; today the roadmap worker cap is used.
+ *
+ * Returns the number of LMDB reader slots requested for the environment.
+ */
+static unsigned int configured_reader_limit(const conf_t *config)
+{
+	(void)config;
+
+	return TRUST_DB_DECISION_READER_CAP + TRUST_DB_MAINTENANCE_READERS;
+}
+
+/*
+ * trust_metric_add - add to an unsigned long metric.
+ * @counter: metric counter to update.
+ * @value: amount to add.
+ *
+ * Returns nothing.
+ */
+static void trust_metric_add(atomic_ulong *counter, unsigned long value)
+{
+	atomic_fetch_add_explicit(counter, value, memory_order_relaxed);
+}
+
+/*
+ * trust_db_record_reader_error - count full LMDB reader slot table errors.
+ * @rc: LMDB return code from a read transaction open.
+ *
+ * Returns nothing.
+ */
+static void trust_db_record_reader_error(int rc)
+{
+	if (rc == MDB_READERS_FULL)
+		trust_metric_add(&trust_metrics.reader_slots_full, 1);
 }
 
 /* autosize_database – compute new map size when utilisation drifts
@@ -369,10 +440,42 @@ static int grow_map_after_full(conf_t *config)
 	return 0;
 }
 
+/*
+ * init_dbi - open and publish the LMDB database handle.
+ *
+ * Returns 0 on success or a non-zero LMDB error code.
+ */
+static int init_dbi(void)
+{
+	MDB_txn *txn;
+	int rc;
+
+	rc = mdb_txn_begin(env, NULL, 0, &txn);
+	if (rc)
+		return rc;
+
+	rc = mdb_dbi_open(txn, db, MDB_CREATE|MDB_DUPSORT, &dbi);
+	if (rc) {
+		msg(LOG_ERR, "%s", mdb_strerror(rc));
+		mdb_txn_abort(txn);
+		return rc;
+	}
+
+	rc = mdb_txn_commit(txn);
+	if (rc) {
+		msg(LOG_ERR, "%s", mdb_strerror(rc));
+		dbi_init = 0;
+		return rc;
+	}
+
+	dbi_init = 1;
+	return 0;
+}
 
 static int init_db(const conf_t *config)
 {
 	unsigned int flags = MDB_MAPASYNC|MDB_NOSYNC;
+	int rc;
 #ifndef DEBUG
 	flags |= MDB_WRITEMAP;
 #endif
@@ -396,20 +499,29 @@ static int init_db(const conf_t *config)
 		return 3;
 	}
 
-	if (mdb_env_set_maxreaders(env, 4)) {
+	db_max_readers = configured_reader_limit(config);
+	if (mdb_env_set_maxreaders(env, db_max_readers)) {
 		/* Clean up environment on failure */
 		mdb_env_close(env);
 		env = NULL;
 		return 4;
 	}
 
-	int rc = mdb_env_open(env, data_dir, flags, 0660);
+	rc = mdb_env_open(env, data_dir, flags, 0660);
 	if (rc) {
 		msg(LOG_ERR, "env_open error: %s", mdb_strerror(rc));
 		/* Clean up environment on failure */
 		mdb_env_close(env);
 		env = NULL;
 		return 5;
+	}
+
+	rc = init_dbi();
+	if (rc) {
+		/* Clean up environment on failure */
+		mdb_env_close(env);
+		env = NULL;
+		return 6;
 	}
 
 	MDB_maxkeysize = mdb_env_get_maxkeysize(env);
@@ -439,14 +551,13 @@ static void close_env(int do_close_dbi)
 	if (env == NULL)
 		return;
 
-	if (do_close_dbi)
+	if (do_close_dbi && dbi_init)
 		mdb_close(env, dbi);
 
 	mdb_env_close(env);
 	env = NULL;
 	dbi_init = 0;
-	lt_cursor = NULL;
-	lt_txn = NULL;
+	memset(&walk_read, 0, sizeof(walk_read));
 }
 
 static void close_db(int do_report)
@@ -517,6 +628,7 @@ static void check_db_size(const conf_t *config)
 void database_config_report(FILE *f)
 {
 	fprintf(f, "Trust database max pages: %lu\n", max_pages);
+	fprintf(f, "Trust database max readers: %u\n", db_max_readers);
 }
 
 /*
@@ -537,20 +649,77 @@ void database_report(FILE *f)
 }
 
 /*
- * A DBI has to be associated with any new txn instance. It can be
- * reused within the same environment unless an abort is used. Aborts
- * close the data base instance.
+ * trust_metric_snapshot_ulong - copy and optionally reset an ulong metric.
+ * @counter: metric counter to read.
+ * @reset: non-zero resets the counter after copying.
+ *
+ * Returns the copied metric value.
+ */
+static unsigned long trust_metric_snapshot_ulong(atomic_ulong *counter,
+						 int reset)
+{
+	if (reset)
+		return atomic_exchange_explicit(counter, 0,
+						memory_order_relaxed);
+
+	return atomic_load_explicit(counter, memory_order_relaxed);
+}
+
+/*
+ * database_metrics_snapshot_reset - copy trust DB metrics.
+ * @metrics: destination snapshot.
+ * @reset: non-zero resets counters after copying.
+ *
+ * Returns nothing.
+ */
+static void database_metrics_snapshot_reset(
+		struct trust_db_metrics_snapshot *metrics, int reset)
+{
+	if (metrics == NULL)
+		return;
+
+	metrics->lookups = trust_metric_snapshot_ulong(
+		&trust_metrics.lookups, reset);
+	metrics->reader_slots_full = trust_metric_snapshot_ulong(
+		&trust_metrics.reader_slots_full, reset);
+}
+
+/*
+ * database_metrics_report_reset - write resettable trust DB read metrics.
+ * @f: report stream.
+ * @reset: non-zero resets counters after copying.
+ *
+ * Returns nothing.
+ */
+void database_metrics_report_reset(FILE *f, int reset)
+{
+	struct trust_db_metrics_snapshot metrics;
+
+	if (f == NULL)
+		return;
+
+	database_metrics_snapshot_reset(&metrics, reset);
+
+	fputs("\nTrust database lookups:\n", f);
+	fprintf(f, "Trust DB lookups: %lu\n", metrics.lookups);
+	fprintf(f, "Trust DB reader slots full: %lu\n",
+		metrics.reader_slots_full);
+}
+
+/*
+ * open_dbi - verify that init_db() published the LMDB database handle.
+ * @txn: transaction associated with the caller's operation, kept for the
+ *       historical signature.
+ *
+ * Returns 0 when a DBI is available, or EINVAL when the environment was not
+ * initialized successfully.
  */
 static int open_dbi(MDB_txn *txn)
 {
-	if (!dbi_init) {
-		int rc;
-		if ((rc = mdb_dbi_open(txn, db, MDB_CREATE|MDB_DUPSORT, &dbi))){
-			msg(LOG_ERR, "%s", mdb_strerror(rc));
-			return rc;
-		}
-		dbi_init = 1;
-	}
+	(void)txn;
+
+	if (!dbi_init)
+		return EINVAL;
 	return 0;
 }
 
@@ -558,7 +727,6 @@ static int open_dbi(MDB_txn *txn)
 static void abort_transaction(MDB_txn *txn)
 {
 	mdb_txn_abort(txn);
-	dbi_init = 0;
 }
 
 /*
@@ -772,32 +940,37 @@ out:
 
 
 /*
- * The idea with this set of code is that we can set up ops once
- * and perform many read operations. This reduces the need to setup
- * a read lock every time and initial a whole transaction. It returns
- * a 0 on success and a 1 on error.
+ * trust_db_read_open - open a private LMDB read transaction and cursor.
+ * @read: caller-owned read handle to initialize.
+ *
+ * Returns 0 on success or 1 on error. MDB_READERS_FULL is counted so admins
+ * can see when worker concurrency exhausted LMDB reader slots.
  */
-static int start_long_term_read_ops(void)
+static int trust_db_read_open(struct trust_db_read_handle *read)
 {
 	int rc;
 
-	if (lt_txn == NULL) {
-		if (mdb_txn_begin(env, NULL, MDB_RDONLY, &lt_txn))
-			return 1;
-	}
-	if ((rc = open_dbi(lt_txn))) {
-		msg(LOG_ERR, "open_dbi:%s", mdb_strerror(rc));
-		abort_transaction(lt_txn);
-		lt_txn = NULL;
+	memset(read, 0, sizeof(*read));
+
+	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &read->txn);
+	if (rc) {
+		trust_db_record_reader_error(rc);
+		msg(LOG_ERR, "txn_begin:%s", mdb_strerror(rc));
 		return 1;
 	}
-	if (lt_cursor == NULL) {
-		if ((rc = mdb_cursor_open(lt_txn, dbi, &lt_cursor))) {
-			msg(LOG_ERR, "cursor_open:%s", mdb_strerror(rc));
-			abort_transaction(lt_txn);
-			lt_txn = NULL;
-			return 1;
-		}
+
+	if ((rc = open_dbi(read->txn))) {
+		msg(LOG_ERR, "open_dbi:%s", mdb_strerror(rc));
+		abort_transaction(read->txn);
+		memset(read, 0, sizeof(*read));
+		return 1;
+	}
+
+	if ((rc = mdb_cursor_open(read->txn, dbi, &read->cursor))) {
+		msg(LOG_ERR, "cursor_open:%s", mdb_strerror(rc));
+		abort_transaction(read->txn);
+		memset(read, 0, sizeof(*read));
+		return 1;
 	}
 
 	return 0;
@@ -805,30 +978,48 @@ static int start_long_term_read_ops(void)
 
 
 /*
- * We are finished with read ops. Close it up.
+ * trust_db_read_close - close a private LMDB read transaction and cursor.
+ * @read: read handle previously initialized by trust_db_read_open().
+ *
+ * Returns nothing.
  */
-static void end_long_term_read_ops(void)
+static void trust_db_read_close(struct trust_db_read_handle *read)
 {
-	mdb_cursor_close(lt_cursor);
-	lt_cursor = NULL;
-	abort_transaction(lt_txn);
-	lt_txn = NULL;
+	if (read->cursor)
+		mdb_cursor_close(read->cursor);
+	if (read->txn)
+		abort_transaction(read->txn);
+	memset(read, 0, sizeof(*read));
 }
 
+
+/*
+ * read_database_stat - read LMDB statistics from a private read txn.
+ * @st: destination for database statistics.
+ *
+ * Returns 0 on success or an LMDB error code on failure.
+ */
+static int read_database_stat(MDB_stat *st)
+{
+	MDB_txn *txn;
+	int rc;
+
+	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
+	if (rc) {
+		trust_db_record_reader_error(rc);
+		return rc;
+	}
+
+	rc = mdb_stat(txn, dbi, st);
+	mdb_txn_abort(txn);
+	return rc;
+}
 
 static unsigned get_pages_in_use(void)
 {
 	MDB_stat st;
-	int rc;
 
-	if (start_long_term_read_ops()) {
-		pages = 0;
-		return 0;
-	}
-
-	rc = mdb_stat(lt_txn, dbi, &st);
-	end_long_term_read_ops();
-	if (rc) {
+	if (read_database_stat(&st)) {
 		pages = 0;
 		return 0;
 	}
@@ -843,14 +1034,8 @@ static unsigned get_pages_in_use(void)
 static long get_number_of_entries(void)
 {
 	MDB_stat status;
-	int rc;
 
-	if (start_long_term_read_ops())
-		return -1;
-
-	rc = mdb_stat(lt_txn, dbi, &status);
-	end_long_term_read_ops();
-	if (rc)
+	if (read_database_stat(&status))
 		return -1;
 
 	return status.ms_entries;
@@ -858,12 +1043,21 @@ static long get_number_of_entries(void)
 
 
 /*
- * This is the long term read operation. It takes a path as input and
- * search for the data. It returns NULL on error or if no data found.
- * The returned string must be freed by the caller.
+ * trust_db_read_record - read one LMDB record through a private cursor.
+ * @read: active read handle whose cursor keeps duplicate-key position.
+ * @index: path key to find.
+ * @operation: READ_DATA, READ_TEST_KEY, or READ_DATA_DUP.
+ * @error: set to non-zero on LMDB or allocation failure.
+ *
+ * Returns a newly allocated value string, or NULL on error/not-found. The
+ * returned string must be freed by the caller.
  */
-static char *lt_read_db(const char *index, int operation, int *error) __attr_dealloc_free;
-static char *lt_read_db(const char *index, int operation, int *error)
+static char *trust_db_read_record(struct trust_db_read_handle *read,
+				  const char *index, int operation,
+				  int *error) __attr_dealloc_free;
+static char *trust_db_read_record(struct trust_db_read_handle *read,
+				  const char *index, int operation,
+				  int *error)
 {
 	int rc;
 	char *data, *hash = NULL;
@@ -891,7 +1085,8 @@ static char *lt_read_db(const char *index, int operation, int *error)
 	if (operation == READ_DATA || operation == READ_TEST_KEY) {
 
 		// Read the value pointed to by key
-		if ((rc = mdb_cursor_get(lt_cursor, &key, &value, MDB_SET))) {
+		if ((rc = mdb_cursor_get(read->cursor, &key, &value,
+					 MDB_SET))) {
 			free(hash);
 			if (rc == MDB_NOTFOUND) {
 				*error = 0;
@@ -908,7 +1103,7 @@ static char *lt_read_db(const char *index, int operation, int *error)
 	// as subsequent call just after READ_DATA
 	if (operation == READ_DATA_DUP) {
 		size_t nleaves;
-		mdb_cursor_count(lt_cursor, &nleaves);
+		mdb_cursor_count(read->cursor, &nleaves);
 		if (nleaves <= 1) {
 			free(hash);
 			*error = 0;
@@ -916,7 +1111,7 @@ static char *lt_read_db(const char *index, int operation, int *error)
 		}
 
 		// is there a next duplicate?
-		if ((rc = mdb_cursor_get(lt_cursor, &key, &value,
+		if ((rc = mdb_cursor_get(read->cursor, &key, &value,
 					 MDB_NEXT_DUP))) {
 			free(hash);
 			if (rc == MDB_NOTFOUND) {
@@ -991,7 +1186,8 @@ static char *lt_read_db(const char *index, int operation, int *error)
 static int database_empty(void)
 {
 	MDB_stat status;
-	if (mdb_env_stat(env, &status))
+
+	if (read_database_stat(&status))
 		return -1;
 	if (status.ms_entries == 0)
 		return 1;
@@ -1180,38 +1376,42 @@ static int create_database(int with_sync, conf_t *config)
 
 /*
  * check_data_presence - Look up an LMDB record and compare its stored data.
+ * @read: active read handle.
  * @index: Key used for the LMDB lookup.
  * @data: Data string expected to be present for the key.
  * @matched: Updated with the number of duplicate records inspected.
  *
  * Returns 1 when an exact match is discovered, or 0 if the supplied data
- * cannot be located. Errors encountered by lt_read_db are logged separately.
+ * cannot be located. Errors encountered by the LMDB read are logged separately.
  */
-static int check_data_presence(const char * index, const char * data, int * matched)
+static int check_data_presence(struct trust_db_read_handle *handle,
+			       const char *index, const char *data,
+			       int *matched)
 {
 	int found = 0;
 	int error;
-	char *read;
+	char *record;
 	int operation = READ_DATA;
 	int cnt = 0;
 
 	while (1) {
 		error = 0;
-		read = NULL;
-		read = lt_read_db(index, operation, &error);
+		record = NULL;
+		record = trust_db_read_record(handle, index, operation,
+					      &error);
 
 		if (error)
 			msg(LOG_DEBUG, "Error when reading from DB!");
 
-		if (!read)
+		if (!record)
 			break;
 
 		// check strings
-		if (strcmp(data, read) == 0) {
+		if (strcmp(data, record) == 0) {
 			found = 1;
 		}
 
-		free(read);
+		free(record);
 		cnt++;
 
 		if (found)
@@ -1228,6 +1428,7 @@ static int check_data_presence(const char * index, const char * data, int * matc
 long backend_added_entries = 0;
 /*
  * check_from_memfd - Compare backend memfd contents with the LMDB database.
+ * @read: active read handle used for all lookups.
  * @memfd: File descriptor providing newline-delimited backend records.
  * @entries: Location where the number of processed records is stored.
  *
@@ -1236,7 +1437,8 @@ long backend_added_entries = 0;
  * observed records. Logs diagnostic information for missing or mismatched
  * entries.
  */
-long check_from_memfd(int memfd, long *entries)
+static long check_from_memfd(struct trust_db_read_handle *read, int memfd,
+			     long *entries)
 {
 	*entries = 0;
 	long problems = 0;
@@ -1299,7 +1501,8 @@ long check_from_memfd(int memfd, long *entries)
 			char *index = buff;
 			char *data = delim + 1;
 			int matched = 0;
-			int found = check_data_presence(index, data, &matched);
+			int found = check_data_presence(read, index, data,
+							&matched);
 			if (!found) {
 				problems++;
 				// missing in db
@@ -1339,8 +1542,10 @@ long check_from_memfd(int memfd, long *entries)
  */
 static int check_database_copy(const conf_t *config)
 {
+	struct trust_db_read_handle read;
+
 	msg(LOG_INFO, "Checking if the trust database up to date");
-	if (start_long_term_read_ops())
+	if (trust_db_read_open(&read))
 		return -1;
 
 	long problems = 0;
@@ -1353,7 +1558,7 @@ static int check_database_copy(const conf_t *config)
 		    be->backend->name);
 
 		if (be->backend->memfd != -1) {
-			problems += check_from_memfd(be->backend->memfd,
+			problems += check_from_memfd(&read, be->backend->memfd,
 						     &be->backend->entries);
 			backend_total_entries += be->backend->entries;
 		} else {
@@ -1364,7 +1569,7 @@ static int check_database_copy(const conf_t *config)
 		}
 	}
 
-	end_long_term_read_ops();
+	trust_db_read_close(&read);
 	if (stop)
 		return 1;
 
@@ -1499,7 +1704,7 @@ int init_database(conf_t *config)
 	msg(LOG_INFO, "Initializing the trust database");
 
 	// update_lock is used in update_database()
-	pthread_mutex_init(&update_lock, NULL);
+	pthread_rwlock_init(&update_lock, NULL);
 	pthread_mutex_init(&rule_lock, NULL);
 	update_lock_inited = 1;
 	rule_lock_inited = 1;
@@ -1568,16 +1773,16 @@ int init_database(conf_t *config)
 
 
 /*
- * This function handles the integrity check and any retries. Retries are
- * necessary if the system has both i686 and x86_64 packages installed. It
- * takes a path as input and searches for the data. It returns 0 if no
- * data is found or if the integrity check has failed. There is no
- * distinguishing which is the case since both mean you cannot trust the file.
- * It returns a 1 if the file is found and trustworthy. Callers have to
- * check the error variable before trusting it's results.
+ * read_trust_db - run trust lookup and optional integrity checks.
+ * @read: private LMDB read handle for this lookup.
+ * @lookup: path, file info, fd and error return storage.
+ *
+ * Returns 0 when no data is found or integrity failed, and 1 when the file is
+ * found and trustworthy. Callers must check lookup->error before trusting the
+ * result because not-found and integrity failure are both untrusted.
  */
-static int read_trust_db(const char *path, int *error, struct file_info *info,
-	int fd)
+static int read_trust_db(struct trust_db_read_handle *read,
+			 struct trust_db_lookup *lookup)
 {
 	int do_integrity = 0, mode = READ_TEST_KEY;
 	integrity_t integrity = decision_config_integrity(NULL);
@@ -1586,6 +1791,10 @@ static int read_trust_db(const char *path, int *error, struct file_info *info,
 	char sha_xattr[FILE_DIGEST_STRING_MAX];
 	char calc_digest[FILE_DIGEST_STRING_MAX];
 	struct lmdb_record record;
+	const char *path = lookup->path;
+	struct file_info *info = lookup->info;
+	int fd = lookup->fd;
+	int *error = lookup->error;
 
 	if (integrity != IN_NONE && info) {
 		do_integrity = 1;
@@ -1603,7 +1812,7 @@ retry_res:
 		return 0;
 	}
 
-	res = lt_read_db(path, mode, error);
+	res = trust_db_read_record(read, path, mode, error);
 
 	// For subjects we do a limited check because the process had to
 	// pass some kind of trust check to even be started and we do not
@@ -1744,29 +1953,32 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 {
 	int retval = 0, error;
 	int res;
+	struct trust_db_read_handle read;
+	struct trust_db_lookup lookup;
 	struct decision_timing_span lock_timing;
 	struct decision_timing_span read_timing;
 	struct decision_timing_span total_timing;
 
-	// this function is going to be used from decision_thread that means
-	// we need to be sure database won't change under our hands.
+	trust_metric_add(&trust_metrics.lookups, 1);
 	decision_timing_trust_db_stage_begin(DECISION_TIMING_TRUST_DB_TOTAL,
 					     &total_timing);
 	decision_timing_trust_db_stage_begin(
 		DECISION_TIMING_TRUST_DB_LOCK_WAIT, &lock_timing);
-	lock_update_thread();
+	lock_trust_database_reader();
 	decision_timing_stage_end(&lock_timing);
 
 	decision_timing_trust_db_stage_begin(DECISION_TIMING_TRUST_DB_READ,
 					     &read_timing);
-	if (start_long_term_read_ops()) {
-		decision_timing_stage_end(&read_timing);
-		unlock_update_thread();
-		decision_timing_stage_end(&total_timing);
-		return -1;
+	if (trust_db_read_open(&read)) {
+		retval = -1;
+		goto out_unlock;
 	}
 
-	res = read_trust_db(path, &error, info, fd);
+	lookup.path = path;
+	lookup.info = info;
+	lookup.fd = fd;
+	lookup.error = &error;
+	res = read_trust_db(&read, &lookup);
 	if (error)
 		retval = -1;
 	else if (res)
@@ -1786,7 +1998,8 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 			    (sbin_symlink &&
 			     strncmp(&path[5], "sbin/", 5) == 0)) {
 				// We have a symlink, retry
-				res = read_trust_db(&path[4], &error, info, fd);
+				lookup.path = &path[4];
+				res = read_trust_db(&read, &lookup);
 				if (error)
 					retval = -1;
 				else if (res)
@@ -1795,9 +2008,10 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 		}
 	}
 
-	end_long_term_read_ops();
+	trust_db_read_close(&read);
+out_unlock:
 	decision_timing_stage_end(&read_timing);
-	unlock_update_thread();
+	unlock_trust_database_reader();
 	decision_timing_stage_end(&total_timing);
 
 	return retval;
@@ -1814,7 +2028,7 @@ void close_database(void)
 	// we can close db when we are really sure update_thread does not exist
 	close_db(1);
 	if (update_lock_inited) {
-		pthread_mutex_destroy(&update_lock);
+		pthread_rwlock_destroy(&update_lock);
 		update_lock_inited = 0;
 	}
 	if (rule_lock_inited) {
@@ -1835,7 +2049,7 @@ void close_database(void)
 int database_open_for_tests(conf_t *config)
 {
 	if (!update_lock_inited) {
-		pthread_mutex_init(&update_lock, NULL);
+		pthread_rwlock_init(&update_lock, NULL);
 		update_lock_inited = 1;
 	}
 
@@ -1857,7 +2071,7 @@ void database_close_for_tests(void)
 	close_db(0);
 
 	if (update_lock_inited) {
-		pthread_mutex_destroy(&update_lock);
+		pthread_rwlock_destroy(&update_lock);
 		update_lock_inited = 0;
 	}
 
@@ -1875,19 +2089,43 @@ void unlink_fifo(void)
 
 
 /*
- * Lock wrapper for update mutex
+ * lock_update_thread - take exclusive trust DB update ownership.
+ *
+ * Returns nothing.
  */
 void lock_update_thread(void) {
-	pthread_mutex_lock(&update_lock);
+	pthread_rwlock_wrlock(&update_lock);
 	//msg(LOG_DEBUG, "lock_update_thread()");
 }
 
 /*
- * Unlock wrapper for update mutex
+ * unlock_update_thread - release exclusive trust DB update ownership.
+ *
+ * Returns nothing.
  */
 void unlock_update_thread(void) {
-	pthread_mutex_unlock(&update_lock);
+	pthread_rwlock_unlock(&update_lock);
 	//msg(LOG_DEBUG, "unlock_update_thread()");
+}
+
+/*
+ * lock_trust_database_reader - take shared trust DB read ownership.
+ *
+ * Returns nothing.
+ */
+static void lock_trust_database_reader(void)
+{
+	pthread_rwlock_rdlock(&update_lock);
+}
+
+/*
+ * unlock_trust_database_reader - release shared trust DB read ownership.
+ *
+ * Returns nothing.
+ */
+static void unlock_trust_database_reader(void)
+{
+	pthread_rwlock_unlock(&update_lock);
 }
 
 /*
@@ -2383,27 +2621,36 @@ int walk_database_start(conf_t *config)
 	}
 
 	// Position to the first entry
-	mdb_txn_begin(env, NULL, MDB_RDONLY, &lt_txn);
-
-	if ((rc = open_dbi(lt_txn))) {
+	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &walk_read.txn);
+	if (rc) {
+		trust_db_record_reader_error(rc);
 		puts(mdb_strerror(rc));
-		abort_transaction(lt_txn);
 		return 1;
 	}
 
-	if ((rc = mdb_cursor_open(lt_txn, dbi, &lt_cursor))) {
+	if ((rc = open_dbi(walk_read.txn))) {
 		puts(mdb_strerror(rc));
-		abort_transaction(lt_txn);
+		abort_transaction(walk_read.txn);
+		memset(&walk_read, 0, sizeof(walk_read));
 		return 1;
 	}
 
-	if ((rc = mdb_cursor_get(lt_cursor, &wdb_entry.path, &wdb_entry.data,
+	if ((rc = mdb_cursor_open(walk_read.txn, dbi, &walk_read.cursor))) {
+		puts(mdb_strerror(rc));
+		abort_transaction(walk_read.txn);
+		memset(&walk_read, 0, sizeof(walk_read));
+		return 1;
+	}
+
+	if ((rc = mdb_cursor_get(walk_read.cursor, &wdb_entry.path,
+							&wdb_entry.data,
 							MDB_FIRST)) == 0)
 		return 0;
 
 	if (rc != MDB_NOTFOUND)
 		puts(mdb_strerror(rc));
 
+	trust_db_read_close(&walk_read);
 	return 1;
 }
 
@@ -2417,7 +2664,8 @@ int walk_database_next(void)
 {
 	int rc;
 
-	if ((rc = mdb_cursor_get(lt_cursor, &wdb_entry.path, &wdb_entry.data,
+	if ((rc = mdb_cursor_get(walk_read.cursor, &wdb_entry.path,
+							&wdb_entry.data,
 							MDB_NEXT)) == 0)
 		return 1;
 
@@ -2429,7 +2677,6 @@ int walk_database_next(void)
 
 void walk_database_finish(void)
 {
-	mdb_cursor_close(lt_cursor);
-	abort_transaction(lt_txn);
+	trust_db_read_close(&walk_read);
 	close_db(0);
 }

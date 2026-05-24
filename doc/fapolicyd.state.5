@@ -89,6 +89,10 @@ The configured number of entries in the object cache.
 .TP
 .B Trust database max pages
 The configured maximum LMDB page count for the trust database.
+.TP
+.B Trust database max readers
+The configured LMDB reader-slot limit. This is sized for the planned decision
+worker cap plus maintenance readers.
 .SS Resource utilization
 .TP
 .B Trust database pages in use

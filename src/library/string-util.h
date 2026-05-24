@@ -26,6 +26,8 @@
 #ifndef STRING_UTIL_H
 #define STRING_UTIL_H
 
+#include <stddef.h>
+#include <stdint.h>
 #include "gcc-attributes.h"
 
 char *fapolicyd_strtrim(char *s);
@@ -41,5 +43,8 @@ char *fapolicyd_strcat(const char *s1, const char *s2) __attr_dealloc_free;
 
 char *fapolicyd_strnchr(const char *s, int c, size_t len)
 	__attr_access ((__read_only__, 1, 3));
+
+void fapolicyd_format_ns(uint64_t ns, char *buf, size_t buf_size)
+	__attr_access ((__write_only__, 2, 3));
 
 #endif

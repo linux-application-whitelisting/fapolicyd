@@ -505,7 +505,7 @@ SHA-style file digest collection through
 .B *:trust_db_lookup:total
 Total trust database lookup through
 .BR check_trust_database ().
-This includes update-thread lock wait, long-term LMDB read setup, the primary
+This includes update-thread lock wait, per-lookup LMDB read setup, the primary
 LMDB lookup, optional hash work requested by trust lookup, and the top-level
 .I /usr
 symlink retry path.
@@ -516,8 +516,9 @@ setup. This is a future multi-decision-thread contention signal.
 .TP
 .B *:trust_db_lookup:read
 LMDB read setup and trust database read work after the update-thread lock is
-held. This currently includes the primary lookup, optional hash work requested
-by trust lookup, the top-level
+held. This currently includes per-lookup LMDB read transaction and cursor
+setup, the primary lookup, optional hash work requested by trust lookup, the
+top-level
 .I /usr
 symlink retry path, and read cleanup.
 .TP
