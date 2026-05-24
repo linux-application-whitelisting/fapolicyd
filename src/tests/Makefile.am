@@ -31,7 +31,7 @@ attr_sets_test elf_file_test fd_fgets_test file_type_detect_test \
 rules_test policy_reload_test policy_concurrent_test failure_action_test \
 queue_test event_test \
 trustdb_format_test trustdb_lmdb_test lru_test notify_test \
-decision_defer_test \
+decision_defer_test decision_config_test \
 decision_timing_report_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
@@ -85,6 +85,8 @@ decision_defer_test_CPPFLAGS = \
 	-I${top_builddir} \
 	-I${top_srcdir}/src/library/ \
 	-I${top_srcdir}/src/daemon/
+decision_config_test_SOURCES = decision_config_test.c
+decision_config_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 decision_timing_report_test_SOURCES = decision_timing_report_test.c \
 	${top_srcdir}/src/library/decision-timing.c
 decision_timing_report_test_CPPFLAGS = \
@@ -112,6 +114,7 @@ filter_test_SOURCES = filter_test.c
 filter_test_SOURCES += test-stubs.c
 filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
+filter_test_LDFLAGS = -pthread
 check_PROGRAMS += file_filter_test
 file_filter_test_SOURCES = file_filter_test.c
 file_filter_test_SOURCES += test-stubs.c

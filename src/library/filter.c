@@ -40,6 +40,12 @@
  * Using a stack keeps memory usage predictable and avoids deep recursion when
  * filters contain many nested paths.
  *
+ * filter_check() is intentionally a read-only walk over the compiled filter
+ * tree. Trust database imports are serialized today, but the tree is shared
+ * library state and future import backends may want to reuse one filter
+ * generation. Per-check traversal flags therefore live in stack_item_t, not in
+ * filter_t nodes.
+ *
  * Assumption: real-world filter nesting is shallow (Fedora default max = 4).
  * MAX_FILTER_DEPTH is set to 64 for safety; raise it if installers add deeper
  * trees.
@@ -220,6 +226,8 @@ static int stack_push_vars_cap(stack_t *_stack, stack_item_t *buf, int *sp,
 	stack_item_t *item = &buf[(*sp)++];
 	item->level = _level;
 	item->offset = _offset;
+	item->processed = 0;
+	item->matched = 0;
 	item->filter = _filter;
 
 	stack_push(_stack, item);
@@ -259,36 +267,6 @@ static void stack_pop_all_vars(stack_t *_stack, int *sp)
 
 	while (!stack_is_empty(_stack))
 		stack_pop_vars(_stack, sp);
-}
-
-/*
- * stack_pop_reset - reset flags and pop top item
- */
-static void stack_pop_reset(stack_t *_stack, int *sp)
-{
-	if (_stack == NULL || sp == NULL || *sp <= 0)
-		return;
-
-	stack_item_t *item = (stack_item_t *)stack_top(_stack);
-	if (item && item->filter) {
-		item->filter->processed = 0;
-		item->filter->matched = 0;
-	}
-
-	stack_pop(_stack);
-	(*sp)--;
-}
-
-/*
- * stack_pop_all_reset - reset and pop all stack items
- */
-static void stack_pop_all_reset(stack_t *_stack, int *sp)
-{
-	if (_stack == NULL || sp == NULL)
-		return;
-
-	while (!stack_is_empty(_stack))
-		stack_pop_reset(_stack, sp);
 }
 
 /*
@@ -340,6 +318,7 @@ filter_rc_t filter_check(const char *_path)
 
 	filter_rc_t res = FILTER_DENY;
 	int level = 0;
+	stack_item_t *stack_item;
 
 	if (stack_push_vars_cap(&stack, stack_buf, &sp, stack_cap,
 				level, offset, filter)) {
@@ -349,10 +328,16 @@ filter_rc_t filter_check(const char *_path)
 		stack_destroy(&stack);
 		return FILTER_ERR_DEPTH;
 	}
+	stack_item = (stack_item_t *)stack_top(&stack);
+	filter = stack_item->filter;
+	offset = stack_item->offset;
+	level = stack_item->level;
 
 	while(!stack_is_empty(&stack)) {
 		int matched = 0;
-		filter->processed = 1;
+		stack_item = (stack_item_t *)stack_top(&stack);
+		stack_item->processed = 1;
+		filter = stack_item->filter;
 
 		// this is starting branch of the algo
 		// assuming that in root filter filter->path is NULL
@@ -431,7 +416,7 @@ filter_rc_t filter_check(const char *_path)
 
 			if (matched) {
 				level++;
-				filter->matched = 1;
+				stack_item->matched = 1;
 
 				// if matched we need ot push descendants
 				// to the stack
@@ -493,29 +478,28 @@ filter_rc_t filter_check(const char *_path)
 				rule, matched ? "match" : "no match");
 		}
 
-		stack_item_t * stack_item = NULL;
+		stack_item = NULL;
 		// pop already processed filters from the top of the stack
 		do {
-		if (stack_item) {
-			filter = stack_item->filter;
-			offset = stack_item->offset;
+			if (stack_item) {
+				filter = stack_item->filter;
+				offset = stack_item->offset;
 				level = stack_item->level;
 
 				// assuimg that nothing has matched on the
 				// upper level so it's a directory match
-				if (filter->matched &&
+				if (stack_item->matched &&
 				    filter->path[filter->len-1] == '/') {
 					res = filter->type == ADD ?
 						FILTER_ALLOW : FILTER_DENY;
 					goto end;
 				}
 
-				// reset processed flag
-				stack_pop_reset(&stack, &sp);
+				stack_pop_vars(&stack, &sp);
 			}
 
 			stack_item = (stack_item_t*)stack_top(&stack);
-		} while(stack_item && stack_item->filter->processed);
+		} while(stack_item && stack_item->processed);
 
 		if (!stack_item)
 			break;
@@ -529,7 +513,7 @@ end:
 	FILTER_TRACE("decision %s\n",
 		res == FILTER_ALLOW ? "include" : "exclude");
 	// Clean up the stack
-	stack_pop_all_reset(&stack, &sp);
+	stack_pop_all_vars(&stack, &sp);
 	stack_destroy(&stack);
 	free(stack_buf);
 	return res;

@@ -59,6 +59,7 @@
 #include "database.h"
 #include "message.h"
 #include "daemon-config.h"
+#include "decision-config.h"
 #include "decision-timing.h"
 #include "conf.h"
 #include "queue.h"
@@ -383,6 +384,12 @@ static int reload_configuration(void)
 		return 1;
 	}
 
+	if (decision_config_publish(&new_config)) {
+		free_daemon_config(&new_config);
+		msg(LOG_ERR, "Failed publishing decision configuration");
+		return 1;
+	}
+
 	__atomic_store_n(&config.permissive, new_config.permissive,
 			 __ATOMIC_RELAXED);
 
@@ -413,8 +420,8 @@ static int reload_configuration(void)
 	}
 
 	if (new_config.integrity != config.integrity) {
-		set_integrity_mode(new_config.integrity);
 		config.integrity = new_config.integrity;
+		msg(LOG_INFO, "fapolicyd integrity is %u", config.integrity);
 	}
 
 	if (new_config.syslog_format &&
@@ -912,7 +919,8 @@ void do_stat_report(FILE *f, int shutdown)
  */
 void do_state_report(FILE *f, int shutdown)
 {
-	const char *ptr = lookup_integrity(config.integrity);
+	const struct decision_config *decision_config;
+	const char *ptr;
 	reset_strategy_t strategy;
 	failure_action_metrics_t failures;
 	decision_metrics_t decisions;
@@ -922,15 +930,17 @@ void do_state_report(FILE *f, int shutdown)
 	if (f == NULL)
 		return;
 
+	decision_config = decision_config_current();
+	ptr = lookup_integrity(decision_config_integrity(decision_config));
 	strategy = __atomic_load_n(&config.reset_strategy, __ATOMIC_RELAXED);
 	reset_ptr = lookup_reset_strategy(strategy);
 	failure_action_snapshot(&failures, 0);
 	getDecisionMetrics(&decisions);
 
-	mode.permissive = __atomic_load_n(&config.permissive,
-					  __ATOMIC_RELAXED);
+	mode.permissive = decision_config_permissive(decision_config);
 	mode.integrity = ptr;
 	mode.reset_strategy = reset_ptr;
+	mode.config_generation = decision_config_generation(decision_config);
 	mode.ruleset_generation = decisions.ruleset_generation;
 	mode.config = &config;
 	state_report_operating_mode(f, &mode);
@@ -1165,6 +1175,12 @@ int main(int argc, const char *argv[])
 	if (already_running()) {
 		msg(LOG_ERR, "fapolicyd is already running");
 		exit(1);
+	}
+
+	if (decision_config_publish(&config)) {
+		free_daemon_config(&config);
+		msg(LOG_ERR, "Exiting due to bad decision configuration");
+		return 1;
 	}
 
 	// Set a couple signal handlers
@@ -1405,6 +1421,7 @@ int main(int argc, const char *argv[])
 	destroy_rules();
 	destroy_fs_list(&filesystems);
 	destroy_fs_list(&ignored_mounts);
+	decision_config_destroy();
 	free_daemon_config(&config);
 
 	return 0;

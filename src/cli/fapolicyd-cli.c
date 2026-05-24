@@ -51,6 +51,7 @@
 #include "fapolicyd-backend.h"
 #include "string-util.h"
 #include "daemon-config.h"
+#include "decision-config.h"
 #include "gcc-attributes.h"
 #include "message.h"
 #include "llist.h"
@@ -146,6 +147,7 @@ conf_t config;				// Library needs this
 
 static void reset_config(void)
 {
+	decision_config_destroy();
 	free_daemon_config(&config);
 	memset(&config, 0, sizeof(config));
 }
@@ -810,6 +812,12 @@ static int check_trustdb(void)
 		return CLI_EXIT_PATH_CONFIG;
 	}
 	set_message_mode(MSG_QUIET, DBG_NO);
+	if (decision_config_publish(&config)) {
+		set_message_mode(MSG_STDERR, DBG_NO);
+		fprintf(stderr, "Unable to publish decision configuration\n");
+		reset_config();
+		return CLI_EXIT_INTERNAL;
+	}
 	int rc = walk_database_start(&config);
 	reset_config();
 	if (rc)
@@ -901,6 +909,12 @@ static int check_path(void)
 		return CLI_EXIT_PATH_CONFIG;
 	}
 	set_message_mode(MSG_QUIET, DBG_NO);
+	if (decision_config_publish(&config)) {
+		set_message_mode(MSG_STDERR, DBG_NO);
+		fprintf(stderr, "Unable to publish decision configuration\n");
+		reset_config();
+		return CLI_EXIT_INTERNAL;
+	}
 	init_database(&config);
 	char *path = strdup(env_path);
 	ptr = strtok_r(path, ":", &saved);

@@ -37,6 +37,7 @@
 #include <stdatomic.h>
 
 #include "database.h"
+#include "decision-config.h"
 #include "decision-context.h"
 #include "decision-timing.h"
 #include "escape.h"
@@ -109,8 +110,6 @@ static const nv_t table[] = {
 };
 
 extern unsigned int debug_mode;
-extern conf_t config;
-
 #define MAX_DECISIONS (sizeof(table)/sizeof(table[0]))
 
 // These are the constants for things not subj or obj
@@ -1088,6 +1087,7 @@ static void log_event_build_deny(const decision_event_t *decision_event)
 void make_policy_decision(decision_event_t *decision_event, int fd,
 		uint64_t mask)
 {
+	const struct decision_config *decision_config = decision_config_pin();
 	const struct fanotify_event_metadata *metadata =
 		&decision_event->metadata;
 	event_t e = { 0 };
@@ -1136,7 +1136,7 @@ void make_policy_decision(decision_event_t *decision_event, int fd,
 
 		// If permissive, always allow and honor the audit bit
 		// if not in debug mode
-		if (__atomic_load_n(&config.permissive, __ATOMIC_RELAXED))
+		if (decision_config_permissive(decision_config))
 			reply_event(fd, metadata, FAN_ALLOW | (decision & AUDIT),
 					metric_event);
 		else
@@ -1150,6 +1150,7 @@ void make_policy_decision(decision_event_t *decision_event, int fd,
 	    event_subject_slot_is_unblocked(decision_event->subject_slot))
 		decision_event->completed_subject_slot =
 			decision_event->subject_slot;
+	decision_config_unpin(decision_config);
 }
 
 

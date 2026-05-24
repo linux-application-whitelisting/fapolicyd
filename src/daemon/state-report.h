@@ -27,6 +27,7 @@ struct state_report_operating_mode {
 	bool permissive;
 	const char *integrity;
 	const char *reset_strategy;
+	unsigned int config_generation;
 	unsigned int ruleset_generation;
 	const conf_t *config;
 };

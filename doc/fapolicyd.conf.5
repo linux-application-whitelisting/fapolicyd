@@ -134,6 +134,64 @@ stopped, the daemon writes \fI/run/fapolicyd/fapolicyd.timing\fP. Normal state
 reports include only timing control state, not the timing histograms. See
 \fBfapolicyd.timing\fP(5) for the timing report fields.
 
+.SH "RELOAD BEHAVIOR"
+On
+.BR SIGHUP ,
+fapolicyd parses
+.IR fapolicyd.conf ,
+publishes a new immutable decision configuration generation, reloads the
+filter configuration, and asks the normal rule and trust database owners to
+reload their state. A decision that has already started keeps using the
+decision configuration generation it pinned at the beginning of the decision.
+New decisions use the most recently published generation.
+.PP
+The following
+.IR fapolicyd.conf
+settings are live after a successful reload:
+.RS
+.IP \[bu] 2
+\fBpermissive\fP and \fBintegrity\fP are decision-used fields and are
+published together as one immutable generation.
+.IP \[bu]
+\fBnice_val\fP, \fBdo_stat_report\fP, \fBdetailed_report\fP,
+\fBreset_strategy\fP, and \fBtiming_collection\fP are applied directly by the
+reload path.
+.IP \[bu]
+\fBsyslog_format\fP is used by the next successfully published ruleset.
+.IP \[bu]
+\fBtrust\fP and \fBrpm_sha256_only\fP are used by the next trust database
+reload.
+.RE
+.PP
+The
+.IR fapolicyd-filter.conf
+file is also reloaded on
+.BR SIGHUP
+before the trust database reload is requested. The filter is consulted when
+trust source entries are imported or rebuilt; it is not consulted directly by
+normal access decisions.
+.PP
+The following settings require a daemon restart because they are consumed when
+long-lived runtime objects are created:
+.RS
+.IP \[bu] 2
+\fBq_size\fP, \fBsubj_cache_size\fP, and \fBobj_cache_size\fP size the event
+queue and caches.
+.IP \[bu]
+\fBuid\fP and \fBgid\fP control the daemon identity selected during startup.
+.IP \[bu]
+\fBwatch_fs\fP, \fBignore_mounts\fP, and \fBallow_filesystem_mark\fP determine
+the fanotify mark set installed during startup.
+.IP \[bu]
+\fBdb_max_size\fP and the special \fBauto\fP database sizing mode determine
+the LMDB map size policy used when the trust database is opened or rebuilt.
+Changing this setting in the file does not replace the active database sizing
+policy until restart.
+.IP \[bu]
+\fBreport_interval\fP starts the interval report timer used by the decision
+thread.
+.RE
+
 .SS SECURITY CONSIDERATIONS FOR ignore_mounts
 Ignoring a mount removes fanotify visibility for that tree. fapolicyd will
 .B not

@@ -46,6 +46,10 @@ typedef struct _filter
 	filter_type_t type;
 	char * path;
 	size_t len;
+	/*
+	 * filter_check() treats loaded filters as immutable. These flags are
+	 * reserved for destructive/internal tree walks that own the tree.
+	 */
 	int processed;
 	int matched;
 	list_t list;
@@ -56,6 +60,8 @@ typedef struct _stack_item
 {
 	int level;
 	int offset;
+	int processed;
+	int matched;
 	filter_t *filter;
 } stack_item_t;
 

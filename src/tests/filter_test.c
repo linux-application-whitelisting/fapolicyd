@@ -4,7 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <time.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -50,6 +53,9 @@
 #define MIN_CONF  TEST_BASE "/src/tests/fixtures/filter-minimal.conf"
 #define BROKEN_CONF TEST_BASE "/src/tests/fixtures/broken-filter.conf"
 #define PROD_CONF TEST_BASE "/init/fapolicyd-filter.conf"
+#define CONCURRENT_FILTER_RULES 2048
+#define CONCURRENT_FILTER_WORKERS 4
+#define CONCURRENT_FILTER_ITERATIONS 200
 
 extern filter_t *global_filter;
 
@@ -226,6 +232,179 @@ static int run_wide_tree_case(void)
 	return 0;
 }
 
+struct concurrent_filter_worker {
+	const char *path;
+	filter_rc_t expected;
+	int failed;
+};
+
+struct concurrent_filter_observer {
+	atomic_bool done;
+	atomic_bool saw_mutation;
+};
+
+/*
+ * concurrent_filter_worker - repeatedly check one path from a shared tree.
+ * @arg: concurrent_filter_worker pointer describing the expected verdict.
+ * Returns NULL.
+ */
+static void *concurrent_filter_worker(void *arg)
+{
+	struct concurrent_filter_worker *worker = arg;
+
+	for (int i = 0; i < CONCURRENT_FILTER_ITERATIONS; i++) {
+		if (filter_check(worker->path) != worker->expected) {
+			worker->failed = 1;
+			break;
+		}
+	}
+
+	return NULL;
+}
+
+/*
+ * concurrent_filter_observer - detect check-time mutations in the filter tree.
+ * @arg: concurrent_filter_observer pointer.
+ * Returns NULL.
+ */
+static void *concurrent_filter_observer(void *arg)
+{
+	struct concurrent_filter_observer *observer = arg;
+
+	while (!atomic_load_explicit(&observer->done, memory_order_relaxed)) {
+		if (!check_tree_reset(global_filter)) {
+			atomic_store_explicit(&observer->saw_mutation, true,
+					      memory_order_relaxed);
+			break;
+		}
+	}
+
+	return NULL;
+}
+
+/*
+ * run_concurrent_check_case - verify filter checks are read-only tree walks.
+ *
+ * Trust-source imports are normally serialized today, but the compiled filter
+ * is shared library state. Future import backends can safely share one loaded
+ * filter generation only if checking a path does not write traversal state
+ * into the tree itself.
+ *
+ * Returns 0 on success and a unique non-zero test code on failure.
+ */
+static int run_concurrent_check_case(void)
+{
+	struct concurrent_filter_worker worker[CONCURRENT_FILTER_WORKERS] = {
+		{ "/target", FILTER_ALLOW, 0 },
+		{ "/wide-9999", FILTER_DENY, 0 },
+		{ "/wide-0100", FILTER_ALLOW, 0 },
+		{ "/wide-2047", FILTER_ALLOW, 0 },
+	};
+	struct concurrent_filter_observer observer = { 0 };
+	pthread_t workers[CONCURRENT_FILTER_WORKERS];
+	pthread_t observer_thread;
+	char tmpl[] = "/tmp/fapolicyd-filter-concurrent-XXXXXX";
+	int fd = mkstemp(tmpl);
+	int rc = 0;
+
+	if (fd < 0) {
+		fprintf(stderr, "[ERROR:13] cannot create temp file\n");
+		return 13;
+	}
+
+	FILE *f = fdopen(fd, "w");
+	if (!f) {
+		close(fd);
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:14] cannot open temp file stream\n");
+		return 14;
+	}
+
+	for (int i = 0; i < CONCURRENT_FILTER_RULES; i++) {
+		if (fprintf(f, "+ /wide-%04d\n", i) < 0) {
+			fclose(f);
+			unlink(tmpl);
+			fprintf(stderr, "[ERROR:15] cannot write temp config\n");
+			return 15;
+		}
+	}
+
+	if (fprintf(f, "+ /target\n") < 0) {
+		fclose(f);
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:15] cannot write temp config\n");
+		return 15;
+	}
+
+	if (fclose(f) != 0) {
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:16] cannot close temp config\n");
+		return 16;
+	}
+
+	if (filter_init()) {
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:2] filter_init failed\n");
+		return 2;
+	}
+
+	if (filter_load_file(tmpl)) {
+		filter_destroy();
+		unlink(tmpl);
+		fprintf(stderr,
+			"[ERROR:3] loading concurrent fixture failed\n");
+		return 3;
+	}
+
+	if (pthread_create(&observer_thread, NULL,
+			   concurrent_filter_observer, &observer)) {
+		filter_destroy();
+		unlink(tmpl);
+		fprintf(stderr, "[ERROR:17] cannot create observer thread\n");
+		return 17;
+	}
+
+	for (int i = 0; i < CONCURRENT_FILTER_WORKERS; i++) {
+		if (pthread_create(&workers[i], NULL,
+				   concurrent_filter_worker, &worker[i])) {
+			atomic_store_explicit(&observer.done, true,
+					      memory_order_relaxed);
+			pthread_join(observer_thread, NULL);
+			filter_destroy();
+			unlink(tmpl);
+			fprintf(stderr, "[ERROR:18] cannot create worker\n");
+			return 18;
+		}
+	}
+
+	for (int i = 0; i < CONCURRENT_FILTER_WORKERS; i++)
+		pthread_join(workers[i], NULL);
+	atomic_store_explicit(&observer.done, true, memory_order_relaxed);
+	pthread_join(observer_thread, NULL);
+
+	for (int i = 0; i < CONCURRENT_FILTER_WORKERS; i++) {
+		if (worker[i].failed) {
+			fprintf(stderr,
+				"[ERROR:19] concurrent filter verdict changed\n");
+			rc = 19;
+			break;
+		}
+	}
+
+	if (rc == 0 &&
+	    atomic_load_explicit(&observer.saw_mutation,
+				 memory_order_relaxed)) {
+		fprintf(stderr,
+			"[ERROR:20] filter_check mutated shared tree state\n");
+		rc = 20;
+	}
+
+	filter_destroy();
+	unlink(tmpl);
+
+	return rc;
+}
+
 int main(void)
 {
 	if (!file_exists(MIN_CONF)) {
@@ -264,6 +443,9 @@ int main(void)
 	if (rc)
 		return rc;
 	rc = run_wide_tree_case();
+	if (rc)
+		return rc;
+	rc = run_concurrent_check_case();
 	if (rc)
 		return rc;
 

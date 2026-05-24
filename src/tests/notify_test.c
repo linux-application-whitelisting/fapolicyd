@@ -16,6 +16,7 @@
 #include "fanotify-fs-error.h"
 #include "notify.h"
 #include "policy.h"
+#include "decision-config.h"
 #include "decision-defer.h"
 #include "decision-timing.h"
 #include "state-report.h"
@@ -134,6 +135,7 @@ static void read_operating_mode_report(char *buf, size_t size)
 		.permissive = false,
 		.integrity = "sha256",
 		.reset_strategy = "manual",
+		.config_generation = 5,
 		.ruleset_generation = 7,
 		.config = &config,
 	};
@@ -177,26 +179,28 @@ static void read_fs_error_report(char *buf, size_t size)
 /*
  * test_operating_mode_report_order - verify state field order.
  *
- * The operating mode group keeps the timing control fields together. Ruleset
- * generation is last so readers see the active policy after all control
- * state in the same group.
+ * Config generation and ruleset generation are adjacent so readers can see the
+ * decision configuration identity beside the active policy identity.
  *
  * Returns nothing. Exits on test failure.
  */
 static void test_operating_mode_report_order(void)
 {
-	const char *ruleset, *last_stop;
+	const char *config_generation, *ruleset, *timing_mode;
 	char report[1024];
 
 	read_operating_mode_report(report, sizeof(report));
-	last_stop = strstr(report, "Timing collection last stop time: never\n");
+	config_generation = strstr(report, "Config generation: 5\n");
 	ruleset = strstr(report, "Ruleset generation: 7\n");
-	CHECK(last_stop != NULL, 58,
-	      "[ERROR:58] operating mode report missing timing stop field");
+	timing_mode = strstr(report, "Timing collection mode: manual\n");
+	CHECK(config_generation != NULL, 68,
+	      "[ERROR:68] operating mode report missing config generation");
 	CHECK(ruleset != NULL, 59,
 	      "[ERROR:59] operating mode report missing ruleset field");
-	CHECK(last_stop < ruleset, 60,
-	      "[ERROR:60] ruleset generation was not last in group");
+	CHECK(timing_mode != NULL, 58,
+	      "[ERROR:58] operating mode report missing timing mode field");
+	CHECK(config_generation < ruleset && ruleset < timing_mode, 60,
+	      "[ERROR:60] ruleset generation was not next to config");
 }
 
 /*
@@ -231,8 +235,14 @@ static void test_shutdown_deferred_events(void)
 	}
 
 	__atomic_store_n(&config.permissive, true, __ATOMIC_RELAXED);
+	CHECK(decision_config_publish(&config) == 0, 66,
+	      "[ERROR:66] decision config publish failed");
 	CHECK(test_notify_shutdown_deferred_events() == 3, 61,
 	      "[ERROR:61] deferred shutdown count mismatch");
+	__atomic_store_n(&config.permissive, false, __ATOMIC_RELAXED);
+	CHECK(decision_config_publish(&config) == 0, 69,
+	      "[ERROR:69] decision config reset failed");
+	decision_config_destroy();
 
 	for (i = 0; i < 3; i++) {
 		errno = 0;
@@ -276,13 +286,19 @@ static void test_shutdown_queued_events(void)
 	}
 
 	__atomic_store_n(&config.permissive, true, __ATOMIC_RELAXED);
+	CHECK(decision_config_publish(&config) == 0, 67,
+	      "[ERROR:67] decision config publish failed");
 	CHECK(test_notify_shutdown_queued_events() == 3, 65,
 	      "[ERROR:65] queued shutdown count mismatch");
+	__atomic_store_n(&config.permissive, false, __ATOMIC_RELAXED);
+	CHECK(decision_config_publish(&config) == 0, 70,
+	      "[ERROR:70] decision config reset failed");
+	decision_config_destroy();
 
 	for (i = 0; i < 3; i++) {
 		errno = 0;
-		CHECK(close(pipes[i][0]) == -1 && errno == EBADF, 66,
-		      "[ERROR:66] queued fd was not closed exactly once");
+		CHECK(close(pipes[i][0]) == -1 && errno == EBADF, 71,
+		      "[ERROR:71] queued fd was not closed exactly once");
 		close(pipes[i][1]);
 	}
 
@@ -464,10 +480,18 @@ int main(void)
 	      "[ERROR:23] status report missing ruleset generation");
 
 	read_decision_metrics_report(report, sizeof(report));
-	CHECK(strstr(report, "Last metrics reset: never") != NULL, 44,
+	const char *metrics_reset = strstr(report, "Last metrics reset: never\n");
+	const char *metrics_config = strstr(report, "Config generation: 0\n");
+	const char *metrics_ruleset = strstr(report, "Ruleset generation: ");
+
+	CHECK(metrics_reset != NULL, 44,
 	      "[ERROR:44] metrics report missing last reset header");
-	CHECK(strstr(report, "Ruleset generation: ") != NULL, 45,
+	CHECK(metrics_config != NULL, 72,
+	      "[ERROR:72] metrics report missing config generation header");
+	CHECK(metrics_ruleset != NULL, 45,
 	      "[ERROR:45] metrics report missing ruleset generation header");
+	CHECK(metrics_reset < metrics_config && metrics_config < metrics_ruleset,
+	      73, "[ERROR:73] metrics identity headers out of order");
 
 	atomic_store(&run_stats, false);
 	atomic_store(&signal_report_requests, 0);

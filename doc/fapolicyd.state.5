@@ -36,6 +36,16 @@ resets timer-generated metrics reports, and
 allows privileged signal-generated reset requests such as
 .BR fapolicyd-cli\ --reset-metrics .
 .TP
+.B Config generation
+The immutable decision configuration generation currently published by the
+daemon. Each successful reload publishes a new generation for decision-used
+fields such as permissive mode and integrity mode, so one decision does not
+mix values from different reloads.
+.TP
+.B Ruleset generation
+The current in-memory ruleset generation. This value increments each time a
+fully validated ruleset is published by the daemon.
+.TP
 .B Timing collection mode
 The configured timing collection control mode.
 .TP
@@ -51,10 +61,6 @@ when timing has not been started.
 The wall-clock time of the last successful timing stop request, or
 .B never
 when timing has not been stopped.
-.TP
-.B Ruleset generation
-The current in-memory ruleset generation. This value increments each time a
-fully validated ruleset is published by the daemon.
 .SS Headline activity
 .TP
 .B Allowed accesses
@@ -209,6 +215,7 @@ monitoring.
 .SH NOTES
 .B Allowed accesses ,
 .B Denied accesses ,
+.B Config generation ,
 .B Ruleset generation ,
 .B Subject defer fallbacks ,
 .B Early subject cache evictions ,
@@ -217,7 +224,7 @@ and
 .B Subject BUILDING stale evictions
 intentionally appear in both state and metrics reports. In the state report
 they provide health and activity context; in the metrics report they describe
-the current counter window.
+the current report context and counter window.
 .PP
 Metrics resets affect counters in the metrics report. Static configuration,
 current utilization snapshots, watched mounts, and health indicators are not

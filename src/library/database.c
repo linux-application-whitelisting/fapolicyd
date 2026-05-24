@@ -43,6 +43,7 @@
 #include <ctype.h>	/* isspace() */
 
 #include "database.h"
+#include "decision-config.h"
 #include "decision-timing.h"
 #include "failure-action.h"
 #include "message.h"
@@ -75,7 +76,6 @@ static int update_lock_inited;
 static int rule_lock_inited;
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
-static integrity_t integrity;
 static atomic_bool reload_db = false;
 /*
  * IMA mismatch logging policy: five LOG_ERR entries, five LOG_CRIT entries,
@@ -413,8 +413,8 @@ static int init_db(const conf_t *config)
 	}
 
 	MDB_maxkeysize = mdb_env_get_maxkeysize(env);
-	integrity = config->integrity;
-	msg(LOG_INFO, "fapolicyd integrity is %u", integrity);
+	msg(LOG_INFO, "fapolicyd integrity is %u",
+	    decision_config_integrity(NULL));
 
 	lib_symlink = is_link("/lib");
 	lib64_symlink = is_link("/lib64");
@@ -1580,6 +1580,7 @@ static int read_trust_db(const char *path, int *error, struct file_info *info,
 	int fd)
 {
 	int do_integrity = 0, mode = READ_TEST_KEY;
+	integrity_t integrity = decision_config_integrity(NULL);
 	char *res;
 	int retry = 0;
 	char sha_xattr[FILE_DIGEST_STRING_MAX];
@@ -1887,19 +1888,6 @@ void lock_update_thread(void) {
 void unlock_update_thread(void) {
 	pthread_mutex_unlock(&update_lock);
 	//msg(LOG_DEBUG, "unlock_update_thread()");
-}
-
-/*
- * set_integrity_mode - update the runtime integrity policy setting.
- * @mode: integrity mode that should be used for future checks.
- * Returns nothing.
- */
-void set_integrity_mode(integrity_t mode)
-{
-	lock_update_thread();
-	integrity = mode;
-	unlock_update_thread();
-	msg(LOG_INFO, "fapolicyd integrity is %u", integrity);
 }
 
 /*

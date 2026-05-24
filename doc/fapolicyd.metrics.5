@@ -25,6 +25,11 @@ when metrics have not been reset since daemon start. Reset reports show the
 counter window that is about to be reset; later metrics reports show the new
 reset time.
 .TP
+.B Config generation
+The active decision configuration generation at report time. The counters may
+span earlier generations when configuration was reloaded after the last metrics
+reset.
+.TP
 .B Ruleset generation
 The active ruleset generation that the counters and rule hit table apply to.
 .SH Decision outcomes

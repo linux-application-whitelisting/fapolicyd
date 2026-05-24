@@ -41,6 +41,7 @@
 #include <time.h>
 #include "attr-lookup-metrics.h"
 #include "conf.h"
+#include "decision-config.h"
 #include "decision-context.h"
 #include "decision-defer.h"
 #include "decision-timing.h"
@@ -799,7 +800,7 @@ static unsigned int release_ready_deferred_events(int *rpt_is_stale)
  */
 static int shutdown_fallback_decision(void)
 {
-	if (__atomic_load_n(&config.permissive, __ATOMIC_RELAXED))
+	if (decision_config_permissive(NULL))
 		return FAN_ALLOW;
 	return FAN_DENY;
 }
@@ -1140,9 +1141,7 @@ void handle_events(void)
 						    "tuning q_size if issue "
 						    "happens often",
 						    metadata->pid);
-						if (__atomic_load_n(
-							    &config.permissive,
-							    __ATOMIC_RELAXED))
+						if (decision_config_permissive(NULL))
 							decision = FAN_ALLOW;
 						reply_event(fd, metadata,
 							    decision, NULL);

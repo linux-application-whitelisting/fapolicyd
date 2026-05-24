@@ -42,6 +42,8 @@ libfapolicyd_la_SOURCES = \
 	library/database.h \
 	library/daemon-config.c \
 	library/daemon-config.h \
+	library/decision-config.c \
+	library/decision-config.h \
 	library/decision-context.h \
 	library/decision-defer.c \
 	library/decision-defer.h \

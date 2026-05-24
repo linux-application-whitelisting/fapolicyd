@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include "attr-lookup-metrics.h"
 #include "daemon-config.h"
+#include "decision-config.h"
 #include "decision-timing.h"
 #include "failure-action.h"
 #include "fanotify-fs-error.h"
@@ -62,9 +63,10 @@ void state_report_operating_mode(FILE *f,
 		mode->integrity ? mode->integrity : "unknown");
 	fprintf(f, "reset_strategy: %s\n",
 		mode->reset_strategy ? mode->reset_strategy : "unknown");
+	fprintf(f, "Config generation: %u\n", mode->config_generation);
+	fprintf(f, "Ruleset generation: %u\n", mode->ruleset_generation);
 	decision_timing_control_report(f, mode->config);
 	decision_timing_history_report(f);
-	fprintf(f, "Ruleset generation: %u\n", mode->ruleset_generation);
 }
 
 /*
@@ -266,6 +268,8 @@ void decision_report_metrics_reset(FILE *f, int reset)
 		reset_text = "unavailable";
 	fprintf(f, "Last metrics reset: %s\n",
 		reset_text);
+	fprintf(f, "Config generation: %u\n",
+		decision_config_active_generation());
 	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
 
 	fprintf(f, "\nDecision outcomes:\n");
