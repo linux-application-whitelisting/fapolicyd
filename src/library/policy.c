@@ -974,14 +974,6 @@ int reply_event_init(int fd)
 		return 1;
 	}
 
-	if (fcntl(fd, F_GETFD) < 0) {
-		msg(LOG_ERR,
-		    "Cannot initialize fanotify response info support: "
-		    "bad fd (%s)", strerror(errno));
-		response_info_supported = 0;
-		return 1;
-	}
-
 	response_info_supported = test_info_api(fd);
 #else
 	(void)fd;
