@@ -41,8 +41,13 @@ extern conf_t config;
 
 static time_t last_metrics_reset;
 
+static const char *format_report_time(time_t when, char *buf, size_t buf_size,
+		const char *zero_text)
+	__attr_access ((__write_only__, 2, 3));
 static const char *format_metrics_reset_time(char *buf, size_t buf_size)
 	__attr_access ((__write_only__, 1, 2));
+static void write_generation_line(FILE *f, const char *label,
+		unsigned int generation, time_t effective_since);
 
 /*
  * state_report_operating_mode - write health and control state.
@@ -63,8 +68,10 @@ void state_report_operating_mode(FILE *f,
 		mode->integrity ? mode->integrity : "unknown");
 	fprintf(f, "reset_strategy: %s\n",
 		mode->reset_strategy ? mode->reset_strategy : "unknown");
-	fprintf(f, "Config generation: %u\n", mode->config_generation);
-	fprintf(f, "Ruleset generation: %u\n", mode->ruleset_generation);
+	write_generation_line(f, "Config generation", mode->config_generation,
+			      mode->config_effective_since);
+	write_generation_line(f, "Ruleset generation", mode->ruleset_generation,
+			      mode->ruleset_effective_since);
 	decision_timing_control_report(f, mode->config);
 	decision_timing_history_report(f);
 }
@@ -114,6 +121,37 @@ void usr1_handler(int sig __attribute__((unused)),
 }
 
 /*
+ * format_report_time - format a report timestamp.
+ * @when: timestamp to format.
+ * @buf: destination buffer.
+ * @buf_size: destination size.
+ * @zero_text: text to use when @when is not available.
+ * Returns @buf on success, or NULL when @buf cannot be initialized.
+ */
+static const char *format_report_time(time_t when, char *buf, size_t buf_size,
+		const char *zero_text)
+{
+	struct tm tm;
+
+	if (buf == NULL || buf_size == 0)
+		return NULL;
+
+	if (when <= 0) {
+		strncpy(buf, zero_text ? zero_text : "unknown", buf_size - 1);
+		buf[buf_size - 1] = 0;
+		return buf;
+	}
+
+	if (localtime_r(&when, &tm) == NULL ||
+	    strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S %z", &tm) == 0) {
+		strncpy(buf, "unavailable", buf_size - 1);
+		buf[buf_size - 1] = 0;
+	}
+
+	return buf;
+}
+
+/*
  * format_metrics_reset_time - format the last metric reset timestamp.
  * @buf: destination buffer.
  * @buf_size: destination size.
@@ -121,24 +159,32 @@ void usr1_handler(int sig __attribute__((unused)),
  */
 static const char *format_metrics_reset_time(char *buf, size_t buf_size)
 {
-	struct tm tm;
+	return format_report_time(last_metrics_reset, buf, buf_size, "never");
+}
 
-	if (buf == NULL || buf_size == 0)
-		return NULL;
+/*
+ * write_generation_line - write a generation with its active timestamp.
+ * @f: report stream.
+ * @label: generation label without trailing colon.
+ * @generation: generation number to report.
+ * @effective_since: time the generation became active.
+ * Returns nothing.
+ */
+static void write_generation_line(FILE *f, const char *label,
+		unsigned int generation, time_t effective_since)
+{
+	char since[64];
+	const char *since_text;
 
-	if (last_metrics_reset == 0) {
-		strncpy(buf, "never", buf_size - 1);
-		buf[buf_size - 1] = 0;
-		return buf;
-	}
+	if (f == NULL || label == NULL)
+		return;
 
-	if (localtime_r(&last_metrics_reset, &tm) == NULL ||
-	    strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S %z", &tm) == 0) {
-		strncpy(buf, "unavailable", buf_size - 1);
-		buf[buf_size - 1] = 0;
-	}
-
-	return buf;
+	since_text = format_report_time(effective_since, since, sizeof(since),
+					"unknown");
+	if (since_text == NULL)
+		since_text = "unknown";
+	fprintf(f, "%s: %u (effective since %s)\n", label, generation,
+		since_text);
 }
 
 /*
@@ -268,9 +314,11 @@ void decision_report_metrics_reset(FILE *f, int reset)
 		reset_text = "unavailable";
 	fprintf(f, "Last metrics reset: %s\n",
 		reset_text);
-	fprintf(f, "Config generation: %u\n",
-		decision_config_active_generation());
-	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
+	write_generation_line(f, "Config generation",
+			      decision_config_active_generation(),
+			      decision_config_active_effective_since());
+	write_generation_line(f, "Ruleset generation", metrics.ruleset_generation,
+			      metrics.ruleset_effective_since);
 
 	fprintf(f, "\nDecision outcomes:\n");
 	fprintf(f, "Allowed accesses: %lu\n", getAllowedReset(reset));
@@ -356,7 +404,8 @@ void decision_report_reset_with_failures(FILE *f, int reset,
 		fprintf(f, "Allowed by fallthrough other ftype: %lu\n",
 			metrics.fallthrough_other_ftype);
 	}
-	fprintf(f, "Ruleset generation: %u\n", metrics.ruleset_generation);
+	write_generation_line(f, "Ruleset generation", metrics.ruleset_generation,
+			      metrics.ruleset_effective_since);
 	policy_rule_hits_report_reset(f, reset);
 	attr_lookup_metrics_report(f, reset);
 }

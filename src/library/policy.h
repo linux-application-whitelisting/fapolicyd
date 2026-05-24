@@ -26,6 +26,7 @@
 #define POLICY_HEADER
 
 #include <stdio.h>
+#include <time.h>
 #include <sys/fanotify.h>
 #include "decision-event.h"
 #include "event.h"
@@ -79,6 +80,7 @@ typedef struct {
 	unsigned long fallthrough_unknown_ftype;
 	unsigned long fallthrough_other_ftype;
 	unsigned int ruleset_generation;
+	time_t ruleset_effective_since;
 } decision_metrics_t;
 
 int dec_name_to_val(const char *name);

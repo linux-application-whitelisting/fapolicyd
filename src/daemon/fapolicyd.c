@@ -942,6 +942,9 @@ void do_state_report(FILE *f, int shutdown)
 	mode.reset_strategy = reset_ptr;
 	mode.config_generation = decision_config_generation(decision_config);
 	mode.ruleset_generation = decisions.ruleset_generation;
+	mode.config_effective_since =
+		decision_config_effective_since(decision_config);
+	mode.ruleset_effective_since = decisions.ruleset_effective_since;
 	mode.config = &config;
 	state_report_operating_mode(f, &mode);
 

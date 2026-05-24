@@ -90,8 +90,9 @@ int main(void)
 	      "[ERROR:14] dequeue changed full count");
 
 	read_queue_report(&metrics, report, sizeof(report));
-	CHECK(strcmp(report, "Inter-thread max queue depth: 2\n") == 0, 15,
-	      "[ERROR:15] legacy queue report format changed");
+	CHECK(strcmp(report, "Inter-thread current queue depth: 1\n"
+			    "Inter-thread max queue depth: 2\n") == 0, 15,
+	      "[ERROR:15] queue report format changed");
 
 	q_metrics_snapshot_reset(q, &metrics, 1);
 	CHECK(metrics.current_depth == 1, 16,

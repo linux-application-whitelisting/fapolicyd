@@ -13,6 +13,7 @@
 #ifndef DECISION_CONFIG_HEADER
 #define DECISION_CONFIG_HEADER
 
+#include <time.h>
 #include "conf.h"
 
 struct decision_config;
@@ -22,9 +23,11 @@ const struct decision_config *decision_config_pin(void);
 void decision_config_unpin(const struct decision_config *config);
 const struct decision_config *decision_config_current(void);
 unsigned int decision_config_generation(const struct decision_config *config);
+time_t decision_config_effective_since(const struct decision_config *config);
 unsigned int decision_config_permissive(const struct decision_config *config);
 integrity_t decision_config_integrity(const struct decision_config *config);
 unsigned int decision_config_active_generation(void);
+time_t decision_config_active_effective_since(void);
 void decision_config_destroy(void);
 
 #endif

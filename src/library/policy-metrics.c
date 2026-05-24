@@ -12,11 +12,13 @@
 #include "config.h"
 #include <stdatomic.h>
 #include <string.h>
+#include <time.h>
 #include "decision-context.h"
 #include "event.h"
 #include "policy-metrics.h"
 
 static atomic_uint ruleset_generation;
+static atomic_llong ruleset_effective_since;
 
 /*
  * policy_metrics_record_ruleset_update - count a published policy generation.
@@ -24,6 +26,17 @@ static atomic_uint ruleset_generation;
  */
 void policy_metrics_record_ruleset_update(void)
 {
+	time_t now = time(NULL);
+
+	if (now == (time_t)-1)
+		now = 0;
+
+	/*
+	 * Store the effective time before publishing the generation counter so
+	 * a report that observes the new generation also has its timestamp.
+	 */
+	atomic_store_explicit(&ruleset_effective_since, (long long)now,
+			      memory_order_relaxed);
 	atomic_fetch_add_explicit(&ruleset_generation, 1,
 				  memory_order_relaxed);
 }
@@ -308,4 +321,7 @@ void getDecisionMetricsReset(decision_metrics_t *metrics, int reset)
 	metrics->ruleset_generation =
 		atomic_load_explicit(&ruleset_generation,
 				     memory_order_relaxed);
+	metrics->ruleset_effective_since =
+		(time_t)atomic_load_explicit(&ruleset_effective_since,
+					     memory_order_relaxed);
 }

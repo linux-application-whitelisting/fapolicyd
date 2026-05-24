@@ -354,9 +354,9 @@ static void format_age(uint64_t age_ns, char *buf, size_t buf_size)
 		return;
 
 	if (age_ns == 0)
-		snprintf(buf, buf_size, "0ns");
+		snprintf(buf, buf_size, "0 ns");
 	else if (age_ns < 1000ULL)
-		snprintf(buf, buf_size, "%lluns",
+		snprintf(buf, buf_size, "%llu ns",
 			 (unsigned long long)age_ns);
 	else if (age_ns < 1000000ULL)
 		snprintf(buf, buf_size, "%.3fus", (double)age_ns / 1000.0);

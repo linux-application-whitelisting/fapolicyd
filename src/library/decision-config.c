@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <time.h>
 #include "decision-config.h"
 #include "message.h"
 
@@ -29,6 +30,7 @@ struct decision_config {
 	unsigned int permissive;
 	integrity_t integrity;
 	unsigned int generation;
+	time_t effective_since;
 	struct decision_config *previous;
 };
 
@@ -36,6 +38,7 @@ static struct decision_config default_decision_config = {
 	.permissive = 0,
 	.integrity = IN_NONE,
 	.generation = 0,
+	.effective_since = 0,
 	.previous = NULL,
 };
 static _Atomic(struct decision_config *) active_decision_config =
@@ -63,6 +66,7 @@ static const struct decision_config *decision_config_active(void)
 int decision_config_publish(const conf_t *config)
 {
 	struct decision_config *snapshot;
+	time_t now;
 
 	if (config == NULL)
 		return 1;
@@ -75,6 +79,8 @@ int decision_config_publish(const conf_t *config)
 
 	snapshot->permissive = config->permissive ? 1 : 0;
 	snapshot->integrity = config->integrity;
+	now = time(NULL);
+	snapshot->effective_since = now == (time_t)-1 ? 0 : now;
 
 	pthread_mutex_lock(&publish_lock);
 	snapshot->generation = atomic_fetch_add_explicit(&next_generation, 1,
@@ -131,6 +137,18 @@ unsigned int decision_config_generation(const struct decision_config *config)
 	return config->generation;
 }
 
+/*
+ * decision_config_effective_since - return the config activation time.
+ * @config: config generation to inspect, or NULL for the current generation.
+ * Returns the time @config became active, or zero if it is unknown.
+ */
+time_t decision_config_effective_since(const struct decision_config *config)
+{
+	if (config == NULL)
+		config = decision_config_current();
+	return config->effective_since;
+}
+
 unsigned int decision_config_permissive(const struct decision_config *config)
 {
 	if (config == NULL)
@@ -148,6 +166,15 @@ integrity_t decision_config_integrity(const struct decision_config *config)
 unsigned int decision_config_active_generation(void)
 {
 	return decision_config_generation(decision_config_active());
+}
+
+/*
+ * decision_config_active_effective_since - return active activation time.
+ * Returns the time the active config became effective, or zero if unknown.
+ */
+time_t decision_config_active_effective_since(void)
+{
+	return decision_config_effective_since(decision_config_active());
 }
 
 /*

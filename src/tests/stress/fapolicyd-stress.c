@@ -1782,6 +1782,40 @@ static int parse_word_line(const char *data, const char *name,
 }
 
 /*
+ * parse_text_line - parse all text after a "name: value" line.
+ * @data: report text.
+ * @name: metric name with trailing colon.
+ * @out: destination buffer.
+ * @out_len: destination buffer size.
+ * Returns 0 on success, 1 when not found or invalid.
+ */
+static int parse_text_line(const char *data, const char *name,
+		char *out, size_t out_len)
+{
+	size_t name_len = strlen(name);
+	const char *pos = data;
+	size_t idx = 0;
+
+	while ((pos = strstr(pos, name)) != NULL) {
+		if (pos != data && pos[-1] != '\n') {
+			pos += name_len;
+			continue;
+		}
+		pos += name_len;
+		while (*pos && isspace((unsigned char)*pos))
+			pos++;
+		while (*pos && *pos != '\n' && idx + 1 < out_len)
+			out[idx++] = *pos++;
+		while (idx > 0 && isspace((unsigned char)out[idx - 1]))
+			idx--;
+		out[idx] = 0;
+		return idx ? 0 : 1;
+	}
+
+	return 1;
+}
+
+/*
  * parse_double_line - parse a floating point "name: value" line.
  * @data: report text.
  * @name: metric name with trailing colon.
@@ -1975,7 +2009,7 @@ static void parse_daemon_metrics(const char *data,
 		       &metrics->subject_defer_max_depth);
 	parse_u64_line(data, "Subject defer fallbacks:",
 		       &metrics->subject_defer_fallbacks);
-	parse_word_line(data, "Subject defer oldest age:",
+	parse_text_line(data, "Subject defer oldest age:",
 			metrics->subject_defer_oldest_age,
 			sizeof(metrics->subject_defer_oldest_age));
 	parse_u64_line(data, "Early subject cache evictions:",
@@ -2281,9 +2315,9 @@ static void print_status_summary(const struct daemon_metrics *before,
 			   after->subject_defer_fallbacks);
 	printf("Subject defer oldest age: before=%s after=%s\n",
 	       before->subject_defer_oldest_age[0] ?
-			before->subject_defer_oldest_age : "0ns",
+			before->subject_defer_oldest_age : "0 ns",
 	       after->subject_defer_oldest_age[0] ?
-			after->subject_defer_oldest_age : "0ns");
+			after->subject_defer_oldest_age : "0 ns");
 	print_metric_delta("Early subject cache evictions",
 			   before->early_subject_evictions,
 			   after->early_subject_evictions);

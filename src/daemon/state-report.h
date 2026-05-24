@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <stdio.h>
+#include <time.h>
 
 enum state_report_reason {
 	STATE_REPORT_SIGNAL,
@@ -29,6 +30,8 @@ struct state_report_operating_mode {
 	const char *reset_strategy;
 	unsigned int config_generation;
 	unsigned int ruleset_generation;
+	time_t config_effective_since;
+	time_t ruleset_effective_since;
 	const conf_t *config;
 };
 

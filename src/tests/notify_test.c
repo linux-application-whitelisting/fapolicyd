@@ -137,6 +137,8 @@ static void read_operating_mode_report(char *buf, size_t size)
 		.reset_strategy = "manual",
 		.config_generation = 5,
 		.ruleset_generation = 7,
+		.config_effective_since = 1,
+		.ruleset_effective_since = 1,
 		.config = &config,
 	};
 	FILE *f = tmpfile();
@@ -190,8 +192,12 @@ static void test_operating_mode_report_order(void)
 	char report[1024];
 
 	read_operating_mode_report(report, sizeof(report));
-	config_generation = strstr(report, "Config generation: 5\n");
-	ruleset = strstr(report, "Ruleset generation: 7\n");
+	config_generation = strstr(report,
+				   "Config generation: 5 "
+				   "(effective since ");
+	ruleset = strstr(report,
+			 "Ruleset generation: 7 "
+			 "(effective since ");
 	timing_mode = strstr(report, "Timing collection mode: manual\n");
 	CHECK(config_generation != NULL, 68,
 	      "[ERROR:68] operating mode report missing config generation");
@@ -481,7 +487,9 @@ int main(void)
 
 	read_decision_metrics_report(report, sizeof(report));
 	const char *metrics_reset = strstr(report, "Last metrics reset: never\n");
-	const char *metrics_config = strstr(report, "Config generation: 0\n");
+	const char *metrics_config = strstr(report,
+					    "Config generation: 0 "
+					    "(effective since ");
 	const char *metrics_ruleset = strstr(report, "Ruleset generation: ");
 
 	CHECK(metrics_reset != NULL, 44,

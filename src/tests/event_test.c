@@ -540,6 +540,42 @@ static int check_object_metric(object_type_t type,
 	return 0;
 }
 
+/*
+ * check_attr_metric_report_line - verify aligned attribute metric output.
+ * @needle: expected report line.
+ * @code: test failure code.
+ * Return codes:
+ * 0 - report contains @needle.
+ * @code - report generation failed or @needle is absent.
+ */
+static int check_attr_metric_report_line(const char *needle, int code)
+{
+	char report_buf[2048];
+	FILE *report;
+	size_t used;
+
+	report = tmpfile();
+	if (report == NULL) {
+		fprintf(stderr, "[ERROR:%d] tmpfile failed\n", code);
+		return code;
+	}
+
+	attr_lookup_metrics_report(report, 0);
+	fflush(report);
+	rewind(report);
+	used = fread(report_buf, 1, sizeof(report_buf) - 1, report);
+	report_buf[used] = 0;
+	fclose(report);
+
+	if (strstr(report_buf, needle) == NULL) {
+		fprintf(stderr, "[ERROR:%d] missing metric line: %s\n",
+			code, needle);
+		return code;
+	}
+
+	return 0;
+}
+
 struct lmdb_record {
 	unsigned int tsource;
 	off_t size;
@@ -693,6 +729,16 @@ static int test_attr_lookup_metrics(void)
 		return rc;
 	expected = (struct metric_expectation){ 1, 1 };
 	rc = check_object_metric(FTYPE, &expected, 115);
+	if (rc)
+		return rc;
+	rc = check_attr_metric_report_line(
+		"Subject attr: pid       requests=1"
+		"          lookups=0\n", 118);
+	if (rc)
+		return rc;
+	rc = check_attr_metric_report_line(
+		"Object attr:  path      requests=3"
+		"          lookups=1\n", 119);
 	if (rc)
 		return rc;
 

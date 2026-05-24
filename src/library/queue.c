@@ -226,6 +226,8 @@ unsigned int q_max_depth_snapshot_restore(struct queue *q, unsigned int saved)
  */
 void q_metrics_report(FILE *f, const struct queue_metrics *metrics)
 {
+	fprintf(f, "Inter-thread current queue depth: %u\n",
+		metrics->current_depth);
 	fprintf(f, "Inter-thread max queue depth: %u\n", metrics->max_depth);
 }
 
