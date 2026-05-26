@@ -499,12 +499,14 @@ static void reconfigure(void)
  * thread. Lightweight daemon configuration fields are refreshed here, then
  * filter, rule, and trust reloads are requested through their normal owners.
  *
- * Rule reload is transactional. The update thread opens the rule file before
- * taking the rule lock, builds a complete policy snapshot while the current
- * policy remains active, validates rule parsing and syslog format parsing,
- * and publishes the new snapshot only after full success. If any step fails,
- * the previous policy snapshot stays active so decisions and syslog fields do
- * not fall back to empty, partial, or stale candidate state.
+ * Rule reload is transactional. The update thread opens the rule file and
+ * builds a complete policy snapshot while the current policy remains active.
+ * Readers hold references to the snapshot they started with, so reload can
+ * parse slow macro/set based policies without parking the decision thread.
+ * The new snapshot is published only after rule and syslog parsing succeed.
+ * If any step fails, the previous policy snapshot stays active so decisions
+ * and syslog fields do not fall back to empty, partial, or stale candidate
+ * state.
  *
  * Trust database reload remains independent of policy reload. A failed trust
  * reload is reported by the database layer and does not imply that policy

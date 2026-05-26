@@ -350,6 +350,12 @@ unsigned int policy_get_syslog_proc_status_mask(void)
 	return 0;
 }
 
+/* Return zero for the combined policy proc-status field request. */
+unsigned int policy_get_proc_status_mask(void)
+{
+	return 0;
+}
+
 /*
  * Provide an inert implementation for read_proc_status() that always succeeds.
  */

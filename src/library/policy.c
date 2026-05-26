@@ -33,8 +33,8 @@
 #include <string.h>
 #include <limits.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include <stdatomic.h>
+#include <pthread.h>
+#include <time.h>
 
 #include "database.h"
 #include "decision-config.h"
@@ -67,30 +67,30 @@
  * rule-file identity so all parser side effects publish as one unit.
  */
 struct policy_snapshot {
+	atomic_uint refs;
 	llist rules;
 	nvlist_t fields[MAX_SYSLOG_FIELDS];
 	unsigned int num_fields;
 	unsigned int rules_proc_status_mask;
 	unsigned int syslog_proc_status_mask;
 	unsigned int rule_count;
+	unsigned int generation;
+	time_t effective_since;
 	char *rule_file_identity;
 };
 
 /*
  * active_policy - currently published policy generation
  *
- * Evaluation and reload both run under the rule lock, so pointer replacement
- * and old-snapshot destruction are serialized with policy readers.
+ * policy_snapshot_lock serializes active pointer replacement with readers
+ * taking a reference. Evaluation uses a pinned snapshot reference so reload can
+ * publish a new policy without waiting for old decisions to finish.
  */
-static struct policy_snapshot *active_policy;
-/*
- * active_*_proc_status_mask - atomic copies of active snapshot masks
- *
- * Event construction reads these without taking the rule lock so proc-status
- * collection can request fields required by the active rules and log format.
- */
-static atomic_uint active_rules_proc_status_mask;
-static atomic_uint active_syslog_proc_status_mask;
+static _Atomic(struct policy_snapshot *) active_policy;
+static pthread_mutex_t policy_snapshot_lock = PTHREAD_MUTEX_INITIALIZER;
+static atomic_uint next_policy_generation;
+static __thread struct policy_snapshot *pinned_policy_snapshot;
+static __thread int policy_snapshot_is_pinned;
 
 extern atomic_bool stop;
 atomic_bool reload_rules = false;
@@ -154,11 +154,11 @@ static void free_syslog_fields(struct policy_snapshot *policy)
 }
 
 /*
- * policy_snapshot_destroy - release one policy snapshot
- * @policy: snapshot to destroy, or NULL.
+ * policy_snapshot_free - release one unreferenced policy snapshot
+ * @policy: snapshot to free, or NULL.
  * Returns nothing.
  */
-static void policy_snapshot_destroy(struct policy_snapshot *policy)
+static void policy_snapshot_free(struct policy_snapshot *policy)
 {
 	if (!policy)
 		return;
@@ -167,6 +167,129 @@ static void policy_snapshot_destroy(struct policy_snapshot *policy)
 	free_syslog_fields(policy);
 	free(policy->rule_file_identity);
 	free(policy);
+}
+
+/*
+ * policy_snapshot_get - take a read reference on a policy snapshot
+ * @policy: snapshot to reference, or NULL.
+ * Returns nothing.
+ */
+static void policy_snapshot_get(struct policy_snapshot *policy)
+{
+	if (policy)
+		atomic_fetch_add_explicit(&policy->refs, 1,
+					  memory_order_relaxed);
+}
+
+/*
+ * policy_snapshot_put - release a policy snapshot read reference
+ * @policy: snapshot reference to release, or NULL.
+ * Returns nothing.
+ */
+static void policy_snapshot_put(struct policy_snapshot *policy)
+{
+	if (!policy)
+		return;
+
+	if (atomic_fetch_sub_explicit(&policy->refs, 1,
+				      memory_order_acq_rel) == 1)
+		policy_snapshot_free(policy);
+}
+
+/*
+ * policy_snapshot_pin_active - pin the current active policy
+ * @void: no arguments are required.
+ *
+ * The lock keeps a publisher from dropping the active reference between the
+ * pointer load and the reader's reference increment.
+ *
+ * Returns the pinned policy snapshot, or NULL if no policy is active.
+ */
+static struct policy_snapshot *policy_snapshot_pin_active(void)
+{
+	struct policy_snapshot *policy;
+
+	pthread_mutex_lock(&policy_snapshot_lock);
+	/*
+	 * The active pointer owns one reference. Readers must increment that
+	 * count while publication is blocked, otherwise a reload could exchange
+	 * the pointer and drop the last reference before this reader is pinned.
+	 */
+	policy = atomic_load_explicit(&active_policy, memory_order_acquire);
+	policy_snapshot_get(policy);
+	pthread_mutex_unlock(&policy_snapshot_lock);
+	return policy;
+}
+
+/*
+ * policy_snapshot_begin_read - get the policy for this read path
+ * @release: set to nonzero when the caller must release @policy.
+ *
+ * Permission-event threads pin one policy through event construction and rule
+ * evaluation. Other callers take a short-lived reference here.
+ *
+ * Returns the snapshot to use, or NULL if no policy is active.
+ */
+static struct policy_snapshot *policy_snapshot_begin_read(int *release)
+{
+	if (release)
+		*release = 0;
+	/*
+	 * A permission event pins one policy at make_policy_decision() entry.
+	 * Reuse it so /proc status collection, rule evaluation, and log
+	 * formatting cannot accidentally observe different reload generations.
+	 */
+	if (policy_snapshot_is_pinned)
+		return pinned_policy_snapshot;
+
+	if (release)
+		*release = 1;
+	return policy_snapshot_pin_active();
+}
+
+/*
+ * policy_snapshot_end_read - release a read snapshot when needed
+ * @policy: snapshot returned by policy_snapshot_begin_read().
+ * @release: nonzero when @policy has a private read reference.
+ * Returns nothing.
+ */
+static void policy_snapshot_end_read(struct policy_snapshot *policy,
+				     int release)
+{
+	if (release)
+		policy_snapshot_put(policy);
+}
+
+/*
+ * policy_snapshot_pin_current - pin active policy for this thread
+ * @void: no arguments are required.
+ *
+ * Event construction and rule evaluation must use one generation so proc-status
+ * collection, rules, attr sets, and syslog fields match.
+ *
+ * Returns the pinned policy snapshot, or NULL if no policy is active.
+ */
+static struct policy_snapshot *policy_snapshot_pin_current(void)
+{
+	struct policy_snapshot *policy = policy_snapshot_pin_active();
+
+	pinned_policy_snapshot = policy;
+	policy_snapshot_is_pinned = 1;
+	return policy;
+}
+
+/*
+ * policy_snapshot_unpin_current - unpin a thread policy generation
+ * @policy: snapshot returned by policy_snapshot_pin_current().
+ * Returns nothing.
+ */
+static void policy_snapshot_unpin_current(struct policy_snapshot *policy)
+{
+	if (policy_snapshot_is_pinned && pinned_policy_snapshot == policy) {
+		pinned_policy_snapshot = NULL;
+		policy_snapshot_is_pinned = 0;
+	}
+	policy_snapshot_put(policy);
 }
 
 /*
@@ -186,6 +309,7 @@ static struct policy_snapshot *policy_snapshot_create(char *identity)
 		free(identity);
 		return NULL;
 	}
+	atomic_init(&policy->refs, 1);
 
 	if (rules_create(&policy->rules)) {
 		free(identity);
@@ -402,12 +526,46 @@ static FILE *open_file(char **identity)
  */
 static void log_policy_update_failure(void)
 {
-	if (active_policy)
+	struct policy_snapshot *policy;
+
+	policy = atomic_load_explicit(&active_policy, memory_order_acquire);
+	if (policy)
 		msg(LOG_ERR, "Daemon configuration update failed; "
 		    "previous policy preserved");
 	else
 		msg(LOG_ERR, "Daemon configuration update failed; "
 		    "no policy installed");
+}
+
+/*
+ * copy_syslog_format - copy syslog format for one policy build
+ * @_config: daemon configuration containing syslog_format.
+ * @out: receives a copied syslog_format string, or NULL when absent.
+ *
+ * The daemon updates config.syslog_format under the legacy rule mutex during
+ * SIGHUP reconfiguration. Snapshot builds only need the mutex long enough to
+ * copy the string; holding it while parsing policy would block decisions.
+ *
+ * Returns 0 on success or 1 on allocation failure.
+ */
+static int copy_syslog_format(const conf_t *_config, char **out)
+{
+	int had_format = 0;
+
+	*out = NULL;
+	lock_rule();
+	if (_config && _config->syslog_format) {
+		had_format = 1;
+		*out = strdup(_config->syslog_format);
+	}
+	unlock_rule();
+
+	if (had_format && *out == NULL) {
+		msg(LOG_ERR, "No memory for syslog_format");
+		return 1;
+	}
+
+	return 0;
 }
 
 /*
@@ -417,32 +575,44 @@ static void log_policy_update_failure(void)
  */
 static void publish_policy_snapshot(struct policy_snapshot *policy)
 {
-	struct policy_snapshot *old = active_policy;
+	struct policy_snapshot *old;
+	time_t now;
 
 	policy->rule_count = policy->rules.cnt;
 	policy->rules_proc_status_mask =
 		rules_get_proc_status_mask(&policy->rules);
 
 	/*
-	 * Transaction point: after this assignment, new decisions use the
+	 * Transaction point: after this exchange, new decisions use the
 	 * candidate policy. Everything before this must be able to fail while
 	 * leaving the old active_policy untouched.
+	 *
+	 * The candidate arrives with one reference, which becomes the active
+	 * pointer's reference. Readers that already pinned the old generation
+	 * continue using it until they drop their references below.
 	 */
-	active_policy = policy;
-	policy_metrics_record_ruleset_update();
-	atomic_store_explicit(&active_rules_proc_status_mask,
-			      policy->rules_proc_status_mask,
-			      memory_order_release);
-	atomic_store_explicit(&active_syslog_proc_status_mask,
-			      policy->syslog_proc_status_mask,
-			      memory_order_release);
+	pthread_mutex_lock(&policy_snapshot_lock);
+	now = time(NULL);
+	policy->effective_since = now == (time_t)-1 ? 0 : now;
+	policy->generation = atomic_fetch_add_explicit(
+		&next_policy_generation, 1, memory_order_relaxed) + 1;
+	old = atomic_exchange_explicit(&active_policy, policy,
+				       memory_order_acq_rel);
+	policy_metrics_record_ruleset_update(policy->generation,
+					     policy->effective_since);
+	pthread_mutex_unlock(&policy_snapshot_lock);
 
 	if (policy->rule_file_identity)
 		msg(LOG_INFO, "Ruleset identity: %s",
 		    policy->rule_file_identity);
 	msg(LOG_INFO, "Daemon rules updated");
 
-	policy_snapshot_destroy(old);
+	/*
+	 * Drop the old active reference after publishing. If a reader still has
+	 * the old snapshot pinned, this only decrements the count; final
+	 * reclamation happens when the last reader calls policy_snapshot_put().
+	 */
+	policy_snapshot_put(old);
 }
 
 /*
@@ -461,6 +631,7 @@ static int build_policy_snapshot(const conf_t *_config, FILE *f,
 {
 	int rc, lineno = 1;
 	char *line = NULL;
+	char *syslog_format = NULL;
 	size_t len = 0;
 	struct policy_snapshot *policy = policy_snapshot_create(identity);
 
@@ -468,6 +639,10 @@ static int build_policy_snapshot(const conf_t *_config, FILE *f,
 	if (!policy)
 		return 1;
 
+	if (copy_syslog_format(_config, &syslog_format)) {
+		policy_snapshot_put(policy);
+		return 1;
+	}
 
 	msg(LOG_DEBUG, "Loading rule file:");
 
@@ -479,7 +654,8 @@ static int build_policy_snapshot(const conf_t *_config, FILE *f,
 		rc = rules_append(&policy->rules, line, lineno);
 		if (rc) {
 			free(line);
-			policy_snapshot_destroy(policy);
+			free(syslog_format);
+			policy_snapshot_put(policy);
 			return 1;
 		}
 		lineno++;
@@ -489,21 +665,24 @@ static int build_policy_snapshot(const conf_t *_config, FILE *f,
 	if (ferror(f)) {
 		msg(LOG_ERR, "Error reading rules file (%s)",
 		    strerror(errno));
-		policy_snapshot_destroy(policy);
+		free(syslog_format);
+		policy_snapshot_put(policy);
 		return 1;
 	}
 
 	if (policy->rules.cnt == 0) {
 		msg(LOG_INFO, "No rules in file - exiting");
-		policy_snapshot_destroy(policy);
+		free(syslog_format);
+		policy_snapshot_put(policy);
 		return 1;
 	} else {
 		msg(LOG_DEBUG, "Loaded %u rules", policy->rules.cnt);
 	}
 
-	rc = parse_syslog_format(policy, _config->syslog_format);
+	rc = parse_syslog_format(policy, syslog_format);
+	free(syslog_format);
 	if (!rc || policy->num_fields == 0) {
-		policy_snapshot_destroy(policy);
+		policy_snapshot_put(policy);
 		return 1;
 	}
 
@@ -563,13 +742,21 @@ int load_rules_from_stream(const conf_t *_config, FILE *f)
 void destroy_rules(void)
 {
 	struct decision_context *ctx = decision_context_current();
+	struct policy_snapshot *policy, *pinned;
 
-	policy_snapshot_destroy(active_policy);
-	active_policy = NULL;
-	atomic_store_explicit(&active_rules_proc_status_mask, 0,
-			      memory_order_release);
-	atomic_store_explicit(&active_syslog_proc_status_mask, 0,
-			      memory_order_release);
+	pthread_mutex_lock(&policy_snapshot_lock);
+	policy = atomic_exchange_explicit(&active_policy, NULL,
+					  memory_order_acq_rel);
+	atomic_store_explicit(&next_policy_generation, 0,
+			      memory_order_relaxed);
+	pthread_mutex_unlock(&policy_snapshot_lock);
+
+	pinned = pinned_policy_snapshot;
+	pinned_policy_snapshot = NULL;
+	policy_snapshot_is_pinned = 0;
+	policy_snapshot_put(pinned);
+	policy_snapshot_put(policy);
+
 
 	if (stop) {
 		free(ctx->working_buffer);
@@ -579,8 +766,20 @@ void destroy_rules(void)
 
 unsigned int policy_get_syslog_proc_status_mask(void)
 {
-	return atomic_load_explicit(&active_syslog_proc_status_mask,
-				    memory_order_acquire);
+	struct policy_snapshot *policy;
+	unsigned int mask = 0;
+	int release;
+
+	/*
+	 * Separate mask getters are kept for existing callers. Code that needs
+	 * both rule and syslog masks should use policy_get_proc_status_mask()
+	 * so both values definitely come from one pinned generation.
+	 */
+	policy = policy_snapshot_begin_read(&release);
+	if (policy)
+		mask = policy->syslog_proc_status_mask;
+	policy_snapshot_end_read(policy, release);
+	return mask;
 }
 
 /*
@@ -590,8 +789,45 @@ unsigned int policy_get_syslog_proc_status_mask(void)
  */
 unsigned int policy_get_rules_proc_status_mask(void)
 {
-	return atomic_load_explicit(&active_rules_proc_status_mask,
-				    memory_order_acquire);
+	struct policy_snapshot *policy;
+	unsigned int mask = 0;
+	int release;
+
+	/*
+	 * This returns one field from the currently pinned generation when the
+	 * caller is inside a decision, otherwise from a short-lived active
+	 * snapshot reference.
+	 */
+	policy = policy_snapshot_begin_read(&release);
+	if (policy)
+		mask = policy->rules_proc_status_mask;
+	policy_snapshot_end_read(policy, release);
+	return mask;
+}
+
+/*
+ * policy_get_proc_status_mask - return all active policy proc-status needs
+ * @void: no arguments are required.
+ * Returns the combined rule and syslog proc-status mask for one generation.
+ */
+unsigned int policy_get_proc_status_mask(void)
+{
+	struct policy_snapshot *policy;
+	unsigned int mask = 0;
+	int release;
+
+	policy = policy_snapshot_begin_read(&release);
+	if (policy) {
+		/*
+		 * Read both masks from the same snapshot. Splitting this into
+		 * independent globals lets reload mix old rule requirements
+		 * with new syslog fields, which is exactly what snapshots avoid.
+		 */
+		mask = policy->rules_proc_status_mask;
+		mask |= policy->syslog_proc_status_mask;
+	}
+	policy_snapshot_end_read(policy, release);
+	return mask;
 }
 
 /*
@@ -610,11 +846,11 @@ void set_reload_rules(void)
 }
 
 /*
- * ff - pending reload rule file opened before taking the rule lock.
+ * ff - pending reload rule file opened before parsing starts.
  * ff_identity - SHA256 identity for @ff, transferred to the new snapshot.
  *
- * load_rule_file() prepares these so do_reload_rules() can spend the locked
- * section parsing and publishing rather than opening and hashing policy files.
+ * load_rule_file() prepares these so do_reload_rules() can spend its time
+ * parsing and publishing rather than opening and hashing policy files.
  */
 static FILE * ff = NULL;
 static char *ff_identity;
@@ -858,14 +1094,17 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 		struct decision_timing_span *response_timing)
 {
 	decision_t results = NO_OPINION;
-	struct policy_snapshot *policy = active_policy;
+	decision_t decision;
+	struct policy_snapshot *policy;
 	decision_timing_driver_t previous_driver;
 	struct decision_timing_span eval_timing;
 	lnode *r;
+	int release_policy;
 
 	if (source)
 		*source = DECISION_SOURCE_FALLTHROUGH;
 
+	policy = policy_snapshot_begin_read(&release_policy);
 	if (!policy) {
 		if (response_timing)
 			decision_timing_stage_begin(
@@ -874,7 +1113,11 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 		return ALLOW;
 	}
 
-	/* Use a local cursor so concurrent readers do not share list state. */
+	/*
+	 * The snapshot reference keeps rules, attr sets, and syslog fields
+	 * alive for this whole evaluation. The list cursor is local so
+	 * concurrent readers can walk the same immutable rule list safely.
+	 */
 	//int cnt = 0;
 	previous_driver = decision_timing_driver_push(
 		DECISION_TIMING_DRIVER_EVALUATION);
@@ -916,9 +1159,17 @@ decision_t process_event_with_source(event_t *e, decision_source_t *source,
 
 	// If we are not in permissive mode, return any decision
 	if (results != NO_OPINION)
-		return results;
+		decision = results;
+	else
+		decision = ALLOW;
 
-	return ALLOW;
+	/*
+	 * Release after log formatting because log_it() reads the snapshot's
+	 * syslog field array. A reload may already have published a new active
+	 * snapshot, but the old one cannot be freed until this put completes.
+	 */
+	policy_snapshot_end_read(policy, release_policy);
+	return decision;
 }
 
 /*
@@ -1088,6 +1339,7 @@ void make_policy_decision(decision_event_t *decision_event, int fd,
 		uint64_t mask)
 {
 	const struct decision_config *decision_config = decision_config_pin();
+	struct policy_snapshot *policy_snapshot;
 	const struct fanotify_event_metadata *metadata =
 		&decision_event->metadata;
 	event_t e = { 0 };
@@ -1095,10 +1347,15 @@ void make_policy_decision(decision_event_t *decision_event, int fd,
 	event_t *metric_event = NULL;
 	decision_source_t source = DECISION_SOURCE_FALLTHROUGH;
 	struct decision_timing_span event_timing;
-	struct decision_timing_span rule_wait_timing;
 	struct decision_timing_span response_timing = { 0 };
 	decision_timing_driver_t previous_driver;
 
+	/*
+	 * Pin before new_event(): building subject attributes may call
+	 * policy_get_proc_status_mask(). That mask must describe the same
+	 * generation that rule evaluation and syslog formatting will use.
+	 */
+	policy_snapshot = policy_snapshot_pin_current();
 	decision_timing_stage_begin(DECISION_TIMING_STAGE_EVENT_BUILD,
 				    &event_timing);
 	if (decision_event->subject_slot == DECISION_EVENT_NO_SLOT)
@@ -1110,14 +1367,13 @@ void make_policy_decision(decision_event_t *decision_event, int fd,
 	} else {
 		decision_timing_stage_end(&event_timing);
 		metric_event = &e;
-		decision_timing_stage_begin(
-			DECISION_TIMING_STAGE_RULE_LOCK_WAIT,
-			&rule_wait_timing);
-		lock_rule();
-		decision_timing_stage_end(&rule_wait_timing);
+		/*
+		 * No rule mutex is needed here. policy_snapshot_pin_current()
+		 * keeps the selected immutable generation alive while reload can
+		 * parse and publish a replacement without blocking decisions.
+		 */
 		decision = process_event_with_source(&e, &source,
 						     &response_timing);
-		unlock_rule();
 	}
 	if (metric_event == NULL)
 		decision_timing_stage_end(&event_timing);
@@ -1150,22 +1406,33 @@ void make_policy_decision(decision_event_t *decision_event, int fd,
 	    event_subject_slot_is_unblocked(decision_event->subject_slot))
 		decision_event->completed_subject_slot =
 			decision_event->subject_slot;
+	policy_snapshot_unpin_current(policy_snapshot);
 	decision_config_unpin(decision_config);
 }
 
 
 void policy_no_audit(void)
 {
-	if (active_policy)
-		rules_unsupport_audit(&active_policy->rules);
+	struct policy_snapshot *policy;
+
+	/*
+	 * This runs during fanotify initialization, before decision workers are
+	 * active. Hold the publication lock anyway so the active pointer cannot
+	 * change while the one permitted in-place rule adjustment is made.
+	 */
+	pthread_mutex_lock(&policy_snapshot_lock);
+	policy = atomic_load_explicit(&active_policy, memory_order_acquire);
+	if (policy)
+		rules_unsupport_audit(&policy->rules);
+	pthread_mutex_unlock(&policy_snapshot_lock);
 }
 
 /*
  * policy_rule_hits_report - write per-rule hit counters for the active policy.
  * @f: output stream.
  *
- * The rule mutex protects the active snapshot from reload destruction while
- * the report walks rule nodes and source text.
+ * A snapshot reference protects the active rules while the report walks rule
+ * nodes and source text.
  */
 void policy_rule_hits_report(FILE *f)
 {
@@ -1184,13 +1451,18 @@ void policy_rule_hits_report(FILE *f)
 void policy_rule_hits_report_reset(FILE *f, int reset)
 {
 	struct policy_snapshot *policy;
+	int release_policy;
 
-	if (f == NULL || active_policy == NULL)
+	if (f == NULL)
 		return;
 
-	lock_rule();
-	policy = active_policy;
+	/*
+	 * Reports are not permission events, so they take their own short
+	 * snapshot reference. A concurrent reload may publish a new generation,
+	 * but this report keeps walking the generation it started with.
+	 */
+	policy = policy_snapshot_begin_read(&release_policy);
 	if (policy)
 		rules_hits_report_reset(f, &policy->rules, reset);
-	unlock_rule();
+	policy_snapshot_end_read(policy, release_policy);
 }

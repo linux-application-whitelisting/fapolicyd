@@ -2375,11 +2375,14 @@ static int reload_rules_from_file(conf_t *config)
 		return 1;
 	}
 
-	lock_rule();
+	/*
+	 * Rules now publish as immutable snapshots. Parsing can be slow for
+	 * large macro/set based policies, so do not hold the legacy rule mutex
+	 * here; decisions keep using the old snapshot until publish succeeds.
+	 */
 	rc = do_reload_rules(config);
 	if (rc)
 		msg(LOG_ERR, "Rule reload failed; previous policy preserved");
-	unlock_rule();
 	return rc;
 }
 

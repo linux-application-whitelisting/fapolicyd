@@ -15,10 +15,13 @@
 #include "policy.h"
 
 /*
- * policy_metrics_record_ruleset_update - count a published policy generation.
+ * policy_metrics_record_ruleset_update - publish active policy generation.
+ * @generation: policy snapshot generation just published.
+ * @effective_since: time the policy snapshot became active.
  * Returns nothing.
  */
-void policy_metrics_record_ruleset_update(void);
+void policy_metrics_record_ruleset_update(unsigned int generation,
+					  time_t effective_since);
 
 /*
  * policy_metrics_record_decision - count a policy decision.

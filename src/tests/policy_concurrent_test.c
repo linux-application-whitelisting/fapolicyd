@@ -25,7 +25,8 @@
 #include "message.h"
 
 #define WORKER_COUNT		32
-#define ITERATIONS		1000
+#define ITERATIONS		2000
+#define RELOAD_ITERATIONS	200
 #define NO_OPINION_RULES	64
 #define POLICY_BUFSIZE		8192
 #define TARGET_AUID		4242
@@ -40,9 +41,10 @@ static atomic_uint failures;
  * make_policy_text - build a policy with a late matching deny rule
  * @buf: destination buffer for newline-separated rules.
  * @buflen: size of @buf.
+ * @variant: reload variant used to make each generation distinct.
  * Returns nothing. Exits on overflow because the test fixture is invalid.
  */
-static void make_policy_text(char *buf, size_t buflen)
+static void make_policy_text(char *buf, size_t buflen, unsigned int variant)
 {
 	size_t off = 0;
 	int len;
@@ -50,8 +52,9 @@ static void make_policy_text(char *buf, size_t buflen)
 
 	for (i = 0; i < NO_OPINION_RULES; i++) {
 		len = snprintf(buf + off, buflen - off,
-			       "allow perm=any auid=%u : path=/no/match/%u\n",
-			       i, i);
+			       "allow perm=any auid=%u : "
+			       "path=/no/match/%u/%u\n",
+			       i, variant, i);
 		if (len < 0 || (size_t)len >= buflen - off)
 			error(1, 0, "policy buffer overflow");
 		off += (size_t)len;
@@ -65,25 +68,39 @@ static void make_policy_text(char *buf, size_t buflen)
 }
 
 /*
- * load_test_policy - publish the policy used by reader threads
- * @void: no arguments are required.
- * Returns nothing. Exits if policy loading fails.
+ * load_policy_variant - publish one test policy generation
+ * @variant: generation variant used for rules and syslog format.
+ * Returns 0 on success, 1 on load failure.
  */
-static void load_test_policy(void)
+static int load_policy_variant(unsigned int variant)
 {
-	conf_t cfg = { .syslog_format = "rule,dec,perm,:,path" };
+	conf_t cfg = {
+		.syslog_format = variant & 1 ?
+			"rule,dec,perm,pid,:,path" :
+			"rule,dec,perm,auid,:,path"
+	};
 	char policy[POLICY_BUFSIZE];
 	FILE *f;
 	int rc;
 
-	make_policy_text(policy, sizeof(policy));
+	make_policy_text(policy, sizeof(policy), variant);
 	f = fmemopen(policy, strlen(policy), "r");
 	if (!f)
 		error(1, errno, "fmemopen failed");
 
 	rc = load_rules_from_stream(&cfg, f);
 	fclose(f);
-	if (rc)
+	return rc;
+}
+
+/*
+ * load_test_policy - publish the initial policy used by reader threads
+ * @void: no arguments are required.
+ * Returns nothing. Exits if policy loading fails.
+ */
+static void load_test_policy(void)
+{
+	if (load_policy_variant(0))
 		error(1, 0, "policy load failed");
 }
 
@@ -160,6 +177,30 @@ static void *reader_thread(void *arg)
 }
 
 /*
+ * reloader_thread - publish replacement snapshots while readers run
+ * @arg: unused pthread argument.
+ * Return: NULL.
+ */
+static void *reloader_thread(void *arg)
+{
+	unsigned int i;
+
+	(void)arg;
+
+	while (!atomic_load_explicit(&start_workers, memory_order_acquire))
+		sched_yield();
+
+	for (i = 0; i < RELOAD_ITERATIONS; i++) {
+		if (load_policy_variant(i + 1))
+			atomic_fetch_add_explicit(&failures, 1,
+						  memory_order_relaxed);
+		sched_yield();
+	}
+
+	return NULL;
+}
+
+/*
  * main - exercise concurrent read-only rule evaluation
  * @void: no arguments are required.
  * Returns 0 on success. Exits with error() on test failure.
@@ -167,6 +208,7 @@ static void *reader_thread(void *arg)
 int main(void)
 {
 	pthread_t workers[WORKER_COUNT];
+	pthread_t reloader;
 	unsigned int i;
 	unsigned int failed;
 	int rc;
@@ -179,6 +221,9 @@ int main(void)
 		if (rc)
 			error(1, rc, "pthread_create failed");
 	}
+	rc = pthread_create(&reloader, NULL, reloader_thread, NULL);
+	if (rc)
+		error(1, rc, "pthread_create reloader failed");
 
 	atomic_store_explicit(&start_workers, true, memory_order_release);
 
@@ -187,6 +232,9 @@ int main(void)
 		if (rc)
 			error(1, rc, "pthread_join failed");
 	}
+	rc = pthread_join(reloader, NULL);
+	if (rc)
+		error(1, rc, "pthread_join reloader failed");
 
 	failed = atomic_load_explicit(&failures, memory_order_relaxed);
 	if (failed)

@@ -21,24 +21,19 @@ static atomic_uint ruleset_generation;
 static atomic_llong ruleset_effective_since;
 
 /*
- * policy_metrics_record_ruleset_update - count a published policy generation.
+ * policy_metrics_record_ruleset_update - publish active policy generation.
+ * @generation: policy snapshot generation just published.
+ * @effective_since: time the policy snapshot became active.
  * Returns nothing.
  */
-void policy_metrics_record_ruleset_update(void)
+void policy_metrics_record_ruleset_update(unsigned int generation,
+					  time_t effective_since)
 {
-	time_t now = time(NULL);
-
-	if (now == (time_t)-1)
-		now = 0;
-
-	/*
-	 * Store the effective time before publishing the generation counter so
-	 * a report that observes the new generation also has its timestamp.
-	 */
-	atomic_store_explicit(&ruleset_effective_since, (long long)now,
+	atomic_store_explicit(&ruleset_effective_since,
+			      (long long)effective_since,
 			      memory_order_relaxed);
-	atomic_fetch_add_explicit(&ruleset_generation, 1,
-				  memory_order_relaxed);
+	atomic_store_explicit(&ruleset_generation, generation,
+			      memory_order_relaxed);
 }
 
 /*
