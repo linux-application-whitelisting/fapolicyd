@@ -88,7 +88,9 @@ The configured number of entries in the subject cache.
 The configured number of entries in the object cache.
 .TP
 .B Trust database max pages
-The configured maximum LMDB page count for the trust database.
+The current maximum LMDB map page count for the trust database environment.
+This reflects the map size currently opened by the daemon, including any
+automatic resize applied for reload headroom.
 .TP
 .B Trust database max readers
 The configured LMDB reader-slot limit. This is sized for the planned decision
@@ -96,7 +98,20 @@ worker cap plus maintenance readers.
 .SS Resource utilization
 .TP
 .B Trust database pages in use
-The number and percentage of LMDB pages currently used by the trust database.
+The number and percentage of LMDB pages currently used by the active trust
+database contents. This is the active named-database footprint, not the LMDB
+environment high-water mark.
+.TP
+.B Trust database allocated high-water pages
+The number and percentage of LMDB map pages that have been allocated in the
+environment. This follows LMDB's file high-water mark and can be higher than
+the active trust database footprint after drop/rebuild reloads, because LMDB
+cannot reuse pages until transactions and freelist metadata allow it. When
+.B db_max_size
+is set to
+.B auto ,
+fapolicyd uses this value as reload-headroom pressure while active pages show
+the steady-state trust database size.
 .TP
 .B Subject slots in use
 The number and percentage of subject cache slots currently occupied.
