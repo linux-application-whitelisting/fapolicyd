@@ -70,6 +70,7 @@ typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops
 #define TRUST_DB_RELOAD_HIGHWATER_PERCENT 85
 #define TRUST_DB_SHRINK_TRIGGER_PERCENT 65
 #define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 75
+#define TRUST_DB_RELOAD_WORK_FACTOR 2
 /*
  * The decision worker configuration is added later in the worker-pool
  * roadmap. Size LMDB readers now for that planned cap plus maintenance users
@@ -136,6 +137,7 @@ struct trust_db_sizing_state {
 	size_t map_pages;
 	size_t active_pages;
 	size_t allocated_pages;
+	size_t reload_work_pages;
 	size_t active_target_pages;
 	size_t highwater_target_pages;
 	size_t recommended_pages;
@@ -340,6 +342,20 @@ static size_t pages_for_percent(size_t pages, unsigned int percent)
 }
 
 /*
+ * pages_times - multiply page counts without wrapping.
+ * @pages: base page count.
+ * @factor: integer multiplier.
+ *
+ * Returns the product, or the largest size_t value if it would overflow.
+ */
+static size_t pages_times(size_t pages, unsigned int factor)
+{
+	if (factor != 0 && pages > ((size_t)-1) / factor)
+		return (size_t)-1;
+	return pages * factor;
+}
+
+/*
  * percent_of - calculate an integer percentage.
  * @used: numerator value.
  * @total: denominator value.
@@ -397,10 +413,33 @@ static unsigned int pages_to_mb(size_t pages, size_t page_size)
  */
 static void complete_lmdb_sizing_state(struct trust_db_sizing_state *state)
 {
+	size_t reload_cap = pages_times(state->active_pages,
+					TRUST_DB_RELOAD_WORK_FACTOR);
+
+	/*
+	 * me_last_pgno is LMDB's file high-water mark. It is useful for
+	 * seeing that reload churn has touched most of the map, but it is not
+	 * the same as live trust data. If auto sizing chases that monotonic
+	 * high-water mark directly, every drop/rebuild can make the next
+	 * target slightly larger even when the backend entry set is unchanged.
+	 *
+	 * Bound the reload target to a working set derived from the active DB:
+	 * one copy for the currently published trust set and one copy for a
+	 * rebuild when old pages cannot be reused immediately because LMDB
+	 * readers or freelist bookkeeping still reference them. This keeps
+	 * enough headroom for copy-on-write reloads without turning file
+	 * high-water growth into permanent map growth.
+	 */
+	state->reload_work_pages = state->allocated_pages;
+	if (state->reload_work_pages < state->active_pages)
+		state->reload_work_pages = state->active_pages;
+	if (reload_cap && state->reload_work_pages > reload_cap)
+		state->reload_work_pages = reload_cap;
+
 	state->active_target_pages = pages_for_percent(state->active_pages,
 					TRUST_DB_ACTIVE_TARGET_PERCENT);
 	state->highwater_target_pages =
-		pages_for_percent(state->allocated_pages,
+		pages_for_percent(state->reload_work_pages,
 				  TRUST_DB_RELOAD_HIGHWATER_PERCENT);
 	state->recommended_pages = state->active_target_pages;
 	if (state->highwater_target_pages > state->recommended_pages)
@@ -506,10 +545,10 @@ static int autosize_shrink_allowed(const conf_t *config,
  *
  * Auto sizing has two targets. The active-page target keeps the final trust
  * database near 75 percent utilization so normal package changes have room.
- * The high-water target keeps LMDB allocated pages below 85 percent so a full
- * drop/rebuild reload has room to commit metadata before old pages are
- * reusable. Manual configurations are not changed here; callers should log
- * the recommended size for administrators.
+ * The reload target keeps a bounded copy-on-write working set below 85
+ * percent so a full drop/rebuild reload has room to commit metadata before
+ * old pages are reusable. Manual configurations are not changed here; callers
+ * should log the recommended size for administrators.
  *
  * Returns 1 when config->db_max_size changed, 0 otherwise.
  */
@@ -530,11 +569,12 @@ static int apply_autosize_plan(conf_t *config,
 		msg(LOG_INFO,
 		    "autosize: %s growing map %u->%u MiB "
 		    "(entries=%zu active=%zu/%zu pages %lu%%, "
-		    "allocated=%zu/%zu pages %lu%%)",
+		    "allocated=%zu/%zu pages %lu%%, reload_work=%zu)",
 		    context, config->db_max_size, target_mb, state->entries,
 		    state->active_pages, state->map_pages,
 		    state->active_percent, state->allocated_pages,
-		    state->map_pages, state->allocated_percent);
+		    state->map_pages, state->allocated_percent,
+		    state->reload_work_pages);
 		config->db_max_size = target_mb;
 		if (autosize_reload_floor_mb < target_mb)
 			autosize_reload_floor_mb = target_mb;
@@ -554,11 +594,11 @@ static int apply_autosize_plan(conf_t *config,
 	msg(LOG_INFO,
 	    "autosize: %s shrinking map %u->%u MiB "
 	    "(entries=%zu active=%zu/%zu pages %lu%%, "
-	    "allocated=%zu/%zu pages %lu%%)",
+	    "allocated=%zu/%zu pages %lu%%, reload_work=%zu)",
 	    context, config->db_max_size, target_mb, state->entries,
 	    state->active_pages, state->map_pages, state->active_percent,
 	    state->allocated_pages, state->map_pages,
-	    state->allocated_percent);
+	    state->allocated_percent, state->reload_work_pages);
 	config->db_max_size = target_mb;
 	return 1;
 }
@@ -1018,30 +1058,47 @@ static void check_db_size(const conf_t *config)
 	max_pages = state.map_pages;
 
 	// Active DB pages can stay steady while LMDB's high-water mark grows
-	// if readers pin old pages across repeated rebuilds.
+	// across repeated rebuilds. In auto mode this is informational unless
+	// a write actually fails; manual mode keeps it as a warning because the
+	// administrator may need to adjust db_max_size.
 	msg(LOG_DEBUG,
 	    "Trust database active pages: %lu (%lu%%), allocated pages: %zu (%lu%%)",
 	    pages, state.active_percent, state.allocated_pages,
 	    state.allocated_percent);
 	if (state.allocated_percent > TRUST_DB_RELOAD_HIGHWATER_PERCENT &&
 	    state.allocated_percent > state.active_percent) {
-		msg(LOG_WARNING,
+		int priority = config->do_audit_db_sizing ? LOG_INFO :
+			       LOG_WARNING;
+
+		msg(priority,
 		    "Trust database LMDB map high-water at %lu%% capacity "
 		    "while active DB pages are at %lu%%",
 		    state.allocated_percent, state.active_percent);
-		log_lmdb_state(LOG_WARNING, "trust database size check", 0);
+		if (!config->do_audit_db_sizing)
+			log_lmdb_state(LOG_WARNING,
+				       "trust database size check", 0);
 	}
 
 	target_mb = autosize_effective_target_mb(&state);
 	if (config->do_audit_db_sizing) {
-		if (target_mb > config->db_max_size)
-			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
-			    "map will grow automatically before next rebuild",
-			    state.active_percent);
-		else if (autosize_shrink_allowed(config, &state, target_mb))
-			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
+		if (target_mb > config->db_max_size) {
+			if (state.active_target_pages > state.map_pages)
+				msg(LOG_INFO,
+				    "Trust database at %lu%% capacity - "
+				    "map will grow automatically before next rebuild",
+				    state.active_percent);
+			else
+				msg(LOG_INFO,
+				    "Trust database reload headroom target is %u MiB "
+				    "(active=%lu%% high-water=%lu%%) - "
+				    "map will grow automatically before next rebuild",
+				    target_mb, state.active_percent,
+				    state.allocated_percent);
+		} else if (autosize_shrink_allowed(config, &state, target_mb)) {
+			msg(LOG_INFO, "Trust database at %lu%% capacity - "
 			    "map will shrink automatically on next rebuild",
 			    state.active_percent);
+		}
 		return;
 	}
 
