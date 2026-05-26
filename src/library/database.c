@@ -60,6 +60,11 @@
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
 typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops_t;
+enum autosize_plan_mode {
+	AUTOSIZE_STARTUP_INSPECTION,
+	AUTOSIZE_LIVE_INSPECTION,
+	AUTOSIZE_RELOAD_PREFLIGHT,
+};
 #define BUFFER_SIZE 4096
 #define MEGABYTE    (1024*1024)
 #define MAX_DELIMS  3	// Trustdb has 4 fields - therefore 3 delimiters
@@ -69,7 +74,7 @@ typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops
 #define TRUST_DB_ACTIVE_TARGET_PERCENT 75
 #define TRUST_DB_RELOAD_HIGHWATER_PERCENT 85
 #define TRUST_DB_SHRINK_TRIGGER_PERCENT 65
-#define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 75
+#define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 90
 #define TRUST_DB_RELOAD_WORK_FACTOR 2
 /*
  * The decision worker configuration is added later in the worker-pool
@@ -486,17 +491,20 @@ static int fill_lmdb_sizing_state(MDB_txn *txn, MDB_dbi sizing_dbi,
 }
 
 /*
- * autosize_effective_target_mb - apply the reload safety floor.
+ * autosize_effective_target_mb - apply any runtime reload safety floor.
  * @state: sizing state with computed recommendation.
+ * @mode: caller context for startup, live inspection, or reload preflight.
  *
- * Returns the MiB target after honoring recent reload growth.
+ * Returns the MiB target after honoring recent reload growth when appropriate.
  */
 static unsigned int autosize_effective_target_mb(
-		const struct trust_db_sizing_state *state)
+		const struct trust_db_sizing_state *state,
+		enum autosize_plan_mode mode)
 {
 	unsigned int target_mb = state->recommended_mb;
 
-	if (autosize_reload_floor_mb &&
+	if (mode != AUTOSIZE_STARTUP_INSPECTION &&
+	    autosize_reload_floor_mb &&
 	    target_mb < autosize_reload_floor_mb)
 		target_mb = autosize_reload_floor_mb;
 	return target_mb;
@@ -507,6 +515,7 @@ static unsigned int autosize_effective_target_mb(
  * @config: active daemon configuration.
  * @state: LMDB sizing state from the environment being considered.
  * @target_mb: proposed new map size after any reload safety floor.
+ * @mode: caller context for startup, live inspection, or reload preflight.
  *
  * Shrink is intentionally conservative. The final trust DB is usually stable,
  * but reload is not an in-place no-op: fapolicyd drops the named database and
@@ -515,19 +524,25 @@ static unsigned int autosize_effective_target_mb(
  * as soon as active pages dip below the steady-state target, a reload storm
  * can push the allocated high-water mark back to MDB_MAP_FULL. Require both
  * active pages and allocated pages to be comfortably low, and require the
- * proposed shrink to be large enough to avoid map-size oscillation.
+ * proposed shrink to be large enough to avoid map-size oscillation. Startup
+ * is the exception for allocated high-water pages: after a daemon restart
+ * there are no old fapolicyd reader transactions to pin deleted pages, so
+ * startup compaction may use the bounded rebuild working set instead of
+ * preserving a stale file high-water mark forever.
  *
  * Returns 1 when shrink is allowed, 0 otherwise.
  */
 static int autosize_shrink_allowed(const conf_t *config,
 				   const struct trust_db_sizing_state *state,
-				   unsigned int target_mb)
+				   unsigned int target_mb,
+				   enum autosize_plan_mode mode)
 {
 	if (target_mb >= config->db_max_size)
 		return 0;
 	if (state->active_percent >= TRUST_DB_SHRINK_TRIGGER_PERCENT)
 		return 0;
-	if (state->allocated_percent >= TRUST_DB_RELOAD_HIGHWATER_PERCENT)
+	if (mode != AUTOSIZE_STARTUP_INSPECTION &&
+	    state->allocated_percent >= TRUST_DB_RELOAD_HIGHWATER_PERCENT)
 		return 0;
 	if ((unsigned long long)target_mb * 100 >
 	    (unsigned long long)config->db_max_size *
@@ -540,7 +555,7 @@ static int autosize_shrink_allowed(const conf_t *config,
  * apply_autosize_plan - update config->db_max_size from LMDB sizing state.
  * @config: active daemon configuration.
  * @state: LMDB sizing state from either the live or on-disk environment.
- * @allow_shrink: non-zero if this call site may request a smaller map.
+ * @mode: caller context for startup, live inspection, or reload preflight.
  * @context: short log label describing the caller.
  *
  * Auto sizing has two targets. The active-page target keeps the final trust
@@ -554,9 +569,10 @@ static int autosize_shrink_allowed(const conf_t *config,
  */
 static int apply_autosize_plan(conf_t *config,
 			       const struct trust_db_sizing_state *state,
-			       int allow_shrink, const char *context)
+			       enum autosize_plan_mode mode,
+			       const char *context)
 {
-	unsigned int target_mb = autosize_effective_target_mb(state);
+	unsigned int target_mb = autosize_effective_target_mb(state, mode);
 
 	if (state->active_pages == 0) {
 		msg(LOG_INFO,
@@ -576,13 +592,11 @@ static int apply_autosize_plan(conf_t *config,
 		    state->map_pages, state->allocated_percent,
 		    state->reload_work_pages);
 		config->db_max_size = target_mb;
-		if (autosize_reload_floor_mb < target_mb)
-			autosize_reload_floor_mb = target_mb;
 		return 1;
 	}
 
-	if (!allow_shrink ||
-	    !autosize_shrink_allowed(config, state, target_mb)) {
+	if (mode == AUTOSIZE_RELOAD_PREFLIGHT ||
+	    !autosize_shrink_allowed(config, state, target_mb, mode)) {
 		msg(LOG_INFO,
 		    "autosize: %s keeping %u MiB "
 		    "(target=%u MiB active=%lu%% allocated=%lu%%)",
@@ -679,13 +693,154 @@ out_close:
 	return rc;
 }
 
+/*
+ * dir_file_path - format a child path below a directory.
+ * @buf: destination buffer.
+ * @buf_size: destination buffer size.
+ * @dir: parent directory.
+ * @name: file name below @dir.
+ *
+ * Returns 0 on success or ENAMETOOLONG.
+ */
+static int dir_file_path(char *buf, size_t buf_size, const char *dir,
+			 const char *name)
+{
+	int written;
+
+	written = snprintf(buf, buf_size, "%s/%s", dir, name);
+	if (written < 0 || (size_t)written >= buf_size)
+		return ENAMETOOLONG;
+	return 0;
+}
+
+/*
+ * lmdb_file_path - format a path below the LMDB environment directory.
+ * @buf: destination buffer.
+ * @buf_size: destination buffer size.
+ * @name: file name below data_dir.
+ *
+ * Returns 0 on success or ENAMETOOLONG.
+ */
+static int lmdb_file_path(char *buf, size_t buf_size, const char *name)
+{
+	return dir_file_path(buf, buf_size, data_dir, name);
+}
+
+/*
+ * compact_existing_lmdb - compact the on-disk environment before startup.
+ * @target_mb: autosize target that will be used when init_db() reopens LMDB.
+ *
+ * A live mdb_env_set_mapsize() cannot move pages; if the file high-water mark
+ * has grown to the emergency map size, LMDB may silently keep the larger map
+ * even when the active named DB needs far less space. Startup is the one
+ * point where fapolicyd can safely replace data.mdb before publishing a live
+ * environment. Use LMDB's compact copy to rewrite only live pages, then
+ * atomically replace data.mdb. The existing lock.mdb and db.ver are left in
+ * place.
+ *
+ * Returns 0 on success or an errno/LMDB error code on failure.
+ */
+static int compact_existing_lmdb(unsigned int target_mb)
+{
+	MDB_env *copy_env = NULL;
+	char tmpdir[PATH_MAX];
+	char live_data[PATH_MAX];
+	char compact_data[PATH_MAX];
+	char backup_data[PATH_MAX];
+	int backup_fd;
+	int rc;
+
+	rc = lmdb_file_path(live_data, sizeof(live_data), "data.mdb");
+	if (rc)
+		return rc;
+
+	rc = lmdb_file_path(backup_data, sizeof(backup_data),
+			    "data.mdb.autosize.XXXXXX");
+	if (rc)
+		return rc;
+
+	rc = lmdb_file_path(tmpdir, sizeof(tmpdir), ".autosize-compact.XXXXXX");
+	if (rc)
+		return rc;
+
+	if (mkdtemp(tmpdir) == NULL)
+		return errno;
+
+	rc = mdb_env_create(&copy_env);
+	if (rc)
+		goto out_remove_dir;
+
+	rc = mdb_env_set_maxdbs(copy_env, 2);
+	if (rc)
+		goto out_close;
+
+	rc = mdb_env_open(copy_env, data_dir, MDB_RDONLY, 0);
+	if (rc)
+		goto out_close;
+
+	rc = mdb_env_copy2(copy_env, tmpdir, MDB_CP_COMPACT);
+	if (rc)
+		goto out_close;
+
+	mdb_env_close(copy_env);
+	copy_env = NULL;
+
+	rc = dir_file_path(compact_data, sizeof(compact_data), tmpdir,
+			   "data.mdb");
+	if (rc)
+		goto out_remove_dir;
+
+	backup_fd = mkstemp(backup_data);
+	if (backup_fd < 0) {
+		rc = errno;
+		goto out_remove_dir;
+	}
+	close(backup_fd);
+	unlink(backup_data);
+
+	if (link(live_data, backup_data) < 0) {
+		rc = errno;
+		goto out_remove_dir;
+	}
+
+	if (rename(compact_data, live_data) < 0) {
+		rc = errno;
+		unlink(backup_data);
+		goto out_remove_dir;
+	}
+
+	unlink(backup_data);
+	msg(LOG_INFO,
+	    "autosize: compacted trust DB before startup reopen at %u MiB",
+	    target_mb);
+	rc = 0;
+
+out_close:
+	if (copy_env)
+		mdb_env_close(copy_env);
+out_remove_dir:
+	if (dir_file_path(compact_data, sizeof(compact_data), tmpdir,
+			  "data.mdb") == 0)
+		unlink(compact_data);
+	if (dir_file_path(compact_data, sizeof(compact_data), tmpdir,
+			  "lock.mdb") == 0)
+		unlink(compact_data);
+	rmdir(tmpdir);
+	return rc;
+}
+
 /* autosize_database - compute new map size when utilisation drifts
  * @config: active daemon configuration, db_max_size is updated in-place
- * Returns 1 when the map size was modified, 0 otherwise.  On error the
- * function leaves db_max_size untouched and logs a single warning. */
-static int autosize_database(conf_t *config)
+ * @mode: startup or live reload context.
+ * Returns 1 when the configured map size was modified, 0 otherwise. On
+ * inspection error the function keeps the caller's db_max_size. If startup
+ * compaction fails after a shrink decision, db_max_size is restored to the
+ * actual existing map size so init_db() can safely open the preserved DB. */
+static int autosize_database(conf_t *config, enum autosize_plan_mode mode)
 {
 	struct trust_db_sizing_state state;
+	unsigned int current_mb;
+	unsigned int target_mb;
 	int rc;
 
 	/*
@@ -701,8 +856,37 @@ static int autosize_database(conf_t *config)
 		return 0;
 	}
 
-	return apply_autosize_plan(config, &state, 1,
-				   "database inspection");
+	current_mb = config->db_max_size;
+	if (state.current_mb != config->db_max_size) {
+		msg(LOG_INFO,
+		    "autosize: database inspection using actual map %u MiB "
+		    "instead of configured baseline %u MiB",
+		    state.current_mb, config->db_max_size);
+		config->db_max_size = state.current_mb;
+	}
+
+	if (!apply_autosize_plan(config, &state, mode,
+				 "database inspection")) {
+		if (current_mb != config->db_max_size)
+			return 1;
+		return 0;
+	}
+
+	target_mb = autosize_effective_target_mb(&state, mode);
+	if (mode == AUTOSIZE_STARTUP_INSPECTION &&
+	    target_mb < state.current_mb) {
+		rc = compact_existing_lmdb(target_mb);
+		if (rc) {
+			msg(LOG_WARNING,
+			    "autosize: startup compaction failed (%s) - "
+			    "keeping %u MiB",
+			    mdb_strerror(rc), state.current_mb);
+			config->db_max_size = state.current_mb;
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 /* Grow the live LMDB map after encountering MDB_MAP_FULL during rebuilds.
@@ -778,7 +962,8 @@ static int autosize_reload_preflight(conf_t *config)
 		return 0;
 	}
 
-	if (!apply_autosize_plan(config, &state, 0, "reload preflight"))
+	if (!apply_autosize_plan(config, &state, AUTOSIZE_RELOAD_PREFLIGHT,
+				 "reload preflight"))
 		return 0;
 
 	rc = mdb_env_set_mapsize(env, (size_t)config->db_max_size * MEGABYTE);
@@ -1079,7 +1264,8 @@ static void check_db_size(const conf_t *config)
 				       "trust database size check", 0);
 	}
 
-	target_mb = autosize_effective_target_mb(&state);
+	target_mb = autosize_effective_target_mb(&state,
+						 AUTOSIZE_LIVE_INSPECTION);
 	if (config->do_audit_db_sizing) {
 		if (target_mb > config->db_max_size) {
 			if (state.active_target_pages > state.map_pages)
@@ -1094,7 +1280,8 @@ static void check_db_size(const conf_t *config)
 				    "map will grow automatically before next rebuild",
 				    target_mb, state.active_percent,
 				    state.allocated_percent);
-		} else if (autosize_shrink_allowed(config, &state, target_mb)) {
+		} else if (autosize_shrink_allowed(config, &state, target_mb,
+						   AUTOSIZE_LIVE_INSPECTION)) {
 			msg(LOG_INFO, "Trust database at %lu%% capacity - "
 			    "map will shrink automatically on next rebuild",
 			    state.active_percent);
@@ -2233,7 +2420,8 @@ int init_database(conf_t *config)
 		return 1;
 
 	/* One-shot utilisation-driven sizing */
-	if (config->do_audit_db_sizing && autosize_database(config))
+	if (config->do_audit_db_sizing &&
+	    autosize_database(config, AUTOSIZE_STARTUP_INSPECTION))
 		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 		    config->db_max_size);
 
@@ -2897,7 +3085,8 @@ static void do_reload_db(conf_t* config)
 	backend_close();
 
 	/* One-shot utilisation-driven sizing */
-	if (config->do_audit_db_sizing && autosize_database(config)) {
+	if (config->do_audit_db_sizing &&
+	    autosize_database(config, AUTOSIZE_LIVE_INSPECTION)) {
 		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 			config->db_max_size);
 
