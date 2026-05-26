@@ -64,6 +64,7 @@ typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops
 #define MAX_DELIMS  3	// Trustdb has 4 fields - therefore 3 delimiters
 #define DEFAULT_DB_MAX_SIZE_MB 100
 #define WRITE_DB_MAP_FULL 6
+#define UPDATE_DB_PRESERVED 7
 /*
  * The decision worker configuration is added later in the worker-pool
  * roadmap. Size LMDB readers now for that planned cap plus maintenance users
@@ -1195,6 +1196,18 @@ static int database_empty(void)
 }
 
 
+/*
+ * delete_all_entries_db - Clear all trust records in one LMDB transaction.
+ *
+ * The old trust database remains published until the drop transaction
+ * commits. Any error reported here means the delete did not become visible to
+ * readers, so callers can preserve the current trust database instead of
+ * treating the reload as a partially applied update. MDB_MAP_FULL is returned
+ * as WRITE_DB_MAP_FULL so auto-sizing paths can grow the live map and retry.
+ *
+ * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, and a non-zero
+ * stage code for other failures.
+ */
 static int delete_all_entries_db()
 {
 	int rc = 0;
@@ -1212,7 +1225,7 @@ static int delete_all_entries_db()
 	if ((rc = mdb_drop(txn, dbi, 0))) {
 		msg(LOG_DEBUG, "mdb_drop -> %s", mdb_strerror(rc));
 		abort_transaction(txn);
-		return 3;
+		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 3;
 	}
 
 	if ((rc = mdb_txn_commit(txn))) {
@@ -1221,7 +1234,7 @@ static int delete_all_entries_db()
 		else
 			msg(LOG_DEBUG, "mdb_txn_commit -> %s",
 			    mdb_strerror(rc));
-		return 4;
+		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 4;
 	}
 
 	return 0;
@@ -2160,6 +2173,7 @@ void unlock_rule(void) {
 static int update_database(conf_t *config)
 {
 	int rc;
+	int retries = 0;
 
 	msg(LOG_INFO, "Updating trust database");
 	msg(LOG_DEBUG, "Loading trust database backends");
@@ -2172,10 +2186,28 @@ static int update_database(conf_t *config)
 
 	lock_update_thread();
 
-	if ((rc = delete_all_entries_db())) {
+	for (;;) {
+		rc = delete_all_entries_db();
+		if (rc == 0)
+			break;
+
+		// The existing DB is still active because the drop did not
+		// commit; grow auto-sized maps once before giving up.
+		if (rc == WRITE_DB_MAP_FULL && config->do_audit_db_sizing &&
+		    retries == 0 && grow_map_after_full(config) == 0) {
+			retries++;
+			continue;
+		}
+
 		msg(LOG_ERR, "Cannot delete database (%d)", rc);
 		unlock_update_thread();
-		return rc;
+		/*
+		 * delete_all_entries_db() failed before a transaction commit
+		 * completed. The current LMDB contents are still the active
+		 * trust database, so report the failed reload without killing
+		 * the daemon.
+		 */
+		return UPDATE_DB_PRESERVED;
 	}
 
 	if (stop) {
@@ -2344,6 +2376,14 @@ static void do_reload_db(conf_t* config)
 			goto out;
 
 		record_trust_reload_failure();
+		if (rc == UPDATE_DB_PRESERVED) {
+			// update_database() failed before clearing the live DB.
+			// Keep running with the last successfully built trust set.
+			msg(LOG_ERR,
+			    "Previous trust database preserved after reload failure");
+			goto out;
+		}
+
 		close(ffd[0].fd);
 		backend_close();
 		unlink_fifo();
