@@ -32,6 +32,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <errno.h>
+#include <limits.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -65,6 +66,10 @@ typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops
 #define DEFAULT_DB_MAX_SIZE_MB 100
 #define WRITE_DB_MAP_FULL 6
 #define UPDATE_DB_PRESERVED 7
+#define TRUST_DB_ACTIVE_TARGET_PERCENT 75
+#define TRUST_DB_RELOAD_HIGHWATER_PERCENT 85
+#define TRUST_DB_SHRINK_TRIGGER_PERCENT 65
+#define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 75
 /*
  * The decision worker configuration is added later in the worker-pool
  * roadmap. Size LMDB readers now for that planned cap plus maintenance users
@@ -86,6 +91,8 @@ static int rule_lock_inited;
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
 static struct pollfd ffd[1] =  { {0, 0, 0} };
 static atomic_bool reload_db = false;
+static atomic_bool reload_db_active = false;
+static unsigned int autosize_reload_floor_mb;
 /*
  * IMA mismatch logging policy: five LOG_ERR entries, five LOG_CRIT entries,
  * one silence notice, then suppression to protect syslog from floods.
@@ -123,6 +130,21 @@ struct trust_db_metrics {
 
 static struct trust_db_metrics trust_metrics;
 static struct trust_db_read_handle walk_read;
+
+struct trust_db_sizing_state {
+	size_t page_size;
+	size_t map_pages;
+	size_t active_pages;
+	size_t allocated_pages;
+	size_t active_target_pages;
+	size_t highwater_target_pages;
+	size_t recommended_pages;
+	unsigned int current_mb;
+	unsigned int recommended_mb;
+	unsigned long active_percent;
+	unsigned long allocated_percent;
+	size_t entries;
+};
 
 /*
  * lmdb_record - Parsed representation of a single LMDB value payload.
@@ -260,7 +282,7 @@ int database_set_location(const char *dir, const char *name)
 
 unsigned get_default_db_max_size(void)
 {
-	return DEFAULT_DB_MAX_SIZE_MB; /* 100 MiB baseline */
+	return DEFAULT_DB_MAX_SIZE_MB; /* 100 MiB baseline */
 }
 
 /*
@@ -301,116 +323,346 @@ static void trust_db_record_reader_error(int rc)
 		trust_metric_add(&trust_metrics.reader_slots_full, 1);
 }
 
-/* autosize_database – compute new map size when utilisation drifts
- * @config: active daemon configuration, db_max_size is updated in‑place
+/*
+ * pages_for_percent - calculate map pages needed for a utilization target.
+ * @pages: pages that must fit in the map.
+ * @percent: target utilization percentage.
+ *
+ * Returns the number of map pages needed so @pages occupies no more than
+ * @percent of the map, rounded up.
+ */
+static size_t pages_for_percent(size_t pages, unsigned int percent)
+{
+	if (pages == 0 || percent == 0)
+		return 0;
+
+	return ((pages * 100) + percent - 1) / percent;
+}
+
+/*
+ * percent_of - calculate an integer percentage.
+ * @used: numerator value.
+ * @total: denominator value.
+ *
+ * Returns @used as a percentage of @total, or 0 when @total is 0.
+ */
+static unsigned long percent_of(size_t used, size_t total)
+{
+	if (total == 0)
+		return 0;
+
+	return (100 * used) / total;
+}
+
+/*
+ * bytes_to_mb - convert bytes to whole MiB for db_max_size.
+ * @bytes: byte count to convert.
+ *
+ * Returns a ceil-rounded MiB value clamped to unsigned int.
+ */
+static unsigned int bytes_to_mb(size_t bytes)
+{
+	size_t mb = (bytes + MEGABYTE - 1) / MEGABYTE;
+
+	if (mb > UINT_MAX)
+		return UINT_MAX;
+	if (mb == 0)
+		return 1;
+	return mb;
+}
+
+/*
+ * pages_to_mb - convert LMDB page count to whole MiB.
+ * @pages: LMDB pages.
+ * @page_size: LMDB page size in bytes.
+ *
+ * Returns a ceil-rounded MiB value clamped to unsigned int.
+ */
+static unsigned int pages_to_mb(size_t pages, size_t page_size)
+{
+	size_t max_bytes = (size_t)UINT_MAX * MEGABYTE;
+
+	if (page_size == 0)
+		page_size = 4096;
+	if (pages > max_bytes / page_size)
+		return UINT_MAX;
+	return bytes_to_mb(pages * page_size);
+}
+
+/*
+ * complete_lmdb_sizing_state - derive autosize targets from raw LMDB state.
+ * @state: sizing state with raw page counts already populated.
+ *
+ * Returns nothing.
+ */
+static void complete_lmdb_sizing_state(struct trust_db_sizing_state *state)
+{
+	state->active_target_pages = pages_for_percent(state->active_pages,
+					TRUST_DB_ACTIVE_TARGET_PERCENT);
+	state->highwater_target_pages =
+		pages_for_percent(state->allocated_pages,
+				  TRUST_DB_RELOAD_HIGHWATER_PERCENT);
+	state->recommended_pages = state->active_target_pages;
+	if (state->highwater_target_pages > state->recommended_pages)
+		state->recommended_pages = state->highwater_target_pages;
+	state->recommended_pages++;
+	state->recommended_mb = pages_to_mb(state->recommended_pages,
+					    state->page_size);
+	state->active_percent = percent_of(state->active_pages,
+					   state->map_pages);
+	state->allocated_percent = percent_of(state->allocated_pages,
+					      state->map_pages);
+}
+
+/*
+ * fill_lmdb_sizing_state - collect named DB and map sizing details.
+ * @txn: read transaction for the environment.
+ * @sizing_dbi: named database handle to inspect.
+ * @info: environment info already read from the same environment.
+ * @state: destination sizing state.
+ *
+ * Returns 0 on success or an LMDB error code.
+ */
+static int fill_lmdb_sizing_state(MDB_txn *txn, MDB_dbi sizing_dbi,
+				  const MDB_envinfo *info,
+				  struct trust_db_sizing_state *state)
+{
+	MDB_stat stat;
+	int rc;
+
+	memset(state, 0, sizeof(*state));
+	rc = mdb_stat(txn, sizing_dbi, &stat);
+	if (rc)
+		return rc;
+
+	state->page_size = stat.ms_psize ? stat.ms_psize : 4096;
+	state->map_pages = info->me_mapsize / state->page_size;
+	state->allocated_pages = info->me_last_pgno + 1;
+	state->active_pages = stat.ms_branch_pages + stat.ms_leaf_pages +
+			      stat.ms_overflow_pages;
+	state->entries = stat.ms_entries;
+	state->current_mb = bytes_to_mb(info->me_mapsize);
+	complete_lmdb_sizing_state(state);
+	return 0;
+}
+
+/*
+ * autosize_effective_target_mb - apply the reload safety floor.
+ * @state: sizing state with computed recommendation.
+ *
+ * Returns the MiB target after honoring recent reload growth.
+ */
+static unsigned int autosize_effective_target_mb(
+		const struct trust_db_sizing_state *state)
+{
+	unsigned int target_mb = state->recommended_mb;
+
+	if (autosize_reload_floor_mb &&
+	    target_mb < autosize_reload_floor_mb)
+		target_mb = autosize_reload_floor_mb;
+	return target_mb;
+}
+
+/*
+ * autosize_shrink_allowed - decide whether auto mode may reduce map size.
+ * @config: active daemon configuration.
+ * @state: LMDB sizing state from the environment being considered.
+ * @target_mb: proposed new map size after any reload safety floor.
+ *
+ * Shrink is intentionally conservative. The final trust DB is usually stable,
+ * but reload is not an in-place no-op: fapolicyd drops the named database and
+ * reinserts records from backend snapshots. LMDB must commit copy-on-write
+ * metadata and freelist changes before old pages are reusable. If we shrink
+ * as soon as active pages dip below the steady-state target, a reload storm
+ * can push the allocated high-water mark back to MDB_MAP_FULL. Require both
+ * active pages and allocated pages to be comfortably low, and require the
+ * proposed shrink to be large enough to avoid map-size oscillation.
+ *
+ * Returns 1 when shrink is allowed, 0 otherwise.
+ */
+static int autosize_shrink_allowed(const conf_t *config,
+				   const struct trust_db_sizing_state *state,
+				   unsigned int target_mb)
+{
+	if (target_mb >= config->db_max_size)
+		return 0;
+	if (state->active_percent >= TRUST_DB_SHRINK_TRIGGER_PERCENT)
+		return 0;
+	if (state->allocated_percent >= TRUST_DB_RELOAD_HIGHWATER_PERCENT)
+		return 0;
+	if ((unsigned long long)target_mb * 100 >
+	    (unsigned long long)config->db_max_size *
+	    TRUST_DB_SHRINK_HYSTERESIS_PERCENT)
+		return 0;
+	return 1;
+}
+
+/*
+ * apply_autosize_plan - update config->db_max_size from LMDB sizing state.
+ * @config: active daemon configuration.
+ * @state: LMDB sizing state from either the live or on-disk environment.
+ * @allow_shrink: non-zero if this call site may request a smaller map.
+ * @context: short log label describing the caller.
+ *
+ * Auto sizing has two targets. The active-page target keeps the final trust
+ * database near 75 percent utilization so normal package changes have room.
+ * The high-water target keeps LMDB allocated pages below 85 percent so a full
+ * drop/rebuild reload has room to commit metadata before old pages are
+ * reusable. Manual configurations are not changed here; callers should log
+ * the recommended size for administrators.
+ *
+ * Returns 1 when config->db_max_size changed, 0 otherwise.
+ */
+static int apply_autosize_plan(conf_t *config,
+			       const struct trust_db_sizing_state *state,
+			       int allow_shrink, const char *context)
+{
+	unsigned int target_mb = autosize_effective_target_mb(state);
+
+	if (state->active_pages == 0) {
+		msg(LOG_INFO,
+		    "autosize: empty DB during %s - keeping %u MiB",
+		    context, config->db_max_size);
+		return 0;
+	}
+
+	if (target_mb > config->db_max_size) {
+		msg(LOG_INFO,
+		    "autosize: %s growing map %u->%u MiB "
+		    "(entries=%zu active=%zu/%zu pages %lu%%, "
+		    "allocated=%zu/%zu pages %lu%%)",
+		    context, config->db_max_size, target_mb, state->entries,
+		    state->active_pages, state->map_pages,
+		    state->active_percent, state->allocated_pages,
+		    state->map_pages, state->allocated_percent);
+		config->db_max_size = target_mb;
+		if (autosize_reload_floor_mb < target_mb)
+			autosize_reload_floor_mb = target_mb;
+		return 1;
+	}
+
+	if (!allow_shrink ||
+	    !autosize_shrink_allowed(config, state, target_mb)) {
+		msg(LOG_INFO,
+		    "autosize: %s keeping %u MiB "
+		    "(target=%u MiB active=%lu%% allocated=%lu%%)",
+		    context, config->db_max_size, target_mb,
+		    state->active_percent, state->allocated_percent);
+		return 0;
+	}
+
+	msg(LOG_INFO,
+	    "autosize: %s shrinking map %u->%u MiB "
+	    "(entries=%zu active=%zu/%zu pages %lu%%, "
+	    "allocated=%zu/%zu pages %lu%%)",
+	    context, config->db_max_size, target_mb, state->entries,
+	    state->active_pages, state->map_pages, state->active_percent,
+	    state->allocated_pages, state->map_pages,
+	    state->allocated_percent);
+	config->db_max_size = target_mb;
+	return 1;
+}
+
+/*
+ * read_live_lmdb_sizing_state - inspect the currently open LMDB environment.
+ * @state: destination sizing state.
+ *
+ * Returns 0 on success or an LMDB error code.
+ */
+static int read_live_lmdb_sizing_state(struct trust_db_sizing_state *state)
+{
+	MDB_envinfo info;
+	MDB_txn *txn = NULL;
+	int rc;
+
+	rc = mdb_env_info(env, &info);
+	if (rc)
+		return rc;
+
+	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
+	if (rc)
+		return rc;
+
+	rc = fill_lmdb_sizing_state(txn, dbi, &info, state);
+	mdb_txn_abort(txn);
+	return rc;
+}
+
+/*
+ * read_existing_lmdb_sizing_state - inspect the on-disk LMDB environment.
+ * @state: destination sizing state.
+ *
+ * This is used before applying a resize to the live environment. The read-only
+ * handle avoids LMDB lockfile mutexes because autosize only needs sizing
+ * metadata and must not interfere with the daemon's active environment.
+ *
+ * Returns 0 on success or an LMDB error code.
+ */
+static int read_existing_lmdb_sizing_state(struct trust_db_sizing_state *state)
+{
+	MDB_env *tmp_env = NULL;
+	MDB_envinfo info;
+	MDB_txn *txn = NULL;
+	MDB_dbi dbi_tmp;
+	int rc;
+
+	rc = mdb_env_create(&tmp_env);
+	if (rc)
+		return rc;
+
+	rc = mdb_env_set_maxdbs(tmp_env, 2);
+	if (rc)
+		goto out_close;
+
+	rc = mdb_env_open(tmp_env, data_dir, MDB_RDONLY|MDB_NOLOCK, 0);
+	if (rc)
+		goto out_close;
+
+	rc = mdb_env_info(tmp_env, &info);
+	if (rc)
+		goto out_close;
+
+	rc = mdb_txn_begin(tmp_env, NULL, MDB_RDONLY, &txn);
+	if (rc)
+		goto out_close;
+
+	rc = mdb_dbi_open(txn, db, 0, &dbi_tmp);
+	if (rc)
+		goto out_abort;
+
+	rc = fill_lmdb_sizing_state(txn, dbi_tmp, &info, state);
+
+out_abort:
+	mdb_txn_abort(txn);
+out_close:
+	mdb_env_close(tmp_env);
+	return rc;
+}
+
+/* autosize_database - compute new map size when utilisation drifts
+ * @config: active daemon configuration, db_max_size is updated in-place
  * Returns 1 when the map size was modified, 0 otherwise.  On error the
  * function leaves db_max_size untouched and logs a single warning. */
 static int autosize_database(conf_t *config)
 {
-	MDB_env		*tmp_env = NULL;
-	MDB_envinfo	 info;
-	MDB_stat	 stat;
-	MDB_txn		*txn = NULL;
-	MDB_dbi		 dbi_tmp;
-	int		 changed = 0;
+	struct trust_db_sizing_state state;
+	int rc;
 
-	/* Open the existing env read-only without taking the shared LMDB
-	 * lockfile mutexes. autosize_database() only needs a point-in-time view
-	 * of the map, so MDB_NOLOCK avoids disturbing the live environment
-	 * during reloads. */
-	if (mdb_env_create(&tmp_env) || mdb_env_set_maxdbs(tmp_env, 2) ||
-				mdb_env_open(tmp_env, DB_DIR, MDB_RDONLY|MDB_NOLOCK, 0)) {
-			msg(LOG_WARNING,
-			    "autosize: could not inspect LMDB – keeping %u MiB",
-			    config->db_max_size);
-			if (tmp_env)
-				mdb_env_close(tmp_env);
-			return 0;
-	}
-
-	if (mdb_env_info(tmp_env, &info)) {
+	/*
+	 * Open the existing environment read-only without LMDB lockfile
+	 * mutexes. This start/reload inspection only needs a point-in-time
+	 * sizing view and must not disturb the live daemon environment.
+	 */
+	rc = read_existing_lmdb_sizing_state(&state);
+	if (rc) {
 		msg(LOG_WARNING,
-		    "autosize: mdb_env_info failed – keeping %u MiB",
-		    config->db_max_size);
-		mdb_env_close(tmp_env);
+		    "autosize: could not inspect LMDB (%s) - keeping %u MiB",
+		    mdb_strerror(rc), config->db_max_size);
 		return 0;
 	}
 
-	if (mdb_txn_begin(tmp_env, NULL, MDB_RDONLY, &txn)) {
-		msg(LOG_WARNING,
-		    "autosize: cannot open LMDB transaction – keeping %u MiB",
-		    config->db_max_size);
-		mdb_env_close(tmp_env);
-		return 0;
-	}
-
-	if (mdb_dbi_open(txn, DB_NAME, 0, &dbi_tmp)) {
-		msg(LOG_WARNING,
-		    "autosize: cannot open trust database – keeping %u MiB",
-		    config->db_max_size);
-		mdb_txn_abort(txn);
-		mdb_env_close(tmp_env);
-		return 0;
-	}
-
-	if (mdb_stat(txn, dbi_tmp, &stat)) {
-		msg(LOG_WARNING,
-		    "autosize: mdb_stat failed – keeping %u MiB",
-		    config->db_max_size);
-		mdb_txn_abort(txn);
-		mdb_env_close(tmp_env);
-		return 0;
-	}
-
-	unsigned long page_sz = stat.ms_psize; /* LMDB page size */
-	if (!page_sz)
-		page_sz = 4096;
-	unsigned long used_pg = stat.ms_branch_pages + stat.ms_leaf_pages +
-				stat.ms_overflow_pages;
-	unsigned long max_pg = info.me_mapsize / page_sz;
-	unsigned long util_pct = max_pg ? (100 * used_pg) / max_pg : 0;
-
-	/* Empty DB or stat glitch – leave for next start‑up */
-	if (used_pg == 0 || util_pct == 0) {
-		msg(LOG_INFO,
-    "autosize: empty DB – delaying resize until populated (current %u MiB)",
-		    config->db_max_size);
-		mdb_txn_abort(txn);
-		mdb_env_close(tmp_env);
-		return 0;
-	}
-
-	/* Calculate target pages for ~75 % utilization */
-	unsigned long target_pg = (used_pg * 100) / 75;
-
-	/* Determine grow/shrink thresholds (±10 %) */
-	unsigned long grow_thresh   = (max_pg * 85) / 100; /* >85 % */
-	unsigned long shrink_thresh = (max_pg * 65) / 100; /* <65 % */
-
-	if (used_pg > grow_thresh || used_pg < shrink_thresh) {
-		/* Round to whole LMDB pages and at least +1 page */
-		unsigned long new_pg = target_pg + 1;
-		size_t new_mapsize   = (size_t)new_pg * (size_t)page_sz;
-
-		unsigned new_mb = (new_mapsize + MEGABYTE - 1) / MEGABYTE;
-
-		if (new_mb != config->db_max_size) {
-			msg(LOG_INFO,
-	    "autosize: utilisation %lu%%, resizing map %u→%u MiB (entries=%lu)",
-			    util_pct, config->db_max_size, new_mb,
-			    stat.ms_entries);
-			config->db_max_size = new_mb;
-			changed = 1;
-		}
-	} else {
-		msg(LOG_INFO,
-		  "autosize: utilisation %lu%% within 65‑85 %%, keeping %u MiB",
-		  util_pct, config->db_max_size);
-	}
-
-	mdb_txn_abort(txn);
-	mdb_env_close(tmp_env);
-	return changed;
+	return apply_autosize_plan(config, &state, 1,
+				   "database inspection");
 }
 
 /* Grow the live LMDB map after encountering MDB_MAP_FULL during rebuilds.
@@ -434,9 +686,69 @@ static int grow_map_after_full(conf_t *config)
 	}
 
 	config->db_max_size = new_mb;
+	if (autosize_reload_floor_mb < new_mb)
+		autosize_reload_floor_mb = new_mb;
 	msg(LOG_INFO,
-	    "autosize: trust DB full at %lu MiB – grew to %lu MiB, retrying rebuild",
+	    "autosize: trust DB full at %lu MiB - grew to %lu MiB, retrying rebuild",
 	    old_mb, new_mb);
+
+	return 0;
+}
+
+/*
+ * autosize_reload_preflight - grow the live LMDB map before drop/rebuild.
+ * @config: active daemon configuration.
+ *
+ * Reload is a complete named-database drop followed by a full import from the
+ * backend snapshots. Identical backend contents do not make the operation a
+ * no-op: LMDB still has to commit the drop transaction and the freelist
+ * metadata before old data pages are reusable. A map sized only for the final
+ * active database can therefore hit MDB_MAP_FULL during mdb_drop() after
+ * repeated reloads raise the allocated high-water mark. This hook runs while
+ * the update thread owns the trust DB write lock and grows auto-sized maps
+ * before the destructive transaction starts. Manual configurations are left
+ * unchanged, but the recommended size is logged so self-managed installs have
+ * an actionable value instead of a generic "increase db_max_size" error.
+ *
+ * Returns 0 on success or when no resize is needed, non-zero on resize error.
+ */
+static int autosize_reload_preflight(conf_t *config)
+{
+	struct trust_db_sizing_state state;
+	unsigned int old_db_max_size = config->db_max_size;
+	unsigned int old_reload_floor_mb = autosize_reload_floor_mb;
+	int rc;
+
+	rc = read_live_lmdb_sizing_state(&state);
+	if (rc) {
+		msg(LOG_WARNING,
+		    "autosize: reload preflight could not inspect LMDB (%s)",
+		    mdb_strerror(rc));
+		return 0;
+	}
+
+	if (!config->do_audit_db_sizing) {
+		if (state.recommended_pages > state.map_pages)
+			msg(LOG_WARNING,
+			    "db_max_size may be too small for safe reload: "
+			    "active=%zu pages, allocated=%zu pages, "
+			    "configured=%u MiB, recommended at least %u MiB",
+			    state.active_pages, state.allocated_pages,
+			    config->db_max_size, state.recommended_mb);
+		return 0;
+	}
+
+	if (!apply_autosize_plan(config, &state, 0, "reload preflight"))
+		return 0;
+
+	rc = mdb_env_set_mapsize(env, (size_t)config->db_max_size * MEGABYTE);
+	if (rc) {
+		msg(LOG_ERR, "autosize: reload preflight resize to %u MiB: %s",
+		    config->db_max_size, mdb_strerror(rc));
+		config->db_max_size = old_db_max_size;
+		autosize_reload_floor_mb = old_reload_floor_mb;
+		return rc;
+	}
 
 	return 0;
 }
@@ -689,55 +1001,59 @@ static void close_db(int do_report)
 
 static void check_db_size(const conf_t *config)
 {
-	MDB_envinfo st;
+	struct trust_db_sizing_state state;
+	unsigned int target_mb;
+	int rc;
 
-	// Collect stats
-	unsigned long size = get_pages_in_use();
-
-	if (size == 0) {
+	rc = read_live_lmdb_sizing_state(&state);
+	if (rc || state.page_size == 0) {
 		msg(LOG_WARNING,
-		    "The trust database is empty");
+		    "Cannot inspect trust database size (%s)",
+		    rc ? mdb_strerror(rc) : "empty database");
+		pages = 0;
 		return;
 	}
 
-	mdb_env_info(env, &st);
-	max_pages = st.me_mapsize / size;
-	unsigned long percent = max_pages ? (100*pages)/max_pages : 0;
-	unsigned long allocated = st.me_last_pgno + 1;
-	unsigned long allocated_percent =
-		max_pages ? (100*allocated)/max_pages : 0;
+	pages = state.active_pages;
+	max_pages = state.map_pages;
 
 	// Active DB pages can stay steady while LMDB's high-water mark grows
 	// if readers pin old pages across repeated rebuilds.
 	msg(LOG_DEBUG,
-	    "Trust database active pages: %lu (%lu%%), allocated pages: %lu (%lu%%)",
-	    pages, percent, allocated, allocated_percent);
-	if (allocated_percent > 85 && allocated_percent > percent) {
+	    "Trust database active pages: %lu (%lu%%), allocated pages: %zu (%lu%%)",
+	    pages, state.active_percent, state.allocated_pages,
+	    state.allocated_percent);
+	if (state.allocated_percent > TRUST_DB_RELOAD_HIGHWATER_PERCENT &&
+	    state.allocated_percent > state.active_percent) {
 		msg(LOG_WARNING,
 		    "Trust database LMDB map high-water at %lu%% capacity "
 		    "while active DB pages are at %lu%%",
-		    allocated_percent, percent);
+		    state.allocated_percent, state.active_percent);
 		log_lmdb_state(LOG_WARNING, "trust database size check", 0);
 	}
 
-	if (percent > 85) {
-		if (config->do_audit_db_sizing)
+	target_mb = autosize_effective_target_mb(&state);
+	if (config->do_audit_db_sizing) {
+		if (target_mb > config->db_max_size)
 			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
-			    "map will grow automatically on next rebuild",
-			    percent);
-		else
-			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
-			   "might want to increase db_max_size setting",
-			   percent);
-	} else if (percent < 65) {
-		if (config->do_audit_db_sizing)
+			    "map will grow automatically before next rebuild",
+			    state.active_percent);
+		else if (autosize_shrink_allowed(config, &state, target_mb))
 			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
 			    "map will shrink automatically on next rebuild",
-			    percent);
-		else
-			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
-			    "might consider shrinking the size to save space",
-			    percent);
+			    state.active_percent);
+		return;
+	}
+
+	if (target_mb > config->db_max_size) {
+		msg(LOG_WARNING,
+		    "Trust database may need %u MiB for safe reload "
+		    "(active=%lu%% allocated=%lu%%)",
+		    target_mb, state.active_percent, state.allocated_percent);
+	} else if (state.active_percent < TRUST_DB_SHRINK_TRIGGER_PERCENT) {
+		msg(LOG_WARNING, "Trust database at %lu%% capacity - "
+		    "might consider shrinking the size to save space",
+		    state.active_percent);
 	}
 }
 
@@ -1859,9 +2175,9 @@ int init_database(conf_t *config)
 	if (migrate_database())
 		return 1;
 
-	/* One‑shot utilisation‑driven sizing */
+	/* One-shot utilisation-driven sizing */
 	if (config->do_audit_db_sizing && autosize_database(config))
-		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
+		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 		    config->db_max_size);
 
 	if ((rc = init_db(config))) {
@@ -2320,6 +2636,14 @@ static int update_database(conf_t *config)
 
 	lock_update_thread();
 
+	rc = autosize_reload_preflight(config);
+	if (rc) {
+		msg(LOG_ERR, "Trust database reload preflight failed (%d)",
+		    rc);
+		unlock_update_thread();
+		return UPDATE_DB_PRESERVED;
+	}
+
 	for (;;) {
 		rc = delete_all_entries_db();
 		if (rc == 0)
@@ -2413,9 +2737,45 @@ static int handle_record(const char * buffer)
 	return 0;
 }
 
+/*
+ * request_reload_trust_database - queue a trust DB reload if one is needed.
+ * @source: short log label for the caller requesting reload.
+ *
+ * A trust DB reload rebuilds the database from the current backend snapshots.
+ * If another request arrives while a reload is pending or already active, the
+ * later request does not add more ordering information: both reloads would
+ * consume the same current backend state by the time the update thread can
+ * run them. Coalescing those duplicates avoids back-to-back drop/rebuild
+ * cycles that only churn LMDB high-water pages and make map pressure worse.
+ *
+ * Returns 1 when a new request was queued, 0 when it was coalesced.
+ */
+static int request_reload_trust_database(const char *source)
+{
+	bool expected = false;
+
+	if (atomic_load_explicit(&reload_db_active, memory_order_acquire)) {
+		msg(LOG_INFO,
+		    "Dropping trust database reload from %s: reload already active",
+		    source);
+		return 0;
+	}
+
+	if (!atomic_compare_exchange_strong_explicit(&reload_db, &expected,
+					true, memory_order_acq_rel,
+					memory_order_acquire)) {
+		msg(LOG_INFO,
+		    "Dropping trust database reload from %s: reload already pending",
+		    source);
+		return 0;
+	}
+
+	return 1;
+}
+
 void set_reload_trust_database(void)
 {
-	atomic_store_explicit(&reload_db, true, memory_order_release);
+	request_reload_trust_database("SIGHUP");
 }
 
 /*
@@ -2433,6 +2793,41 @@ static void record_trust_reload_failure(void)
 	failure_action_record(FAILURE_REASON_TRUST_RELOAD_FAILURE);
 }
 
+/*
+ * begin_trust_database_reload - mark a trust DB reload active.
+ * @source: short log label for the caller starting reload.
+ *
+ * Returns 1 when the caller may run the reload, 0 when another reload is
+ * already active.
+ */
+static int begin_trust_database_reload(const char *source)
+{
+	bool expected = false;
+
+	if (!atomic_compare_exchange_strong_explicit(&reload_db_active,
+					&expected, true,
+					memory_order_acq_rel,
+					memory_order_acquire)) {
+		msg(LOG_INFO,
+		    "Dropping trust database reload from %s: reload already active",
+		    source);
+		return 0;
+	}
+
+	atomic_store_explicit(&reload_db, false, memory_order_release);
+	return 1;
+}
+
+/*
+ * finish_trust_database_reload - clear the active trust DB reload marker.
+ *
+ * Returns nothing.
+ */
+static void finish_trust_database_reload(void)
+{
+	atomic_store_explicit(&reload_db_active, false, memory_order_release);
+}
+
 static void do_reload_db(conf_t* config)
 {
 	msg(LOG_INFO,
@@ -2440,12 +2835,13 @@ static void do_reload_db(conf_t* config)
 
 	int rc;
 	unsigned int old_db_max_size = config->db_max_size;
+	unsigned int old_reload_floor_mb = autosize_reload_floor_mb;
 
 	backend_close();
 
-	/* One‑shot utilisation‑driven sizing */
+	/* One-shot utilisation-driven sizing */
 	if (config->do_audit_db_sizing && autosize_database(config)) {
-		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
+		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 			config->db_max_size);
 
 		/*
@@ -2480,6 +2876,7 @@ static void do_reload_db(conf_t* config)
 			unlock_update_thread();
 			if (rc) {
 				config->db_max_size = old_db_max_size;
+				autosize_reload_floor_mb = old_reload_floor_mb;
 				msg(LOG_ERR,
 					"env_set_mapsize error: %s",
 					mdb_strerror(rc));
@@ -2529,6 +2926,24 @@ static void do_reload_db(conf_t* config)
 out:
 	// Conserve memory
 	backend_close();
+}
+
+/*
+ * run_trust_database_reload - run a coalesced trust DB reload request.
+ * @config: active daemon configuration.
+ * @source: short log label for the request source.
+ *
+ * Returns 1 when a reload ran, 0 when the request was coalesced with another
+ * active reload.
+ */
+static int run_trust_database_reload(conf_t *config, const char *source)
+{
+	if (!begin_trust_database_reload(source))
+		return 0;
+
+	do_reload_db(config);
+	finish_trust_database_reload();
+	return 1;
 }
 
 /*
@@ -2607,6 +3022,8 @@ static void *update_thread_main(void *arg)
 	ffd[0].events = POLLIN;
 
 	while (!stop) {
+		int trust_reload_done_this_cycle = 0;
+
 		/*
 		 * The FIFO connected at ffd[0] carries update commands from
 		 * fapolicy-cli and backend helper processes. Commands may be
@@ -2625,10 +3042,10 @@ static void *update_thread_main(void *arg)
 			reload_rules_from_file(config);
 		}
 		// got SIGHUP
-		if (atomic_exchange_explicit(&reload_db, false,
-					     memory_order_acq_rel)) {
-			do_reload_db(config);
-		}
+		if (atomic_load_explicit(&reload_db, memory_order_acquire))
+			trust_reload_done_this_cycle =
+				run_trust_database_reload(config,
+							  "pending request");
 
 #ifdef DEBUG
 		msg(LOG_DEBUG, "Update poll interrupted");
@@ -2730,7 +3147,15 @@ static void *update_thread_main(void *arg)
 							 * backends.
 							 */
 							do_operation = DB_NO_OP;
-							do_reload_db(config);
+							if (trust_reload_done_this_cycle) {
+								msg(LOG_INFO,
+								    "Dropping trust database reload from FIFO: "
+								    "reload already handled in this update cycle");
+							} else {
+								trust_reload_done_this_cycle =
+									run_trust_database_reload(config,
+													  "FIFO");
+							}
 						} else if (do_operation == RELOAD_RULES) {
 							/*
 							 * The rules command instructs the
