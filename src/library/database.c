@@ -561,6 +561,109 @@ static void close_env(int do_close_dbi)
 	memset(&walk_read, 0, sizeof(walk_read));
 }
 
+/*
+ * log_lmdb_state - log LMDB map, named DB, and reader-table state.
+ * @priority: syslog priority used for the diagnostic lines.
+ * @context: short description of the operation being diagnosed.
+ * @lmdb_rc: LMDB return code that triggered the diagnostic, or 0.
+ *
+ * LMDB map pressure follows the environment high-water mark, not just the
+ * current named database page count. Rebuilding a steady set of trust entries
+ * can still run out of map space when old reader transactions keep deleted
+ * pages from being reused. These diagnostics are intentionally grouped around
+ * failures and size checks so the logs show active DB pages, allocated pages,
+ * the last transaction id, and reader-table pressure together.
+ *
+ * Returns: none.
+ */
+static void log_lmdb_state(int priority, const char *context, int lmdb_rc)
+{
+	MDB_envinfo info;
+	MDB_stat stat;
+	MDB_txn *txn = NULL;
+	const char *where = context ? context : "unknown operation";
+	size_t page_size = 4096;
+	size_t map_pages = 0;
+	size_t allocated_pages = 0;
+	size_t db_pages = 0;
+	int stale_readers = 0;
+	int reader_rc;
+	int stat_rc = 0;
+	int rc;
+
+	if (env == NULL) {
+		msg(priority, "LMDB state after %s: environment is closed",
+		    where);
+		return;
+	}
+
+	rc = mdb_env_info(env, &info);
+	if (rc) {
+		msg(priority, "LMDB state after %s: mdb_env_info failed: %s",
+		    where, mdb_strerror(rc));
+		return;
+	}
+
+	reader_rc = mdb_reader_check(env, &stale_readers);
+
+	if (dbi_init) {
+		stat_rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
+		if (stat_rc == 0) {
+			stat_rc = mdb_stat(txn, dbi, &stat);
+			mdb_txn_abort(txn);
+		}
+	} else {
+		stat_rc = EINVAL;
+	}
+
+	if (stat_rc == 0) {
+		page_size = stat.ms_psize;
+		db_pages = stat.ms_branch_pages + stat.ms_leaf_pages +
+			   stat.ms_overflow_pages;
+	}
+
+	if (page_size)
+		map_pages = info.me_mapsize / page_size;
+	allocated_pages = info.me_last_pgno + 1;
+
+	if (lmdb_rc)
+		msg(priority, "LMDB state after %s: error=%s (%d)",
+		    where, mdb_strerror(lmdb_rc), lmdb_rc);
+
+	msg(priority,
+	    "LMDB env after %s: map=%zu MiB pages=%zu "
+	    "allocated=%zu (%zu%%) last_pgno=%zu txnid=%zu",
+	    where, info.me_mapsize / MEGABYTE, map_pages, allocated_pages,
+	    map_pages ? (100 * allocated_pages) / map_pages : 0,
+	    info.me_last_pgno, info.me_last_txnid);
+
+	if (stat_rc == 0) {
+		msg(priority,
+		    "LMDB db after %s: entries=%zu pages=%zu (%zu%%) "
+		    "branch=%zu leaf=%zu overflow=%zu depth=%u page_size=%zu",
+		    where, stat.ms_entries, db_pages,
+		    map_pages ? (100 * db_pages) / map_pages : 0,
+		    stat.ms_branch_pages, stat.ms_leaf_pages,
+		    stat.ms_overflow_pages, stat.ms_depth, page_size);
+	} else {
+		msg(priority, "LMDB db after %s: stat unavailable: %s",
+		    where, mdb_strerror(stat_rc));
+	}
+
+	if (reader_rc) {
+		msg(priority,
+		    "LMDB readers after %s: reader_check failed: %s slots_used=%u max=%u",
+		    where, mdb_strerror(reader_rc), info.me_numreaders,
+		    info.me_maxreaders);
+	} else {
+		msg(priority,
+		    "LMDB readers after %s: slots_used=%u max=%u "
+		    "stale_cleared=%d configured_max=%u",
+		    where, info.me_numreaders, info.me_maxreaders,
+		    stale_readers, db_max_readers);
+	}
+}
+
 static void close_db(int do_report)
 {
 	if (do_report) {
@@ -600,6 +703,23 @@ static void check_db_size(const conf_t *config)
 	mdb_env_info(env, &st);
 	max_pages = st.me_mapsize / size;
 	unsigned long percent = max_pages ? (100*pages)/max_pages : 0;
+	unsigned long allocated = st.me_last_pgno + 1;
+	unsigned long allocated_percent =
+		max_pages ? (100*allocated)/max_pages : 0;
+
+	// Active DB pages can stay steady while LMDB's high-water mark grows
+	// if readers pin old pages across repeated rebuilds.
+	msg(LOG_DEBUG,
+	    "Trust database active pages: %lu (%lu%%), allocated pages: %lu (%lu%%)",
+	    pages, percent, allocated, allocated_percent);
+	if (allocated_percent > 85 && allocated_percent > percent) {
+		msg(LOG_WARNING,
+		    "Trust database LMDB map high-water at %lu%% capacity "
+		    "while active DB pages are at %lu%%",
+		    allocated_percent, percent);
+		log_lmdb_state(LOG_WARNING, "trust database size check", 0);
+	}
+
 	if (percent > 85) {
 		if (config->do_audit_db_sizing)
 			msg(LOG_WARNING, "Trust database at %lu%% capacity - "
@@ -920,14 +1040,19 @@ static int write_db(const char *idx, size_t idx_len, const char *data)
 	value.mv_size = strlen(data);
 
 	if ((rc = mdb_put(txn, dbi, &key, &value, 0))) {
-		msg(LOG_ERR, "%s", mdb_strerror(rc));
 		abort_transaction(txn);
+		msg(LOG_ERR, "mdb_put failed while writing trust DB: %s",
+		    mdb_strerror(rc));
+		log_lmdb_state(LOG_ERR, "trust DB write", rc);
 		ret_val = (rc == MDB_MAP_FULL) ? WRITE_DB_MAP_FULL : 3;
 		goto out;
 	}
 
 	if ((rc = mdb_txn_commit(txn))) {
-		msg(LOG_ERR, "%s", mdb_strerror(rc));
+		msg(LOG_ERR,
+		    "mdb_txn_commit failed after writing trust DB: %s",
+		    mdb_strerror(rc));
+		log_lmdb_state(LOG_ERR, "trust DB write commit", rc);
 		ret_val = (rc == MDB_MAP_FULL) ? WRITE_DB_MAP_FULL : 4;
 		goto out;
 	}
@@ -1213,8 +1338,13 @@ static int delete_all_entries_db()
 	int rc = 0;
 	MDB_txn *txn;
 
-	if (mdb_txn_begin(env, NULL, 0, &txn))
+	rc = mdb_txn_begin(env, NULL, 0, &txn);
+	if (rc) {
+		msg(LOG_ERR, "mdb_txn_begin failed before trust DB delete: %s",
+		    mdb_strerror(rc));
+		log_lmdb_state(LOG_ERR, "trust DB delete begin", rc);
 		return 1;
+	}
 
 	if (open_dbi(txn)) {
 		abort_transaction(txn);
@@ -1223,17 +1353,21 @@ static int delete_all_entries_db()
 
 	// 0 -> delete , 1 -> delete and close
 	if ((rc = mdb_drop(txn, dbi, 0))) {
-		msg(LOG_DEBUG, "mdb_drop -> %s", mdb_strerror(rc));
 		abort_transaction(txn);
+		msg(LOG_ERR, "mdb_drop failed while clearing trust DB: %s",
+		    mdb_strerror(rc));
+		log_lmdb_state(LOG_ERR, "trust DB delete", rc);
 		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 3;
 	}
 
 	if ((rc = mdb_txn_commit(txn))) {
 		if (rc == MDB_MAP_FULL)
-			msg(LOG_ERR, "db_max_size needs to be increased");
+			msg(LOG_ERR,
+			    "mdb_txn_commit hit MDB_MAP_FULL while clearing trust DB");
 		else
-			msg(LOG_DEBUG, "mdb_txn_commit -> %s",
+			msg(LOG_ERR, "mdb_txn_commit while clearing trust DB: %s",
 			    mdb_strerror(rc));
+		log_lmdb_state(LOG_ERR, "trust DB delete commit", rc);
 		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 4;
 	}
 
