@@ -593,10 +593,12 @@ struct lmdb_record {
 static int parse_record(const char *record, struct lmdb_record *parsed)
 {
 	size_t expected_len;
+	unsigned long long ull_size;
 
-	if (sscanf(record, DATA_FORMAT_IN, &parsed->tsource, &parsed->size,
+	if (sscanf(record, DATA_FORMAT_IN, &parsed->tsource, &ull_size,
 		parsed->digest) != 3)
 		return 1;
+	parsed->size = (off_t)ull_size;
 
 	parsed->digest_len = strlen(parsed->digest);
 	parsed->alg = file_hash_alg(parsed->digest_len);
@@ -620,7 +622,7 @@ static int test_rpm_accepts_sha512(void)
 		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 	snprintf(record, sizeof(record), DATA_FORMAT, (unsigned int)SRC_RPM,
-		 (size_t)8192, sha512);
+		 8192ULL, sha512);
 	CHECK(parse_record(record, &parsed) == 0, 40,
 	      "[ERROR:40] parse failed for RPM SHA512 digest");
 	CHECK(parsed.alg == FILE_HASH_ALG_SHA512, 41,
@@ -639,7 +641,7 @@ static int test_filedb_rejects_sha512(void)
 		"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 	snprintf(record, sizeof(record), DATA_FORMAT, (unsigned int)SRC_FILE_DB,
-		 (size_t)4096, sha512);
+		 4096ULL, sha512);
 	CHECK(parse_record(record, &parsed) != 0, 50,
 	      "[ERROR:50] filedb SHA512 digest unexpectedly accepted");
 	return 0;
@@ -653,7 +655,7 @@ static int test_filedb_accepts_sha256(void)
 		"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 	snprintf(record, sizeof(record), DATA_FORMAT, (unsigned int)SRC_FILE_DB,
-		 (size_t)1024, sha256);
+		 1024ULL, sha256);
 	CHECK(parse_record(record, &parsed) == 0, 60,
 	      "[ERROR:60] filedb SHA256 digest rejected");
 	CHECK(parsed.alg == FILE_HASH_ALG_SHA256, 61,

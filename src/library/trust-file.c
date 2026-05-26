@@ -128,7 +128,7 @@ static char *make_data_string(const char *path)
 	 * path is stored as lmdb index
 	 */
 	int count = asprintf(&line, DATA_FORMAT, 0,
-					  sb.st_size, hash);
+					  (unsigned long long)sb.st_size, hash);
 
 	free(hash);
 
@@ -370,7 +370,8 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		}
 
 		int len = snprintf(data_buf, sizeof(data_buf),
-				   DATA_FORMAT, tsource, sz, sha);
+				   DATA_FORMAT, tsource,
+				   (unsigned long long)sz, sha);
 		if (len < 0 || len >= (int)sizeof(data_buf)) {
 			msg(LOG_ERR, "Entry too large in %s", fpath);
 			continue;

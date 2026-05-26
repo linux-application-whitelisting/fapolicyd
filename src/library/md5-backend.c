@@ -120,7 +120,8 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 	}
 
 	char *data;
-	if (asprintf(&data, DATA_FORMAT, trust_src, file_size, sha_digest) == -1) {
+	if (asprintf(&data, DATA_FORMAT, trust_src,
+		     (unsigned long long)file_size, sha_digest) == -1) {
 		data = NULL;
 	}
 	free(sha_digest);
@@ -153,4 +154,3 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 	}
 	return 1;
 }
-

@@ -38,8 +38,8 @@ typedef enum { SRC_UNKNOWN, SRC_RPM, SRC_FILE_DB, SRC_DEB } trust_src_t;
 // bytes to write.  helper: stringify macro value
 #define STR_IMPL(x) #x
 #define STR(x) STR_IMPL(x)
-#define DATA_FORMAT "%u %zu %s"
-#define DATA_FORMAT_IN "%u %zu %" STR(FILE_DIGEST_STRING_WIDTH) "s"
+#define DATA_FORMAT "%u %llu %s"
+#define DATA_FORMAT_IN "%u %llu %" STR(FILE_DIGEST_STRING_WIDTH) "s"
 
 typedef struct _backend
 {

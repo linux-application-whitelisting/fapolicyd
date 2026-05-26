@@ -192,15 +192,15 @@ static int test_data_format_round_trip(void)
 	char data[TRUSTDB_DATA_BUFSZ];
 	char parsed_digest[FILE_DIGEST_STRING_MAX];
 	unsigned int tsource;
-	off_t size;
+	unsigned long long ull_size;
 	int written;
 
 	written = snprintf(data, sizeof(data), DATA_FORMAT, SRC_RPM,
-			   (off_t)9400, digest);
+			   9400ULL, digest);
 	CHECK(written >= 0 && written < (int)sizeof(data), 10,
 	      "[ERROR:10] DATA_FORMAT output truncated");
 
-	CHECK(sscanf(data, DATA_FORMAT_IN, &tsource, &size, parsed_digest) == 3,
+	CHECK(sscanf(data, DATA_FORMAT_IN, &tsource, &ull_size, parsed_digest) == 3,
 	      11, "[ERROR:11] DATA_FORMAT_IN parse failed");
 	CHECK(strcmp(digest, parsed_digest) == 0, 12,
 	      "[ERROR:12] digest mismatch after round trip");
@@ -222,7 +222,7 @@ static int test_lmdb_short_path_round_trip(void)
 	CHECK(rc == 0, 20, "[ERROR:20] failed to open temporary LMDB");
 
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
-		 SRC_FILE_DB, (size_t)1234, digest);
+		 SRC_FILE_DB, 1234ULL, digest);
 	rc = import_records(payload, &entries);
 	CHECK(rc == 0 && entries == 1, 21,
 	      "[ERROR:21] short-path record import failed");
@@ -254,7 +254,7 @@ static int test_lmdb_long_path_round_trip(void)
 	CHECK(rc == 0, 31, "[ERROR:31] failed to open temporary LMDB");
 
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
-		 SRC_FILE_DB, (size_t)2048, digest);
+		 SRC_FILE_DB, 2048ULL, digest);
 	rc = import_records(payload, &entries);
 	CHECK(rc == 0 && entries == 1, 32,
 	      "[ERROR:32] long-path record import failed");
@@ -300,8 +300,8 @@ static int test_lmdb_long_path_shared_prefix_no_collision(void)
 	 */
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n"
 		 "%s " DATA_FORMAT "\n",
-		 path_a, SRC_FILE_DB, (size_t)3000, digest_a,
-		 path_b, SRC_FILE_DB, (size_t)3001, digest_b);
+		 path_a, SRC_FILE_DB, 3000ULL, digest_a,
+		 path_b, SRC_FILE_DB, 3001ULL, digest_b);
 	rc = import_records(payload, &entries);
 	CHECK(rc == 0 && entries == 2, 42,
 	      "[ERROR:42] shared-prefix record import failed");
@@ -354,7 +354,7 @@ static int test_lmdb_readonly_probe_does_not_break_live_env(void)
 	CHECK(rc == 0, 60, "[ERROR:60] failed to open temporary LMDB");
 
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n",
-		 "/usr/bin/probe-a", SRC_FILE_DB, (size_t)123, digest_a);
+		 "/usr/bin/probe-a", SRC_FILE_DB, 123ULL, digest_a);
 	rc = import_records(payload, &entries);
 	CHECK(rc == 0 && entries == 1, 61,
 	      "[ERROR:61] initial record import failed");
@@ -370,7 +370,7 @@ static int test_lmdb_readonly_probe_does_not_break_live_env(void)
 
 	entries = 0;
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n",
-		 "/usr/bin/probe-b", SRC_FILE_DB, (size_t)456, digest_b);
+		 "/usr/bin/probe-b", SRC_FILE_DB, 456ULL, digest_b);
 	rc = import_records(payload, &entries);
 	CHECK(rc == 0 && entries == 1, 65,
 	      "[ERROR:65] live environment import failed after probe close");
@@ -407,10 +407,11 @@ static int test_lmdb_chunked_import(void)
 	CHECK(stream != NULL, 91,
 	      "[ERROR:91] failed to allocate chunked payload");
 
-	for (unsigned int i = 0; i < record_count; i++) {
-		fprintf(stream, "/usr/bin/chunked-%04u " DATA_FORMAT "\n",
-			i, SRC_FILE_DB, (size_t)(9000 + i), digest);
-	}
+		for (unsigned int i = 0; i < record_count; i++) {
+			fprintf(stream, "/usr/bin/chunked-%04u " DATA_FORMAT "\n",
+				i, SRC_FILE_DB,
+				(unsigned long long)(9000 + i), digest);
+		}
 	fclose(stream);
 
 	rc = import_records(payload, &entries);
@@ -452,7 +453,7 @@ static int test_lmdb_long_path_negative_lookup(void)
 	CHECK(rc == 0, 51, "[ERROR:51] failed to open temporary LMDB");
 
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_a,
-		 SRC_FILE_DB, (size_t)4100, digest);
+		 SRC_FILE_DB, 4100ULL, digest);
 	rc = import_records(payload, &entries);
 	CHECK(rc == 0 && entries == 1, 52,
 	      "[ERROR:52] negative-lookup record import failed");
@@ -497,7 +498,7 @@ static int test_lmdb_concurrent_read_handles(void)
 	CHECK(rc == 0, 70, "[ERROR:70] failed to open temporary LMDB");
 
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
-		 SRC_FILE_DB, (size_t)555, digest);
+		 SRC_FILE_DB, 555ULL, digest);
 	rc = import_records(payload, &entries);
 	CHECK(rc == 0 && entries == 1, 71,
 	      "[ERROR:71] concurrent record import failed");

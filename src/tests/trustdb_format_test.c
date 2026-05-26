@@ -3,7 +3,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <sys/types.h>
 #include "fapolicyd-backend.h"
 
 int main(void)
@@ -13,15 +12,15 @@ int main(void)
 	char data[TRUSTDB_DATA_BUFSZ];
 	char parsed_digest[FILE_DIGEST_STRING_MAX];
 	unsigned int tsource;
-	off_t size;
+	unsigned long long ull_size;
 	int written;
 
-	written = snprintf(data, sizeof(data), DATA_FORMAT, SRC_RPM, (off_t)9400,
-			 digest);
+	written = snprintf(data, sizeof(data), DATA_FORMAT, SRC_RPM,
+			   9400ULL, digest);
 	if (written < 0 || written >= (int)sizeof(data))
 		return 1;
 
-	if (sscanf(data, DATA_FORMAT_IN, &tsource, &size, parsed_digest) != 3)
+	if (sscanf(data, DATA_FORMAT_IN, &tsource, &ull_size, parsed_digest) != 3)
 		return 1;
 
 	if (strcmp(digest, parsed_digest))
