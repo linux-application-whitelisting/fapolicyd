@@ -385,6 +385,54 @@ static int test_lmdb_readonly_probe_does_not_break_live_env(void)
 	return 0;
 }
 
+static int test_lmdb_chunked_import(void)
+{
+	const unsigned int record_count = 4105;
+	const char *digest =
+		"2222222222222222222222222222222222222222222222222222222222222222";
+	conf_t cfg;
+	char dir[128];
+	char first_path[64];
+	char last_path[64];
+	char *payload = NULL;
+	size_t payload_size = 0;
+	FILE *stream;
+	long entries = 0;
+	int rc;
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 90, "[ERROR:90] failed to open temporary LMDB");
+
+	stream = open_memstream(&payload, &payload_size);
+	CHECK(stream != NULL, 91,
+	      "[ERROR:91] failed to allocate chunked payload");
+
+	for (unsigned int i = 0; i < record_count; i++) {
+		fprintf(stream, "/usr/bin/chunked-%04u " DATA_FORMAT "\n",
+			i, SRC_FILE_DB, (size_t)(9000 + i), digest);
+	}
+	fclose(stream);
+
+	rc = import_records(payload, &entries);
+	free(payload);
+	CHECK(rc == 0 && entries == (long)record_count, 92,
+	      "[ERROR:92] chunked record import failed");
+
+	snprintf(first_path, sizeof(first_path), "/usr/bin/chunked-%04u", 0);
+	snprintf(last_path, sizeof(last_path), "/usr/bin/chunked-%04u",
+		 record_count - 1);
+	CHECK(check_trust_database(first_path, NULL, -1) == 1, 93,
+	      "[ERROR:93] first chunked lookup failed");
+	CHECK(check_trust_database(last_path, NULL, -1) == 1, 94,
+	      "[ERROR:94] last chunked lookup failed");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 95,
+	      "[ERROR:95] chunked cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_long_path_negative_lookup(void)
 {
 	conf_t cfg;
@@ -527,6 +575,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_readonly_probe_does_not_break_live_env();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_chunked_import();
 	if (rc)
 		return rc;
 

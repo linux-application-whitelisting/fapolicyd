@@ -76,6 +76,7 @@ enum autosize_plan_mode {
 #define TRUST_DB_SHRINK_TRIGGER_PERCENT 65
 #define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 90
 #define TRUST_DB_RELOAD_WORK_FACTOR 2
+#define TRUST_DB_REBUILD_TXN_RECORDS 4096
 /*
  * The decision worker configuration is added later in the worker-pool
  * roadmap. Size LMDB readers now for that planned cap plus maintenance users
@@ -122,6 +123,17 @@ struct trust_db_lookup {
 	struct file_info *info;
 	int fd;
 	int *error;
+};
+
+struct trust_db_record_input {
+	const char *idx;
+	size_t idx_len;
+	const char *data;
+};
+
+struct trust_db_key {
+	MDB_val val;
+	char *hash;
 };
 
 struct trust_db_metrics_snapshot {
@@ -174,6 +186,7 @@ static void *update_thread_main(void *arg);
 static int update_database(conf_t *config);
 static int write_db(const char *idx, size_t idx_len, const char *data)
 	__attr_access ((__read_only__, 1, 2))  __wur;
+static void log_lmdb_state(int priority, const char *context, int lmdb_rc);
 static void lock_trust_database_reader(void);
 static void unlock_trust_database_reader(void);
 
@@ -901,6 +914,15 @@ static int grow_map_after_full(conf_t *config)
 	if (new_mb <= old_mb)
 		new_mb++;
 
+	/*
+	 * Emergency growth should be rare. Dump the complete map/reader state
+	 * before changing the map so QA can tell whether the full condition was
+	 * caused by reader pinning, high-water growth, or a genuine active-data
+	 * increase.
+	 */
+	log_lmdb_state(LOG_ERR, "trust DB autosize grow trigger",
+		       MDB_MAP_FULL);
+
 	int rc = mdb_env_set_mapsize(env, new_mb * MEGABYTE);
 	if (rc) {
 		msg(LOG_ERR,
@@ -915,6 +937,7 @@ static int grow_map_after_full(conf_t *config)
 	msg(LOG_INFO,
 	    "autosize: trust DB full at %lu MiB - grew to %lu MiB, retrying rebuild",
 	    old_mb, new_mb);
+	log_lmdb_state(LOG_INFO, "trust DB autosize after grow", 0);
 
 	return 0;
 }
@@ -1077,6 +1100,7 @@ static int init_db(const conf_t *config)
 
 static unsigned get_pages_in_use(void);
 static unsigned long pages, max_pages;
+static unsigned long allocated_pages, allocated_pages_percent;
 
 /*
  * close_env - close LMDB env and clear cached handle state
@@ -1096,6 +1120,64 @@ static void close_env(int do_close_dbi)
 	env = NULL;
 	dbi_init = 0;
 	memset(&walk_read, 0, sizeof(walk_read));
+}
+
+struct lmdb_reader_log {
+	int priority;
+	const char *context;
+	unsigned int lines;
+};
+
+/*
+ * log_lmdb_reader_line - bridge mdb_reader_list() output into syslog.
+ * @line: reader-table line provided by LMDB.
+ * @ctx: struct lmdb_reader_log with priority and context.
+ *
+ * Returns 0 so LMDB continues listing reader slots.
+ */
+static int log_lmdb_reader_line(const char *line, void *ctx)
+{
+	struct lmdb_reader_log *log = ctx;
+
+	if (line == NULL || log == NULL)
+		return 0;
+
+	msg(log->priority, "LMDB reader after %s: %s",
+	    log->context, line);
+	log->lines++;
+	return 0;
+}
+
+/*
+ * log_lmdb_readers - dump LMDB reader slots for map-full diagnostics.
+ * @priority: syslog priority used for the diagnostic lines.
+ * @context: short description of the operation being diagnosed.
+ *
+ * The configured max reader count only says how many slots may exist. The
+ * reader-list dump shows whether any slot is actually active and which
+ * transaction id it pins, which separates reader pinning from write-churn
+ * growth during reload storms.
+ *
+ * Returns: none.
+ */
+static void log_lmdb_readers(int priority, const char *context)
+{
+	struct lmdb_reader_log log = {
+		.priority = priority,
+		.context = context ? context : "unknown operation",
+	};
+	int rc;
+
+	if (env == NULL)
+		return;
+
+	rc = mdb_reader_list(env, log_lmdb_reader_line, &log);
+	if (rc < 0)
+		msg(priority, "LMDB reader list after %s failed: %s",
+		    log.context, mdb_strerror(rc));
+	else if (log.lines == 0)
+		msg(priority, "LMDB reader after %s: no active readers",
+		    log.context);
 }
 
 /*
@@ -1121,7 +1203,7 @@ static void log_lmdb_state(int priority, const char *context, int lmdb_rc)
 	const char *where = context ? context : "unknown operation";
 	size_t page_size = 4096;
 	size_t map_pages = 0;
-	size_t allocated_pages = 0;
+	size_t env_allocated_pages = 0;
 	size_t db_pages = 0;
 	int stale_readers = 0;
 	int reader_rc;
@@ -1161,7 +1243,7 @@ static void log_lmdb_state(int priority, const char *context, int lmdb_rc)
 
 	if (page_size)
 		map_pages = info.me_mapsize / page_size;
-	allocated_pages = info.me_last_pgno + 1;
+	env_allocated_pages = info.me_last_pgno + 1;
 
 	if (lmdb_rc)
 		msg(priority, "LMDB state after %s: error=%s (%d)",
@@ -1170,8 +1252,8 @@ static void log_lmdb_state(int priority, const char *context, int lmdb_rc)
 	msg(priority,
 	    "LMDB env after %s: map=%zu MiB pages=%zu "
 	    "allocated=%zu (%zu%%) last_pgno=%zu txnid=%zu",
-	    where, info.me_mapsize / MEGABYTE, map_pages, allocated_pages,
-	    map_pages ? (100 * allocated_pages) / map_pages : 0,
+	    where, info.me_mapsize / MEGABYTE, map_pages, env_allocated_pages,
+	    map_pages ? (100 * env_allocated_pages) / map_pages : 0,
 	    info.me_last_pgno, info.me_last_txnid);
 
 	if (stat_rc == 0) {
@@ -1199,6 +1281,9 @@ static void log_lmdb_state(int priority, const char *context, int lmdb_rc)
 		    where, info.me_numreaders, info.me_maxreaders,
 		    stale_readers, db_max_readers);
 	}
+
+	if (lmdb_rc == MDB_MAP_FULL)
+		log_lmdb_readers(priority, where);
 }
 
 static void close_db(int do_report)
@@ -1214,9 +1299,15 @@ static void close_db(int do_report)
 		} else {
 			mdb_env_info(env, &st);
 			max_pages = st.me_mapsize / size;
+			allocated_pages = st.me_last_pgno + 1;
+			allocated_pages_percent = max_pages ?
+				((100 * allocated_pages) / max_pages) : 0;
 			msg(LOG_DEBUG, "Trust database max pages: %lu", max_pages);
 			msg(LOG_DEBUG, "Trust database pages in use: %lu (%lu%%)", pages,
 			    max_pages ? ((100*pages)/max_pages) : 0);
+			msg(LOG_DEBUG,
+			    "Trust database allocated high-water pages: %lu (%lu%%)",
+			    allocated_pages, allocated_pages_percent);
 		}
 	}
 
@@ -1236,11 +1327,15 @@ static void check_db_size(const conf_t *config)
 		    "Cannot inspect trust database size (%s)",
 		    rc ? mdb_strerror(rc) : "empty database");
 		pages = 0;
+		allocated_pages = 0;
+		allocated_pages_percent = 0;
 		return;
 	}
 
 	pages = state.active_pages;
 	max_pages = state.map_pages;
+	allocated_pages = state.allocated_pages;
+	allocated_pages_percent = state.allocated_percent;
 
 	// Active DB pages can stay steady while LMDB's high-water mark grows
 	// across repeated rebuilds. In auto mode this is informational unless
@@ -1321,6 +1416,8 @@ void database_utilization_report(FILE *f)
 {
 	fprintf(f, "Trust database pages in use: %lu (%lu%%)\n", pages,
 		max_pages ? ((100*pages)/max_pages) : 0);
+	fprintf(f, "Trust database allocated high-water pages: %lu (%lu%%)\n",
+		allocated_pages, allocated_pages_percent);
 }
 
 void database_report(FILE *f)
@@ -1552,6 +1649,145 @@ static char *path_to_hash(const char *path, const size_t path_len)
 	return digest;
 }
 
+/*
+ * trust_db_key_init - prepare an LMDB key from a trust path.
+ * @key: caller-owned key wrapper to initialize.
+ * @idx: path string used as the key.
+ * @idx_len: length hint for @idx, or 0 when unknown.
+ *
+ * Long paths are stored by SHA512 of the full path, not by a truncated
+ * prefix. The returned key may point into @idx or into @key->hash; callers
+ * must finish with trust_db_key_destroy().
+ *
+ * Returns 0 on success or ENOMEM.
+ */
+static int trust_db_key_init(struct trust_db_key *key, const char *idx,
+			     size_t idx_len)
+{
+	memset(key, 0, sizeof(*key));
+
+	if (idx_len == 0)
+		idx_len = strlen(idx);
+
+	if (idx_len > MDB_maxkeysize) {
+		key->hash = path_to_hash(idx, idx_len);
+		if (key->hash == NULL)
+			return ENOMEM;
+		key->val.mv_data = key->hash;
+		key->val.mv_size = (SHA512_LEN * 2) + 1;
+	} else {
+		key->val.mv_data = (void *)idx;
+		key->val.mv_size = idx_len;
+	}
+
+	return 0;
+}
+
+/*
+ * trust_db_key_destroy - release storage owned by a prepared key.
+ * @key: key initialized by trust_db_key_init().
+ *
+ * Returns nothing.
+ */
+static void trust_db_key_destroy(struct trust_db_key *key)
+{
+	free(key->hash);
+	memset(key, 0, sizeof(*key));
+}
+
+/*
+ * trust_db_begin_write_txn - begin a trust DB write transaction.
+ * @txn: destination transaction handle.
+ * @context: log label describing the caller.
+ *
+ * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, or a stage
+ * code compatible with write_db().
+ */
+static int trust_db_begin_write_txn(MDB_txn **txn, const char *context)
+{
+	int rc;
+
+	rc = mdb_txn_begin(env, NULL, 0, txn);
+	if (rc) {
+		msg(LOG_ERR, "mdb_txn_begin failed before %s: %s",
+		    context, mdb_strerror(rc));
+		log_lmdb_state(LOG_ERR, context, rc);
+		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 1;
+	}
+
+	rc = open_dbi(*txn);
+	if (rc) {
+		abort_transaction(*txn);
+		*txn = NULL;
+		msg(LOG_ERR, "open_dbi failed before %s: %s",
+		    context, mdb_strerror(rc));
+		return 2;
+	}
+
+	return 0;
+}
+
+/*
+ * trust_db_commit_write_txn - commit a trust DB write transaction.
+ * @txn: transaction handle to commit and clear.
+ * @context: log label describing the caller.
+ *
+ * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, or a stage
+ * code compatible with write_db().
+ */
+static int trust_db_commit_write_txn(MDB_txn **txn, const char *context)
+{
+	int rc;
+
+	if (*txn == NULL)
+		return 0;
+
+	rc = mdb_txn_commit(*txn);
+	*txn = NULL;
+	if (rc) {
+		msg(LOG_ERR, "mdb_txn_commit failed after %s: %s",
+		    context, mdb_strerror(rc));
+		log_lmdb_state(LOG_ERR, context, rc);
+		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 4;
+	}
+
+	return 0;
+}
+
+/*
+ * trust_db_put_record - write one prepared record into an active transaction.
+ * @txn: writable LMDB transaction.
+ * @record: parsed trust DB record.
+ * @context: log label describing the caller.
+ *
+ * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, 3 for mdb_put
+ * failures, and 5 when key hashing fails.
+ */
+static int trust_db_put_record(MDB_txn *txn,
+			       const struct trust_db_record_input *record,
+			       const char *context)
+{
+	struct trust_db_key key;
+	MDB_val value;
+	int rc;
+
+	rc = trust_db_key_init(&key, record->idx, record->idx_len);
+	if (rc)
+		return 5;
+
+	value.mv_data = (void *)record->data;
+	value.mv_size = strlen(record->data);
+
+	rc = mdb_put(txn, dbi, &key.val, &value, 0);
+	trust_db_key_destroy(&key);
+	if (rc) {
+		msg(LOG_ERR, "mdb_put failed during %s: %s",
+		    context, mdb_strerror(rc));
+		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 3;
+	}
+
+	return 0;
+}
 
 /*
  * write_db - Persist a single trust record into the LMDB database.
@@ -1567,61 +1803,27 @@ static char *path_to_hash(const char *path, const size_t path_len)
  */
 static int write_db(const char *idx, size_t idx_len, const char *data)
 {
-	MDB_val key, value;
-	MDB_txn *txn;
-	int rc, ret_val = 0;
-	char *hash = NULL;
+	struct trust_db_record_input record = {
+		.idx = idx,
+		.idx_len = idx_len,
+		.data = data,
+	};
+	MDB_txn *txn = NULL;
+	int rc;
 
-	if (mdb_txn_begin(env, NULL, 0, &txn))
-		return 1;
+	rc = trust_db_begin_write_txn(&txn, "single trust DB write");
+	if (rc)
+		return rc;
 
-	if (open_dbi(txn)) {
+	rc = trust_db_put_record(txn, &record, "single trust DB write");
+	if (rc) {
 		abort_transaction(txn);
-		return 2;
+		log_lmdb_state(LOG_ERR, "single trust DB write",
+			       rc == WRITE_DB_MAP_FULL ? MDB_MAP_FULL : 0);
+		return rc;
 	}
 
-	// do_memfd_update has the length, handle_record doesn't
-	if (idx_len == 0)
-		idx_len = strlen(idx);
-
-	if (idx_len > MDB_maxkeysize) {
-		hash = path_to_hash(idx, idx_len);
-		if (hash == NULL) {
-			abort_transaction(txn);
-			return 5;
-		}
-		key.mv_data = (void *)hash;
-		key.mv_size = (SHA512_LEN * 2) + 1;
-	} else {
-		key.mv_data = (void *)idx;
-		key.mv_size = idx_len;
-	}
-	value.mv_data = (void *)data;
-	value.mv_size = strlen(data);
-
-	if ((rc = mdb_put(txn, dbi, &key, &value, 0))) {
-		abort_transaction(txn);
-		msg(LOG_ERR, "mdb_put failed while writing trust DB: %s",
-		    mdb_strerror(rc));
-		log_lmdb_state(LOG_ERR, "trust DB write", rc);
-		ret_val = (rc == MDB_MAP_FULL) ? WRITE_DB_MAP_FULL : 3;
-		goto out;
-	}
-
-	if ((rc = mdb_txn_commit(txn))) {
-		msg(LOG_ERR,
-		    "mdb_txn_commit failed after writing trust DB: %s",
-		    mdb_strerror(rc));
-		log_lmdb_state(LOG_ERR, "trust DB write commit", rc);
-		ret_val = (rc == MDB_MAP_FULL) ? WRITE_DB_MAP_FULL : 4;
-		goto out;
-	}
-
-out:
-	if (idx_len > MDB_maxkeysize)
-		free(hash);
-
-	return ret_val;
+	return trust_db_commit_write_txn(&txn, "single trust DB write");
 }
 
 
@@ -1935,10 +2137,66 @@ static int delete_all_entries_db()
 }
 
 /*
+ * trust_db_record_from_line - parse one backend snapshot line.
+ * @buff: mutable line buffer, converted into key and value strings.
+ * @record: parsed record pointing into @buff.
+ *
+ * Backend records are "path source size digest". The path may contain spaces,
+ * so parsing starts from the end and finds the three metadata delimiters.
+ *
+ * Returns 0 on success or 1 for malformed input.
+ */
+static int trust_db_record_from_line(char *buff,
+				     struct trust_db_record_input *record)
+{
+	char *end;
+	char *delim = NULL;
+	int delims = 0;
+	int size;
+
+	end = fapolicyd_strnchr(buff, '\n', BUFFER_SIZE);
+	if (end == NULL) {
+		msg(LOG_ERR, "Too long line?");
+		return 1;
+	}
+
+	size = end - buff;
+	*end = '\0';
+
+	for (int i = size - 1 ; i >= 0 ; i--) {
+		if (isspace((unsigned char)buff[i])) {
+			delim = &buff[i];
+			delims++;
+		}
+		if (delims >= MAX_DELIMS) {
+			buff[i] = '\0';
+			break;
+		}
+	}
+
+	if (delim == NULL) {
+		msg(LOG_ERR, "Malformed backend record: %s", buff);
+		return 1;
+	}
+
+	record->idx = buff;
+	record->idx_len = delim - buff;
+	record->data = delim + 1;
+	return 0;
+}
+
+/*
  * do_memfd_update - Populate the LMDB trust database from a backend memfd.
  *
- * Returns 0 when all records write successfully, 1 when the first non-zero
- * write_db error encountered during the traversal of backend items.
+ * Full rebuilds used to call write_db() once per backend record, which meant
+ * one LMDB write transaction and one freelist/metadata commit per path. During
+ * reload storms that can advance LMDB's high-water page number even when the
+ * active trust set is unchanged. Import records in bounded chunks instead:
+ * large enough to avoid per-record commit churn, but small enough that a
+ * single transaction does not become the next map-pressure problem.
+ *
+ * Returns 0 when all records write successfully, 1 when reading fails, or a
+ * WRITE_DB_* code when LMDB reports an import failure.
  */
 int do_memfd_update(int memfd, long *entries)
 {
@@ -1947,6 +2205,9 @@ int do_memfd_update(int memfd, long *entries)
 	struct stat sb;
 	char buff[BUFFER_SIZE];
 	fd_fgets_state_t *st = fd_fgets_init();
+	MDB_txn *txn = NULL;
+	unsigned int txn_records = 0;
+	unsigned long txns_committed = 0;
 
 	if (st == NULL) {
 		msg(LOG_ERR, "Failed to initialize buffered memfd reader");
@@ -1970,47 +2231,68 @@ int do_memfd_update(int memfd, long *entries)
 			rc = 1;
 			break;
 		} else if (res > 0) {
-			(*entries)++;
-			char *end = fapolicyd_strnchr(buff, '\n', BUFFER_SIZE);
-			if (end == NULL) {
-				msg(LOG_ERR, "Too long line?");
-				continue;
-			}
-			int size = end - buff;
-			*end = '\0';
+			struct trust_db_record_input record;
 
-			// its better to parse it from the end because
-			// there can be space in file name
-			int delims = 0;
-			char *delim = NULL;
-			for (int i = size-1 ; i >= 0 ; i--) {
-				if (isspace(buff[i])) {
-					delim = &buff[i];
-					delims++;
-				}
-				if (delims >= MAX_DELIMS) {
-					buff[i] = '\0';
+			(*entries)++;
+
+			if (trust_db_record_from_line(buff, &record))
+				continue;
+
+			if (txn == NULL) {
+				res = trust_db_begin_write_txn(&txn,
+						"bulk trust DB import");
+				if (res) {
+					rc = res;
 					break;
 				}
 			}
 
-			if (delim == NULL) //bad line ? should never happen
-				continue;
-
-			//            index, size, data
-			res = write_db(buff, delim - buff, delim + 1);
+			res = trust_db_put_record(txn, &record,
+						  "bulk trust DB import");
 			if (res) {
+				abort_transaction(txn);
+				txn = NULL;
+				log_lmdb_state(LOG_ERR, "bulk trust DB import",
+					       res == WRITE_DB_MAP_FULL ?
+					       MDB_MAP_FULL : 0);
 				msg(LOG_ERR,
 				    "Error (%d) writing key=\"%s\" data=\"%s\"",
-				    res, (const char*)buff,
-				    (const char*)delim + 1);
+				    res, record.idx, record.data);
 				if (rc == 0)
 					rc = res;
-				if (res == WRITE_DB_MAP_FULL)
+				break;
+			}
+
+			txn_records++;
+			if (txn_records >= TRUST_DB_REBUILD_TXN_RECORDS) {
+				res = trust_db_commit_write_txn(&txn,
+						"bulk trust DB import");
+				if (res) {
+					rc = res;
 					break;
+				}
+				txns_committed++;
+				txn_records = 0;
 			}
 		}
 	} while (!fd_fgets_eof_r(st) && !stop);
+
+	if (txn != NULL) {
+		if (rc == 0 && !stop) {
+			rc = trust_db_commit_write_txn(&txn,
+					"bulk trust DB import");
+			if (rc == 0)
+				txns_committed++;
+		} else {
+			abort_transaction(txn);
+			txn = NULL;
+		}
+	}
+
+	if (rc == 0 && !stop && txns_committed)
+		msg(LOG_DEBUG,
+		    "Trust database bulk import committed %ld records in %lu transactions",
+		    *entries, txns_committed);
 
 	fd_fgets_destroy(st); // calls munmap, memfd is closed by backend_close
 
@@ -2024,9 +2306,10 @@ int do_memfd_update(int memfd, long *entries)
  *             the environment's normal durability policy.
  *
  * Each backend in the manager exposes its cached data through a memfd
- * snapshot. The function iterates over every backend entry and imports records
- * using do_memfd_update. Processing stops early when the global stop flag
- * becomes true.
+ * snapshot. The function iterates over every backend and imports records
+ * using do_memfd_update(), which writes in bounded LMDB transactions during
+ * full rebuilds. Processing stops early when the global stop flag becomes
+ * true or a backend import fails.
  *
  * Returns 0 when no backend reports an error and stop is not signaled.
  * Non-zero indicates that processing was interrupted or that a helper
@@ -2040,6 +2323,7 @@ static int create_database(int with_sync, conf_t *config)
 	int retries = 0;
 
 	for (;;) {
+		log_lmdb_state(LOG_DEBUG, "trust DB rebuild before import", 0);
 		for (backend_entry *be = backend_get_first();
 		     be != NULL && !stop; be = be->next ) {
 			msg(LOG_INFO, "Loading trust data from %s backend",
@@ -2051,8 +2335,13 @@ static int create_database(int with_sync, conf_t *config)
 					msg(LOG_ERR,
 					    "Failed to import trust data from %s backend",
 					    be->backend->name);
+				if (rc)
+					break;
 			}
 		}
+		log_lmdb_state(rc ? LOG_ERR : LOG_DEBUG,
+			       "trust DB rebuild after import",
+			       rc == WRITE_DB_MAP_FULL ? MDB_MAP_FULL : 0);
 
 		if (rc == WRITE_DB_MAP_FULL &&
 		    config->do_audit_db_sizing && retries == 0) {
@@ -2880,6 +3169,7 @@ static int update_database(conf_t *config)
 		return 1;
 
 	lock_update_thread();
+	log_lmdb_state(LOG_DEBUG, "trust DB reload start", 0);
 
 	rc = autosize_reload_preflight(config);
 	if (rc) {
@@ -2888,11 +3178,15 @@ static int update_database(conf_t *config)
 		unlock_update_thread();
 		return UPDATE_DB_PRESERVED;
 	}
+	log_lmdb_state(LOG_DEBUG, "trust DB reload after preflight", 0);
 
 	for (;;) {
 		rc = delete_all_entries_db();
-		if (rc == 0)
+		if (rc == 0) {
+			log_lmdb_state(LOG_DEBUG, "trust DB reload after drop",
+				       0);
 			break;
+		}
 
 		// The existing DB is still active because the drop did not
 		// commit; grow auto-sized maps once before giving up.
@@ -2922,6 +3216,9 @@ static int update_database(conf_t *config)
 		rc = create_database(/*with_sync*/0, config);
 	else
 		rc = 1;
+	log_lmdb_state(rc ? LOG_ERR : LOG_DEBUG,
+		       "trust DB reload after rebuild",
+		       rc == WRITE_DB_MAP_FULL ? MDB_MAP_FULL : 0);
 
 	// signal that cache need to be flushed
 	if (!stop)
