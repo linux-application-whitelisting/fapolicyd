@@ -41,6 +41,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <ctype.h>	/* isspace() */
 
 #include "database.h"
@@ -72,11 +73,114 @@ enum autosize_plan_mode {
 #define WRITE_DB_MAP_FULL 6
 #define UPDATE_DB_PRESERVED 7
 #define TRUST_DB_ACTIVE_TARGET_PERCENT 75
-#define TRUST_DB_RELOAD_HIGHWATER_PERCENT 85
+#define TRUST_DB_RELOAD_HIGHWATER_PERCENT 80
 #define TRUST_DB_SHRINK_TRIGGER_PERCENT 65
 #define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 90
 #define TRUST_DB_RELOAD_WORK_FACTOR 2
 #define TRUST_DB_REBUILD_TXN_RECORDS 4096
+#define TRUST_DB_MAX_NAMED_DBS 128
+#define TRUST_DB_GENERATION_NAME_SIZE 64
+#define TRUST_DB_METADATA_NAME "trust.meta"
+#define TRUST_DB_METADATA_KEY "current"
+#define TRUST_DB_GENERATION_SLOT_PREFIX "trust.slot"
+#define TRUST_DB_GENERATION_DB_SLOTS 32
+/*
+ * Trust database generation lifecycle
+ * ===================================
+ *
+ * The trust database is stored in one LMDB environment with multiple named
+ * databases. The small metadata database named TRUST_DB_METADATA_NAME stores
+ * TRUST_DB_METADATA_KEY, whose value identifies the currently published named
+ * database, the daemon-local generation number, entry count, publish time, and
+ * sizing snapshot. The named database in metadata is durable. The generation
+ * number is deliberately a daemon-runtime epoch, like config and ruleset
+ * generations, so startup reports begin at generation 1.
+ *
+ * Startup path:
+ * - init_database() performs migration and startup autosizing, then calls
+ *   init_db().
+ * - init_db() opens LMDB and calls init_dbi().
+ * - init_dbi() opens the metadata DB, reads the persisted active named DB if
+ *   present, opens that named DB, and publishes it in memory as generation 1.
+ *   It ignores the persisted generation number because that belonged to the
+ *   previous daemon run, then rewrites metadata with generation 1.
+ * - backend_load() builds backend snapshots. database_empty() populates a new
+ *   empty DB in place as generation 1. If check_database_copy() finds a
+ *   mismatch in an existing DB, init_database() calls update_database(config,
+ *   1), which resets next_generation so the startup rebuild also publishes
+ *   generation 1.
+ *
+ * Runtime reload path:
+ * - set_reload_trust_database() records a request through
+ *   request_reload_trust_database(). This coalesces duplicate requests while a
+ *   reload is pending or active, preventing reload storms from queuing many
+ *   identical rebuilds.
+ * - update_thread_main() runs requests through run_trust_database_reload(),
+ *   which marks the reload active with begin_trust_database_reload(), calls
+ *   do_reload_db(), and finally clears the marker with
+ *   finish_trust_database_reload().
+ * - do_reload_db() refreshes backends and calls update_database(config, 0).
+ *   update_database() runs autosize_reload_preflight(), creates a candidate
+ *   generation, imports all backend records, publishes only a complete
+ *   candidate, and requests a cache flush on success.
+ *
+ * Candidate creation and publication:
+ * - create_candidate_generation() chooses a bounded reusable LMDB slot name
+ *   through trust_db_candidate_name(). Slots are named with
+ *   TRUST_DB_GENERATION_SLOT_PREFIX and are skipped while active or retired
+ *   generations still reference them.
+ * - create_database_for_generation() populates the candidate from backend
+ *   memfd snapshots using do_memfd_update_to_dbi(). Imports are chunked by
+ *   TRUST_DB_REBUILD_TXN_RECORDS so large rebuilds do not hold one huge write
+ *   transaction.
+ * - Failed imports call drop_candidate_generation(); active_generation and
+ *   metadata are unchanged, so readers keep using the last complete DB.
+ * - publish_candidate_generation() writes metadata for the candidate in one
+ *   LMDB transaction. Only after that commit succeeds does it swap
+ *   active_generation and dbi under generation_lock. The old generation is
+ *   moved to retired_generations with retired_time set.
+ *
+ * Reader safety and reclamation:
+ * - Decision lookups call trust_db_read_open(), which acquires the active
+ *   generation via trust_db_generation_acquire() before opening the LMDB read
+ *   transaction and cursor. trust_db_read_close() releases that reference.
+ * - Retired generations remain open while their readers count is non-zero.
+ *   trust_db_reclaim_retired() drops the LMDB named database only after all
+ *   readers drain. If drop fails, the retired generation is put back on the
+ *   list so it is retried later instead of being forgotten.
+ *
+ * Operator and QE signals:
+ * - database_generation_snapshot() feeds the status and metrics headers with
+ *   the active trust DB generation and entry count.
+ * - database_utilization_report() reports active pages, allocated high-water
+ *   pages, retired generation count, oldest retired age, and max reclaim
+ *   delay. Stable active pages with growing high-water pages point at LMDB
+ *   reload working-set pressure. Non-zero retired count or growing oldest age
+ *   means readers are holding old generations. Max reclaim delay shows the
+ *   worst observed reader drain delay.
+ * - database_metrics_report_reset() reports trust lookup count and reader-slot
+ *   exhaustion. Reader-slot exhaustion indicates max reader pressure, not a
+ *   generation leak.
+ *
+ * Sizing knobs:
+ * - TRUST_DB_ACTIVE_TARGET_PERCENT targets steady-state active-page usage.
+ *   Lowering it uses more disk for ordinary growth headroom.
+ * - TRUST_DB_RELOAD_WORK_FACTOR models how many active-sized copies must fit
+ *   during a full rebuild. It is 2 for current generation plus candidate.
+ *   Change it only if the reload algorithm starts keeping more or fewer full
+ *   copies live at once.
+ * - TRUST_DB_RELOAD_HIGHWATER_PERCENT targets the bounded reload working set.
+ *   Lowering it grows the map and gives reload storms more room. Raising it
+ *   saves disk but increases MDB_MAP_FULL risk. Tune with repeated HUP reload
+ *   tests and watch allocated high-water pages converge.
+ * - TRUST_DB_SHRINK_TRIGGER_PERCENT and TRUST_DB_SHRINK_HYSTERESIS_PERCENT
+ *   keep auto shrink conservative so the daemon does not oscillate map size
+ *   during reload churn.
+ * - TRUST_DB_GENERATION_DB_SLOTS bounds reusable named databases. Increase it
+ *   only if tests show many held readers pin more retired generations than
+ *   available slots. TRUST_DB_MAX_NAMED_DBS must stay comfortably above the
+ *   slot count plus metadata and any legacy DB name.
+ */
 /*
  * The decision worker configuration is added later in the worker-pool
  * roadmap. Size LMDB readers now for that planned cap plus maintenance users
@@ -88,7 +192,9 @@ enum autosize_plan_mode {
 // Local variables
 static MDB_env *env;
 static MDB_dbi dbi;
+static MDB_dbi metadata_dbi;
 static int dbi_init = 0;
+static int metadata_dbi_init = 0;
 static unsigned int db_max_readers;
 static unsigned MDB_maxkeysize;
 static const char *data_dir = DB_DIR;
@@ -112,10 +218,13 @@ static pthread_t update_thread;
 static int update_thread_created;
 static pthread_rwlock_t update_lock;
 static pthread_mutex_t rule_lock;
+static pthread_mutex_t generation_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t generation_reclaim_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct trust_db_read_handle {
 	MDB_txn *txn;
 	MDB_cursor *cursor;
+	struct trust_db_generation *generation;
 };
 
 struct trust_db_lookup {
@@ -165,6 +274,31 @@ struct trust_db_sizing_state {
 	size_t entries;
 };
 
+struct trust_db_metadata {
+	unsigned long generation;
+	char name[TRUST_DB_GENERATION_NAME_SIZE];
+	long entries;
+	time_t publish_time;
+	struct trust_db_sizing_state sizing;
+};
+
+struct trust_db_generation {
+	unsigned long generation;
+	char name[TRUST_DB_GENERATION_NAME_SIZE];
+	MDB_dbi handle;
+	unsigned long readers;
+	long entries;
+	time_t publish_time;
+	struct trust_db_sizing_state sizing;
+	time_t retired_time;
+	struct trust_db_generation *next;
+};
+
+static struct trust_db_generation *active_generation;
+static struct trust_db_generation *retired_generations;
+static unsigned long next_generation = 1;
+static unsigned long max_generation_reclaim_delay;
+
 /*
  * lmdb_record - Parsed representation of a single LMDB value payload.
  * @tsource: Trust source identifier stored alongside the record.
@@ -183,9 +317,13 @@ struct lmdb_record {
 
 // Local functions
 static void *update_thread_main(void *arg);
-static int update_database(conf_t *config);
+static int update_database(conf_t *config, int startup_rebuild);
 static int write_db(const char *idx, size_t idx_len, const char *data)
 	__attr_access ((__read_only__, 1, 2))  __wur;
+static int refresh_active_generation_metadata(void);
+static struct trust_db_generation *trust_db_generation_acquire(void);
+static void trust_db_generation_release(struct trust_db_generation *gen);
+static void trust_db_reclaim_retired(void);
 static void log_lmdb_state(int priority, const char *context, int lmdb_rc);
 static void lock_trust_database_reader(void);
 static void unlock_trust_database_reader(void);
@@ -296,6 +434,12 @@ int database_set_location(const char *dir, const char *name)
 
 	data_dir = dir ? dir : DB_DIR;
 	db = name ? name : DB_NAME;
+	if (env == NULL) {
+		pthread_mutex_lock(&generation_lock);
+		next_generation = 1;
+		max_generation_reclaim_delay = 0;
+		pthread_mutex_unlock(&generation_lock);
+	}
 
 	return 0;
 }
@@ -431,9 +575,6 @@ static unsigned int pages_to_mb(size_t pages, size_t page_size)
  */
 static void complete_lmdb_sizing_state(struct trust_db_sizing_state *state)
 {
-	size_t reload_cap = pages_times(state->active_pages,
-					TRUST_DB_RELOAD_WORK_FACTOR);
-
 	/*
 	 * me_last_pgno is LMDB's file high-water mark. It is useful for
 	 * seeing that reload churn has touched most of the map, but it is not
@@ -441,18 +582,15 @@ static void complete_lmdb_sizing_state(struct trust_db_sizing_state *state)
 	 * high-water mark directly, every drop/rebuild can make the next
 	 * target slightly larger even when the backend entry set is unchanged.
 	 *
-	 * Bound the reload target to a working set derived from the active DB:
-	 * one copy for the currently published trust set and one copy for a
-	 * rebuild when old pages cannot be reused immediately because LMDB
-	 * readers or freelist bookkeeping still reference them. This keeps
-	 * enough headroom for copy-on-write reloads without turning file
-	 * high-water growth into permanent map growth.
+	 * Generation publication keeps the active DB live while a candidate
+	 * named DB is populated. Size reload work for both copies. This gives
+	 * the candidate room to complete without turning old file high-water
+	 * growth into permanent map growth.
 	 */
-	state->reload_work_pages = state->allocated_pages;
+	state->reload_work_pages = pages_times(state->active_pages,
+					TRUST_DB_RELOAD_WORK_FACTOR);
 	if (state->reload_work_pages < state->active_pages)
 		state->reload_work_pages = state->active_pages;
-	if (reload_cap && state->reload_work_pages > reload_cap)
-		state->reload_work_pages = reload_cap;
 
 	state->active_target_pages = pages_for_percent(state->active_pages,
 					TRUST_DB_ACTIVE_TARGET_PERCENT);
@@ -573,7 +711,7 @@ static int autosize_shrink_allowed(const conf_t *config,
  *
  * Auto sizing has two targets. The active-page target keeps the final trust
  * database near 75 percent utilization so normal package changes have room.
- * The reload target keeps a bounded copy-on-write working set below 85
+ * The reload target keeps a bounded copy-on-write working set below 80
  * percent so a full drop/rebuild reload has room to commit metadata before
  * old pages are reusable. Manual configurations are not changed here; callers
  * should log the recommended size for administrators.
@@ -640,18 +778,26 @@ static int read_live_lmdb_sizing_state(struct trust_db_sizing_state *state)
 {
 	MDB_envinfo info;
 	MDB_txn *txn = NULL;
+	struct trust_db_generation *gen;
 	int rc;
 
 	rc = mdb_env_info(env, &info);
 	if (rc)
 		return rc;
 
-	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
-	if (rc)
-		return rc;
+	gen = trust_db_generation_acquire();
+	if (gen == NULL)
+		return EINVAL;
 
-	rc = fill_lmdb_sizing_state(txn, dbi, &info, state);
+	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
+	if (rc) {
+		trust_db_generation_release(gen);
+		return rc;
+	}
+
+	rc = fill_lmdb_sizing_state(txn, gen->handle, &info, state);
 	mdb_txn_abort(txn);
+	trust_db_generation_release(gen);
 	return rc;
 }
 
@@ -670,14 +816,17 @@ static int read_existing_lmdb_sizing_state(struct trust_db_sizing_state *state)
 	MDB_env *tmp_env = NULL;
 	MDB_envinfo info;
 	MDB_txn *txn = NULL;
+	MDB_dbi tmp_metadata_dbi;
 	MDB_dbi dbi_tmp;
+	struct trust_db_metadata metadata;
+	const char *active_name = db;
 	int rc;
 
 	rc = mdb_env_create(&tmp_env);
 	if (rc)
 		return rc;
 
-	rc = mdb_env_set_maxdbs(tmp_env, 2);
+	rc = mdb_env_set_maxdbs(tmp_env, TRUST_DB_MAX_NAMED_DBS);
 	if (rc)
 		goto out_close;
 
@@ -693,7 +842,30 @@ static int read_existing_lmdb_sizing_state(struct trust_db_sizing_state *state)
 	if (rc)
 		goto out_close;
 
-	rc = mdb_dbi_open(txn, db, 0, &dbi_tmp);
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0,
+			  &tmp_metadata_dbi);
+	if (rc == 0) {
+		MDB_val key, value;
+
+		key.mv_data = (void *)TRUST_DB_METADATA_KEY;
+		key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
+		rc = mdb_get(txn, tmp_metadata_dbi, &key, &value);
+		if (rc == 0 && value.mv_size < BUFFER_SIZE) {
+			char data[BUFFER_SIZE];
+
+			memcpy(data, value.mv_data, value.mv_size);
+			data[value.mv_size] = 0;
+			memset(&metadata, 0, sizeof(metadata));
+			if (sscanf(data, "generation=%lu\nname=%63s",
+				   &metadata.generation,
+				   metadata.name) == 2)
+				active_name = metadata.name;
+		}
+	} else if (rc != MDB_NOTFOUND) {
+		goto out_abort;
+	}
+
+	rc = mdb_dbi_open(txn, active_name, 0, &dbi_tmp);
 	if (rc)
 		goto out_abort;
 
@@ -704,6 +876,409 @@ out_abort:
 out_close:
 	mdb_env_close(tmp_env);
 	return rc;
+}
+
+/*
+ * trust_db_generation_alloc - create in-memory state for one named DB.
+ * @generation: Monotonic generation number associated with the DB.
+ * @name: LMDB named database that stores this generation's trust records.
+ *
+ * Returns a new generation object, or NULL on allocation/name errors.
+ */
+static struct trust_db_generation *trust_db_generation_alloc(
+		unsigned long generation, const char *name)
+{
+	struct trust_db_generation *gen;
+
+	if (name == NULL || name[0] == 0 ||
+	    strlen(name) >= TRUST_DB_GENERATION_NAME_SIZE)
+		return NULL;
+
+	gen = calloc(1, sizeof(*gen));
+	if (gen == NULL)
+		return NULL;
+
+	gen->generation = generation;
+	snprintf(gen->name, sizeof(gen->name), "%s", name);
+	return gen;
+}
+
+/*
+ * trust_db_generation_slot_name - format one reusable LMDB generation slot.
+ * @slot: Bounded slot number to include in the name.
+ * @name: Destination buffer.
+ *
+ * Returns 0 on success or ENAMETOOLONG.
+ */
+static int trust_db_generation_slot_name(unsigned int slot,
+				    char name[TRUST_DB_GENERATION_NAME_SIZE])
+{
+	int len;
+
+	len = snprintf(name, TRUST_DB_GENERATION_NAME_SIZE, "%s_%u",
+		       TRUST_DB_GENERATION_SLOT_PREFIX, slot);
+	if (len < 0 || len >= TRUST_DB_GENERATION_NAME_SIZE)
+		return ENAMETOOLONG;
+	return 0;
+}
+
+/*
+ * trust_db_generation_name_in_use - check active/retired generation names.
+ * @name: Candidate LMDB named database.
+ *
+ * generation_lock must be held by the caller.
+ *
+ * Returns 1 when an active or retired reader may still reference @name.
+ */
+static int trust_db_generation_name_in_use(const char *name)
+{
+	struct trust_db_generation *gen;
+
+	if (active_generation && strcmp(active_generation->name, name) == 0)
+		return 1;
+
+	for (gen = retired_generations; gen; gen = gen->next) {
+		if (strcmp(gen->name, name) == 0)
+			return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * trust_db_candidate_name - choose a reusable LMDB named DB slot.
+ * @name: Destination buffer.
+ *
+ * generation_lock must be held by the caller.
+ *
+ * Returns 0 on success, EBUSY if every bounded slot is pinned by an active or
+ * retired generation, or a formatting error.
+ */
+static int trust_db_candidate_name(char name[TRUST_DB_GENERATION_NAME_SIZE])
+{
+	char slot_name[TRUST_DB_GENERATION_NAME_SIZE];
+	unsigned int slot;
+	int rc;
+
+	for (slot = 0; slot < TRUST_DB_GENERATION_DB_SLOTS; slot++) {
+		rc = trust_db_generation_slot_name(slot, slot_name);
+		if (rc)
+			return rc;
+		if (trust_db_generation_name_in_use(slot_name))
+			continue;
+		snprintf(name, TRUST_DB_GENERATION_NAME_SIZE, "%s", slot_name);
+		return 0;
+	}
+
+	return EBUSY;
+}
+
+/*
+ * trust_db_metadata_parse - parse the current-generation metadata value.
+ * @data: NUL-terminated metadata value.
+ * @metadata: Destination metadata.
+ *
+ * Returns 0 when at least generation and DB name were parsed.
+ */
+static int trust_db_metadata_parse(const char *data,
+				   struct trust_db_metadata *metadata)
+{
+	char *copy, *line, *save = NULL;
+	int have_generation = 0, have_name = 0;
+
+	memset(metadata, 0, sizeof(*metadata));
+	copy = strdup(data);
+	if (copy == NULL)
+		return 1;
+
+	for (line = strtok_r(copy, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		if (sscanf(line, "generation=%lu",
+			   &metadata->generation) == 1) {
+			have_generation = 1;
+		} else if (strncmp(line, "name=", 5) == 0) {
+			snprintf(metadata->name, sizeof(metadata->name),
+				 "%s", line + 5);
+			have_name = metadata->name[0] != 0;
+		} else if (sscanf(line, "entries=%ld",
+				  &metadata->entries) == 1) {
+			continue;
+		} else {
+			long long publish_time;
+
+			if (sscanf(line, "publish_time=%lld",
+				   &publish_time) == 1)
+				metadata->publish_time = (time_t)publish_time;
+		}
+	}
+
+	free(copy);
+	return !(have_generation && have_name);
+}
+
+/*
+ * trust_db_metadata_read - read current-generation metadata from LMDB.
+ * @txn: Active transaction.
+ * @metadata: Destination metadata.
+ *
+ * Returns 0 on success, MDB_NOTFOUND when metadata is absent, or an LMDB/
+ * parse error code.
+ */
+static int trust_db_metadata_read(MDB_txn *txn,
+				  struct trust_db_metadata *metadata)
+{
+	MDB_val key, value;
+	char data[BUFFER_SIZE];
+	int rc;
+
+	if (!metadata_dbi_init)
+		return EINVAL;
+
+	key.mv_data = (void *)TRUST_DB_METADATA_KEY;
+	key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
+	rc = mdb_get(txn, metadata_dbi, &key, &value);
+	if (rc)
+		return rc;
+	if (value.mv_size >= sizeof(data))
+		return EINVAL;
+
+	memcpy(data, value.mv_data, value.mv_size);
+	data[value.mv_size] = 0;
+	if (trust_db_metadata_parse(data, metadata))
+		return EINVAL;
+	return 0;
+}
+
+/*
+ * trust_db_metadata_write - persist current-generation publication metadata.
+ * @txn: Writable transaction that makes the metadata visible atomically.
+ * @gen: Generation being published or refreshed.
+ *
+ * Returns 0 on success or an LMDB/formatting error.
+ */
+static int trust_db_metadata_write(MDB_txn *txn,
+				   struct trust_db_generation *gen)
+{
+	MDB_envinfo info;
+	MDB_val key, value;
+	char data[BUFFER_SIZE];
+	int len, rc;
+
+	rc = mdb_env_info(env, &info);
+	if (rc)
+		return rc;
+
+	rc = fill_lmdb_sizing_state(txn, gen->handle, &info, &gen->sizing);
+	if (rc)
+		return rc;
+
+	gen->entries = (long)gen->sizing.entries;
+	if (gen->publish_time == 0)
+		gen->publish_time = time(NULL);
+
+	len = snprintf(data, sizeof(data),
+		       "generation=%lu\n"
+		       "name=%s\n"
+		       "entries=%ld\n"
+		       "publish_time=%lld\n"
+		       "page_size=%zu\n"
+		       "map_pages=%zu\n"
+		       "active_pages=%zu\n"
+		       "allocated_pages=%zu\n"
+		       "reload_work_pages=%zu\n"
+		       "recommended_pages=%zu\n",
+		       gen->generation, gen->name, gen->entries,
+		       (long long)gen->publish_time, gen->sizing.page_size,
+		       gen->sizing.map_pages, gen->sizing.active_pages,
+		       gen->sizing.allocated_pages,
+		       gen->sizing.reload_work_pages,
+		       gen->sizing.recommended_pages);
+	if (len < 0 || len >= (int)sizeof(data))
+		return ENAMETOOLONG;
+
+	key.mv_data = (void *)TRUST_DB_METADATA_KEY;
+	key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
+	value.mv_data = data;
+	value.mv_size = len;
+	return mdb_put(txn, metadata_dbi, &key, &value, 0);
+}
+
+/*
+ * trust_db_generation_acquire - pin the current trust DB generation.
+ *
+ * Returns the active generation with its reader count incremented, or NULL
+ * when no trust DB has been initialized.
+ */
+static struct trust_db_generation *trust_db_generation_acquire(void)
+{
+	struct trust_db_generation *gen;
+
+	pthread_mutex_lock(&generation_lock);
+	gen = active_generation;
+	if (gen)
+		gen->readers++;
+	pthread_mutex_unlock(&generation_lock);
+	return gen;
+}
+
+/*
+ * trust_db_generation_release - release a pinned trust DB generation.
+ * @gen: Generation returned by trust_db_generation_acquire().
+ *
+ * Returns nothing.
+ */
+static void trust_db_generation_release(struct trust_db_generation *gen)
+{
+	if (gen == NULL)
+		return;
+
+	pthread_mutex_lock(&generation_lock);
+	if (gen->readers)
+		gen->readers--;
+	pthread_mutex_unlock(&generation_lock);
+
+	trust_db_reclaim_retired();
+}
+
+/*
+ * drop_generation_database - delete a retired named DB from LMDB.
+ * @gen: Retired generation with no readers.
+ *
+ * Returns 0 on success or an LMDB error code.
+ */
+static int drop_generation_database(struct trust_db_generation *gen)
+{
+	MDB_txn *txn = NULL;
+	int rc;
+
+	rc = mdb_txn_begin(env, NULL, 0, &txn);
+	if (rc)
+		return rc;
+
+	rc = mdb_drop(txn, gen->handle, 1);
+	if (rc) {
+		mdb_txn_abort(txn);
+		return rc;
+	}
+
+	rc = mdb_txn_commit(txn);
+	if (rc)
+		return rc;
+
+	return 0;
+}
+
+/*
+ * trust_db_reclaim_retired - drop retired generations that have no readers.
+ *
+ * Returns nothing. Failed drops are left on the retired list for a later
+ * attempt so old generations are never forgotten before LMDB deletes them.
+ */
+static void trust_db_reclaim_retired(void)
+{
+	struct trust_db_generation *gen, **link;
+	time_t now;
+	int rc;
+
+	if (env == NULL)
+		return;
+
+	pthread_mutex_lock(&generation_reclaim_lock);
+	for (;;) {
+		gen = NULL;
+		pthread_mutex_lock(&generation_lock);
+		for (link = &retired_generations; *link;
+		     link = &(*link)->next) {
+			if ((*link)->readers == 0) {
+				gen = *link;
+				*link = gen->next;
+				gen->next = NULL;
+				break;
+			}
+		}
+		pthread_mutex_unlock(&generation_lock);
+
+		if (gen == NULL)
+			break;
+
+		rc = drop_generation_database(gen);
+		if (rc) {
+			msg(LOG_WARNING,
+			    "Could not reclaim retired trust DB generation %lu (%s): %s",
+			    gen->generation, gen->name, mdb_strerror(rc));
+			pthread_mutex_lock(&generation_lock);
+			gen->next = retired_generations;
+			retired_generations = gen;
+			pthread_mutex_unlock(&generation_lock);
+			break;
+		}
+
+		now = time(NULL);
+		if (gen->retired_time && now >= gen->retired_time) {
+			unsigned long delay = now - gen->retired_time;
+
+			pthread_mutex_lock(&generation_lock);
+			if (delay > max_generation_reclaim_delay)
+				max_generation_reclaim_delay = delay;
+			pthread_mutex_unlock(&generation_lock);
+			msg(LOG_INFO,
+			    "Reclaimed retired trust DB generation %lu (%s) after %lu seconds",
+			    gen->generation, gen->name, delay);
+		}
+		free(gen);
+	}
+	pthread_mutex_unlock(&generation_reclaim_lock);
+}
+
+/*
+ * trust_db_reset_next_generation - reset the runtime publication counter.
+ * @generation: Next generation number to publish.
+ *
+ * Trust DB metadata persists the LMDB named database, but the reported
+ * generation is a daemon-runtime epoch like ruleset and config generations.
+ * Startup rebuilds use this to publish generation 1 regardless of the prior
+ * daemon's last persisted value.
+ *
+ * Returns nothing.
+ */
+static void trust_db_reset_next_generation(unsigned long generation)
+{
+	pthread_mutex_lock(&generation_lock);
+	next_generation = generation;
+	pthread_mutex_unlock(&generation_lock);
+}
+
+/*
+ * trust_db_generation_report_snapshot - copy publication/reclamation state.
+ * @report: Destination report snapshot.
+ *
+ * Returns nothing.
+ */
+static void trust_db_generation_report_snapshot(
+		database_generation_report_t *report)
+{
+	struct trust_db_generation *gen;
+	time_t now = time(NULL);
+
+	memset(report, 0, sizeof(*report));
+
+	pthread_mutex_lock(&generation_lock);
+	if (active_generation) {
+		report->generation = active_generation->generation;
+		report->entries = active_generation->entries;
+		report->publish_time = active_generation->publish_time;
+	}
+	for (gen = retired_generations; gen; gen = gen->next) {
+		unsigned long age = 0;
+
+		report->retired_count++;
+		if (gen->retired_time && now >= gen->retired_time)
+			age = now - gen->retired_time;
+		if (age > report->oldest_retired_age)
+			report->oldest_retired_age = age;
+	}
+	report->max_reclaim_delay = max_generation_reclaim_delay;
+	pthread_mutex_unlock(&generation_lock);
 }
 
 /*
@@ -902,6 +1477,37 @@ static int autosize_database(conf_t *config, enum autosize_plan_mode mode)
 	return 1;
 }
 
+/*
+ * autosize_reload_grow_target_mb - choose a map-full retry size.
+ * @old_mb: Current configured map size.
+ *
+ * Returns the larger of the historical emergency growth increment and the
+ * current generation-aware autosize recommendation. The recommendation matters
+ * when an existing single-generation database was compacted under the old
+ * in-place reload assumptions and now needs room for the live generation plus
+ * the candidate generation.
+ */
+static unsigned long autosize_reload_grow_target_mb(unsigned long old_mb)
+{
+	struct trust_db_sizing_state state;
+	unsigned long new_mb = old_mb + (old_mb / 4);
+
+	if (new_mb <= old_mb)
+		new_mb++;
+
+	if (read_live_lmdb_sizing_state(&state) == 0) {
+		unsigned int target_mb = autosize_effective_target_mb(&state,
+					AUTOSIZE_RELOAD_PREFLIGHT);
+
+		if (new_mb < target_mb)
+			new_mb = target_mb;
+	}
+
+	if (new_mb > UINT_MAX)
+		new_mb = UINT_MAX;
+	return new_mb;
+}
+
 /* Grow the live LMDB map after encountering MDB_MAP_FULL during rebuilds.
  * @config: active daemon configuration updated in place on success
  * Returns 0 when the map was expanded, otherwise 1.
@@ -909,10 +1515,7 @@ static int autosize_database(conf_t *config, enum autosize_plan_mode mode)
 static int grow_map_after_full(conf_t *config)
 {
 	unsigned long old_mb = config->db_max_size;
-	unsigned long new_mb = old_mb + (old_mb / 4);
-
-	if (new_mb <= old_mb)
-		new_mb++;
+	unsigned long new_mb = autosize_reload_grow_target_mb(old_mb);
 
 	/*
 	 * Emergency growth should be rare. Dump the complete map/reader state
@@ -979,7 +1582,8 @@ static int autosize_reload_preflight(conf_t *config)
 			msg(LOG_WARNING,
 			    "db_max_size may be too small for safe reload: "
 			    "active=%zu pages, allocated=%zu pages, "
-			    "configured=%u MiB, recommended at least %u MiB",
+			    "configured=%u MiB, recommended at least %u MiB; "
+			    "set db_max_size to at least this value or use auto",
 			    state.active_pages, state.allocated_pages,
 			    config->db_max_size, state.recommended_mb);
 		return 0;
@@ -1002,22 +1606,67 @@ static int autosize_reload_preflight(conf_t *config)
 }
 
 /*
- * init_dbi - open and publish the LMDB database handle.
+ * init_dbi - open metadata and publish the active LMDB generation handle.
  *
  * Returns 0 on success or a non-zero LMDB error code.
  */
 static int init_dbi(void)
 {
 	MDB_txn *txn;
+	struct trust_db_metadata metadata;
+	struct trust_db_generation *gen = NULL;
+	const char *active_name = db;
+	unsigned long generation = 1;
+	unsigned int active_flags = MDB_DUPSORT|MDB_CREATE;
 	int rc;
 
 	rc = mdb_txn_begin(env, NULL, 0, &txn);
 	if (rc)
 		return rc;
 
-	rc = mdb_dbi_open(txn, db, MDB_CREATE|MDB_DUPSORT, &dbi);
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, MDB_CREATE,
+			  &metadata_dbi);
 	if (rc) {
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
+		mdb_txn_abort(txn);
+		return rc;
+	}
+	metadata_dbi_init = 1;
+
+	rc = trust_db_metadata_read(txn, &metadata);
+	if (rc == 0) {
+		active_name = metadata.name;
+		// Persisted generation belongs to the previous daemon run.
+		active_flags = MDB_DUPSORT;
+	} else if (rc != MDB_NOTFOUND) {
+		msg(LOG_WARNING,
+		    "Ignoring unreadable trust DB generation metadata: %s",
+		    mdb_strerror(rc));
+	}
+
+	gen = trust_db_generation_alloc(generation, active_name);
+	if (gen == NULL) {
+		metadata_dbi_init = 0;
+		mdb_txn_abort(txn);
+		return ENOMEM;
+	}
+
+	rc = mdb_dbi_open(txn, gen->name, active_flags, &gen->handle);
+	if (rc) {
+		msg(LOG_ERR, "%s", mdb_strerror(rc));
+		metadata_dbi_init = 0;
+		free(gen);
+		mdb_txn_abort(txn);
+		return rc;
+	}
+
+	gen->publish_time = time(NULL);
+	rc = trust_db_metadata_write(txn, gen);
+	if (rc) {
+		msg(LOG_ERR, "Could not write trust DB metadata: %s",
+		    mdb_strerror(rc));
+		metadata_dbi_init = 0;
+		free(gen);
 		mdb_txn_abort(txn);
 		return rc;
 	}
@@ -1026,9 +1675,16 @@ static int init_dbi(void)
 	if (rc) {
 		msg(LOG_ERR, "%s", mdb_strerror(rc));
 		dbi_init = 0;
+		metadata_dbi_init = 0;
+		free(gen);
 		return rc;
 	}
 
+	pthread_mutex_lock(&generation_lock);
+	active_generation = gen;
+	dbi = gen->handle;
+	next_generation = gen->generation + 1;
+	pthread_mutex_unlock(&generation_lock);
 	dbi_init = 1;
 	return 0;
 }
@@ -1046,7 +1702,7 @@ static int init_db(const conf_t *config)
 		return 1;
 	}
 
-	if (mdb_env_set_maxdbs(env, 2)) {
+	if (mdb_env_set_maxdbs(env, TRUST_DB_MAX_NAMED_DBS)) {
 		/* Clean up environment on failure */
 		mdb_env_close(env);
 		env = NULL;
@@ -1103,6 +1759,52 @@ static unsigned long pages, max_pages;
 static unsigned long allocated_pages, allocated_pages_percent;
 
 /*
+ * forget_generation_list - release in-memory generation handles.
+ * @list: List of generations to free.
+ * @close_handles: Non-zero closes DBI handles before freeing.
+ *
+ * Returns nothing.
+ */
+static void forget_generation_list(struct trust_db_generation *list,
+				   int close_handles)
+{
+	struct trust_db_generation *next;
+
+	while (list) {
+		next = list->next;
+		if (close_handles && env)
+			mdb_close(env, list->handle);
+		free(list);
+		list = next;
+	}
+}
+
+/*
+ * forget_generations - clear active and retired generation state.
+ * @close_handles: Non-zero closes DBI handles before forgetting them.
+ *
+ * Returns nothing.
+ */
+static void forget_generations(int close_handles)
+{
+	struct trust_db_generation *active, *retired;
+
+	pthread_mutex_lock(&generation_lock);
+	active = active_generation;
+	retired = retired_generations;
+	active_generation = NULL;
+	retired_generations = NULL;
+	next_generation = 1;
+	pthread_mutex_unlock(&generation_lock);
+
+	if (active) {
+		active->next = NULL;
+		forget_generation_list(active, close_handles);
+	}
+	forget_generation_list(retired, close_handles);
+}
+
+/*
  * close_env - close LMDB env and clear cached handle state
  * @do_close_dbi: non-zero closes cached dbi before env close
  *
@@ -1113,12 +1815,14 @@ static void close_env(int do_close_dbi)
 	if (env == NULL)
 		return;
 
-	if (do_close_dbi && dbi_init)
-		mdb_close(env, dbi);
+	forget_generations(do_close_dbi);
+	if (do_close_dbi && metadata_dbi_init)
+		mdb_close(env, metadata_dbi);
 
 	mdb_env_close(env);
 	env = NULL;
 	dbi_init = 0;
+	metadata_dbi_init = 0;
 	memset(&walk_read, 0, sizeof(walk_read));
 }
 
@@ -1200,6 +1904,7 @@ static void log_lmdb_state(int priority, const char *context, int lmdb_rc)
 	MDB_envinfo info;
 	MDB_stat stat;
 	MDB_txn *txn = NULL;
+	struct trust_db_generation *gen = NULL;
 	const char *where = context ? context : "unknown operation";
 	size_t page_size = 4096;
 	size_t map_pages = 0;
@@ -1226,14 +1931,20 @@ static void log_lmdb_state(int priority, const char *context, int lmdb_rc)
 	reader_rc = mdb_reader_check(env, &stale_readers);
 
 	if (dbi_init) {
+		gen = trust_db_generation_acquire();
+	}
+
+	if (gen) {
 		stat_rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
 		if (stat_rc == 0) {
-			stat_rc = mdb_stat(txn, dbi, &stat);
+			stat_rc = mdb_stat(txn, gen->handle, &stat);
 			mdb_txn_abort(txn);
 		}
 	} else {
 		stat_rc = EINVAL;
 	}
+	if (gen)
+		trust_db_generation_release(gen);
 
 	if (stat_rc == 0) {
 		page_size = stat.ms_psize;
@@ -1387,7 +2098,8 @@ static void check_db_size(const conf_t *config)
 	if (target_mb > config->db_max_size) {
 		msg(LOG_WARNING,
 		    "Trust database may need %u MiB for safe reload "
-		    "(active=%lu%% allocated=%lu%%)",
+		    "(active=%lu%% allocated=%lu%%); set db_max_size to at "
+		    "least this value or use auto",
 		    target_mb, state.active_percent, state.allocated_percent);
 	} else if (state.active_percent < TRUST_DB_SHRINK_TRIGGER_PERCENT) {
 		msg(LOG_WARNING, "Trust database at %lu%% capacity - "
@@ -1414,10 +2126,19 @@ void database_config_report(FILE *f)
  */
 void database_utilization_report(FILE *f)
 {
+	database_generation_report_t report;
+
+	trust_db_generation_report_snapshot(&report);
 	fprintf(f, "Trust database pages in use: %lu (%lu%%)\n", pages,
 		max_pages ? ((100*pages)/max_pages) : 0);
 	fprintf(f, "Trust database allocated high-water pages: %lu (%lu%%)\n",
 		allocated_pages, allocated_pages_percent);
+	fprintf(f, "Retired trust database generations: %u\n",
+		report.retired_count);
+	fprintf(f, "Oldest retired trust database generation age: %lu seconds\n",
+		report.oldest_retired_age);
+	fprintf(f, "Max trust database generation reclaim delay: %lu seconds\n",
+		report.max_reclaim_delay);
 }
 
 void database_report(FILE *f)
@@ -1483,24 +2204,6 @@ void database_metrics_report_reset(FILE *f, int reset)
 	fprintf(f, "Trust DB reader slots full: %lu\n",
 		metrics.reader_slots_full);
 }
-
-/*
- * open_dbi - verify that init_db() published the LMDB database handle.
- * @txn: transaction associated with the caller's operation, kept for the
- *       historical signature.
- *
- * Returns 0 when a DBI is available, or EINVAL when the environment was not
- * initialized successfully.
- */
-static int open_dbi(MDB_txn *txn)
-{
-	(void)txn;
-
-	if (!dbi_init)
-		return EINVAL;
-	return 0;
-}
-
 
 static void abort_transaction(MDB_txn *txn)
 {
@@ -1715,12 +2418,11 @@ static int trust_db_begin_write_txn(MDB_txn **txn, const char *context)
 		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 1;
 	}
 
-	rc = open_dbi(*txn);
-	if (rc) {
+	if (!dbi_init) {
 		abort_transaction(*txn);
 		*txn = NULL;
 		msg(LOG_ERR, "open_dbi failed before %s: %s",
-		    context, mdb_strerror(rc));
+		    context, mdb_strerror(EINVAL));
 		return 2;
 	}
 
@@ -1763,7 +2465,7 @@ static int trust_db_commit_write_txn(MDB_txn **txn, const char *context)
  * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, 3 for mdb_put
  * failures, and 5 when key hashing fails.
  */
-static int trust_db_put_record(MDB_txn *txn,
+static int trust_db_put_record(MDB_txn *txn, MDB_dbi target_dbi,
 			       const struct trust_db_record_input *record,
 			       const char *context)
 {
@@ -1778,7 +2480,7 @@ static int trust_db_put_record(MDB_txn *txn,
 	value.mv_data = (void *)record->data;
 	value.mv_size = strlen(record->data);
 
-	rc = mdb_put(txn, dbi, &key.val, &value, 0);
+	rc = mdb_put(txn, target_dbi, &key.val, &value, 0);
 	trust_db_key_destroy(&key);
 	if (rc) {
 		msg(LOG_ERR, "mdb_put failed during %s: %s",
@@ -1808,22 +2510,33 @@ static int write_db(const char *idx, size_t idx_len, const char *data)
 		.idx_len = idx_len,
 		.data = data,
 	};
+	struct trust_db_generation *gen;
 	MDB_txn *txn = NULL;
 	int rc;
 
-	rc = trust_db_begin_write_txn(&txn, "single trust DB write");
-	if (rc)
-		return rc;
+	gen = trust_db_generation_acquire();
+	if (gen == NULL)
+		return 2;
 
-	rc = trust_db_put_record(txn, &record, "single trust DB write");
+	rc = trust_db_begin_write_txn(&txn, "single trust DB write");
+	if (rc) {
+		trust_db_generation_release(gen);
+		return rc;
+	}
+
+	rc = trust_db_put_record(txn, gen->handle, &record,
+				 "single trust DB write");
 	if (rc) {
 		abort_transaction(txn);
 		log_lmdb_state(LOG_ERR, "single trust DB write",
 			       rc == WRITE_DB_MAP_FULL ? MDB_MAP_FULL : 0);
+		trust_db_generation_release(gen);
 		return rc;
 	}
 
-	return trust_db_commit_write_txn(&txn, "single trust DB write");
+	rc = trust_db_commit_write_txn(&txn, "single trust DB write");
+	trust_db_generation_release(gen);
+	return rc;
 }
 
 
@@ -1836,27 +2549,36 @@ static int write_db(const char *idx, size_t idx_len, const char *data)
  */
 static int trust_db_read_open(struct trust_db_read_handle *read)
 {
+	struct trust_db_generation *gen;
 	int rc;
 
 	memset(read, 0, sizeof(*read));
+	gen = trust_db_generation_acquire();
+	if (gen == NULL)
+		return 1;
+	read->generation = gen;
 
 	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &read->txn);
 	if (rc) {
 		trust_db_record_reader_error(rc);
 		msg(LOG_ERR, "txn_begin:%s", mdb_strerror(rc));
-		return 1;
-	}
-
-	if ((rc = open_dbi(read->txn))) {
-		msg(LOG_ERR, "open_dbi:%s", mdb_strerror(rc));
-		abort_transaction(read->txn);
+		trust_db_generation_release(gen);
 		memset(read, 0, sizeof(*read));
 		return 1;
 	}
 
-	if ((rc = mdb_cursor_open(read->txn, dbi, &read->cursor))) {
+	if (!dbi_init) {
+		msg(LOG_ERR, "open_dbi:%s", mdb_strerror(EINVAL));
+		abort_transaction(read->txn);
+		trust_db_generation_release(gen);
+		memset(read, 0, sizeof(*read));
+		return 1;
+	}
+
+	if ((rc = mdb_cursor_open(read->txn, gen->handle, &read->cursor))) {
 		msg(LOG_ERR, "cursor_open:%s", mdb_strerror(rc));
 		abort_transaction(read->txn);
+		trust_db_generation_release(gen);
 		memset(read, 0, sizeof(*read));
 		return 1;
 	}
@@ -1877,6 +2599,7 @@ static void trust_db_read_close(struct trust_db_read_handle *read)
 		mdb_cursor_close(read->cursor);
 	if (read->txn)
 		abort_transaction(read->txn);
+	trust_db_generation_release(read->generation);
 	memset(read, 0, sizeof(*read));
 }
 
@@ -1889,17 +2612,24 @@ static void trust_db_read_close(struct trust_db_read_handle *read)
  */
 static int read_database_stat(MDB_stat *st)
 {
+	struct trust_db_generation *gen;
 	MDB_txn *txn;
 	int rc;
+
+	gen = trust_db_generation_acquire();
+	if (gen == NULL)
+		return EINVAL;
 
 	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
 	if (rc) {
 		trust_db_record_reader_error(rc);
+		trust_db_generation_release(gen);
 		return rc;
 	}
 
-	rc = mdb_stat(txn, dbi, st);
+	rc = mdb_stat(txn, gen->handle, st);
 	mdb_txn_abort(txn);
+	trust_db_generation_release(gen);
 	return rc;
 }
 
@@ -2020,7 +2750,7 @@ static char *trust_db_read_record(struct trust_db_read_handle *read,
 	// trusted.
 	*error = 0;
 	if (operation == READ_TEST_KEY) {
-		return strndup(db, MDB_maxkeysize);
+		return strndup(read->generation->name, MDB_maxkeysize);
 	}
 
 	if ((data = malloc(value.mv_size+1))) {
@@ -2095,7 +2825,7 @@ static int database_empty(void)
  * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, and a non-zero
  * stage code for other failures.
  */
-static int delete_all_entries_db()
+static int delete_all_entries_db(MDB_dbi target_dbi)
 {
 	int rc = 0;
 	MDB_txn *txn;
@@ -2108,13 +2838,13 @@ static int delete_all_entries_db()
 		return 1;
 	}
 
-	if (open_dbi(txn)) {
+	if (!dbi_init) {
 		abort_transaction(txn);
 		return 2;
 	}
 
 	// 0 -> delete , 1 -> delete and close
-	if ((rc = mdb_drop(txn, dbi, 0))) {
+	if ((rc = mdb_drop(txn, target_dbi, 0))) {
 		abort_transaction(txn);
 		msg(LOG_ERR, "mdb_drop failed while clearing trust DB: %s",
 		    mdb_strerror(rc));
@@ -2198,7 +2928,8 @@ static int trust_db_record_from_line(char *buff,
  * Returns 0 when all records write successfully, 1 when reading fails, or a
  * WRITE_DB_* code when LMDB reports an import failure.
  */
-int do_memfd_update(int memfd, long *entries)
+static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
+				  long *entries)
 {
 	int rc = 0;
 	*entries = 0;
@@ -2247,7 +2978,7 @@ int do_memfd_update(int memfd, long *entries)
 				}
 			}
 
-			res = trust_db_put_record(txn, &record,
+			res = trust_db_put_record(txn, target_dbi, &record,
 						  "bulk trust DB import");
 			if (res) {
 				abort_transaction(txn);
@@ -2299,6 +3030,22 @@ int do_memfd_update(int memfd, long *entries)
 	return rc;
 }
 
+int do_memfd_update(int memfd, long *entries)
+{
+	struct trust_db_generation *gen;
+	int rc;
+
+	gen = trust_db_generation_acquire();
+	if (gen == NULL)
+		return 2;
+
+	rc = do_memfd_update_to_dbi(memfd, gen->handle, entries);
+	trust_db_generation_release(gen);
+	if (rc == 0)
+		refresh_active_generation_metadata();
+	return rc;
+}
+
 /*
  * create_database - Populate the LMDB trust database from loaded backends.
  * @with_sync: Non-zero forces an mdb_env_sync call to flush data immediately
@@ -2316,7 +3063,8 @@ int do_memfd_update(int memfd, long *entries)
  * reported a failure while storing records. Helper routines log detailed
  * errors.
  */
-static int create_database(int with_sync, conf_t *config)
+static int create_database_for_generation(struct trust_db_generation *gen,
+					  int with_sync, conf_t *config)
 {
 	msg(LOG_INFO, "Creating trust database");
 	int rc = 0;
@@ -2329,8 +3077,8 @@ static int create_database(int with_sync, conf_t *config)
 			msg(LOG_INFO, "Loading trust data from %s backend",
 			    be->backend->name);
 			if (be->backend->memfd != -1) {
-				rc = do_memfd_update(be->backend->memfd,
-				     &be->backend->entries);
+				rc = do_memfd_update_to_dbi(be->backend->memfd,
+				     gen->handle, &be->backend->entries);
 				if (rc)
 					msg(LOG_ERR,
 					    "Failed to import trust data from %s backend",
@@ -2345,8 +3093,13 @@ static int create_database(int with_sync, conf_t *config)
 
 		if (rc == WRITE_DB_MAP_FULL &&
 		    config->do_audit_db_sizing && retries == 0) {
-			if (grow_map_after_full(config) == 0 &&
-			    delete_all_entries_db() == 0) {
+			int grown;
+
+			lock_update_thread();
+			grown = grow_map_after_full(config);
+			unlock_update_thread();
+			if (grown == 0 &&
+			    delete_all_entries_db(gen->handle) == 0) {
 				retries++;
 				rc = 0;
 				continue;
@@ -2363,10 +3116,184 @@ static int create_database(int with_sync, conf_t *config)
 	if (with_sync)
 		mdb_env_sync(env, 1);
 
-	// Check if database is getting full and warn
-	check_db_size(config);
-
 	return rc;
+}
+
+static int create_database(int with_sync, conf_t *config)
+{
+	struct trust_db_generation *gen;
+	int rc;
+
+	gen = trust_db_generation_acquire();
+	if (gen == NULL)
+		return 2;
+
+	rc = create_database_for_generation(gen, with_sync, config);
+	trust_db_generation_release(gen);
+	if (rc == 0) {
+		refresh_active_generation_metadata();
+		check_db_size(config);
+	}
+	return rc;
+}
+
+/*
+ * create_candidate_generation - open an empty named DB for the next rebuild.
+ * @candidate: Destination for the new candidate generation.
+ *
+ * Returns 0 on success or an LMDB/errno-style error code.
+ */
+static int create_candidate_generation(struct trust_db_generation **candidate)
+{
+	struct trust_db_generation *gen;
+	char name[TRUST_DB_GENERATION_NAME_SIZE];
+	MDB_txn *txn = NULL;
+	unsigned long generation;
+	int rc;
+
+	pthread_mutex_lock(&generation_lock);
+	generation = next_generation;
+	rc = trust_db_candidate_name(name);
+	pthread_mutex_unlock(&generation_lock);
+	if (rc)
+		return rc;
+
+	gen = trust_db_generation_alloc(generation, name);
+	if (gen == NULL)
+		return ENOMEM;
+
+	rc = mdb_txn_begin(env, NULL, 0, &txn);
+	if (rc)
+		goto out_free;
+
+	rc = mdb_dbi_open(txn, gen->name, MDB_CREATE|MDB_DUPSORT,
+			  &gen->handle);
+	if (rc)
+		goto out_abort;
+
+	rc = mdb_txn_commit(txn);
+	txn = NULL;
+	if (rc)
+		goto out_free;
+
+	rc = delete_all_entries_db(gen->handle);
+	if (rc)
+		goto out_drop;
+
+	*candidate = gen;
+	return 0;
+
+out_abort:
+	mdb_txn_abort(txn);
+out_free:
+	free(gen);
+	return rc;
+out_drop:
+	drop_generation_database(gen);
+	free(gen);
+	return rc;
+}
+
+/*
+ * drop_candidate_generation - remove an unpublished candidate DB.
+ * @candidate: Candidate generation that must not become visible to readers.
+ *
+ * Returns nothing.
+ */
+static void drop_candidate_generation(struct trust_db_generation *candidate)
+{
+	int rc;
+
+	if (candidate == NULL)
+		return;
+
+	rc = drop_generation_database(candidate);
+	if (rc)
+		msg(LOG_WARNING,
+		    "Could not drop failed trust DB generation %lu (%s): %s",
+		    candidate->generation, candidate->name, mdb_strerror(rc));
+	free(candidate);
+}
+
+/*
+ * refresh_active_generation_metadata - rewrite metadata for the active DB.
+ *
+ * Returns 0 on success or an LMDB error code. This is used after startup or
+ * direct single-generation imports so reports contain current entry counts.
+ */
+static int refresh_active_generation_metadata(void)
+{
+	struct trust_db_generation *gen;
+	MDB_txn *txn = NULL;
+	int rc;
+
+	gen = trust_db_generation_acquire();
+	if (gen == NULL)
+		return EINVAL;
+
+	rc = mdb_txn_begin(env, NULL, 0, &txn);
+	if (rc)
+		goto out_release;
+
+	rc = trust_db_metadata_write(txn, gen);
+	if (rc) {
+		mdb_txn_abort(txn);
+		goto out_release;
+	}
+
+	rc = mdb_txn_commit(txn);
+
+out_release:
+	trust_db_generation_release(gen);
+	return rc;
+}
+
+/*
+ * publish_candidate_generation - publish a rebuilt trust DB generation.
+ * @candidate: Fully populated candidate generation.
+ *
+ * Returns 0 on success. On failure the active generation is unchanged and the
+ * caller still owns @candidate.
+ */
+static int publish_candidate_generation(struct trust_db_generation *candidate)
+{
+	struct trust_db_generation *old;
+	MDB_txn *txn = NULL;
+	int rc;
+
+	candidate->publish_time = time(NULL);
+	rc = mdb_txn_begin(env, NULL, 0, &txn);
+	if (rc)
+		return rc;
+
+	rc = trust_db_metadata_write(txn, candidate);
+	if (rc) {
+		mdb_txn_abort(txn);
+		return rc;
+	}
+
+	rc = mdb_txn_commit(txn);
+	if (rc)
+		return rc;
+
+	pthread_mutex_lock(&generation_lock);
+	old = active_generation;
+	active_generation = candidate;
+	dbi = candidate->handle;
+	if (next_generation <= candidate->generation)
+		next_generation = candidate->generation + 1;
+	if (old) {
+		old->retired_time = time(NULL);
+		old->next = retired_generations;
+		retired_generations = old;
+	}
+	pthread_mutex_unlock(&generation_lock);
+
+	msg(LOG_INFO,
+	    "Published trust DB generation %lu (%s) with %ld entries",
+	    candidate->generation, candidate->name, candidate->entries);
+	trust_db_reclaim_retired();
+	return 0;
 }
 
 
@@ -2745,7 +3672,7 @@ int init_database(conf_t *config)
 		// check if our internal database is synced
 		rc = check_database_copy(config);
 		if (rc > 0) {
-			rc = update_database(config);
+			rc = update_database(config, 1);
 			if (rc)
 				msg(LOG_ERR,
 				    "Failed updating the trust database");
@@ -3078,6 +4005,150 @@ void database_close_for_tests(void)
 	}
 }
 
+/*
+ * publish_memfd_for_tests - publish one memfd as a new generation.
+ * @memfd: Backend-style trust records to import into the candidate DB.
+ * @config: Test configuration used for sizing reports.
+ * @startup_rebuild: Non-zero to use startup generation numbering.
+ *
+ * Returns 0 on successful publication or a non-zero import/publish error.
+ */
+static int publish_memfd_for_tests(int memfd, conf_t *config,
+				   int startup_rebuild)
+{
+	struct trust_db_generation *candidate = NULL;
+	long entries = 0;
+	int rc;
+
+	if (startup_rebuild)
+		trust_db_reset_next_generation(1);
+
+	rc = create_candidate_generation(&candidate);
+	if (rc)
+		return rc;
+
+	rc = do_memfd_update_to_dbi(memfd, candidate->handle, &entries);
+	if (rc) {
+		drop_candidate_generation(candidate);
+		return rc;
+	}
+
+	rc = publish_candidate_generation(candidate);
+	if (rc) {
+		drop_candidate_generation(candidate);
+		return rc;
+	}
+
+	check_db_size(config);
+	atomic_store_explicit(&needs_flush, true, memory_order_release);
+	return 0;
+}
+
+/*
+ * database_publish_memfd_for_tests - publish one memfd as a new generation.
+ * @memfd: Backend-style trust records to import into the candidate DB.
+ * @config: Test configuration used for sizing reports.
+ *
+ * Returns 0 on successful publication or a non-zero import/publish error.
+ */
+int database_publish_memfd_for_tests(int memfd, conf_t *config)
+{
+	return publish_memfd_for_tests(memfd, config, 0);
+}
+
+/*
+ * database_publish_startup_memfd_for_tests - publish a startup rebuild.
+ * @memfd: Backend-style trust records to import into the candidate DB.
+ * @config: Test configuration used for sizing reports.
+ *
+ * Returns 0 on successful publication or a non-zero import/publish error.
+ */
+int database_publish_startup_memfd_for_tests(int memfd, conf_t *config)
+{
+	return publish_memfd_for_tests(memfd, config, 1);
+}
+
+/*
+ * database_drop_candidate_after_import_for_tests - simulate rebuild failure.
+ * @memfd: Backend-style trust records to import before dropping candidate.
+ *
+ * Returns the import result. The candidate generation is always unpublished.
+ */
+int database_drop_candidate_after_import_for_tests(int memfd)
+{
+	struct trust_db_generation *candidate = NULL;
+	long entries = 0;
+	int rc;
+
+	rc = create_candidate_generation(&candidate);
+	if (rc)
+		return rc;
+
+	rc = do_memfd_update_to_dbi(memfd, candidate->handle, &entries);
+	drop_candidate_generation(candidate);
+	return rc;
+}
+
+void *database_generation_hold_for_tests(void)
+{
+	return trust_db_generation_acquire();
+}
+
+void database_generation_release_for_tests(void *cookie)
+{
+	trust_db_generation_release(cookie);
+}
+
+void database_reclaim_generations_for_tests(void)
+{
+	trust_db_reclaim_retired();
+}
+
+/*
+ * database_generation_snapshot - copy trust DB generation state.
+ * @report: Destination report snapshot.
+ *
+ * Returns 0.
+ */
+int database_generation_snapshot(database_generation_report_t *report)
+{
+	trust_db_generation_report_snapshot(report);
+	return 0;
+}
+
+int database_generation_report_for_tests(
+		database_generation_test_report_t *report)
+{
+	return database_generation_snapshot(report);
+}
+
+/*
+ * database_autosize_target_mb_for_tests - compute autosize target.
+ * @active_pages: Pages used by the published trust DB.
+ * @env_allocated_pages: LMDB environment high-water pages.
+ * @map_pages: Current map size in pages.
+ * @page_size: LMDB page size.
+ *
+ * Returns the recommended map size in MiB for unit tests that exercise sizing
+ * policy without creating very large LMDB fixtures.
+ */
+unsigned int database_autosize_target_mb_for_tests(unsigned long active_pages,
+	unsigned long env_allocated_pages, unsigned long map_pages,
+	unsigned long page_size)
+{
+	struct trust_db_sizing_state state;
+
+	memset(&state, 0, sizeof(state));
+	state.active_pages = active_pages;
+	state.allocated_pages = env_allocated_pages;
+	state.map_pages = map_pages;
+	state.page_size = page_size;
+	state.current_mb = pages_to_mb(map_pages, page_size);
+	complete_lmdb_sizing_state(&state);
+	return autosize_effective_target_mb(&state,
+					    AUTOSIZE_RELOAD_PREFLIGHT);
+}
+
 
 void unlink_fifo(void)
 {
@@ -3151,13 +4222,16 @@ void unlock_rule(void) {
 }
 
 /*
- * This function reloads updated backend db into our internal database.
+ * update_database - reload backend snapshots into a new trust DB generation.
+ * @config: Active daemon configuration.
+ * @startup_rebuild: Non-zero when init_database() is rebuilding at startup.
+ *
  * It returns 0 on success and non-zero on error.
  */
-static int update_database(conf_t *config)
+static int update_database(conf_t *config, int startup_rebuild)
 {
 	int rc;
-	int retries = 0;
+	struct trust_db_generation *candidate = NULL;
 
 	msg(LOG_INFO, "Updating trust database");
 	msg(LOG_DEBUG, "Loading trust database backends");
@@ -3179,60 +4253,51 @@ static int update_database(conf_t *config)
 		return UPDATE_DB_PRESERVED;
 	}
 	log_lmdb_state(LOG_DEBUG, "trust DB reload after preflight", 0);
+	unlock_update_thread();
 
-	for (;;) {
-		rc = delete_all_entries_db();
-		if (rc == 0) {
-			log_lmdb_state(LOG_DEBUG, "trust DB reload after drop",
-				       0);
-			break;
-		}
+	if (startup_rebuild)
+		trust_db_reset_next_generation(1);
 
-		// The existing DB is still active because the drop did not
-		// commit; grow auto-sized maps once before giving up.
-		if (rc == WRITE_DB_MAP_FULL && config->do_audit_db_sizing &&
-		    retries == 0 && grow_map_after_full(config) == 0) {
-			retries++;
-			continue;
-		}
-
-		msg(LOG_ERR, "Cannot delete database (%d)", rc);
-		unlock_update_thread();
-		/*
-		 * delete_all_entries_db() failed before a transaction commit
-		 * completed. The current LMDB contents are still the active
-		 * trust database, so report the failed reload without killing
-		 * the daemon.
-		 */
+	rc = create_candidate_generation(&candidate);
+	if (rc) {
+		msg(LOG_ERR, "Cannot create candidate trust DB generation (%d)",
+		    rc);
 		return UPDATE_DB_PRESERVED;
 	}
 
 	if (stop) {
-		unlock_update_thread();
+		drop_candidate_generation(candidate);
 		return 1;
 	}
 
 	if (!stop)
-		rc = create_database(/*with_sync*/0, config);
+		rc = create_database_for_generation(candidate,
+						   /*with_sync*/0, config);
 	else
 		rc = 1;
 	log_lmdb_state(rc ? LOG_ERR : LOG_DEBUG,
 		       "trust DB reload after rebuild",
 		       rc == WRITE_DB_MAP_FULL ? MDB_MAP_FULL : 0);
 
-	// signal that cache need to be flushed
+	if (rc) {
+		msg(LOG_ERR, "Failed to create the trust database (%d)", rc);
+		drop_candidate_generation(candidate);
+		return UPDATE_DB_PRESERVED;
+	}
+
+	rc = publish_candidate_generation(candidate);
+	if (rc) {
+		msg(LOG_ERR, "Failed to publish trust DB generation: %s",
+		    mdb_strerror(rc));
+		drop_candidate_generation(candidate);
+		return UPDATE_DB_PRESERVED;
+	}
+
+	check_db_size(config);
 	if (!stop)
 		atomic_store_explicit(&needs_flush, true,
 				      memory_order_release);
-
-	unlock_update_thread();
 	mdb_env_sync(env, 1);
-
-	if (rc) {
-		msg(LOG_ERR, "Failed to create the trust database (%d)", rc);
-		close_db(1);
-		return rc;
-	}
 
 	return 0;
 }
@@ -3273,7 +4338,8 @@ static int handle_record(const char * buffer)
 
 	msg(LOG_DEBUG, "update_thread: Saving %s %s", path, data);
 	lock_update_thread();
-	write_db(path, 0, data);
+	if (write_db(path, 0, data) == 0)
+		refresh_active_generation_metadata();
 	unlock_update_thread();
 
 	return 0;
@@ -3443,7 +4509,7 @@ static void do_reload_db(conf_t* config)
 		goto out;
 	}
 
-	if ((rc = update_database(config))) {
+	if ((rc = update_database(config, 0))) {
 		msg(LOG_ERR,
 			"Cannot update trust database!");
 		if (stop)
@@ -3766,24 +4832,8 @@ int walk_database_start(conf_t *config)
 	}
 
 	// Position to the first entry
-	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &walk_read.txn);
-	if (rc) {
-		trust_db_record_reader_error(rc);
-		puts(mdb_strerror(rc));
-		return 1;
-	}
-
-	if ((rc = open_dbi(walk_read.txn))) {
-		puts(mdb_strerror(rc));
-		abort_transaction(walk_read.txn);
-		memset(&walk_read, 0, sizeof(walk_read));
-		return 1;
-	}
-
-	if ((rc = mdb_cursor_open(walk_read.txn, dbi, &walk_read.cursor))) {
-		puts(mdb_strerror(rc));
-		abort_transaction(walk_read.txn);
-		memset(&walk_read, 0, sizeof(walk_read));
+	if (trust_db_read_open(&walk_read)) {
+		puts("Cannot open the trust database for reading");
 		return 1;
 	}
 

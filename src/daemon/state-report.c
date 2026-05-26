@@ -47,7 +47,9 @@ static const char *format_report_time(time_t when, char *buf, size_t buf_size,
 static const char *format_metrics_reset_time(char *buf, size_t buf_size)
 	__attr_access ((__write_only__, 1, 2));
 static void write_generation_line(FILE *f, const char *label,
-		unsigned int generation, time_t effective_since);
+		unsigned long generation, time_t effective_since);
+static void write_trust_database_generation(FILE *f,
+		const database_generation_report_t *report);
 
 /*
  * state_report_operating_mode - write health and control state.
@@ -72,6 +74,7 @@ void state_report_operating_mode(FILE *f,
 			      mode->config_effective_since);
 	write_generation_line(f, "Ruleset generation", mode->ruleset_generation,
 			      mode->ruleset_effective_since);
+	write_trust_database_generation(f, &mode->trust_db);
 	decision_timing_control_report(f, mode->config);
 	decision_timing_history_report(f);
 }
@@ -171,7 +174,7 @@ static const char *format_metrics_reset_time(char *buf, size_t buf_size)
  * Returns nothing.
  */
 static void write_generation_line(FILE *f, const char *label,
-		unsigned int generation, time_t effective_since)
+		unsigned long generation, time_t effective_since)
 {
 	char since[64];
 	const char *since_text;
@@ -183,8 +186,26 @@ static void write_generation_line(FILE *f, const char *label,
 					"unknown");
 	if (since_text == NULL)
 		since_text = "unknown";
-	fprintf(f, "%s: %u (effective since %s)\n", label, generation,
+	fprintf(f, "%s: %lu (effective since %s)\n", label, generation,
 		since_text);
+}
+
+/*
+ * write_trust_database_generation - write trust DB generation identity.
+ * @f: report stream.
+ * @report: trust DB generation snapshot.
+ *
+ * Returns nothing.
+ */
+static void write_trust_database_generation(FILE *f,
+		const database_generation_report_t *report)
+{
+	if (f == NULL || report == NULL)
+		return;
+
+	write_generation_line(f, "Trust database generation",
+			      report->generation, report->publish_time);
+	fprintf(f, "Trust database entries: %ld\n", report->entries);
 }
 
 /*
@@ -301,6 +322,7 @@ void decision_report_reset(FILE *f, int reset)
 void decision_report_metrics_reset(FILE *f, int reset)
 {
 	decision_metrics_t metrics;
+	database_generation_report_t trust_db;
 	const char *reset_text;
 	char reset_time[64];
 
@@ -319,6 +341,8 @@ void decision_report_metrics_reset(FILE *f, int reset)
 			      decision_config_active_effective_since());
 	write_generation_line(f, "Ruleset generation", metrics.ruleset_generation,
 			      metrics.ruleset_effective_since);
+	if (database_generation_snapshot(&trust_db) == 0)
+		write_trust_database_generation(f, &trust_db);
 
 	fprintf(f, "\nDecision outcomes:\n");
 	fprintf(f, "Allowed accesses: %lu\n", getAllowedReset(reset));

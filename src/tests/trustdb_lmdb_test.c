@@ -19,6 +19,7 @@
 
 #define CONCURRENT_READERS 32
 #define CONCURRENT_ITERATIONS 64
+#define RELOAD_READERS 8
 
 #define CHECK(cond, code, msg) \
 	do { \
@@ -33,6 +34,15 @@ struct concurrent_lookup {
 	atomic_bool *start;
 	int failed;
 };
+
+struct reload_lookup {
+	const char *path;
+	atomic_bool *start;
+	atomic_bool *stop;
+	int failed;
+};
+
+extern atomic_bool needs_flush;
 
 static int remove_lmdb_files(const char *dir)
 {
@@ -112,6 +122,45 @@ static int import_records(const char *payload, long *entries)
 	return rc;
 }
 
+static int publish_records(conf_t *cfg, const char *payload)
+{
+	int fd = make_memfd_input(payload);
+	int rc;
+
+	if (fd == -1)
+		return 1;
+
+	rc = database_publish_memfd_for_tests(fd, cfg);
+	close(fd);
+	return rc;
+}
+
+static int publish_startup_records(conf_t *cfg, const char *payload)
+{
+	int fd = make_memfd_input(payload);
+	int rc;
+
+	if (fd == -1)
+		return 1;
+
+	rc = database_publish_startup_memfd_for_tests(fd, cfg);
+	close(fd);
+	return rc;
+}
+
+static int drop_candidate_records(const char *payload)
+{
+	int fd = make_memfd_input(payload);
+	int rc;
+
+	if (fd == -1)
+		return 1;
+
+	rc = database_drop_candidate_after_import_for_tests(fd);
+	close(fd);
+	return rc;
+}
+
 /*
  * read_database_metrics_report - capture trust DB metrics text.
  * @buf: output buffer for report text.
@@ -153,6 +202,29 @@ static void *concurrent_lookup_worker(void *arg)
 		;
 
 	for (unsigned int i = 0; i < CONCURRENT_ITERATIONS; i++) {
+		if (check_trust_database(lookup->path, NULL, -1) != 1) {
+			lookup->failed = 1;
+			break;
+		}
+	}
+
+	return NULL;
+}
+
+/*
+ * reload_lookup_worker - read one key until a publish storm finishes.
+ * @arg: struct reload_lookup pointer.
+ *
+ * Returns NULL after recording any lookup failure in @arg.
+ */
+static void *reload_lookup_worker(void *arg)
+{
+	struct reload_lookup *lookup = arg;
+
+	while (!atomic_load_explicit(lookup->start, memory_order_acquire))
+		;
+
+	while (!atomic_load_explicit(lookup->stop, memory_order_acquire)) {
 		if (check_trust_database(lookup->path, NULL, -1) != 1) {
 			lookup->failed = 1;
 			break;
@@ -550,6 +622,290 @@ static int test_lmdb_concurrent_read_handles(void)
 	return 0;
 }
 
+static int test_lmdb_failed_candidate_preserves_generation(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	database_generation_test_report_t before, after;
+	const char *path_a = "/usr/bin/preserved-a";
+	const char *path_b = "/usr/bin/unpublished-b";
+	const char *digest_a =
+		"abababababababababababababababababababababababababababababababab";
+	const char *digest_b =
+		"babababababababababababababababababababababababababababababababa";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 100, "[ERROR:100] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_a,
+		 SRC_FILE_DB, (size_t)100, digest_a);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 101,
+	      "[ERROR:101] preserved record import failed");
+	CHECK(database_generation_report_for_tests(&before) == 0, 102,
+	      "[ERROR:102] generation report failed");
+
+	atomic_store_explicit(&needs_flush, false, memory_order_release);
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_b,
+		 SRC_FILE_DB, (size_t)200, digest_b);
+	rc = drop_candidate_records(payload);
+	CHECK(rc == 0, 103, "[ERROR:103] candidate import/drop failed");
+	CHECK(database_generation_report_for_tests(&after) == 0, 104,
+	      "[ERROR:104] post-drop generation report failed");
+	CHECK(after.generation == before.generation, 105,
+	      "[ERROR:105] failed candidate changed active generation");
+	CHECK(check_trust_database(path_a, NULL, -1) == 1, 106,
+	      "[ERROR:106] preserved generation lookup failed");
+	CHECK(check_trust_database(path_b, NULL, -1) == 0, 107,
+	      "[ERROR:107] dropped candidate became visible");
+	CHECK(!atomic_load_explicit(&needs_flush, memory_order_acquire), 108,
+	      "[ERROR:108] failed candidate requested cache flush");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 109,
+	      "[ERROR:109] failed-candidate cleanup failed");
+	return 0;
+}
+
+static int test_lmdb_autosize_generation_reload_target(void)
+{
+	unsigned int target;
+
+	target = database_autosize_target_mb_for_tests(
+		/*active_pages*/14277,
+		/*allocated_pages*/14283,
+		/*map_pages*/21760,
+		/*page_size*/4096);
+	CHECK(target >= 140, 110,
+	      "[ERROR:110] autosize target ignored reload headroom");
+	CHECK(target > 85, 111,
+	      "[ERROR:111] autosize target kept undersized map");
+	return 0;
+}
+
+static int test_lmdb_startup_generation_resets(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	database_generation_test_report_t report;
+	const char *path_a = "/usr/bin/startup-generation-a";
+	const char *path_b = "/usr/bin/startup-generation-b";
+	const char *path_c = "/usr/bin/startup-generation-c";
+	const char *path_d = "/usr/bin/startup-generation-d";
+	const char *digest =
+		"edededededededededededededededededededededededededededededededed";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 160, "[ERROR:160] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_a,
+		 SRC_FILE_DB, (size_t)100, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 161,
+	      "[ERROR:161] startup generation initial import failed");
+	CHECK(database_generation_report_for_tests(&report) == 0, 162,
+	      "[ERROR:162] startup generation initial report failed");
+	CHECK(report.generation == 1, 163,
+	      "[ERROR:163] initial generation did not start at one");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_b,
+		 SRC_FILE_DB, (size_t)200, digest);
+	rc = publish_records(&cfg, payload);
+	CHECK(rc == 0, 164,
+	      "[ERROR:164] runtime generation publish failed");
+	CHECK(database_generation_report_for_tests(&report) == 0, 165,
+	      "[ERROR:165] runtime generation report failed");
+	CHECK(report.generation == 2, 166,
+	      "[ERROR:166] runtime generation did not advance");
+
+	database_close_for_tests();
+	rc = database_open_for_tests(&cfg);
+	CHECK(rc == 0, 167, "[ERROR:167] failed to reopen LMDB");
+	CHECK(database_generation_report_for_tests(&report) == 0, 168,
+	      "[ERROR:168] reopened generation report failed");
+	CHECK(report.generation == 1, 169,
+	      "[ERROR:169] persisted generation did not reset on startup");
+	CHECK(check_trust_database(path_b, NULL, -1) == 1, 170,
+	      "[ERROR:170] reopened generation lookup failed");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_c,
+		 SRC_FILE_DB, (size_t)300, digest);
+	rc = publish_startup_records(&cfg, payload);
+	CHECK(rc == 0, 171,
+	      "[ERROR:171] startup rebuild publish failed");
+	CHECK(database_generation_report_for_tests(&report) == 0, 172,
+	      "[ERROR:172] startup rebuild report failed");
+	CHECK(report.generation == 1, 173,
+	      "[ERROR:173] startup rebuild did not reset generation");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_d,
+		 SRC_FILE_DB, (size_t)400, digest);
+	rc = publish_records(&cfg, payload);
+	CHECK(rc == 0, 174,
+	      "[ERROR:174] post-startup runtime publish failed");
+	CHECK(database_generation_report_for_tests(&report) == 0, 175,
+	      "[ERROR:175] post-startup runtime report failed");
+	CHECK(report.generation == 2, 176,
+	      "[ERROR:176] post-startup runtime generation mismatch");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 177,
+	      "[ERROR:177] startup generation cleanup failed");
+	return 0;
+}
+
+static int test_lmdb_held_reader_delays_reclamation(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	void *held;
+	database_generation_test_report_t report;
+	const char *path_a = "/usr/bin/held-reader-a";
+	const char *path_b = "/usr/bin/held-reader-b";
+	const char *digest_a =
+		"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+	const char *digest_b =
+		"dcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdc";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 120, "[ERROR:120] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_a,
+		 SRC_FILE_DB, (size_t)300, digest_a);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 121,
+	      "[ERROR:121] held-reader initial import failed");
+
+	held = database_generation_hold_for_tests();
+	CHECK(held != NULL, 122, "[ERROR:122] failed to hold generation");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_b,
+		 SRC_FILE_DB, (size_t)400, digest_b);
+	rc = publish_records(&cfg, payload);
+	CHECK(rc == 0, 123, "[ERROR:123] held-reader publish failed");
+	CHECK(database_generation_report_for_tests(&report) == 0, 124,
+	      "[ERROR:124] held-reader report failed");
+	CHECK(report.retired_count == 1, 125,
+	      "[ERROR:125] held reader did not delay retired generation");
+
+	database_reclaim_generations_for_tests();
+	CHECK(database_generation_report_for_tests(&report) == 0, 126,
+	      "[ERROR:126] held-reader reclaim report failed");
+	CHECK(report.retired_count == 1, 127,
+	      "[ERROR:127] reclaimed generation while reader was held");
+
+	database_generation_release_for_tests(held);
+	database_reclaim_generations_for_tests();
+	CHECK(database_generation_report_for_tests(&report) == 0, 128,
+	      "[ERROR:128] post-release report failed");
+	CHECK(report.retired_count == 0, 129,
+	      "[ERROR:129] released generation was not reclaimed");
+	CHECK(check_trust_database(path_b, NULL, -1) == 1, 130,
+	      "[ERROR:130] published generation lookup failed");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 131,
+	      "[ERROR:131] held-reader cleanup failed");
+	return 0;
+}
+
+static int test_lmdb_concurrent_publish_storm(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	const char *stable_path = "/usr/bin/reload-stable";
+	const char *last_path = "/usr/bin/reload-storm-5";
+	const char *digest =
+		"efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef";
+	char payload[512];
+	pthread_t readers[RELOAD_READERS];
+	struct reload_lookup lookup[RELOAD_READERS];
+	atomic_bool start = false;
+	atomic_bool stop_readers = false;
+	database_generation_test_report_t before, after;
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 140, "[ERROR:140] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n",
+		 stable_path, SRC_FILE_DB, (size_t)500, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 141,
+	      "[ERROR:141] reload-storm initial import failed");
+	CHECK(database_generation_report_for_tests(&before) == 0, 142,
+	      "[ERROR:142] reload-storm initial report failed");
+
+	for (unsigned int i = 0; i < RELOAD_READERS; i++) {
+		lookup[i].path = stable_path;
+		lookup[i].start = &start;
+		lookup[i].stop = &stop_readers;
+		lookup[i].failed = 0;
+		rc = pthread_create(&readers[i], NULL, reload_lookup_worker,
+				    &lookup[i]);
+		CHECK(rc == 0, 143,
+		      "[ERROR:143] failed to create reload reader");
+	}
+
+	atomic_store_explicit(&needs_flush, false, memory_order_release);
+	atomic_store_explicit(&start, true, memory_order_release);
+	for (unsigned int i = 0; i < 6; i++) {
+		snprintf(payload, sizeof(payload),
+			 "%s " DATA_FORMAT "\n"
+			 "/usr/bin/reload-storm-%u " DATA_FORMAT "\n",
+			 stable_path, SRC_FILE_DB, (size_t)(600 + i), digest,
+			 i, SRC_FILE_DB, (size_t)(700 + i), digest);
+		rc = publish_records(&cfg, payload);
+		CHECK(rc == 0, 144,
+		      "[ERROR:144] reload-storm publish failed");
+		CHECK(atomic_load_explicit(&needs_flush,
+					   memory_order_acquire), 145,
+		      "[ERROR:145] publish did not request cache flush");
+		atomic_store_explicit(&needs_flush, false,
+				      memory_order_release);
+	}
+
+	atomic_store_explicit(&stop_readers, true, memory_order_release);
+	for (unsigned int i = 0; i < RELOAD_READERS; i++) {
+		rc = pthread_join(readers[i], NULL);
+		CHECK(rc == 0, 146,
+		      "[ERROR:146] failed to join reload reader");
+		CHECK(lookup[i].failed == 0, 147,
+		      "[ERROR:147] concurrent lookup failed during publish");
+	}
+
+	database_reclaim_generations_for_tests();
+	CHECK(database_generation_report_for_tests(&after) == 0, 148,
+	      "[ERROR:148] reload-storm final report failed");
+	CHECK(after.generation == before.generation + 6, 149,
+	      "[ERROR:149] reload-storm generation count mismatch");
+	CHECK(after.retired_count == 0, 150,
+	      "[ERROR:150] reload-storm retired generations leaked");
+	CHECK(check_trust_database(stable_path, NULL, -1) == 1, 151,
+	      "[ERROR:151] stable path missing after reload storm");
+	CHECK(check_trust_database(last_path, NULL, -1) == 1, 152,
+	      "[ERROR:152] last reload-storm path missing");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 153,
+	      "[ERROR:153] reload-storm cleanup failed");
+	return 0;
+}
+
 int main(void)
 {
 	int rc;
@@ -583,6 +939,26 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_concurrent_read_handles();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_failed_candidate_preserves_generation();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_autosize_generation_reload_target();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_startup_generation_resets();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_held_reader_delays_reclamation();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_concurrent_publish_storm();
 	if (rc)
 		return rc;
 

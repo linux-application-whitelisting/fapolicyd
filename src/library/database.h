@@ -26,6 +26,8 @@
 #ifndef DATABASE_HEADER
 #define DATABASE_HEADER
 
+#include <stdio.h>
+#include <time.h>
 #include <lmdb.h>
 #include "conf.h"
 #include "file.h"
@@ -35,6 +37,15 @@ typedef struct {
 	MDB_val path;
 	MDB_val data;
 } walkdb_entry_t;
+
+typedef struct {
+	unsigned long generation;
+	long entries;
+	time_t publish_time;
+	unsigned int retired_count;
+	unsigned long oldest_retired_age;
+	unsigned long max_reclaim_delay;
+} database_generation_report_t;
 
 void lock_update_thread(void);
 void unlock_update_thread(void);
@@ -51,6 +62,8 @@ void database_config_report(FILE *f);
 void database_utilization_report(FILE *f);
 void database_report(FILE *f);
 void database_metrics_report_reset(FILE *f, int reset);
+int database_generation_snapshot(database_generation_report_t *report)
+	__nonnull ((1));
 int unlink_db(void) __wur;
 void unlink_fifo(void);
 unsigned get_default_db_max_size(void);
@@ -64,9 +77,24 @@ int walk_database_next(void);
 void walk_database_finish(void);
 
 // Functions for unit test use
+typedef database_generation_report_t database_generation_test_report_t;
+
 int database_set_location(const char *dir, const char *name);
 int database_open_for_tests(conf_t *config) __nonnull ((1));
 void database_close_for_tests(void);
+int database_publish_memfd_for_tests(int memfd, conf_t *config)
+	__nonnull ((2));
+int database_publish_startup_memfd_for_tests(int memfd, conf_t *config)
+	__nonnull ((2));
+int database_drop_candidate_after_import_for_tests(int memfd);
+void *database_generation_hold_for_tests(void);
+void database_generation_release_for_tests(void *cookie);
+void database_reclaim_generations_for_tests(void);
+int database_generation_report_for_tests(
+	database_generation_test_report_t *report) __nonnull ((1));
+unsigned int database_autosize_target_mb_for_tests(unsigned long active_pages,
+	unsigned long env_allocated_pages, unsigned long map_pages,
+	unsigned long page_size);
 
 #define RELOAD_TRUSTDB_COMMAND '1'
 #define FLUSH_CACHE_COMMAND '2'

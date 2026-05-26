@@ -947,6 +947,7 @@ void do_state_report(FILE *f, int shutdown)
 	mode.config_effective_since =
 		decision_config_effective_since(decision_config);
 	mode.ruleset_effective_since = decisions.ruleset_effective_since;
+	database_generation_snapshot(&mode.trust_db);
 	mode.config = &config;
 	state_report_operating_mode(f, &mode);
 

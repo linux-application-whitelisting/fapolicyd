@@ -13,6 +13,7 @@
 #define STATE_REPORT_HEADER
 
 #include "conf.h"
+#include "database.h"
 #include "failure-action.h"
 #include <stdbool.h>
 #include <signal.h>
@@ -32,6 +33,7 @@ struct state_report_operating_mode {
 	unsigned int ruleset_generation;
 	time_t config_effective_since;
 	time_t ruleset_effective_since;
+	database_generation_report_t trust_db;
 	const conf_t *config;
 };
 

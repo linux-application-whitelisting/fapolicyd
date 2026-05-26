@@ -46,6 +46,14 @@ mix values from different reloads.
 The current in-memory ruleset generation. This value increments each time a
 fully validated ruleset is published by the daemon.
 .TP
+.B Trust database generation
+The currently published trust database generation used by new decision reads.
+This is a daemon-runtime generation that starts at 1 during startup. The
+effective-since timestamp is the time the generation was published.
+.TP
+.B Trust database entries
+The number of records in the currently published trust database generation.
+.TP
 .B Timing collection mode
 The configured timing collection control mode.
 .TP
@@ -112,6 +120,18 @@ is set to
 .B auto ,
 fapolicyd uses this value as reload-headroom pressure while active pages show
 the steady-state trust database size.
+.TP
+.B Retired trust database generations
+The number of old trust generations waiting for readers to drain before their
+named databases can be reclaimed.
+.TP
+.B Oldest retired trust database generation age
+The age in seconds of the oldest retired trust generation still waiting for
+safe reclamation.
+.TP
+.B Max trust database generation reclaim delay
+The longest observed delay in seconds between retiring an old trust generation
+and reclaiming its named database.
 .TP
 .B Subject slots in use
 The number and percentage of subject cache slots currently occupied.
@@ -236,6 +256,8 @@ monitoring.
 .B Denied accesses ,
 .B Config generation ,
 .B Ruleset generation ,
+.B Trust database generation ,
+.B Trust database entries ,
 .B Subject defer fallbacks ,
 .B Early subject cache evictions ,
 .B Subject BUILDING tracer evictions ,

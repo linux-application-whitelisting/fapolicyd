@@ -139,6 +139,11 @@ static void read_operating_mode_report(char *buf, size_t size)
 		.ruleset_generation = 7,
 		.config_effective_since = 1,
 		.ruleset_effective_since = 1,
+		.trust_db = {
+			.generation = 9,
+			.entries = 11,
+			.publish_time = 1,
+		},
 		.config = &config,
 	};
 	FILE *f = tmpfile();
@@ -188,7 +193,7 @@ static void read_fs_error_report(char *buf, size_t size)
  */
 static void test_operating_mode_report_order(void)
 {
-	const char *config_generation, *ruleset, *timing_mode;
+	const char *config_generation, *ruleset, *trust_db, *timing_mode;
 	char report[1024];
 
 	read_operating_mode_report(report, sizeof(report));
@@ -198,15 +203,23 @@ static void test_operating_mode_report_order(void)
 	ruleset = strstr(report,
 			 "Ruleset generation: 7 "
 			 "(effective since ");
+	trust_db = strstr(report,
+			  "Trust database generation: 9 "
+			  "(effective since ");
 	timing_mode = strstr(report, "Timing collection mode: manual\n");
 	CHECK(config_generation != NULL, 68,
 	      "[ERROR:68] operating mode report missing config generation");
 	CHECK(ruleset != NULL, 59,
 	      "[ERROR:59] operating mode report missing ruleset field");
+	CHECK(trust_db != NULL, 69,
+	      "[ERROR:69] operating mode report missing trust DB generation");
+	CHECK(strstr(report, "Trust database entries: 11\n") != NULL, 70,
+	      "[ERROR:70] operating mode report missing trust DB entries");
 	CHECK(timing_mode != NULL, 58,
 	      "[ERROR:58] operating mode report missing timing mode field");
-	CHECK(config_generation < ruleset && ruleset < timing_mode, 60,
-	      "[ERROR:60] ruleset generation was not next to config");
+	CHECK(config_generation < ruleset && ruleset < trust_db &&
+	      trust_db < timing_mode, 60,
+	      "[ERROR:60] generation fields were not grouped");
 }
 
 /*

@@ -32,6 +32,15 @@ reset.
 .TP
 .B Ruleset generation
 The active ruleset generation that the counters and rule hit table apply to.
+.TP
+.B Trust database generation
+The active trust database generation used by new decision reads at report time.
+This is a daemon-runtime generation that starts at 1 during startup. The
+counters may span earlier trust database generations when reloads occurred
+after the last metrics reset.
+.TP
+.B Trust database entries
+The number of records in the active trust database generation at report time.
 .SH Decision outcomes
 .TP
 .B Allowed accesses
