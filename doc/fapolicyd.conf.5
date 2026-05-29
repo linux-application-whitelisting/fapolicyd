@@ -212,9 +212,7 @@ Ensure each mount is truly \fIdata\-only\fR and is mounted with \fBnoexec\fR.
 .IP \[bu]
 Run the advisory check:
 .nf
-\f[C]
-fapolicyd-cli --check-ignore_mounts[=MOUNT]
-\f[R]
+.B fapolicyd-cli --check-ignore_mounts[=MOUNT]
 .fi
 to verify the mount exists, confirm \fBnoexec\fR, and scan for files matching the \fB%languages\fR macro. The command reports findings and returns a non\-zero status when potentially executable content is detected.
 .IP \[bu]
