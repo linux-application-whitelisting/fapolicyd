@@ -1,8 +1,9 @@
 Userspace
 =========
 * Allow rules to express paths using globbing (fnmatch)
+* Don't overwrite existing timer reports if the timer is not armed
+* Improve reconfigure via SIGHUP to update configuration
+* Consider adding rule testing to cli (uid, pgm, file)
 
-Improve reconfigure via SIGHUP to update configuration
-Consider adding rule testing to cli (uid, pgm, file)
-Support other packaging manifests
+* Support other packaging manifests
 
