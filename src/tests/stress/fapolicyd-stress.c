@@ -41,8 +41,6 @@
 #define MAX_COMMANDS 64
 #define CAPTURE_LIMIT (1024 * 1024)
 #define HASH_BLOCK_SIZE 65536
-#define NORETURN __attribute__((noreturn))
-
 #ifndef STRESS_SCRIPT_DIR
 #define STRESS_SCRIPT_DIR "scripts"
 #endif
@@ -939,7 +937,7 @@ static void redirect_child_output(void)
  * @enoexec_ok: non-zero treats ENOEXEC as success.
  * Returns only on exec failure by exiting the child.
  */
-static NORETURN void child_exec(const char *path,
+static _Noreturn void child_exec(const char *path,
 		char *const argv[], int enoexec_ok)
 {
 	redirect_child_output();
@@ -1243,7 +1241,7 @@ static void run_one_iteration(const struct stress_options *opts,
  * @shared: shared run state.
  * Returns only by exiting the leaf process.
  */
-static NORETURN void leaf_loop(const struct stress_options *opts,
+static _Noreturn void leaf_loop(const struct stress_options *opts,
 		const struct stress_paths *paths, struct stress_shared *shared)
 {
 	struct leaf_stats stats = {0, 0};
@@ -1304,7 +1302,7 @@ static int wait_for_children(pid_t *children, unsigned int count)
  * @depth: remaining depth below this process.
  * Returns only by exiting the branch process.
  */
-static NORETURN void spawn_branch(
+static _Noreturn void spawn_branch(
 		const struct stress_options *opts,
 		const struct stress_paths *paths, struct stress_shared *shared,
 		unsigned int depth)
