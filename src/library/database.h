@@ -38,10 +38,15 @@ typedef struct {
 	MDB_val data;
 } walkdb_entry_t;
 
+#define TRUST_DB_METADATA_NAME "trust.meta"
+#define TRUST_DB_METADATA_KEY "current"
+
 typedef struct {
 	unsigned long generation;
 	long entries;
 	time_t publish_time;
+	unsigned long lmdb_generation;
+	time_t lmdb_publish_time;
 	unsigned int retired_count;
 	unsigned long oldest_retired_age;
 	unsigned long max_reclaim_delay;
@@ -59,7 +64,7 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 void set_reload_trust_database(void);
 void close_database(void);
 void database_config_report(FILE *f);
-void database_utilization_report(FILE *f);
+void database_utilization_report(FILE *f, const conf_t *config);
 void database_report(FILE *f);
 void database_metrics_report_reset(FILE *f, int reset);
 int database_generation_snapshot(database_generation_report_t *report)
@@ -87,6 +92,8 @@ int database_publish_memfd_for_tests(int memfd, conf_t *config)
 int database_publish_startup_memfd_for_tests(int memfd, conf_t *config)
 	__nonnull ((2));
 int database_drop_candidate_after_import_for_tests(int memfd);
+int database_compact_memfd_for_tests(int memfd, conf_t *config)
+	__nonnull ((2));
 void *database_generation_hold_for_tests(void);
 void database_generation_release_for_tests(void *cookie);
 void database_reclaim_generations_for_tests(void);
@@ -99,5 +106,6 @@ unsigned int database_autosize_target_mb_for_tests(unsigned long active_pages,
 #define RELOAD_TRUSTDB_COMMAND '1'
 #define FLUSH_CACHE_COMMAND '2'
 #define RELOAD_RULES_COMMAND '3'
+#define COMPACT_TRUSTDB_COMMAND '4'
 
 #endif

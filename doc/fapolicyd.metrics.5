@@ -39,6 +39,14 @@ This is a daemon-runtime generation that starts at 1 during startup. The
 counters may span earlier trust database generations when reloads occurred
 after the last metrics reset.
 .TP
+.B LMDB environment generation
+The active physical LMDB environment generation at report time. This increments
+only when fapolicyd closes the live environment and publishes a validated
+replacement environment for compaction or high-water reset. It complements the
+trust database generation: trust generations publish logical content inside an
+environment, while LMDB environment generations identify the storage file
+currently backing those logical generations.
+.TP
 .B Trust database entries
 The number of records in the active trust database generation at report time.
 .SH Decision outcomes

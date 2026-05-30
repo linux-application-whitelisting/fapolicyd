@@ -8,7 +8,7 @@ _fapolicydcli()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
 	opts="--check-config --check-path --check-rules --check-status --check-metrics \
-		--check-trustdb --check-watch_fs --check-ignore_mounts \
+		--check-trustdb --compact-trustdb --check-watch_fs --check-ignore_mounts \
 		--delete-db --dump-db \
 		--file --filter --ftype --help --list --update --reload-rules \
 		--reset-metrics --timing-start --timing-stop --timer-start \

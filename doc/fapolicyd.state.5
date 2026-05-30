@@ -51,6 +51,14 @@ The currently published trust database generation used by new decision reads.
 This is a daemon-runtime generation that starts at 1 during startup. The
 effective-since timestamp is the time the generation was published.
 .TP
+.B LMDB environment generation
+The physical LMDB environment generation currently opened by the daemon. This
+starts at 1 during startup and increments when fapolicyd publishes a rebuilt
+LMDB environment during controlled compaction. A trust database generation is a
+logical content epoch inside an environment; an LMDB environment generation is
+the storage epoch containing the LMDB page map, free list, and high-water
+state.
+.TP
 .B Trust database entries
 The number of records in the currently published trust database generation.
 .TP
@@ -132,6 +140,41 @@ safe reclamation.
 .B Max trust database generation reclaim delay
 The longest observed delay in seconds between retiring an old trust generation
 and reclaiming its named database.
+.TP
+.B Trust database resize recommended
+Whether the current LMDB sizing state suggests increasing a manually configured
+.B db_max_size .
+This field is printed only when
+.B db_max_size
+is a numeric value. It is omitted when
+.B db_max_size
+is set to
+.B auto
+because auto mode grows the map itself before rebuilds.
+.TP
+.B Trust database resize reason
+Short explanation for the manual resize recommendation.
+.TP
+.B Trust database resize target
+The recommended minimum
+.B db_max_size
+in MiB. This field is printed only when manual resize is recommended.
+.TP
+.B Trust database compaction recommended
+Whether the current LMDB sizing state suggests running controlled trust
+database compaction. Compaction is recommended when the allocated LMDB
+high-water mark is much larger than the active trust database footprint and no
+retired trust generations are pinned.
+.TP
+.B Trust database compaction reason
+Short explanation for the recommendation. If retired generations are pinned,
+the recommendation is
+.B no
+because readers must drain before the environment can be safely replaced.
+.TP
+.B Trust database compaction target
+The current map-size target in MiB for a compact rebuilt environment. This
+field is printed when compaction is recommended.
 .TP
 .B Subject slots in use
 The number and percentage of subject cache slots currently occupied.
@@ -257,6 +300,7 @@ monitoring.
 .B Config generation ,
 .B Ruleset generation ,
 .B Trust database generation ,
+.B LMDB environment generation ,
 .B Trust database entries ,
 .B Subject defer fallbacks ,
 .B Early subject cache evictions ,

@@ -205,6 +205,9 @@ static void write_trust_database_generation(FILE *f,
 
 	write_generation_line(f, "Trust database generation",
 			      report->generation, report->publish_time);
+	write_generation_line(f, "LMDB environment generation",
+			      report->lmdb_generation,
+			      report->lmdb_publish_time);
 	fprintf(f, "Trust database entries: %ld\n", report->entries);
 }
 

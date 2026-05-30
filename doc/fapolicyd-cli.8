@@ -34,10 +34,13 @@ Dump the daemon's runtime metrics report from
 \fI/run/fapolicyd/fapolicyd.metrics\fP. The report starts with
 .B Last metrics reset ,
 .B Config generation ,
+.B Ruleset generation ,
+.B Trust database generation ,
 and
-.B Ruleset generation
-headers so the counter window, active decision configuration generation, and
-active policy generation are explicit. It
+.B LMDB environment generation
+headers so the counter window, active decision configuration generation,
+active policy generation, trust content generation, and physical LMDB storage
+generation are explicit. It
 then prints decision outcome counters, subject and object cache effectiveness,
 rule hit counts, subject and object attribute lookup tables, and queue and
 defer activity. See
@@ -46,6 +49,18 @@ for the metrics report fields.
 .TP
 .B \-\-check-trustdb
 Check the trustdb against the files on disk to look for mismatches that will cause problems at run time.
+.TP
+.B \-\-compact-trustdb
+Request controlled trust database LMDB compaction. The daemon refreshes backend
+snapshots, builds a replacement LMDB environment in a temporary directory,
+validates it, then briefly blocks new trust database readers, closes the live
+environment, and swaps in the replacement. The previous environment is kept or
+restored on failure. This command is intended for administrator maintenance
+when
+.BR fapolicyd-cli\ --check-status
+reports that trust database compaction is recommended; ordinary trust database
+updates should use
+.BR \-\-update .
 .TP
 .B \-\-check-watch_fs
 Check the mounted file systems against the watch_fs daemon config entry to determine if any file systems need to be added to the configuration.

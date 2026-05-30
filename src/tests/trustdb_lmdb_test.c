@@ -189,6 +189,33 @@ static int read_database_metrics_report(char *buf, size_t size, int reset)
 }
 
 /*
+ * read_database_utilization_text - capture trust DB status text.
+ * @cfg: configuration passed to the utilization report.
+ * @buf: output buffer for report text.
+ * @size: size of @buf.
+ *
+ * Returns 0 on success and 1 on failure.
+ */
+static int read_database_utilization_text(conf_t *cfg, char *buf, size_t size)
+{
+	FILE *report;
+	size_t used;
+
+	report = tmpfile();
+	if (report == NULL)
+		return 1;
+
+	database_utilization_report(report, cfg);
+	fflush(report);
+	rewind(report);
+	used = fread(buf, 1, size - 1, report);
+	fclose(report);
+	buf[used] = '\0';
+
+	return 0;
+}
+
+/*
  * concurrent_lookup_worker - repeatedly read one trust DB key.
  * @arg: struct concurrent_lookup pointer.
  *
@@ -687,6 +714,68 @@ static int test_lmdb_autosize_generation_reload_target(void)
 	return 0;
 }
 
+static int test_lmdb_manual_resize_report_is_gated(void)
+{
+	conf_t cfg;
+	char dir[128];
+	char report[2048];
+	char *payload;
+	size_t used = 0;
+	long entries = 0;
+	int rc;
+	const unsigned int records = 12000;
+	const char *digest =
+		"9191919191919191919191919191919191919191919191919191919191919191";
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 112, "[ERROR:112] failed to open temporary LMDB");
+
+	payload = calloc(records, 192);
+	CHECK(payload != NULL, 113,
+	      "[ERROR:113] resize report payload allocation failed");
+
+	for (unsigned int i = 0; i < records; i++) {
+		int written = snprintf(payload + used, records * 192 - used,
+			"/usr/bin/resize-report-%04u " DATA_FORMAT "\n",
+			i, SRC_FILE_DB, (size_t)(1000 + i), digest);
+
+		CHECK(written > 0 && (size_t)written < records * 192 - used,
+		      114, "[ERROR:114] resize report payload truncated");
+		used += written;
+	}
+
+	rc = import_records(payload, &entries);
+	free(payload);
+	CHECK(rc == 0 && entries == records, 115,
+	      "[ERROR:115] resize report import failed");
+
+	/*
+	 * Simulate a manual configuration that is below the computed reload
+	 * target without reopening the test map. The report is about the
+	 * administrator's numeric db_max_size, not LMDB's current file size.
+	 */
+	cfg.db_max_size = 1;
+	cfg.do_audit_db_sizing = false;
+	CHECK(read_database_utilization_text(&cfg, report, sizeof(report)) == 0,
+	      116, "[ERROR:116] manual resize report failed");
+	CHECK(strstr(report, "Trust database resize recommended: yes") != NULL,
+	      117, "[ERROR:117] manual resize recommendation missing");
+	CHECK(strstr(report, "Trust database resize target:") != NULL,
+	      118, "[ERROR:118] manual resize target missing");
+
+	cfg.do_audit_db_sizing = true;
+	CHECK(read_database_utilization_text(&cfg, report, sizeof(report)) == 0,
+	      119, "[ERROR:119] auto resize report failed");
+	CHECK(strstr(report, "Trust database resize recommended:") == NULL,
+	      132, "[ERROR:132] resize recommendation shown in auto mode");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 133,
+	      "[ERROR:133] resize report cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_startup_generation_resets(void)
 {
 	conf_t cfg;
@@ -759,6 +848,126 @@ static int test_lmdb_startup_generation_resets(void)
 	database_set_location(NULL, NULL);
 	CHECK(remove_lmdb_files(dir) == 0, 177,
 	      "[ERROR:177] startup generation cleanup failed");
+	return 0;
+}
+
+static int test_lmdb_offline_compaction_swaps_environment(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	database_generation_test_report_t before, after;
+	const char *path_a = "/usr/bin/offline-compact-a";
+	const char *path_b = "/usr/bin/offline-compact-b";
+	const char *digest_a =
+		"1212121212121212121212121212121212121212121212121212121212121212";
+	const char *digest_b =
+		"3434343434343434343434343434343434343434343434343434343434343434";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 180, "[ERROR:180] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_a,
+		 SRC_FILE_DB, (size_t)500, digest_a);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 181,
+	      "[ERROR:181] offline initial import failed");
+	CHECK(database_generation_report_for_tests(&before) == 0, 182,
+	      "[ERROR:182] offline initial report failed");
+	CHECK(before.generation == 1 && before.lmdb_generation == 1, 183,
+	      "[ERROR:183] initial LMDB generation mismatch");
+
+	atomic_store_explicit(&needs_flush, false, memory_order_release);
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_b,
+		 SRC_FILE_DB, (size_t)600, digest_b);
+	{
+		int fd = make_memfd_input(payload);
+
+		CHECK(fd != -1, 184,
+		      "[ERROR:184] offline compaction memfd failed");
+		rc = database_compact_memfd_for_tests(fd, &cfg);
+		close(fd);
+	}
+	CHECK(rc == 0, 185, "[ERROR:185] offline compaction failed");
+	CHECK(database_generation_report_for_tests(&after) == 0, 186,
+	      "[ERROR:186] offline compaction report failed");
+	CHECK(after.generation == before.generation + 1, 187,
+	      "[ERROR:187] trust generation did not advance");
+	CHECK(after.lmdb_generation == before.lmdb_generation + 1, 188,
+	      "[ERROR:188] LMDB environment generation did not advance");
+	CHECK(check_trust_database(path_a, NULL, -1) == 0, 189,
+	      "[ERROR:189] old environment record survived replacement");
+	CHECK(check_trust_database(path_b, NULL, -1) == 1, 190,
+	      "[ERROR:190] rebuilt environment record missing");
+	CHECK(atomic_load_explicit(&needs_flush, memory_order_acquire), 191,
+	      "[ERROR:191] offline compaction did not request cache flush");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 192,
+	      "[ERROR:192] offline compaction cleanup failed");
+	return 0;
+}
+
+static int test_lmdb_offline_compaction_preserves_busy_environment(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	void *held;
+	database_generation_test_report_t before, after;
+	const char *path_a = "/usr/bin/offline-preserve-a";
+	const char *path_b = "/usr/bin/offline-preserve-b";
+	const char *digest =
+		"5656565656565656565656565656565656565656565656565656565656565656";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 193, "[ERROR:193] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_a,
+		 SRC_FILE_DB, (size_t)700, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 194,
+	      "[ERROR:194] preserve initial import failed");
+	CHECK(database_generation_report_for_tests(&before) == 0, 195,
+	      "[ERROR:195] preserve initial report failed");
+
+	held = database_generation_hold_for_tests();
+	CHECK(held != NULL, 196,
+	      "[ERROR:196] preserve generation hold failed");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_b,
+		 SRC_FILE_DB, (size_t)800, digest);
+	{
+		int fd = make_memfd_input(payload);
+
+		CHECK(fd != -1, 197,
+		      "[ERROR:197] preserve compaction memfd failed");
+		rc = database_compact_memfd_for_tests(fd, &cfg);
+		close(fd);
+	}
+	CHECK(rc != 0, 198,
+	      "[ERROR:198] compaction unexpectedly swapped busy environment");
+	database_generation_release_for_tests(held);
+	CHECK(database_generation_report_for_tests(&after) == 0, 199,
+	      "[ERROR:199] preserve after report failed");
+	CHECK(after.generation == before.generation, 200,
+	      "[ERROR:200] failed compaction changed trust generation");
+	CHECK(after.lmdb_generation == before.lmdb_generation, 201,
+	      "[ERROR:201] failed compaction changed LMDB generation");
+	CHECK(check_trust_database(path_a, NULL, -1) == 1, 202,
+	      "[ERROR:202] old record missing after failed compaction");
+	CHECK(check_trust_database(path_b, NULL, -1) == 0, 203,
+	      "[ERROR:203] failed compaction published new record");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 204,
+	      "[ERROR:204] preserve compaction cleanup failed");
 	return 0;
 }
 
@@ -950,7 +1159,19 @@ int main(void)
 	if (rc)
 		return rc;
 
+	rc = test_lmdb_manual_resize_report_is_gated();
+	if (rc)
+		return rc;
+
 	rc = test_lmdb_startup_generation_resets();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_offline_compaction_swaps_environment();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_offline_compaction_preserves_busy_environment();
 	if (rc)
 		return rc;
 

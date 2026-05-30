@@ -963,7 +963,7 @@ void do_state_report(FILE *f, int shutdown)
 	database_config_report(f);
 
 	fprintf(f, "\nResource utilization:\n");
-	database_utilization_report(f);
+	database_utilization_report(f, &config);
 	do_cache_utilization_report(f);
 #ifdef HAVE_MALLINFO2
 	memory_use_report(f);

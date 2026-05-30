@@ -83,6 +83,7 @@ static const char *usage =
 "--check-status        Dump daemon health and configuration state\n"
 "--check-metrics       Dump daemon runtime counters and cache metrics\n"
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
+"--compact-trustdb     Rebuild and compact the daemon trustdb LMDB environment\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
 "--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
 "--check-rules [path]  Validate rules file syntax without loading\n"
@@ -119,6 +120,7 @@ static struct option long_opts[] =
 	{"check-status",0, NULL,  4 },
 	{"check-path",  0, NULL,  5 },
 	{"check-metrics",0, NULL, 14 },
+	{"compact-trustdb", 0, NULL, 15 },
 	{"check-rules",  2, NULL, 9 },
 	{"lint",	0, NULL, 10 },
 	{"reset-metrics", 0, NULL, 11 },
@@ -152,7 +154,7 @@ static void reset_config(void)
 	memset(&config, 0, sizeof(config));
 }
 
-typedef enum _reload_code { DB, RULES} reload_code;
+typedef enum _reload_code { DB, RULES, COMPACT } reload_code;
 
 static char *get_line(FILE *f)
 {
@@ -189,9 +191,12 @@ static int do_dump_db(void)
 	MDB_env *env;
 	MDB_txn *txn;
 	MDB_dbi dbi;
+	MDB_dbi metadata_dbi;
 	MDB_stat status;
 	MDB_cursor *cursor;
 	MDB_val key, val;
+	const char *active_name = DB_NAME;
+	char metadata_name[64];
 
 	rc = mdb_env_create(&env);
 	if (rc) {
@@ -199,7 +204,7 @@ static int do_dump_db(void)
 							mdb_strerror(rc));
 		return CLI_EXIT_DB_ERROR;
 	}
-	mdb_env_set_maxdbs(env, 2);
+	mdb_env_set_maxdbs(env, 128);
 	rc = mdb_env_open(env, DB_DIR, MDB_RDONLY|MDB_NOLOCK, 0660);
 	if (rc) {
 		fprintf(stderr, "mdb_env_open failed, error %d %s\n", rc,
@@ -225,7 +230,30 @@ static int do_dump_db(void)
 		exit_rc = CLI_EXIT_DB_ERROR;
 		goto env_close;
 	}
-	rc = mdb_dbi_open(txn, DB_NAME, MDB_DUPSORT, &dbi);
+	/*
+	 * The daemon publishes trust DB generations as named databases and
+	 * records the active name in metadata. Older databases did not have this
+	 * metadata, so fall back to DB_NAME for compatibility.
+	 */
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0, &metadata_dbi);
+	if (rc == 0) {
+		MDB_val meta_key, meta_value;
+
+		meta_key.mv_data = (void *)TRUST_DB_METADATA_KEY;
+		meta_key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
+		if (mdb_get(txn, metadata_dbi, &meta_key, &meta_value) == 0 &&
+		    meta_value.mv_size < 4096) {
+			char data[4096];
+			unsigned long ignored_generation;
+
+			memcpy(data, meta_value.mv_data, meta_value.mv_size);
+			data[meta_value.mv_size] = 0;
+			if (sscanf(data, "generation=%lu\nname=%63s",
+				   &ignored_generation, metadata_name) == 2)
+				active_name = metadata_name;
+		}
+	}
+	rc = mdb_dbi_open(txn, active_name, MDB_DUPSORT, &dbi);
 	if (rc) {
 		fprintf(stderr, "mdb_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));
@@ -561,10 +589,13 @@ static int do_reload(int code)
 
 	if (code == DB) {
 		snprintf(str, 32, "%c\n", RELOAD_TRUSTDB_COMMAND);
-		ret = write(fd, "1\n", strlen(str));
+		ret = write(fd, str, strlen(str));
 	} else if (code == RULES) {
 		snprintf(str, 32, "%c\n", RELOAD_RULES_COMMAND);
-		ret = write(fd, "3\n", strlen(str));
+		ret = write(fd, str, strlen(str));
+	} else if (code == COMPACT) {
+		snprintf(str, 32, "%c\n", COMPACT_TRUSTDB_COMMAND);
+		ret = write(fd, str, strlen(str));
 	}
 
 	if (ret == -1) {
@@ -1406,6 +1437,14 @@ int main(int argc, char * const argv[])
 		if (arg_count > 2)
 			goto args_err;
 		return do_status_report(REPORT_INTENT_METRICS, 0);
+		break;
+
+	case 15: // --compact-trustdb
+		if (lint_rules)
+			goto args_err;
+		if (arg_count > 2)
+			goto args_err;
+		return do_reload(COMPACT);
 		break;
 
 	case 7: { // --check-ignore_mounts

@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <poll.h>
 #include <pthread.h>
 #include <errno.h>
@@ -60,7 +61,14 @@
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
-typedef enum { DB_NO_OP, ONE_FILE, RELOAD_DB, FLUSH_CACHE, RELOAD_RULES } db_ops_t;
+typedef enum {
+	DB_NO_OP,
+	ONE_FILE,
+	RELOAD_DB,
+	FLUSH_CACHE,
+	RELOAD_RULES,
+	COMPACT_DB,
+} db_ops_t;
 enum autosize_plan_mode {
 	AUTOSIZE_STARTUP_INSPECTION,
 	AUTOSIZE_LIVE_INSPECTION,
@@ -78,12 +86,19 @@ enum autosize_plan_mode {
 #define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 90
 #define TRUST_DB_RELOAD_WORK_FACTOR 2
 #define TRUST_DB_REBUILD_TXN_RECORDS 4096
-#define TRUST_DB_MAX_NAMED_DBS 128
 #define TRUST_DB_GENERATION_NAME_SIZE 64
-#define TRUST_DB_METADATA_NAME "trust.meta"
-#define TRUST_DB_METADATA_KEY "current"
 #define TRUST_DB_GENERATION_SLOT_PREFIX "trust.slot"
 #define TRUST_DB_GENERATION_DB_SLOTS 32
+/*
+ * mdb_env_set_maxdbs() sizes LMDB's named-DB slot table for each
+ * transaction, and mdb_dbi_open() searches opened slots linearly. Keep the
+ * cap close to the reusable trust generation slots while leaving room for
+ * metadata, old DB names during migration, and future small additions.
+ */
+#define TRUST_DB_RESERVED_NAMED_DBS 8
+#define TRUST_DB_MAX_NAMED_DBS \
+	(TRUST_DB_GENERATION_DB_SLOTS + TRUST_DB_RESERVED_NAMED_DBS)
+#define TRUST_DB_COMPACT_REASON_SIZE 160
 /*
  * Trust database generation lifecycle
  * ===================================
@@ -149,15 +164,42 @@ enum autosize_plan_mode {
  *   readers drain. If drop fails, the retired generation is put back on the
  *   list so it is retried later instead of being forgotten.
  *
+ * LMDB environment generations:
+ * - Trust DB generations are logical content epochs inside one open LMDB
+ *   environment. They solve normal reload publication: new decisions can move
+ *   to a complete named database while old decisions finish on the previous
+ *   named database.
+ * - LMDB environment generations are physical storage epochs. They advance
+ *   only when fapolicyd closes the live environment and reopens a replacement
+ *   data.mdb. This is intentionally rarer than trust DB generation publish
+ *   because the environment contains LMDB's page allocation history, free
+ *   list, reader table relationship, and map high-water mark.
+ * - Offline rebuild uses backend memfd snapshots as the source of truth,
+ *   writes a complete replacement environment in a temporary directory,
+ *   validates that environment, and then swaps it during a controlled window
+ *   where decision readers are blocked and the live environment is closed.
+ *   If validation, rename, or reopen fails, the previous data.mdb is kept or
+ *   restored before readers are released.
+ * - The two generation layers complement each other. Normal reloads should
+ *   stay on the logical trust DB generation path because it keeps the hot path
+ *   available. Offline environment replacement is for compaction and
+ *   high-water reset after LMDB allocation churn, not for ordinary reload
+ *   publication.
+ *
  * Operator and QE signals:
  * - database_generation_snapshot() feeds the status and metrics headers with
  *   the active trust DB generation and entry count.
+ * - The same header also reports the active LMDB environment generation so an
+ *   operator can distinguish a normal trust-data publish from a physical
+ *   environment replacement.
  * - database_utilization_report() reports active pages, allocated high-water
  *   pages, retired generation count, oldest retired age, and max reclaim
  *   delay. Stable active pages with growing high-water pages point at LMDB
  *   reload working-set pressure. Non-zero retired count or growing oldest age
  *   means readers are holding old generations. Max reclaim delay shows the
- *   worst observed reader drain delay.
+ *   worst observed reader drain delay. Manual db_max_size deployments also
+ *   get a resize recommendation here when the map is below the same safe
+ *   reload target that auto sizing would use.
  * - database_metrics_report_reset() reports trust lookup count and reader-slot
  *   exhaustion. Reader-slot exhaustion indicates max reader pressure, not a
  *   generation leak.
@@ -206,6 +248,8 @@ static struct pollfd ffd[1] =  { {0, 0, 0} };
 static atomic_bool reload_db = false;
 static atomic_bool reload_db_active = false;
 static unsigned int autosize_reload_floor_mb;
+static unsigned int startup_compaction_target_mb;
+static unsigned int startup_compaction_fallback_mb;
 /*
  * IMA mismatch logging policy: five LOG_ERR entries, five LOG_CRIT entries,
  * one silence notice, then suppression to protect syslog from floods.
@@ -294,10 +338,31 @@ struct trust_db_generation {
 	struct trust_db_generation *next;
 };
 
+struct lmdb_environment_generation {
+	unsigned long generation;
+	time_t publish_time;
+};
+
+struct offline_lmdb {
+	char tmpdir[PATH_MAX];
+	MDB_env *env;
+	MDB_dbi metadata_dbi;
+	MDB_dbi trust_dbi;
+	unsigned int maxkeysize;
+	long entries;
+	unsigned long trust_generation;
+	unsigned long env_generation;
+};
+
 static struct trust_db_generation *active_generation;
 static struct trust_db_generation *retired_generations;
 static unsigned long next_generation = 1;
 static unsigned long max_generation_reclaim_delay;
+static pthread_mutex_t lmdb_environment_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct lmdb_environment_generation lmdb_environment = {
+	.generation = 0,
+	.publish_time = 0,
+};
 
 /*
  * lmdb_record - Parsed representation of a single LMDB value payload.
@@ -324,6 +389,18 @@ static int refresh_active_generation_metadata(void);
 static struct trust_db_generation *trust_db_generation_acquire(void);
 static void trust_db_generation_release(struct trust_db_generation *gen);
 static void trust_db_reclaim_retired(void);
+static int compact_trust_database(conf_t *config, const char *source_name);
+static int init_db_with_generations(const conf_t *config,
+	unsigned long trust_generation, unsigned long env_generation);
+static void check_db_size(const conf_t *config);
+static int trust_db_record_from_line(char *buff,
+	struct trust_db_record_input *record);
+static int trust_db_key_init_with_max(struct trust_db_key *key,
+	const char *idx, size_t idx_len, unsigned int maxkeysize);
+static void trust_db_key_destroy(struct trust_db_key *key);
+static int do_memfd_update_to_dbi_in_env(MDB_env *target_env, int memfd,
+	MDB_dbi target_dbi, unsigned int maxkeysize, long *entries);
+static void close_env(int do_close_dbi);
 static void log_lmdb_state(int priority, const char *context, int lmdb_rc);
 static void lock_trust_database_reader(void);
 static void unlock_trust_database_reader(void);
@@ -439,6 +516,10 @@ int database_set_location(const char *dir, const char *name)
 		next_generation = 1;
 		max_generation_reclaim_delay = 0;
 		pthread_mutex_unlock(&generation_lock);
+		pthread_mutex_lock(&lmdb_environment_lock);
+		lmdb_environment.generation = 0;
+		lmdb_environment.publish_time = 0;
+		pthread_mutex_unlock(&lmdb_environment_lock);
 	}
 
 	return 0;
@@ -473,6 +554,57 @@ static unsigned int configured_reader_limit(const conf_t *config)
 static void trust_metric_add(atomic_ulong *counter, unsigned long value)
 {
 	atomic_fetch_add_explicit(counter, value, memory_order_relaxed);
+}
+
+/*
+ * lmdb_environment_publish - update the physical LMDB environment epoch.
+ * @generation: generation number to report.
+ *
+ * Trust DB generations describe logical content publication. This environment
+ * generation describes the currently opened data.mdb file. It starts at one
+ * for a daemon run and advances only after controlled environment replacement.
+ */
+static void lmdb_environment_publish(unsigned long generation)
+{
+	pthread_mutex_lock(&lmdb_environment_lock);
+	lmdb_environment.generation = generation;
+	lmdb_environment.publish_time = time(NULL);
+	pthread_mutex_unlock(&lmdb_environment_lock);
+}
+
+/*
+ * lmdb_environment_next_generation - return the next environment epoch.
+ *
+ * The caller uses this before closing the old environment so the replacement
+ * reopen can publish a monotonic physical generation after it succeeds.
+ */
+static unsigned long lmdb_environment_next_generation(void)
+{
+	unsigned long generation;
+
+	pthread_mutex_lock(&lmdb_environment_lock);
+	generation = lmdb_environment.generation + 1;
+	if (generation == 0)
+		generation = 1;
+	pthread_mutex_unlock(&lmdb_environment_lock);
+
+	return generation;
+}
+
+/*
+ * lmdb_environment_snapshot - copy the current physical environment epoch.
+ * @generation: destination generation value.
+ * @publish_time: destination effective timestamp.
+ */
+static void lmdb_environment_snapshot(unsigned long *generation,
+				      time_t *publish_time)
+{
+	pthread_mutex_lock(&lmdb_environment_lock);
+	if (generation)
+		*generation = lmdb_environment.generation;
+	if (publish_time)
+		*publish_time = lmdb_environment.publish_time;
+	pthread_mutex_unlock(&lmdb_environment_lock);
 }
 
 /*
@@ -1017,26 +1149,26 @@ static int trust_db_metadata_parse(const char *data,
 }
 
 /*
- * trust_db_metadata_read - read current-generation metadata from LMDB.
- * @txn: Active transaction.
- * @metadata: Destination metadata.
+ * trust_db_metadata_read_from_dbi - read current-generation metadata.
+ * @txn: active transaction.
+ * @source_dbi: metadata DBI in the same environment as @txn.
+ * @metadata: destination metadata.
  *
- * Returns 0 on success, MDB_NOTFOUND when metadata is absent, or an LMDB/
- * parse error code.
+ * Offline rebuild validation cannot use the daemon globals because it opens a
+ * temporary LMDB environment beside the live one. Keep the metadata parser
+ * shared and pass the DBI explicitly so live and offline readers validate the
+ * same publication record.
  */
-static int trust_db_metadata_read(MDB_txn *txn,
-				  struct trust_db_metadata *metadata)
+static int trust_db_metadata_read_from_dbi(MDB_txn *txn, MDB_dbi source_dbi,
+					   struct trust_db_metadata *metadata)
 {
 	MDB_val key, value;
 	char data[BUFFER_SIZE];
 	int rc;
 
-	if (!metadata_dbi_init)
-		return EINVAL;
-
 	key.mv_data = (void *)TRUST_DB_METADATA_KEY;
 	key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
-	rc = mdb_get(txn, metadata_dbi, &key, &value);
+	rc = mdb_get(txn, source_dbi, &key, &value);
 	if (rc)
 		return rc;
 	if (value.mv_size >= sizeof(data))
@@ -1050,21 +1182,42 @@ static int trust_db_metadata_read(MDB_txn *txn,
 }
 
 /*
- * trust_db_metadata_write - persist current-generation publication metadata.
+ * trust_db_metadata_read - read current-generation metadata from live LMDB.
+ * @txn: Active transaction.
+ * @metadata: Destination metadata.
+ *
+ * Returns 0 on success, MDB_NOTFOUND when metadata is absent, or an LMDB/
+ * parse error code.
+ */
+static int trust_db_metadata_read(MDB_txn *txn,
+				  struct trust_db_metadata *metadata)
+{
+	if (!metadata_dbi_init)
+		return EINVAL;
+
+	return trust_db_metadata_read_from_dbi(txn, metadata_dbi, metadata);
+}
+
+/*
+ * trust_db_metadata_write_to_env - persist publication metadata.
+ * @target_env: LMDB environment containing @txn.
+ * @target_metadata_dbi: metadata DBI in @target_env.
  * @txn: Writable transaction that makes the metadata visible atomically.
  * @gen: Generation being published or refreshed.
  *
  * Returns 0 on success or an LMDB/formatting error.
  */
-static int trust_db_metadata_write(MDB_txn *txn,
-				   struct trust_db_generation *gen)
+static int trust_db_metadata_write_to_env(MDB_env *target_env,
+					  MDB_dbi target_metadata_dbi,
+					  MDB_txn *txn,
+					  struct trust_db_generation *gen)
 {
 	MDB_envinfo info;
 	MDB_val key, value;
 	char data[BUFFER_SIZE];
 	int len, rc;
 
-	rc = mdb_env_info(env, &info);
+	rc = mdb_env_info(target_env, &info);
 	if (rc)
 		return rc;
 
@@ -1100,7 +1253,20 @@ static int trust_db_metadata_write(MDB_txn *txn,
 	key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
 	value.mv_data = data;
 	value.mv_size = len;
-	return mdb_put(txn, metadata_dbi, &key, &value, 0);
+	return mdb_put(txn, target_metadata_dbi, &key, &value, 0);
+}
+
+/*
+ * trust_db_metadata_write - persist live current-generation metadata.
+ * @txn: writable transaction that makes the metadata visible atomically.
+ * @gen: generation being published or refreshed.
+ *
+ * Returns 0 on success or an LMDB/formatting error.
+ */
+static int trust_db_metadata_write(MDB_txn *txn,
+				   struct trust_db_generation *gen)
+{
+	return trust_db_metadata_write_to_env(env, metadata_dbi, txn, gen);
 }
 
 /*
@@ -1279,6 +1445,8 @@ static void trust_db_generation_report_snapshot(
 	}
 	report->max_reclaim_delay = max_generation_reclaim_delay;
 	pthread_mutex_unlock(&generation_lock);
+	lmdb_environment_snapshot(&report->lmdb_generation,
+				  &report->lmdb_publish_time);
 }
 
 /*
@@ -1315,106 +1483,795 @@ static int lmdb_file_path(char *buf, size_t buf_size, const char *name)
 }
 
 /*
- * compact_existing_lmdb - compact the on-disk environment before startup.
- * @target_mb: autosize target that will be used when init_db() reopens LMDB.
+ * remove_lmdb_environment_dir - remove temporary LMDB files and directory.
+ * @dir: temporary directory created by mkdtemp().
  *
- * A live mdb_env_set_mapsize() cannot move pages; if the file high-water mark
- * has grown to the emergency map size, LMDB may silently keep the larger map
- * even when the active named DB needs far less space. Startup is the one
- * point where fapolicyd can safely replace data.mdb before publishing a live
- * environment. Use LMDB's compact copy to rewrite only live pages, then
- * atomically replace data.mdb. The existing lock.mdb and db.ver are left in
- * place.
- *
- * Returns 0 on success or an errno/LMDB error code on failure.
+ * This cleanup is deliberately narrow. Offline rebuild temporary directories
+ * should only contain LMDB's data and lock files; anything else is left behind
+ * so an unexpected path does not get silently deleted.
  */
-static int compact_existing_lmdb(unsigned int target_mb)
+static void remove_lmdb_environment_dir(const char *dir)
 {
-	MDB_env *copy_env = NULL;
-	char tmpdir[PATH_MAX];
+	char path[PATH_MAX];
+
+	if (dir == NULL || dir[0] == 0)
+		return;
+
+	if (dir_file_path(path, sizeof(path), dir, "data.mdb") == 0)
+		unlink(path);
+	if (dir_file_path(path, sizeof(path), dir, "lock.mdb") == 0)
+		unlink(path);
+	rmdir(dir);
+}
+
+/*
+ * trust_db_generation_readers_active - check if environment replacement waits.
+ * @reason: optional text destination for a human-readable blocker.
+ * @reason_size: size of @reason.
+ *
+ * The update rwlock blocks normal decision reads before a controlled swap, but
+ * this check catches maintenance/test references and unreclaimed retired named
+ * DBs. Closing an LMDB environment while a generation can still be referenced
+ * would turn a logical generation safety feature into a use-after-close bug.
+ *
+ * Returns 1 when the environment must not be replaced, 0 when it is quiescent.
+ */
+static int trust_db_generation_readers_active(char *reason,
+					      size_t reason_size)
+{
+	struct trust_db_generation *gen;
+	int busy = 0;
+
+	pthread_mutex_lock(&generation_lock);
+	if (active_generation && active_generation->readers) {
+		busy = 1;
+		if (reason && reason_size)
+			snprintf(reason, reason_size,
+				 "active generation has %lu readers",
+				 active_generation->readers);
+	} else if (retired_generations) {
+		busy = 1;
+		gen = retired_generations;
+		if (reason && reason_size)
+			snprintf(reason, reason_size,
+				 "retired generation %lu is still pinned or unreclaimed",
+				 gen->generation);
+	}
+	pthread_mutex_unlock(&generation_lock);
+
+	return busy;
+}
+
+/*
+ * trust_db_current_generation_number - read active logical generation number.
+ *
+ * The controlled swap saves this before close_env() forgets in-memory handles.
+ * If restoring the old environment is needed, reports continue to show the
+ * same trust DB generation instead of appearing to publish new trust content.
+ */
+static unsigned long trust_db_current_generation_number(void)
+{
+	unsigned long generation = 1;
+
+	pthread_mutex_lock(&generation_lock);
+	if (active_generation)
+		generation = active_generation->generation;
+	pthread_mutex_unlock(&generation_lock);
+
+	return generation;
+}
+
+/*
+ * trust_db_next_generation_number - reserve the next logical generation id.
+ *
+ * Offline environment replacement publishes a complete trust database built
+ * from current backend snapshots. In a live daemon that is a real logical
+ * trust DB publish, so it consumes the same monotonic generation sequence used
+ * by named-DB reload publication.
+ */
+static unsigned long trust_db_next_generation_number(void)
+{
+	unsigned long generation;
+
+	pthread_mutex_lock(&generation_lock);
+	generation = next_generation;
+	if (generation == 0)
+		generation = 1;
+	pthread_mutex_unlock(&generation_lock);
+
+	return generation;
+}
+
+/*
+ * open_offline_lmdb - create a temporary replacement LMDB environment.
+ * @candidate: replacement environment state to initialize.
+ * @config: map/read sizing source.
+ *
+ * The replacement is built beside the live environment so data.mdb can be
+ * renamed into place. It starts with one logical trust DB named slot 0; after
+ * publication, later normal reloads can rotate through the usual slots.
+ *
+ * Returns 0 on success or an errno/LMDB error code.
+ */
+static int open_offline_lmdb(struct offline_lmdb *candidate,
+			     const conf_t *config) __nonnull ((1, 2));
+static int open_offline_lmdb(struct offline_lmdb *candidate,
+			     const conf_t *config)
+{
+	MDB_txn *txn = NULL;
+	struct trust_db_generation gen;
+	char name[TRUST_DB_GENERATION_NAME_SIZE];
+	unsigned int flags = MDB_MAPASYNC|MDB_NOSYNC;
+	int rc;
+
+#ifndef DEBUG
+	flags |= MDB_WRITEMAP;
+#endif
+
+	memset(candidate->tmpdir, 0, sizeof(candidate->tmpdir));
+	candidate->env = NULL;
+	candidate->metadata_dbi = 0;
+	candidate->trust_dbi = 0;
+	candidate->maxkeysize = 0;
+	candidate->entries = 0;
+
+	rc = lmdb_file_path(candidate->tmpdir, sizeof(candidate->tmpdir),
+			    ".offline-rebuild.XXXXXX");
+	if (rc)
+		return rc;
+	if (mkdtemp(candidate->tmpdir) == NULL)
+		return errno;
+
+	rc = trust_db_generation_slot_name(0, name);
+	if (rc)
+		goto out_remove;
+
+	memset(&gen, 0, sizeof(gen));
+	gen.generation = candidate->trust_generation;
+	snprintf(gen.name, sizeof(gen.name), "%s", name);
+
+	rc = mdb_env_create(&candidate->env);
+	if (rc)
+		goto out_remove;
+	rc = mdb_env_set_maxdbs(candidate->env, TRUST_DB_MAX_NAMED_DBS);
+	if (rc)
+		goto out_close;
+	rc = mdb_env_set_mapsize(candidate->env,
+				 (size_t)config->db_max_size * MEGABYTE);
+	if (rc)
+		goto out_close;
+	rc = mdb_env_set_maxreaders(candidate->env,
+				    configured_reader_limit(config));
+	if (rc)
+		goto out_close;
+	rc = mdb_env_open(candidate->env, candidate->tmpdir, flags, 0660);
+	if (rc)
+		goto out_close;
+
+	candidate->maxkeysize = mdb_env_get_maxkeysize(candidate->env);
+	rc = mdb_txn_begin(candidate->env, NULL, 0, &txn);
+	if (rc)
+		goto out_close;
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, MDB_CREATE,
+			  &candidate->metadata_dbi);
+	if (rc)
+		goto out_abort;
+	rc = mdb_dbi_open(txn, gen.name, MDB_CREATE|MDB_DUPSORT,
+			  &candidate->trust_dbi);
+	if (rc)
+		goto out_abort;
+	rc = mdb_txn_commit(txn);
+	txn = NULL;
+	if (rc)
+		goto out_close;
+
+	return 0;
+
+out_abort:
+	mdb_txn_abort(txn);
+out_close:
+	if (candidate->env) {
+		mdb_env_close(candidate->env);
+		candidate->env = NULL;
+	}
+out_remove:
+	remove_lmdb_environment_dir(candidate->tmpdir);
+	candidate->tmpdir[0] = 0;
+	return rc;
+}
+
+/*
+ * write_offline_metadata - write replacement environment publication metadata.
+ * @candidate: populated replacement environment.
+ *
+ * Returns 0 on success or an LMDB error code.
+ */
+static int write_offline_metadata(struct offline_lmdb *candidate)
+	__nonnull ((1));
+static int write_offline_metadata(struct offline_lmdb *candidate)
+{
+	MDB_txn *txn = NULL;
+	struct trust_db_generation gen;
+	char name[TRUST_DB_GENERATION_NAME_SIZE];
+	int rc;
+
+	rc = trust_db_generation_slot_name(0, name);
+	if (rc)
+		return rc;
+
+	memset(&gen, 0, sizeof(gen));
+	gen.generation = candidate->trust_generation;
+	snprintf(gen.name, sizeof(gen.name), "%s", name);
+	gen.handle = candidate->trust_dbi;
+	gen.publish_time = time(NULL);
+
+	rc = mdb_txn_begin(candidate->env, NULL, 0, &txn);
+	if (rc)
+		return rc;
+	rc = trust_db_metadata_write_to_env(candidate->env,
+					    candidate->metadata_dbi, txn, &gen);
+	if (rc) {
+		mdb_txn_abort(txn);
+		return rc;
+	}
+
+	candidate->entries = gen.entries;
+	return mdb_txn_commit(txn);
+}
+
+/*
+ * import_backends_to_offline_lmdb - copy backend snapshots into temp LMDB.
+ * @candidate: replacement environment being populated.
+ *
+ * Returns 0 on success or a write/import error code.
+ */
+static int import_backends_to_offline_lmdb(struct offline_lmdb *candidate)
+{
+	long entries;
+	int rc = 0;
+
+	for (backend_entry *be = backend_get_first();
+	     be != NULL && !stop; be = be->next) {
+		msg(LOG_INFO, "Loading trust data from %s backend",
+		    be->backend->name);
+		if (be->backend->memfd == -1) {
+			msg(LOG_ERR,
+			    "%s backend does not provide a memfd snapshot",
+			    be->backend->name);
+			return EINVAL;
+		}
+		rc = do_memfd_update_to_dbi_in_env(candidate->env,
+			be->backend->memfd, candidate->trust_dbi,
+			candidate->maxkeysize, &entries);
+		if (rc) {
+			msg(LOG_ERR,
+			    "Failed to import trust data from %s backend",
+			    be->backend->name);
+			return rc;
+		}
+		be->backend->entries = entries;
+		candidate->entries += entries;
+	}
+
+	if (stop)
+		return EINTR;
+	return 0;
+}
+
+/*
+ * validate_offline_lmdb - validate replacement LMDB before publication.
+ * @candidate: closed replacement environment.
+ *
+ * MVP validation is intentionally structural. Reopen the candidate read-only,
+ * verify that publication metadata names an existing DUPSORT trust DB, and
+ * compare LMDB's entry count with the backend import count. Full record-by-
+ * record checking remains the normal check-trustdb responsibility.
+ */
+static int validate_offline_lmdb(const struct offline_lmdb *candidate)
+	__nonnull ((1));
+static int validate_offline_lmdb(const struct offline_lmdb *candidate)
+{
+	MDB_env *validate_env = NULL;
+	MDB_txn *txn = NULL;
+	MDB_dbi validate_metadata_dbi;
+	MDB_dbi validate_trust_dbi;
+	MDB_stat stat;
+	struct trust_db_metadata metadata;
+	int rc;
+
+	rc = mdb_env_create(&validate_env);
+	if (rc)
+		return rc;
+	rc = mdb_env_set_maxdbs(validate_env, TRUST_DB_MAX_NAMED_DBS);
+	if (rc)
+		goto out_close;
+	rc = mdb_env_open(validate_env, candidate->tmpdir,
+			  MDB_RDONLY|MDB_NOLOCK, 0);
+	if (rc)
+		goto out_close;
+
+	rc = mdb_txn_begin(validate_env, NULL, MDB_RDONLY, &txn);
+	if (rc)
+		goto out_close;
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0,
+			  &validate_metadata_dbi);
+	if (rc)
+		goto out_abort;
+	rc = trust_db_metadata_read_from_dbi(txn, validate_metadata_dbi,
+					     &metadata);
+	if (rc)
+		goto out_abort;
+	rc = mdb_dbi_open(txn, metadata.name, MDB_DUPSORT,
+			  &validate_trust_dbi);
+	if (rc)
+		goto out_abort;
+	rc = mdb_stat(txn, validate_trust_dbi, &stat);
+	if (rc)
+		goto out_abort;
+
+	if ((long)stat.ms_entries != candidate->entries ||
+	    metadata.entries != candidate->entries) {
+		msg(LOG_ERR,
+		    "Rebuilt trust DB validation count mismatch: stat=%zu metadata=%ld backend=%ld",
+		    stat.ms_entries, metadata.entries, candidate->entries);
+		rc = EINVAL;
+	} else {
+		rc = 0;
+	}
+
+out_abort:
+	if (txn)
+		mdb_txn_abort(txn);
+out_close:
+	mdb_env_close(validate_env);
+	return rc;
+}
+
+/*
+ * build_offline_lmdb_from_backends - build and validate replacement LMDB.
+ * @config: active daemon configuration.
+ * @candidate: replacement environment plan/result.
+ *
+ * Returns 0 when @candidate contains a complete validated replacement
+ * environment. On failure the temporary environment is removed and the live
+ * environment has not been touched.
+ */
+static int build_offline_lmdb_from_backends(conf_t *config,
+					    struct offline_lmdb *candidate)
+{
+	int rc;
+
+	// Build in isolation while the live LMDB environment remains open.
+	rc = open_offline_lmdb(candidate, config);
+	if (rc)
+		return rc;
+
+	// Backend memfds are the authoritative trust source for replacement.
+	rc = import_backends_to_offline_lmdb(candidate);
+	if (rc)
+		goto out_close;
+
+	// Metadata makes the candidate self-describing after reopen.
+	rc = write_offline_metadata(candidate);
+	if (rc)
+		goto out_close;
+	rc = mdb_env_sync(candidate->env, 1);
+	if (rc)
+		goto out_close;
+
+	mdb_env_close(candidate->env);
+	candidate->env = NULL;
+
+	// Validate the persisted files, not the writer's in-memory handles.
+	rc = validate_offline_lmdb(candidate);
+	if (rc)
+		goto out_remove;
+
+	return 0;
+
+out_close:
+	if (candidate->env) {
+		mdb_env_close(candidate->env);
+		candidate->env = NULL;
+	}
+out_remove:
+	remove_lmdb_environment_dir(candidate->tmpdir);
+	candidate->tmpdir[0] = 0;
+	return rc;
+}
+
+struct lmdb_swap_backup {
+	char data_backup[PATH_MAX];
+	int have_data_backup;
+};
+
+/*
+ * lmdb_swap_backup_init - create an old-data backup path.
+ * @backup: backup descriptor to initialize.
+ *
+ * Returns 0 on success or errno on failure.
+ */
+static int lmdb_swap_backup_init(struct lmdb_swap_backup *backup)
+{
+	int fd;
+	int rc;
+
+	memset(backup, 0, sizeof(*backup));
+	rc = lmdb_file_path(backup->data_backup, sizeof(backup->data_backup),
+			    "data.mdb.compact-backup.XXXXXX");
+	if (rc)
+		return rc;
+
+	fd = mkstemp(backup->data_backup);
+	if (fd < 0)
+		return errno;
+	close(fd);
+	unlink(backup->data_backup);
+	return 0;
+}
+
+/*
+ * swap_lmdb_data_file - publish replacement data.mdb on disk.
+ * @tmpdir: validated temporary LMDB environment.
+ * @backup: receives a hard-link backup of the previous data.mdb.
+ *
+ * Only data.mdb is replaced. The live lock.mdb is removed after the live
+ * environment is closed so LMDB recreates a reader table matching the reopened
+ * environment. If anything fails before data.mdb is renamed, the old file is
+ * still the live file.
+ */
+static int swap_lmdb_data_file(const char *tmpdir,
+			       struct lmdb_swap_backup *backup)
+{
 	char live_data[PATH_MAX];
-	char compact_data[PATH_MAX];
-	char backup_data[PATH_MAX];
-	int backup_fd;
+	char live_lock[PATH_MAX];
+	char tmp_data[PATH_MAX];
 	int rc;
 
 	rc = lmdb_file_path(live_data, sizeof(live_data), "data.mdb");
 	if (rc)
 		return rc;
-
-	rc = lmdb_file_path(backup_data, sizeof(backup_data),
-			    "data.mdb.autosize.XXXXXX");
+	rc = lmdb_file_path(live_lock, sizeof(live_lock), "lock.mdb");
+	if (rc)
+		return rc;
+	rc = dir_file_path(tmp_data, sizeof(tmp_data), tmpdir, "data.mdb");
+	if (rc)
+		return rc;
+	rc = lmdb_swap_backup_init(backup);
 	if (rc)
 		return rc;
 
-	rc = lmdb_file_path(tmpdir, sizeof(tmpdir), ".autosize-compact.XXXXXX");
+	if (link(live_data, backup->data_backup) == 0) {
+		backup->have_data_backup = 1;
+	} else if (errno != ENOENT) {
+		rc = errno;
+		return rc;
+	}
+
+	if (rename(tmp_data, live_data) < 0) {
+		rc = errno;
+		if (backup->have_data_backup)
+			unlink(backup->data_backup);
+		return rc;
+	}
+
+	/*
+	 * The data file is authoritative. Removing the stale lock file avoids
+	 * carrying old reader slots into an environment generation that has no
+	 * live readers yet. Missing lock files are harmless because LMDB creates
+	 * one on reopen.
+	 */
+	if (unlink(live_lock) && errno != ENOENT)
+		msg(LOG_WARNING, "Could not remove stale LMDB lock file: %s",
+		    strerror(errno));
+
+	return 0;
+}
+
+/*
+ * restore_lmdb_data_file - restore old data.mdb after failed replacement.
+ * @backup: backup descriptor from swap_lmdb_data_file().
+ *
+ * Returns 0 on success or errno on restore failure.
+ */
+static int restore_lmdb_data_file(const struct lmdb_swap_backup *backup)
+{
+	char live_data[PATH_MAX];
+	char live_lock[PATH_MAX];
+	int rc;
+
+	rc = lmdb_file_path(live_data, sizeof(live_data), "data.mdb");
+	if (rc)
+		return rc;
+	rc = lmdb_file_path(live_lock, sizeof(live_lock), "lock.mdb");
 	if (rc)
 		return rc;
 
-	if (mkdtemp(tmpdir) == NULL)
+	if (backup->have_data_backup) {
+		if (rename(backup->data_backup, live_data) < 0)
+			return errno;
+	} else if (unlink(live_data) && errno != ENOENT) {
 		return errno;
-
-	rc = mdb_env_create(&copy_env);
-	if (rc)
-		goto out_remove_dir;
-
-	rc = mdb_env_set_maxdbs(copy_env, 2);
-	if (rc)
-		goto out_close;
-
-	rc = mdb_env_open(copy_env, data_dir, MDB_RDONLY, 0);
-	if (rc)
-		goto out_close;
-
-	rc = mdb_env_copy2(copy_env, tmpdir, MDB_CP_COMPACT);
-	if (rc)
-		goto out_close;
-
-	mdb_env_close(copy_env);
-	copy_env = NULL;
-
-	rc = dir_file_path(compact_data, sizeof(compact_data), tmpdir,
-			   "data.mdb");
-	if (rc)
-		goto out_remove_dir;
-
-	backup_fd = mkstemp(backup_data);
-	if (backup_fd < 0) {
-		rc = errno;
-		goto out_remove_dir;
 	}
-	close(backup_fd);
-	unlink(backup_data);
+	if (unlink(live_lock) && errno != ENOENT)
+		return errno;
+	return 0;
+}
 
-	if (link(live_data, backup_data) < 0) {
-		rc = errno;
-		goto out_remove_dir;
-	}
+/*
+ * finish_lmdb_swap_backup - remove old-data backup after successful reopen.
+ * @backup: backup descriptor from swap_lmdb_data_file().
+ */
+static void finish_lmdb_swap_backup(const struct lmdb_swap_backup *backup)
+{
+	if (backup->have_data_backup)
+		unlink(backup->data_backup);
+}
 
-	if (rename(compact_data, live_data) < 0) {
-		rc = errno;
-		unlink(backup_data);
-		goto out_remove_dir;
+/*
+ * reopen_old_environment_after_swap_failure - restore and reopen old LMDB.
+ * @config: daemon configuration. db_max_size must already describe old env.
+ * @backup: old data.mdb backup.
+ * @old_trust_generation: logical generation to preserve in reports.
+ * @old_env_generation: physical generation to preserve in reports.
+ *
+ * Returns 0 when the old environment was restored and reopened.
+ */
+static int reopen_old_environment_after_swap_failure(conf_t *config,
+		const struct lmdb_swap_backup *backup,
+		unsigned long old_trust_generation,
+		unsigned long old_env_generation)
+{
+	int rc;
+
+	rc = restore_lmdb_data_file(backup);
+	if (rc) {
+		msg(LOG_ERR,
+		    "Failed to restore previous LMDB environment after compaction failure: %s",
+		    strerror(rc));
+		return rc;
 	}
 
-	unlink(backup_data);
-	msg(LOG_INFO,
-	    "autosize: compacted trust DB before startup reopen at %u MiB",
-	    target_mb);
-	rc = 0;
-
-out_close:
-	if (copy_env)
-		mdb_env_close(copy_env);
-out_remove_dir:
-	if (dir_file_path(compact_data, sizeof(compact_data), tmpdir,
-			  "data.mdb") == 0)
-		unlink(compact_data);
-	if (dir_file_path(compact_data, sizeof(compact_data), tmpdir,
-			  "lock.mdb") == 0)
-		unlink(compact_data);
-	rmdir(tmpdir);
+	rc = init_db_with_generations(config, old_trust_generation,
+				      old_env_generation);
+	if (rc)
+		msg(LOG_ERR,
+		    "Failed to reopen restored LMDB environment: init_db() (%d)",
+		    rc);
 	return rc;
+}
+
+/*
+ * publish_offline_lmdb - swap a validated temp environment into service.
+ * @config: active daemon configuration.
+ * @candidate: validated temporary LMDB environment.
+ *
+ * The caller has already done slow build and validation. This function owns
+ * the short maintenance window: block readers, verify no pinned generation
+ * remains, close the live environment, rename data.mdb, and reopen. Any
+ * failure before a successful reopen attempts to restore and reopen the old
+ * environment before releasing the update lock.
+ */
+static int publish_offline_lmdb(conf_t *config,
+		const struct offline_lmdb *candidate) __nonnull ((1, 2));
+static int publish_offline_lmdb(conf_t *config,
+				const struct offline_lmdb *candidate)
+{
+	struct lmdb_swap_backup backup;
+	char reason[TRUST_DB_COMPACT_REASON_SIZE];
+	unsigned long old_trust_generation;
+	unsigned long old_env_generation;
+	int rc;
+
+	old_trust_generation = trust_db_current_generation_number();
+	lmdb_environment_snapshot(&old_env_generation, NULL);
+	if (old_env_generation == 0)
+		old_env_generation = 1;
+
+	lock_update_thread();
+
+	// Enter the short maintenance window only after the candidate is ready.
+	trust_db_reclaim_retired();
+	if (trust_db_generation_readers_active(reason, sizeof(reason))) {
+		msg(LOG_WARNING,
+		    "Trust DB compaction postponed: %s", reason);
+		unlock_update_thread();
+		return EBUSY;
+	}
+
+	// No live generations are pinned; close LMDB before replacing data.mdb.
+	close_env(1);
+	rc = swap_lmdb_data_file(candidate->tmpdir, &backup);
+	if (rc) {
+		int reopen_rc;
+
+		msg(LOG_ERR, "Could not publish rebuilt LMDB environment: %s",
+		    strerror(rc));
+		reopen_rc = init_db_with_generations(config,
+				old_trust_generation, old_env_generation);
+		unlock_update_thread();
+		return reopen_rc ? reopen_rc : rc;
+	}
+
+	// Publication is complete only after the replacement reopens cleanly.
+	rc = init_db_with_generations(config, candidate->trust_generation,
+				      candidate->env_generation);
+	if (rc) {
+		msg(LOG_ERR,
+		    "Could not reopen rebuilt LMDB environment: init_db() (%d)",
+		    rc);
+		rc = reopen_old_environment_after_swap_failure(config,
+				&backup, old_trust_generation,
+				old_env_generation);
+		unlock_update_thread();
+		return rc ? rc : EIO;
+	}
+
+	finish_lmdb_swap_backup(&backup);
+	unlock_update_thread();
+	return 0;
+}
+
+/*
+ * install_offline_lmdb_at_startup - publish replacement before daemon starts.
+ * @config: daemon configuration.
+ * @candidate: validated temporary LMDB environment.
+ *
+ * Startup has no live LMDB readers yet, but it still uses the same backup and
+ * restore rules as the runtime path. The function leaves an LMDB environment
+ * open for the rest of init_database().
+ */
+static int install_offline_lmdb_at_startup(conf_t *config,
+				const struct offline_lmdb *candidate)
+{
+	struct lmdb_swap_backup backup;
+	int rc;
+
+	rc = swap_lmdb_data_file(candidate->tmpdir, &backup);
+	if (rc)
+		return rc;
+
+	rc = init_db_with_generations(config, candidate->trust_generation,
+				      candidate->env_generation);
+	if (rc) {
+		unsigned int compact_target = config->db_max_size;
+
+		msg(LOG_ERR,
+		    "Could not open rebuilt startup LMDB environment: init_db() (%d)",
+		    rc);
+		config->db_max_size = startup_compaction_fallback_mb;
+		if (reopen_old_environment_after_swap_failure(config, &backup,
+				1, 1) == 0) {
+			msg(LOG_WARNING,
+			    "Startup trust DB compaction at %u MiB failed; previous environment preserved",
+			    compact_target);
+			return UPDATE_DB_PRESERVED;
+		}
+		return rc;
+	}
+
+	finish_lmdb_swap_backup(&backup);
+	return 0;
+}
+
+/*
+ * compact_trust_database - rebuild and replace the LMDB environment.
+ * @config: active daemon configuration.
+ * @source: caller category for logs/status.
+ *
+ * Backend snapshots must already be loaded. This keeps the admin path explicit
+ * about when package/trust-file state is refreshed and avoids hidden
+ * filesystem swaps during ordinary reloads.
+ */
+static int compact_trust_database(conf_t *config, const char *source_name)
+{
+	struct offline_lmdb candidate = { 0 };
+	int rc;
+
+	candidate.trust_generation = trust_db_next_generation_number();
+	candidate.env_generation = lmdb_environment_next_generation();
+	msg(LOG_INFO,
+	    "Starting %s trust DB compaction into LMDB environment generation %lu",
+	    source_name, candidate.env_generation);
+
+	// Slow path: build and validate a complete replacement off to the side.
+	rc = build_offline_lmdb_from_backends(config, &candidate);
+	if (rc)
+		goto out_status;
+
+	// Fast path: briefly close/reopen the live environment for the swap.
+	rc = publish_offline_lmdb(config, &candidate);
+	remove_lmdb_environment_dir(candidate.tmpdir);
+	if (rc)
+		goto out_status;
+
+	atomic_store_explicit(&needs_flush, true, memory_order_release);
+	mdb_env_sync(env, 1);
+	check_db_size(config);
+
+out_status:
+	if (rc) {
+		msg(LOG_ERR,
+		    "Trust DB compaction from %s failed (%s); previous environment preserved",
+		    source_name, mdb_strerror(rc));
+	} else {
+		msg(LOG_INFO,
+		    "Trust DB compaction from %s published LMDB environment generation %lu",
+		    source_name, candidate.env_generation);
+	}
+
+	return rc;
+}
+
+/*
+ * compact_trust_database_at_startup - rebuild compact environment before use.
+ * @config: active daemon configuration.
+ *
+ * Backend snapshots must already be loaded. On build/swap failure this leaves
+ * the old environment open when possible so startup can continue with the
+ * preserved trust DB instead of failing closed due only to compaction.
+ */
+static int compact_trust_database_at_startup(conf_t *config)
+{
+	struct offline_lmdb candidate = {
+		.trust_generation = 1,
+		.env_generation = 1,
+	};
+	int rc;
+
+	msg(LOG_INFO,
+	    "Starting startup trust DB compaction into a new LMDB environment");
+
+	// Startup has backend snapshots but no live LMDB readers yet.
+	rc = build_offline_lmdb_from_backends(config, &candidate);
+	if (rc)
+		goto out_failed;
+
+	rc = install_offline_lmdb_at_startup(config, &candidate);
+	remove_lmdb_environment_dir(candidate.tmpdir);
+	if (rc == UPDATE_DB_PRESERVED) {
+		return 0;
+	}
+	if (rc)
+		goto out_failed;
+
+	check_db_size(config);
+	msg(LOG_INFO, "Startup trust DB compaction completed");
+	return 0;
+
+out_failed:
+	if (candidate.tmpdir[0])
+		remove_lmdb_environment_dir(candidate.tmpdir);
+	config->db_max_size = startup_compaction_fallback_mb;
+	if (env == NULL) {
+		int open_rc = init_db_with_generations(config, 1, 1);
+
+		if (open_rc)
+			return open_rc;
+	}
+	msg(LOG_WARNING,
+	    "Startup trust DB compaction failed (%s); previous environment preserved",
+	    mdb_strerror(rc));
+	return 0;
+}
+
+/*
+ * mark_startup_compaction_needed - remember startup compaction recommendation.
+ * @target_mb: compacted map size selected by autosize.
+ * @fallback_mb: current map size to restore if compaction fails.
+ *
+ * Autosize inspection runs before backend snapshots are loaded. Store the
+ * recommendation so init_database() can build the replacement from backend
+ * truth after backend_load() succeeds.
+ */
+static void mark_startup_compaction_needed(unsigned int target_mb,
+					   unsigned int fallback_mb)
+{
+	msg(LOG_INFO,
+	    "autosize: startup will rebuild compact trust DB environment at %u MiB",
+	    target_mb);
+	startup_compaction_target_mb = target_mb;
+	startup_compaction_fallback_mb = fallback_mb;
 }
 
 /* autosize_database - compute new map size when utilisation drifts
@@ -1463,15 +2320,7 @@ static int autosize_database(conf_t *config, enum autosize_plan_mode mode)
 	target_mb = autosize_effective_target_mb(&state, mode);
 	if (mode == AUTOSIZE_STARTUP_INSPECTION &&
 	    target_mb < state.current_mb) {
-		rc = compact_existing_lmdb(target_mb);
-		if (rc) {
-			msg(LOG_WARNING,
-			    "autosize: startup compaction failed (%s) - "
-			    "keeping %u MiB",
-			    mdb_strerror(rc), state.current_mb);
-			config->db_max_size = state.current_mb;
-			return 0;
-		}
+		mark_startup_compaction_needed(target_mb, state.current_mb);
 	}
 
 	return 1;
@@ -1610,13 +2459,12 @@ static int autosize_reload_preflight(conf_t *config)
  *
  * Returns 0 on success or a non-zero LMDB error code.
  */
-static int init_dbi(void)
+static int init_dbi(unsigned long generation)
 {
 	MDB_txn *txn;
 	struct trust_db_metadata metadata;
 	struct trust_db_generation *gen = NULL;
 	const char *active_name = db;
-	unsigned long generation = 1;
 	unsigned int active_flags = MDB_DUPSORT|MDB_CREATE;
 	int rc;
 
@@ -1689,7 +2537,9 @@ static int init_dbi(void)
 	return 0;
 }
 
-static int init_db(const conf_t *config)
+static int init_db_with_generations(const conf_t *config,
+				    unsigned long trust_generation,
+				    unsigned long env_generation)
 {
 	unsigned int flags = MDB_MAPASYNC|MDB_NOSYNC;
 	int rc;
@@ -1733,7 +2583,7 @@ static int init_db(const conf_t *config)
 		return 5;
 	}
 
-	rc = init_dbi();
+	rc = init_dbi(trust_generation);
 	if (rc) {
 		/* Clean up environment on failure */
 		mdb_env_close(env);
@@ -1750,7 +2600,13 @@ static int init_db(const conf_t *config)
 	bin_symlink = is_link("/bin");
 	sbin_symlink = is_link("/sbin");
 
+	lmdb_environment_publish(env_generation);
 	return 0;
+}
+
+static int init_db(const conf_t *config)
+{
+	return init_db_with_generations(config, 1, 1);
 }
 
 
@@ -2120,11 +2976,95 @@ void database_config_report(FILE *f)
 }
 
 /*
+ * database_resize_report - write manual-size growth recommendation.
+ * @f: report stream.
+ * @config: active daemon configuration.
+ *
+ * Auto mode owns map growth itself, so this report is intentionally silent
+ * unless an administrator has selected a numeric db_max_size. In manual mode,
+ * the daemon preserves the old DB on reload failure but will not grow the map;
+ * the status report gives the administrator the same target used by autosize.
+ */
+static void database_resize_report(FILE *f, const conf_t *config)
+{
+	struct trust_db_sizing_state state;
+	const char *recommended = "no";
+	const char *reason = "manual db_max_size has safe reload headroom";
+	unsigned int target_mb = 0;
+	int rc;
+
+	if (config == NULL || config->do_audit_db_sizing)
+		return;
+
+	rc = read_live_lmdb_sizing_state(&state);
+	if (rc) {
+		reason = "could not inspect LMDB sizing";
+	} else {
+		target_mb = autosize_effective_target_mb(&state,
+					AUTOSIZE_LIVE_INSPECTION);
+		if (target_mb > config->db_max_size) {
+			recommended = "yes";
+			reason = "manual db_max_size is below the safe reload target";
+		} else {
+			target_mb = 0;
+		}
+	}
+
+	fprintf(f, "Trust database resize recommended: %s\n", recommended);
+	fprintf(f, "Trust database resize reason: %s\n", reason);
+	if (target_mb)
+		fprintf(f, "Trust database resize target: %u MiB\n",
+			target_mb);
+}
+
+/*
+ * database_compaction_report - write compaction recommendation.
+ * @f: report stream.
+ * @generation_report: active generation/reclamation snapshot.
+ *
+ * Compaction is useful when LMDB's allocated high-water mark is much larger
+ * than the active trust DB footprint and no retired generations are pinned.
+ * If retired generations are still present, the first fix is to find the held
+ * readers; replacing the whole environment would have to wait for the same
+ * safety condition.
+ */
+static void database_compaction_report(FILE *f,
+		const database_generation_report_t *generation_report)
+{
+	struct trust_db_sizing_state state;
+	const char *recommended = "no";
+	const char *reason = "high-water usage is within the active working set";
+	unsigned int target_mb = 0;
+	int rc;
+
+	rc = read_live_lmdb_sizing_state(&state);
+	if (rc) {
+		reason = "could not inspect LMDB sizing";
+	} else if (generation_report->retired_count) {
+		reason = "retired trust database generations are still pinned";
+	} else if (state.allocated_percent > TRUST_DB_RELOAD_HIGHWATER_PERCENT &&
+		   state.allocated_percent > state.active_percent + 15) {
+		recommended = "yes";
+		reason = "allocated high-water is much larger than active pages";
+		target_mb = autosize_effective_target_mb(&state,
+					AUTOSIZE_LIVE_INSPECTION);
+	}
+
+	fprintf(f, "Trust database compaction recommended: %s\n",
+		recommended);
+	fprintf(f, "Trust database compaction reason: %s\n", reason);
+	if (target_mb)
+		fprintf(f, "Trust database compaction target: %u MiB\n",
+			target_mb);
+}
+
+/*
  * database_utilization_report - write current trust database utilization.
  * @f: report stream.
+ * @config: active daemon configuration, or NULL when unavailable.
  * Returns nothing.
  */
-void database_utilization_report(FILE *f)
+void database_utilization_report(FILE *f, const conf_t *config)
 {
 	database_generation_report_t report;
 
@@ -2139,12 +3079,14 @@ void database_utilization_report(FILE *f)
 		report.oldest_retired_age);
 	fprintf(f, "Max trust database generation reclaim delay: %lu seconds\n",
 		report.max_reclaim_delay);
+	database_resize_report(f, config);
+	database_compaction_report(f, &report);
 }
 
 void database_report(FILE *f)
 {
 	database_config_report(f);
-	database_utilization_report(f);
+	database_utilization_report(f, NULL);
 }
 
 /*
@@ -2353,10 +3295,11 @@ static char *path_to_hash(const char *path, const size_t path_len)
 }
 
 /*
- * trust_db_key_init - prepare an LMDB key from a trust path.
+ * trust_db_key_init_with_max - prepare an LMDB key from a trust path.
  * @key: caller-owned key wrapper to initialize.
  * @idx: path string used as the key.
  * @idx_len: length hint for @idx, or 0 when unknown.
+ * @maxkeysize: LMDB key limit for the target environment.
  *
  * Long paths are stored by SHA512 of the full path, not by a truncated
  * prefix. The returned key may point into @idx or into @key->hash; callers
@@ -2364,15 +3307,16 @@ static char *path_to_hash(const char *path, const size_t path_len)
  *
  * Returns 0 on success or ENOMEM.
  */
-static int trust_db_key_init(struct trust_db_key *key, const char *idx,
-			     size_t idx_len)
+static int trust_db_key_init_with_max(struct trust_db_key *key,
+				      const char *idx, size_t idx_len,
+				      unsigned int maxkeysize)
 {
 	memset(key, 0, sizeof(*key));
 
 	if (idx_len == 0)
 		idx_len = strlen(idx);
 
-	if (idx_len > MDB_maxkeysize) {
+	if (idx_len > maxkeysize) {
 		key->hash = path_to_hash(idx, idx_len);
 		if (key->hash == NULL)
 			return ENOMEM;
@@ -2388,7 +3332,7 @@ static int trust_db_key_init(struct trust_db_key *key, const char *idx,
 
 /*
  * trust_db_key_destroy - release storage owned by a prepared key.
- * @key: key initialized by trust_db_key_init().
+ * @key: key initialized by trust_db_key_init_with_max().
  *
  * Returns nothing.
  */
@@ -2399,26 +3343,30 @@ static void trust_db_key_destroy(struct trust_db_key *key)
 }
 
 /*
- * trust_db_begin_write_txn - begin a trust DB write transaction.
+ * trust_db_begin_write_txn_for_env - begin a trust DB write transaction.
+ * @target_env: LMDB environment to write.
  * @txn: destination transaction handle.
  * @context: log label describing the caller.
  *
  * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, or a stage
  * code compatible with write_db().
  */
-static int trust_db_begin_write_txn(MDB_txn **txn, const char *context)
+static int trust_db_begin_write_txn_for_env(MDB_env *target_env,
+					    MDB_txn **txn,
+					    const char *context)
 {
 	int rc;
 
-	rc = mdb_txn_begin(env, NULL, 0, txn);
+	rc = mdb_txn_begin(target_env, NULL, 0, txn);
 	if (rc) {
 		msg(LOG_ERR, "mdb_txn_begin failed before %s: %s",
 		    context, mdb_strerror(rc));
-		log_lmdb_state(LOG_ERR, context, rc);
+		if (target_env == env)
+			log_lmdb_state(LOG_ERR, context, rc);
 		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 1;
 	}
 
-	if (!dbi_init) {
+	if (target_env == env && !dbi_init) {
 		abort_transaction(*txn);
 		*txn = NULL;
 		msg(LOG_ERR, "open_dbi failed before %s: %s",
@@ -2430,14 +3378,30 @@ static int trust_db_begin_write_txn(MDB_txn **txn, const char *context)
 }
 
 /*
- * trust_db_commit_write_txn - commit a trust DB write transaction.
+ * trust_db_begin_write_txn - begin a live trust DB write transaction.
+ * @txn: destination transaction handle.
+ * @context: log label describing the caller.
+ *
+ * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, or a stage
+ * code compatible with write_db().
+ */
+static int trust_db_begin_write_txn(MDB_txn **txn, const char *context)
+{
+	return trust_db_begin_write_txn_for_env(env, txn, context);
+}
+
+/*
+ * trust_db_commit_write_txn_for_env - commit a trust DB write transaction.
+ * @target_env: LMDB environment to write.
  * @txn: transaction handle to commit and clear.
  * @context: log label describing the caller.
  *
  * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, or a stage
  * code compatible with write_db().
  */
-static int trust_db_commit_write_txn(MDB_txn **txn, const char *context)
+static int trust_db_commit_write_txn_for_env(MDB_env *target_env,
+					     MDB_txn **txn,
+					     const char *context)
 {
 	int rc;
 
@@ -2449,7 +3413,8 @@ static int trust_db_commit_write_txn(MDB_txn **txn, const char *context)
 	if (rc) {
 		msg(LOG_ERR, "mdb_txn_commit failed after %s: %s",
 		    context, mdb_strerror(rc));
-		log_lmdb_state(LOG_ERR, context, rc);
+		if (target_env == env)
+			log_lmdb_state(LOG_ERR, context, rc);
 		return rc == MDB_MAP_FULL ? WRITE_DB_MAP_FULL : 4;
 	}
 
@@ -2457,23 +3422,38 @@ static int trust_db_commit_write_txn(MDB_txn **txn, const char *context)
 }
 
 /*
- * trust_db_put_record - write one prepared record into an active transaction.
+ * trust_db_commit_write_txn - commit a live trust DB write transaction.
+ * @txn: transaction handle to commit and clear.
+ * @context: log label describing the caller.
+ *
+ * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, or a stage
+ * code compatible with write_db().
+ */
+static int trust_db_commit_write_txn(MDB_txn **txn, const char *context)
+{
+	return trust_db_commit_write_txn_for_env(env, txn, context);
+}
+
+/*
+ * trust_db_put_record_with_max - write one record into an active transaction.
  * @txn: writable LMDB transaction.
  * @record: parsed trust DB record.
+ * @maxkeysize: LMDB key limit for the target environment.
  * @context: log label describing the caller.
  *
  * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, 3 for mdb_put
  * failures, and 5 when key hashing fails.
  */
-static int trust_db_put_record(MDB_txn *txn, MDB_dbi target_dbi,
-			       const struct trust_db_record_input *record,
-			       const char *context)
+static int trust_db_put_record_with_max(MDB_txn *txn, MDB_dbi target_dbi,
+				const struct trust_db_record_input *record,
+				unsigned int maxkeysize, const char *context)
 {
 	struct trust_db_key key;
 	MDB_val value;
 	int rc;
 
-	rc = trust_db_key_init(&key, record->idx, record->idx_len);
+	rc = trust_db_key_init_with_max(&key, record->idx, record->idx_len,
+					maxkeysize);
 	if (rc)
 		return 5;
 
@@ -2489,6 +3469,24 @@ static int trust_db_put_record(MDB_txn *txn, MDB_dbi target_dbi,
 	}
 
 	return 0;
+}
+
+/*
+ * trust_db_put_record - write one record into the live environment.
+ * @txn: writable LMDB transaction.
+ * @target_dbi: destination named database.
+ * @record: parsed trust DB record.
+ * @context: log label describing the caller.
+ *
+ * Returns 0 on success, WRITE_DB_MAP_FULL for map exhaustion, 3 for mdb_put
+ * failures, and 5 when key hashing fails.
+ */
+static int trust_db_put_record(MDB_txn *txn, MDB_dbi target_dbi,
+			       const struct trust_db_record_input *record,
+			       const char *context)
+{
+	return trust_db_put_record_with_max(txn, target_dbi, record,
+					    MDB_maxkeysize, context);
 }
 
 /*
@@ -2928,8 +3926,10 @@ static int trust_db_record_from_line(char *buff,
  * Returns 0 when all records write successfully, 1 when reading fails, or a
  * WRITE_DB_* code when LMDB reports an import failure.
  */
-static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
-				  long *entries)
+static int do_memfd_update_to_dbi_in_env(MDB_env *target_env, int memfd,
+					 MDB_dbi target_dbi,
+					 unsigned int maxkeysize,
+					 long *entries)
 {
 	int rc = 0;
 	*entries = 0;
@@ -2970,7 +3970,8 @@ static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
 				continue;
 
 			if (txn == NULL) {
-				res = trust_db_begin_write_txn(&txn,
+				res = trust_db_begin_write_txn_for_env(
+						target_env, &txn,
 						"bulk trust DB import");
 				if (res) {
 					rc = res;
@@ -2978,14 +3979,17 @@ static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
 				}
 			}
 
-			res = trust_db_put_record(txn, target_dbi, &record,
-						  "bulk trust DB import");
+			res = trust_db_put_record_with_max(txn, target_dbi,
+						&record, maxkeysize,
+						"bulk trust DB import");
 			if (res) {
 				abort_transaction(txn);
 				txn = NULL;
-				log_lmdb_state(LOG_ERR, "bulk trust DB import",
-					       res == WRITE_DB_MAP_FULL ?
-					       MDB_MAP_FULL : 0);
+				if (target_env == env)
+					log_lmdb_state(LOG_ERR,
+						"bulk trust DB import",
+						res == WRITE_DB_MAP_FULL ?
+						MDB_MAP_FULL : 0);
 				msg(LOG_ERR,
 				    "Error (%d) writing key=\"%s\" data=\"%s\"",
 				    res, record.idx, record.data);
@@ -2996,7 +4000,8 @@ static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
 
 			txn_records++;
 			if (txn_records >= TRUST_DB_REBUILD_TXN_RECORDS) {
-				res = trust_db_commit_write_txn(&txn,
+				res = trust_db_commit_write_txn_for_env(
+						target_env, &txn,
 						"bulk trust DB import");
 				if (res) {
 					rc = res;
@@ -3010,8 +4015,8 @@ static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
 
 	if (txn != NULL) {
 		if (rc == 0 && !stop) {
-			rc = trust_db_commit_write_txn(&txn,
-					"bulk trust DB import");
+			rc = trust_db_commit_write_txn_for_env(target_env,
+					&txn, "bulk trust DB import");
 			if (rc == 0)
 				txns_committed++;
 		} else {
@@ -3028,6 +4033,13 @@ static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
 	fd_fgets_destroy(st); // calls munmap, memfd is closed by backend_close
 
 	return rc;
+}
+
+static int do_memfd_update_to_dbi(int memfd, MDB_dbi target_dbi,
+				  long *entries)
+{
+	return do_memfd_update_to_dbi_in_env(env, memfd, target_dbi,
+					     MDB_maxkeysize, entries);
 }
 
 int do_memfd_update(int memfd, long *entries)
@@ -3625,6 +4637,8 @@ int init_database(conf_t *config)
 	char err_buff[BUFFER_SIZE];
 
 	msg(LOG_INFO, "Initializing the trust database");
+	startup_compaction_target_mb = 0;
+	startup_compaction_fallback_mb = 0;
 
 	// update_lock is used in update_database()
 	pthread_rwlock_init(&update_lock, NULL);
@@ -3641,21 +4655,29 @@ int init_database(conf_t *config)
 		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 		    config->db_max_size);
 
-	if ((rc = init_db(config))) {
-		msg(LOG_ERR, "Cannot open the trust database, init_db() (%d)",
-		    rc);
-		return rc;
-	}
-
 	if ((rc = backend_init(config))) {
 		msg(LOG_ERR, "Failed to load trust data from backend (%d)", rc);
-		close_db(0);
 		return rc;
 	}
 
 	if ((rc = backend_load(config))) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
-		close_db(0);
+		backend_close();
+		return rc;
+	}
+
+	if (startup_compaction_target_mb) {
+		rc = compact_trust_database_at_startup(config);
+		if (rc) {
+			backend_close();
+			return rc;
+		}
+	}
+
+	if (env == NULL && (rc = init_db(config))) {
+		msg(LOG_ERR, "Cannot open the trust database, init_db() (%d)",
+		    rc);
+		backend_close();
 		return rc;
 	}
 
@@ -4089,6 +5111,64 @@ int database_drop_candidate_after_import_for_tests(int memfd)
 	return rc;
 }
 
+/*
+ * database_compact_memfd_for_tests - swap a rebuilt environment from memfd.
+ * @memfd: Backend-style trust records for the replacement environment.
+ * @config: Test configuration used for map sizing.
+ *
+ * Returns 0 on successful environment replacement. This bypasses the backend
+ * manager but still exercises offline build, read-back validation, controlled
+ * close/swap/reopen, generation publication, and old-environment preservation
+ * on failures in the same code paths used by production.
+ */
+int database_compact_memfd_for_tests(int memfd, conf_t *config)
+{
+	struct offline_lmdb candidate = {
+		.trust_generation = trust_db_next_generation_number(),
+		.env_generation = lmdb_environment_next_generation(),
+	};
+	int rc;
+
+	rc = open_offline_lmdb(&candidate, config);
+	if (rc)
+		goto out_failure;
+
+	rc = do_memfd_update_to_dbi_in_env(candidate.env, memfd,
+					   candidate.trust_dbi,
+					   candidate.maxkeysize,
+					   &candidate.entries);
+	if (rc)
+		goto out_close;
+	rc = write_offline_metadata(&candidate);
+	if (rc)
+		goto out_close;
+	rc = mdb_env_sync(candidate.env, 1);
+	if (rc)
+		goto out_close;
+	mdb_env_close(candidate.env);
+	candidate.env = NULL;
+
+	rc = validate_offline_lmdb(&candidate);
+	if (rc)
+		goto out_remove;
+	rc = publish_offline_lmdb(config, &candidate);
+	if (rc)
+		goto out_remove;
+
+	remove_lmdb_environment_dir(candidate.tmpdir);
+	check_db_size(config);
+	atomic_store_explicit(&needs_flush, true, memory_order_release);
+	return 0;
+
+out_close:
+	if (candidate.env)
+		mdb_env_close(candidate.env);
+out_remove:
+	remove_lmdb_environment_dir(candidate.tmpdir);
+out_failure:
+	return rc;
+}
+
 void *database_generation_hold_for_tests(void)
 {
 	return trust_db_generation_acquire();
@@ -4453,12 +5533,13 @@ static void do_reload_db(conf_t* config)
 		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 			config->db_max_size);
 
-		/*
-		 * LMDB may unmap/remap the environment during resize. Use
-		 * the same lock that protects decision reads and rebuild
-		 * writes before touching the live map.
-		 */
 		if (config->db_max_size < old_db_max_size) {
+			/*
+			 * This is a map-size reopen, not controlled
+			 * compaction. If high-water usage needs physical file
+			 * rewrite, status reports recommend the explicit admin
+			 * compaction command instead of hiding a swap in reload.
+			 */
 			lock_update_thread();
 			close_env(0);
 
@@ -4534,6 +5615,48 @@ static void do_reload_db(conf_t* config)
 
 out:
 	// Conserve memory
+	backend_close();
+}
+
+/*
+ * do_compact_db - perform explicit admin trust DB environment compaction.
+ * @config: active daemon configuration.
+ *
+ * This is intentionally separate from do_reload_db(). A reload publishes a
+ * logical trust DB generation inside the current LMDB environment; compaction
+ * rebuilds a whole replacement environment and briefly closes the live one
+ * after the replacement has validated. Keeping the entry points separate makes
+ * operator intent clear in logs and avoids hidden filesystem swaps on SIGHUP.
+ */
+static void do_compact_db(conf_t *config)
+{
+	int rc;
+
+	msg(LOG_INFO, "Admin requested trust DB LMDB compaction");
+	backend_close();
+
+	if ((rc = backend_init(config))) {
+		msg(LOG_ERR, "Failed to load trust data from backend (%d)", rc);
+		record_trust_reload_failure();
+		goto out;
+	}
+
+	if ((rc = backend_load(config))) {
+		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
+		record_trust_reload_failure();
+		goto out;
+	}
+
+	rc = compact_trust_database(config, "admin");
+	if (rc) {
+		record_trust_reload_failure();
+		msg(LOG_ERR,
+		    "Trust DB compaction request failed; previous environment preserved");
+	} else {
+		msg(LOG_INFO, "Trust DB compaction request completed");
+	}
+
+out:
 	backend_close();
 }
 
@@ -4736,6 +5859,11 @@ static void *update_thread_main(void *arg)
 								break;
 							}
 
+							if (buff[i] == COMPACT_TRUSTDB_COMMAND) {
+								do_operation = COMPACT_DB;
+								break;
+							}
+
 							if (isspace((unsigned char)buff[i]))
 								continue;
 
@@ -4772,6 +5900,14 @@ static void *update_thread_main(void *arg)
 							 */
 							do_operation = DB_NO_OP;
 							reload_rules_from_file(config);
+						} else if (do_operation == COMPACT_DB) {
+							/*
+							 * Explicit maintenance command: build a
+							 * replacement LMDB environment from backend
+							 * snapshots and swap it only after validation.
+							 */
+							do_operation = DB_NO_OP;
+							do_compact_db(config);
 
 							// got "2" -> flush cache
 						} else if (do_operation == FLUSH_CACHE) {
