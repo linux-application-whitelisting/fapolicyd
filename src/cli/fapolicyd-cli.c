@@ -986,6 +986,55 @@ static int confirm_metric_reset(void)
 }
 
 /*
+ * confirm_timing_report_overwrite - ask before replacing a timing report.
+ * Returns 1 when the caller confirms, 0 otherwise.
+ */
+static int confirm_timing_report_overwrite(void)
+{
+	char answer[8];
+
+	fprintf(stderr,
+		"Existing timing report %s may contain a long diagnostic run.\n",
+		TIMING_REPORT);
+	fprintf(stderr, "Overwrite it with this stop request? [y/N] ");
+	fflush(stderr);
+	if (fgets(answer, sizeof(answer), stdin) == NULL)
+		return 0;
+
+	return answer[0] == 'y' || answer[0] == 'Y';
+}
+
+/*
+ * prepare_timing_report_overwrite - protect an existing timing report.
+ * Returns a CLI_EXIT_* value.
+ */
+static int prepare_timing_report_overwrite(void)
+{
+	struct stat st;
+
+	if (stat(TIMING_REPORT, &st)) {
+		if (errno == ENOENT)
+			return CLI_EXIT_SUCCESS;
+		fprintf(stderr, "Cannot stat %s: %s\n", TIMING_REPORT,
+			strerror(errno));
+		return CLI_EXIT_IO;
+	}
+
+	if (!confirm_timing_report_overwrite()) {
+		fprintf(stderr, "Leaving existing timing report unchanged\n");
+		return CLI_EXIT_NOOP;
+	}
+
+	if (unlink(TIMING_REPORT) && errno != ENOENT) {
+		fprintf(stderr, "Cannot remove %s: %s\n", TIMING_REPORT,
+			strerror(errno));
+		return CLI_EXIT_IO;
+	}
+
+	return CLI_EXIT_SUCCESS;
+}
+
+/*
  * check_metric_reset_strategy - verify reset intent against on-disk config.
  * @reset_metrics: reset intent flag to clear when manual reset is unlikely.
  * Returns nothing.
@@ -1192,8 +1241,12 @@ static int do_timing_control(report_intent_t intent)
 		return CLI_EXIT_DAEMON_IPC;
 	}
 
-	if (intent == REPORT_INTENT_TIMING_STOP)
-		unlink(TIMING_REPORT);
+	if (intent == REPORT_INTENT_TIMING_STOP) {
+		int rc = prepare_timing_report_overwrite();
+
+		if (rc != CLI_EXIT_SUCCESS)
+			return rc;
+	}
 
 	if (send_timing_signal(pid, intent, signal_reason,
 			       sizeof(signal_reason))) {

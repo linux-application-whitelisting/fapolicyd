@@ -127,7 +127,8 @@ and starts collecting timing for subsequent fanotify decisions.
 .B \-\-timing-stop, \-\-timer-stop
 Stop a manual decision timing run and ask the daemon to write
 \fI/run/fapolicyd/fapolicyd.timing\fP. The command waits for that report and
-writes it to stdout. If timing is not armed, the report says so instead of
+writes it to stdout. If a timing report already exists, the command asks
+before replacing it. If timing is not armed, the report says so instead of
 printing timing data. See
 .BR fapolicyd.timing (5)
 for the report fields, including the
