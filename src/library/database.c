@@ -2426,7 +2426,7 @@ static int autosize_reload_preflight(conf_t *config)
 		return 0;
 	}
 
-	if (!config->do_audit_db_sizing) {
+	if (!config->do_auto_db_sizing) {
 		if (state.recommended_pages > state.map_pages)
 			msg(LOG_WARNING,
 			    "db_max_size may be too small for safe reload: "
@@ -2914,21 +2914,21 @@ static void check_db_size(const conf_t *config)
 	    state.allocated_percent);
 	if (state.allocated_percent > TRUST_DB_RELOAD_HIGHWATER_PERCENT &&
 	    state.allocated_percent > state.active_percent) {
-		int priority = config->do_audit_db_sizing ? LOG_INFO :
+		int priority = config->do_auto_db_sizing ? LOG_INFO :
 			       LOG_WARNING;
 
 		msg(priority,
 		    "Trust database LMDB map high-water at %lu%% capacity "
 		    "while active DB pages are at %lu%%",
 		    state.allocated_percent, state.active_percent);
-		if (!config->do_audit_db_sizing)
+		if (!config->do_auto_db_sizing)
 			log_lmdb_state(LOG_WARNING,
 				       "trust database size check", 0);
 	}
 
 	target_mb = autosize_effective_target_mb(&state,
 						 AUTOSIZE_LIVE_INSPECTION);
-	if (config->do_audit_db_sizing) {
+	if (config->do_auto_db_sizing) {
 		if (target_mb > config->db_max_size) {
 			if (state.active_target_pages > state.map_pages)
 				msg(LOG_INFO,
@@ -2993,7 +2993,7 @@ static void database_resize_report(FILE *f, const conf_t *config)
 	unsigned int target_mb = 0;
 	int rc;
 
-	if (config == NULL || config->do_audit_db_sizing)
+	if (config == NULL || config->do_auto_db_sizing)
 		return;
 
 	rc = read_live_lmdb_sizing_state(&state);
@@ -4104,7 +4104,7 @@ static int create_database_for_generation(struct trust_db_generation *gen,
 			       rc == WRITE_DB_MAP_FULL ? MDB_MAP_FULL : 0);
 
 		if (rc == WRITE_DB_MAP_FULL &&
-		    config->do_audit_db_sizing && retries == 0) {
+		    config->do_auto_db_sizing && retries == 0) {
 			int grown;
 
 			lock_update_thread();
@@ -4650,7 +4650,7 @@ int init_database(conf_t *config)
 		return 1;
 
 	/* One-shot utilisation-driven sizing */
-	if (config->do_audit_db_sizing &&
+	if (config->do_auto_db_sizing &&
 	    autosize_database(config, AUTOSIZE_STARTUP_INSPECTION))
 		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 		    config->db_max_size);
@@ -5528,7 +5528,7 @@ static int do_reload_db(conf_t *config)
 	backend_close();
 
 	/* One-shot utilisation-driven sizing */
-	if (config->do_audit_db_sizing &&
+	if (config->do_auto_db_sizing &&
 	    autosize_database(config, AUTOSIZE_LIVE_INSPECTION)) {
 		msg(LOG_INFO, "autosize: map size recomputed to %u MiB",
 			config->db_max_size);

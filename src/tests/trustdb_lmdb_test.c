@@ -803,7 +803,7 @@ static int test_lmdb_manual_resize_report_is_gated(void)
 	 * administrator's numeric db_max_size, not LMDB's current file size.
 	 */
 	cfg.db_max_size = 1;
-	cfg.do_audit_db_sizing = false;
+	cfg.do_auto_db_sizing = false;
 	CHECK(read_database_utilization_text(&cfg, report, sizeof(report)) == 0,
 	      116, "[ERROR:116] manual resize report failed");
 	CHECK(strstr(report, "Trust database resize recommended: yes") != NULL,
@@ -811,7 +811,7 @@ static int test_lmdb_manual_resize_report_is_gated(void)
 	CHECK(strstr(report, "Trust database resize target:") != NULL,
 	      118, "[ERROR:118] manual resize target missing");
 
-	cfg.do_audit_db_sizing = true;
+	cfg.do_auto_db_sizing = true;
 	CHECK(read_database_utilization_text(&cfg, report, sizeof(report)) == 0,
 	      119, "[ERROR:119] auto resize report failed");
 	CHECK(strstr(report, "Trust database resize recommended:") == NULL,

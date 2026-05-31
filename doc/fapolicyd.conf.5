@@ -38,10 +38,10 @@ This option controls whether (1) or not (0) fapolicyd should add subject and obj
 .B db_max_size
 This option controls how many megabytes to allow the trust database to grow to.
 If you have lots of packages installed, then you want to make it bigger. The
-default value is 100 megabytes. The special value "auto" tells the daemon to
-size the trust database based on current utilization whenever it starts or
-rebuilds the database. Auto sizing targets roughly 75% active database usage,
-keeps lower-utilization reload headroom for the current trust database
+default value is "auto", which tells the daemon to size the trust database
+based on current utilization whenever it starts or rebuilds the database. Auto
+sizing starts from a 100 megabyte baseline, targets roughly 75% active database
+usage, keeps lower-utilization reload headroom for the current trust database
 generation and the candidate generation being built, grows when needed, and
 shrinks conservatively when utilization is low.
 

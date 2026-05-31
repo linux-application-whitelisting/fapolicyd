@@ -141,8 +141,8 @@ static void clear_daemon_config(conf_t *config)
 	config->gid = 0;
 	config->do_stat_report = 1;
 	config->detailed_report = 1;
-	config->db_max_size = 100;
-	config->do_audit_db_sizing = false;
+	config->db_max_size = get_default_db_max_size();
+	config->do_auto_db_sizing = true;
 	config->subj_cache_size = 4099;
 	config->obj_cache_size = 8191;
 	config->watch_fs = strdup("ext4,xfs,tmpfs");
@@ -504,15 +504,22 @@ static int detailed_report_parser(const struct nv_pair *nv, int line,
 static int db_max_size_parser(const struct nv_pair *nv, int line,
 		conf_t *config)
 {
-	// "auto" triggers utilisation‑based sizing, anything else
-	// remains the legacy integer in MiB.
+	unsigned int db_max_size = config->db_max_size;
+
+	// "auto" keeps utilization-based sizing enabled. A numeric value is an
+	// explicit administrator override and keeps the legacy fixed MiB limit.
 	if (strcmp(nv->value, "auto") == 0) {
-		config->do_audit_db_sizing = true;
 		config->db_max_size = get_default_db_max_size();
+		config->do_auto_db_sizing = true;
 		return 0;
 	}
 
-	return unsigned_int_parser(&(config->db_max_size), nv->value, line);
+	if (unsigned_int_parser(&db_max_size, nv->value, line))
+		return 1;
+
+	config->db_max_size = db_max_size;
+	config->do_auto_db_sizing = false;
+	return 0;
 }
 
 static int subj_cache_size_parser(const struct nv_pair *nv, int line,

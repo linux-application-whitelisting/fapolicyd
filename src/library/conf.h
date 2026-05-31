@@ -51,7 +51,7 @@ typedef struct conf
 	unsigned int do_stat_report;
 	unsigned int detailed_report;
 	unsigned int db_max_size;
-	bool do_audit_db_sizing;
+	bool do_auto_db_sizing;
 	unsigned int subj_cache_size;
 	unsigned int obj_cache_size;
 	const char *watch_fs;
