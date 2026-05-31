@@ -517,7 +517,8 @@ journalctl -b -u fapolicyd.service
 ```
 to list out any events since boot by the fapolicyd service.
 
-Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
+Starting with 1.1, fapolicyd-cli includes diagnostic and maintenance
+capabilities.
 
 | Option                 | Added in | What it does |
 |------------------------|----------|--------------|
@@ -530,6 +531,12 @@ Starting with 1.1, fapolicyd-cli includes some diagnostic capabilities.
 | --check-ignore_mounts  | 1.4      | Check ignored mounts for noexec and suspicious files. |
 | --check-metrics        | 1.5      | Output runtime counters, rule hits, cache effectiveness, and attribute lookup metrics. |
 | --check-rules [path]   | 1.5      | Validate rule syntax without loading the rules; use --lint for policy-shape warnings. |
+| --reset-metrics        | 1.5      | Output metrics and request a counter reset when the daemon configuration allows it. |
+| --timing-start         | 1.5      | Start a manual decision timing collection run. |
+| --timing-stop          | 1.5      | Stop manual decision timing collection and output the timing report. |
+| --timer-start          | 1.5      | Alias for --timing-start. |
+| --timer-stop           | 1.5      | Alias for --timing-stop. |
+| --compact-trustdb      | 1.6      | Rebuild and compact the daemon trustdb LMDB environment. |
 
 
 
