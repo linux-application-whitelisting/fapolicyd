@@ -997,8 +997,8 @@ void do_state_report(FILE *f, int shutdown)
 	}
 	pthread_mutex_unlock(&mlist_lock);
 
-	if (shutdown)
-		fputs("\n", f);
+	// Keep repeated report output separated when generated in a loop.
+	fputs("\n", f);
 }
 
 /*
@@ -1021,6 +1021,8 @@ void do_metrics_report_reset(FILE *f, int reset)
 	policy_rule_hits_report_reset(f, reset);
 	fputs("\n", f);
 	attr_lookup_metrics_report(f, reset);
+	// Keep repeated report output separated when generated in a loop.
+	fputs("\n", f);
 }
 
 /*
@@ -1036,11 +1038,7 @@ void do_metrics_report_reset(FILE *f, int reset)
 void do_stat_report_reset(FILE *f, int shutdown, int reset)
 {
 	do_state_report(f, shutdown);
-	if (!shutdown)
-		fputs("\n", f);
 	do_metrics_report_reset(f, reset);
-	if (shutdown)
-		fputs("\n", f);
 }
 
 int already_running(void)

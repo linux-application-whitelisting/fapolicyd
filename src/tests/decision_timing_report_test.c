@@ -82,6 +82,21 @@ static void reject_text(const char *report, const char *needle, int code)
 	CHECK(strstr(report, needle) == NULL, code, needle);
 }
 
+/*
+ * require_trailing_blank_line - verify reports separate repeated output.
+ * @report: report buffer.
+ * @code: failure code.
+ * Returns nothing.
+ */
+static void require_trailing_blank_line(const char *report, int code)
+{
+	size_t len = strlen(report);
+
+	CHECK(len >= 2 && report[len - 1] == '\n' &&
+	      report[len - 2] == '\n', code,
+	      "report missing trailing blank line");
+}
+
 static const struct decision_timing_test_stage_sample full_samples[] = {
 	{ DECISION_TIMING_STAGE_TOTAL, 99, 99000000ULL, 5000000ULL, 5 },
 	{ DECISION_TIMING_STAGE_TOTAL, 1, 260000000ULL, 260000000ULL, 13 },
@@ -238,6 +253,7 @@ static void test_full_report(void)
 	require_text(report,
 		     "Largest daemon-relevant decision phase contributor: evaluation",
 		     38);
+	require_trailing_blank_line(report, 48);
 	reject_text(report, "other:", 31);
 	reject_text(report, "Other total", 32);
 	reject_text(report, ">100ms 0/", 33);
@@ -267,6 +283,7 @@ static void test_sparse_report(void)
 	require_text(report, "\nLazy helper attribution by driver:", 25);
 	require_text(report, "\nCombined lazy helper attribution:", 26);
 	require_text(report, "  not observed", 27);
+	require_trailing_blank_line(report, 49);
 	reject_text(report, "Response note:", 28);
 	reject_text(report, "syslog/debug-heavy", 29);
 }
@@ -286,6 +303,7 @@ static void test_missing_input(void)
 
 	read_test_report(&test, report, sizeof(report));
 	require_text(report, "max queue depth: 0", 30);
+	require_trailing_blank_line(report, 50);
 }
 
 /*

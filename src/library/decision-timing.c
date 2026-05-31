@@ -2216,6 +2216,8 @@ static void write_report_sections(const struct decision_timing_report_ctx *ctx)
 	write_stage_tail_summary(ctx);
 	write_not_observed(ctx);
 	write_notes(ctx);
+	// Keep repeated report output separated when generated in a loop.
+	fputs("\n", ctx->f);
 }
 
 #ifdef TEST_DECISION_TIMING_REPORT
@@ -2418,6 +2420,8 @@ static void write_unarmed_report(const conf_t *config)
 
 	fprintf(f, "Mode: %s\n", mode);
 	fprintf(f, "Status: timing_collection is not armed\n");
+	// Keep repeated report output separated when generated in a loop.
+	fputs("\n", f);
 	fclose(f);
 	msg(LOG_INFO, "Wrote decision timing report to %s", TIMING_REPORT);
 }
