@@ -210,6 +210,33 @@ static void prep_macro_event(event_t *e, const char *exe, const char *obj)
 }
 
 /*
+* add_trust_attrs - add cached subject and object trust values
+*
+* e: event to update
+* subj_trusted: subject trust value to cache
+* obj_trusted: object trust value to cache
+*
+* Returns: none
+*/
+static void add_trust_attrs(event_t *e, unsigned int subj_trusted,
+			    int obj_trusted)
+{
+	subject_attr_t subj_trust = {
+		.type = SUBJ_TRUST,
+		.uval = subj_trusted
+	};
+	object_attr_t obj_trust = {
+		.type = OBJ_TRUST,
+		.val = obj_trusted
+	};
+
+	if (subject_add(e->s, &subj_trust))
+		error(1, 0, "subject_add trust failed");
+	if (object_add(e->o, &obj_trust))
+		error(1, 0, "object_add trust failed");
+}
+
+/*
 * free_event - release memory from prep_event()
 */
 static void free_event(event_t *e)
@@ -327,6 +354,88 @@ int main(void)
 	if (evaluate(&l, &e) != NO_OPINION)
 		error(1, 0, "unexpected macro match");
 	free_event(&e);
+
+	rules_clear(&l);
+
+	/* deprecated dir=untrusted warnings and compatibility */
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+
+	rc = append_capture(&l,
+		"allow perm=any dir=untrusted : path=/tmp/payload", 1,
+		err, sizeof(err));
+	if (rc)
+		error(1, 0, "subject untrusted dir parse failed: %s", err);
+	if (strstr(err, "subject dir=untrusted is deprecated") == NULL)
+		error(1, 0, "subject untrusted dir warning missing: %s", err);
+
+	prep_macro_event(&e, "/opt/untrusted-tool", "/tmp/payload");
+	add_trust_attrs(&e, 0, 0);
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "subject untrusted dir compatibility failed");
+	free_event(&e);
+
+	prep_macro_event(&e, "/opt/untrusted-tool", "/tmp/payload");
+	add_trust_attrs(&e, 0, 1);
+	if (evaluate(&l, &e) != NO_OPINION)
+		error(1, 0, "trusted object matched legacy exception");
+	free_event(&e);
+
+	rules_clear(&l);
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+
+	rc = append_capture(&l,
+		"allow perm=any all : dir=untrusted", 1,
+		err, sizeof(err));
+	if (rc)
+		error(1, 0, "object untrusted dir parse failed: %s", err);
+	if (strstr(err, "object dir=untrusted is deprecated") == NULL)
+		error(1, 0, "object untrusted dir warning missing: %s", err);
+
+	prep_macro_event(&e, "/usr/bin/bash", "/tmp/payload");
+	add_trust_attrs(&e, 1, 0);
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "object untrusted dir compatibility failed");
+	free_event(&e);
+
+	prep_macro_event(&e, "/usr/bin/bash", "/tmp/payload");
+	add_trust_attrs(&e, 1, 1);
+	if (evaluate(&l, &e) != NO_OPINION)
+		error(1, 0, "trusted object matched object untrusted dir");
+	free_event(&e);
+
+	rules_clear(&l);
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+
+	rc = append_capture(&l, "%legacy=untrusted", 1, err, sizeof(err));
+	if (rc)
+		error(1, 0, "legacy set parse failed: %s", err);
+	if (strstr(err, "dir=untrusted is deprecated") != NULL)
+		error(1, 0, "set definition emitted dir warning: %s", err);
+
+	rc = append_capture(&l,
+		"allow perm=any all : dir=%legacy", 2, err, sizeof(err));
+	if (rc)
+		error(1, 0, "object untrusted dir set parse failed: %s", err);
+	if (strstr(err, "object dir=untrusted is deprecated") == NULL)
+		error(1, 0, "set-based untrusted dir warning missing: %s",
+		      err);
+
+	rules_clear(&l);
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+
+	rc = append_capture(&l,
+		"allow perm=any exe=untrusted : all", 1, err, sizeof(err));
+	if (rc)
+		error(1, 0, "exe untrusted rule parse failed: %s", err);
+	if (strstr(err, "dir=untrusted is deprecated") != NULL)
+		error(1, 0, "exe untrusted emitted dir warning: %s", err);
 
 	rules_clear(&l);
 

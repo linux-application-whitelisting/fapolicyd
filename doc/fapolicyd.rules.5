@@ -83,7 +83,13 @@ The \fIsystemdirs\fP option will match against the same list as \fIexecdirs\fP b
 .B untrusted
 The \fIuntrusted\fP option will look up the current executable's full path in the rpm database to see if the executable is known to the system. The rule will trigger if the file in question is not in the trust database. This option is
 .B deprecated
-in favor of using obj_trust with execute permission when writing rules.
+in favor of using object \fBtrust\fP with execute permission when writing rules.
+Rules that use \fBdir=untrusted\fP emit a deprecation warning when parsed,
+and this compatibility option will be removed in a future release.
+For compatibility with older policies, a subject \fBdir=untrusted\fP rule
+paired with a path object at the same rule field position will not match a
+trusted object. This subject/object cross-reference is obsolete; use explicit
+object trust rules for new policy.
 .RE
 .TP
 .B ftype

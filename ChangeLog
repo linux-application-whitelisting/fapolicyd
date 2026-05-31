@@ -1,4 +1,6 @@
 1.6
+- Many internal changes
+- Mark dir=untrusted as deprecated in rules
 
 1.5
 - Increase the line length of config files (Renaud Métrich)

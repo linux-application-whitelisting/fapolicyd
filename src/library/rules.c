@@ -71,6 +71,29 @@ static int assign_subject(llist *l, lnode *n, int type,
 static int assign_object(llist *l, lnode *n, int type,
 			 const char *ptr2, int lineno) __wur;
 
+/*
+ * warn_deprecated_untrusted_dir - warn about the legacy dir=untrusted macro
+ * @type: parsed subject or object attribute type.
+ * @set: parsed attribute value set.
+ * @lineno: rule line number used for diagnostics.
+ * @side: rule side used to make the warning actionable.
+ *
+ * The untrusted directory macro was superseded by explicit trust attributes,
+ * but it remains accepted for old rules. Warn when a directory attribute uses
+ * it, including through a named set, so administrators have time to migrate
+ * before a future release removes this compatibility path.
+ */
+static void warn_deprecated_untrusted_dir(int type, attr_sets_entry_t *set,
+					  int lineno, const char *side)
+{
+	if ((type == EXE_DIR || type == ODIR) &&
+	    attr_set_check_str(set, "untrusted"))
+		msg(LOG_WARNING,
+		    "rules: line:%d: %s dir=untrusted is deprecated and "
+		    "will be removed in a future release",
+		    lineno, side);
+}
+
 int rules_create(llist *l)
 {
 	l->head = NULL;
@@ -571,6 +594,7 @@ static int assign_subject(llist *l, lnode *n, int type,
 	} // switch
 
 finalize:
+	warn_deprecated_untrusted_dir(type, n->s[i].set, lineno, "subject");
 	n->s_count++;
 	free(tmp);
 	sanity_check_node(n, "assign_subject - 2");
@@ -721,6 +745,7 @@ static int assign_object(llist *l, lnode *n, int type,
 
 
  finalize:
+	warn_deprecated_untrusted_dir(type, n->o[i].set, lineno, "object");
 	n->o_count++;
 	free(tmp);
 	sanity_check_node(n, "assign_object - 2");
@@ -1497,6 +1522,32 @@ static int check_subject(lnode *r, event_t *e)
 	return 1;
 }
 
+/*
+ * legacy_untrusted_subject_path_blocked - preserve untrusted path exception
+ * @r: rule being evaluated.
+ * @idx: object attribute index currently being evaluated.
+ * @e: event containing already-owned decision attributes.
+ *
+ * Historical exe=untrusted and dir=untrusted subject rules also filtered a
+ * path object at the same rule-field index: trusted objects did not match the
+ * legacy untrusted exception. The positional cross-reference is obsolete, but
+ * remains here for compatibility until dir=untrusted support is removed.
+ *
+ * Returns: 1 when the legacy compatibility rule blocks this object match,
+ * otherwise 0.
+ */
+static int legacy_untrusted_subject_path_blocked(lnode *r, unsigned int idx,
+						 event_t *e)
+{
+	if (idx >= r->s_count)
+		return 0;
+	if (r->s[idx].type != EXE && r->s[idx].type != EXE_DIR)
+		return 0;
+	if (!attr_set_check_str(r->s[idx].set, "untrusted"))
+		return 0;
+
+	return is_obj_trusted(e);
+}
 
 // Returns 0 if no match, 1 if a match
 __attribute__((hot))
@@ -1542,13 +1593,9 @@ static decision_t check_object(lnode *r, event_t *e)
 
 		case PATH:
 		  // skip if fall through
-		  if (type == PATH) {
-			if (r->s[cnt].type == EXE || r->s[cnt].type == EXE_DIR)
-				if (attr_set_check_str(r->s[cnt].set,
-						       "untrusted"))
-					if (is_obj_trusted(e))
-						return 0;
-		}
+		  if (type == PATH &&
+		      legacy_untrusted_subject_path_blocked(r, cnt, e))
+			return 0;
 
 		// fall through
 
