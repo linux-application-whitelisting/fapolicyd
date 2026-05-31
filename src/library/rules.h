@@ -43,6 +43,7 @@ typedef struct _lnode{
   decision_t d;
   access_t a;
   unsigned int num;
+  unsigned int lineno;
   atomic_ulong hits;
   char *text;
   rformat_t format;

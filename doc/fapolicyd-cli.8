@@ -74,10 +74,27 @@ mount is displayed. A non-zero status is returned when suspicious files are
 found so automated workflows can gate changes.
 .TP
 .B \-\-check-rules [path]
-Parse the rules file and validate its syntax without loading it into the daemon. If \fIpath\fP is omitted, the command checks the active rules file, using \fI/etc/fapolicyd/fapolicyd.rules\fP when present and \fI/etc/fapolicyd/compiled.rules\fP otherwise. A zero exit status means the file is valid.
+Parse the rules file and validate its syntax without loading it into the daemon. If \fIpath\fP is omitted, the command checks the active rules file, using \fI/etc/fapolicyd/fapolicyd.rules\fP when present and \fI/etc/fapolicyd/compiled.rules\fP otherwise. If both installed rules files exist, the command reports a path configuration error unless \fB\-\-lint\fP is also used. A zero exit status means the file is valid.
 .TP
 .B \-\-lint
 When used with \fB\-\-check-rules\fP, also emit policy-shape warnings for executable or programmatic content that can reach the default-allow path. The option may be placed before or after \fB\-\-check-rules\fP. A warning causes a non-zero exit status.
+.RS
+.P
+Examples:
+.nf
+fapolicyd-cli --check-rules --lint
+fapolicyd-cli --check-rules /tmp/proposed.rules --lint
+.fi
+.P
+Warnings include rule numbers and file-line locations where a specific rule is involved. For example:
+.nf
+Policy lint warning: executable events can fall through; no terminal broad execute deny found after rule 12 at /etc/fapolicyd/compiled.rules:13
+Policy lint hint: add a final "deny_audit perm=execute all : all" rule
+Policy lint warning: broad open allow rule 17 at /etc/fapolicyd/compiled.rules:18 appears before programmatic-content deny rule 18 at /etc/fapolicyd/compiled.rules:19
+.fi
+.P
+When both \fI/etc/fapolicyd/fapolicyd.rules\fP and \fI/etc/fapolicyd/compiled.rules\fP exist, linting warns that the old rules file shadows \fIcompiled.rules\fP and recommends removing or migrating the old file.
+.RE
 .TP
 .B \-\-reset-metrics
 Request the metrics to be reset. Runtime metric counters reset after a metrics

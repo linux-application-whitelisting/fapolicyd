@@ -1144,6 +1144,7 @@ int rules_append(llist *l, char *buf, unsigned int lineno)
 	// make newnode current
 	l->cur = newnode;
 	newnode->num = l->cnt;
+	newnode->lineno = lineno;
 	l->cnt++;
 	sanity_check_list(l, "rules_append - 2");
 

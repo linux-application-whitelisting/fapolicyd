@@ -21,6 +21,13 @@
 #include "rules.h"
 #include "rule-lint.h"
 
+struct lint_path_status {
+	const char *path;
+	int old_rules;
+	int compiled_rules;
+	int stale_old_rules;
+};
+
 /*
  * get_rule_line - read one rule file line without its trailing newline.
  * @f: rule file stream.
@@ -129,12 +136,36 @@ static int rule_has_language_ftype(const lnode *rule)
 }
 
 /*
+ * rule_has_only_language_ftype - check for a broad language object match.
+ * @rule: parsed rule to inspect.
+ * Returns 1 when the object side is exactly ftype=%languages.
+ */
+static int rule_has_only_language_ftype(const lnode *rule)
+{
+	return rule->o_count == 1 && rule_has_language_ftype(rule);
+}
+
+/*
+ * print_rule_location - print the rule number and source file location.
+ * @path: rule file path used for parsing.
+ * @rule: parsed rule to locate.
+ */
+static void print_rule_location(const char *path, const lnode *rule)
+{
+	fprintf(stderr, "rule %u at %s:%u", rule->num + 1, path,
+		rule->lineno);
+}
+
+/*
  * lint_rules_policy - emit policy-shape warnings for default-allow gaps.
  * @rules: parsed rule list to inspect.
+ * @path: rule file path used for parsing.
+ * @stale_old_rules: non-zero when old rules shadow compiled.rules.
  * Returns CLI_EXIT_GENERIC when warnings were emitted, CLI_EXIT_SUCCESS
  * otherwise. Syntax validation is handled before this function runs.
  */
-static int lint_rules_policy(const llist *rules)
+static int lint_rules_policy(const llist *rules, const char *path,
+			     int stale_old_rules)
 {
 	const lnode *rule;
 	const lnode *last_exec_rule = NULL;
@@ -152,7 +183,7 @@ static int lint_rules_policy(const llist *rules)
 
 		if (!first_lang_deny && rule_is_deny(rule) &&
 		    rule_matches_open(rule) && rule_is_broad_subject(rule) &&
-		    rule_has_language_ftype(rule))
+		    rule_has_only_language_ftype(rule))
 			first_lang_deny = rule;
 
 		if (!first_open_allow && rule_is_allow(rule) &&
@@ -161,29 +192,61 @@ static int lint_rules_policy(const llist *rules)
 			first_open_allow = rule;
 	}
 
+	if (stale_old_rules) {
+		fprintf(stderr, "Policy lint warning: %s exists alongside "
+			"%s; fapolicyd loads the old rules file first and "
+			"ignores compiled.rules\n", OLD_RULES_FILE, RULES_FILE);
+		fprintf(stderr, "Policy lint hint: remove %s or migrate it "
+			"into rules.d and rerun fagenrules\n", OLD_RULES_FILE);
+		warnings = 1;
+	}
+
 	if (!last_exec_rule || !rule_is_deny(last_exec_rule) ||
 	    !rule_is_broad_subject(last_exec_rule) ||
 	    !rule_is_broad_object(last_exec_rule)) {
 		fprintf(stderr, "Policy lint warning: executable events can "
-			"fall through; no terminal broad execute deny found\n");
+			"fall through; no terminal broad execute deny found");
+		if (last_exec_rule) {
+			fprintf(stderr, " after ");
+			print_rule_location(path, last_exec_rule);
+		} else
+			fprintf(stderr, " in %s", path);
+		fprintf(stderr, "\nPolicy lint hint: add a final "
+			"\"deny_audit perm=execute all : all\" rule\n");
 		warnings = 1;
 	}
 
 	if (!has_languages) {
 		fprintf(stderr, "Policy lint warning: %%languages is not "
-			"defined; programmatic ftype coverage cannot be checked\n");
+			"defined in %s; programmatic ftype coverage cannot "
+			"be checked\n", path);
 		warnings = 1;
 	} else if (!first_lang_deny) {
 		fprintf(stderr, "Policy lint warning: programmatic opens can "
-			"fall through; no broad %%languages open deny found\n");
+			"fall through; no broad %%languages open deny found");
+		if (first_open_allow) {
+			fprintf(stderr, " before ");
+			print_rule_location(path, first_open_allow);
+		} else
+			fprintf(stderr, " in %s", path);
+		fprintf(stderr, "\nPolicy lint hint: add "
+			"\"deny_audit perm=open all : ftype=%%languages\" "
+			"before broad open allows\n");
 		warnings = 1;
 	}
 
 	if (first_open_allow &&
 	    (!first_lang_deny || first_open_allow->num < first_lang_deny->num)) {
-		fprintf(stderr, "Policy lint warning: broad open allow on rule "
-			"%u can shadow programmatic-content denies\n",
-			first_open_allow->num + 1);
+		fprintf(stderr, "Policy lint warning: broad open allow ");
+		print_rule_location(path, first_open_allow);
+		if (first_lang_deny) {
+			fprintf(stderr, " appears before programmatic-content "
+				"deny ");
+			print_rule_location(path, first_lang_deny);
+		} else
+			fprintf(stderr, " can shadow programmatic-content "
+				"denies");
+		fprintf(stderr, "\n");
 		warnings = 1;
 	}
 
@@ -194,25 +257,48 @@ static int lint_rules_policy(const llist *rules)
 }
 
 /*
- * default_rules_path - select the rules file used when no path is supplied.
- * @path: selected path is returned here.
+ * is_active_rules_path - check if a path names an installed rules file.
+ * @path: path supplied by the caller.
+ * Returns 1 when @path names the old or compiled rules file.
+ */
+static int is_active_rules_path(const char *path)
+{
+	return path && (strcmp(path, OLD_RULES_FILE) == 0 ||
+			strcmp(path, RULES_FILE) == 0);
+}
+
+/*
+ * select_rules_path - select the rules file and record lint path state.
+ * @requested_path: caller supplied path, or NULL for the active rules file.
+ * @lint_rules: non-zero when policy lint warnings are enabled.
+ * @status: selected path and old/new rule-file state.
  * Returns CLI_EXIT_SUCCESS when a single candidate was selected.
  */
-static int default_rules_path(const char **path)
+static int select_rules_path(const char *requested_path, int lint_rules,
+			     struct lint_path_status *status)
 {
-	int old_rules = access(OLD_RULES_FILE, F_OK) == 0;
-	int compiled_rules = access(RULES_FILE, F_OK) == 0;
+	memset(status, 0, sizeof(*status));
+	status->path = requested_path;
+	status->old_rules = access(OLD_RULES_FILE, F_OK) == 0;
+	status->compiled_rules = access(RULES_FILE, F_OK) == 0;
 
-	if (old_rules && compiled_rules) {
+	if (status->old_rules && status->compiled_rules &&
+	    (requested_path == NULL || is_active_rules_path(requested_path)))
+		status->stale_old_rules = lint_rules;
+
+	if (requested_path)
+		return CLI_EXIT_SUCCESS;
+
+	if (status->old_rules && status->compiled_rules && !lint_rules) {
 		fprintf(stderr, "Error - old and new rules file detected. "
 			"Delete one or the other.\n");
 		return CLI_EXIT_PATH_CONFIG;
 	}
 
-	if (old_rules)
-		*path = OLD_RULES_FILE;
+	if (status->old_rules)
+		status->path = OLD_RULES_FILE;
 	else
-		*path = RULES_FILE;
+		status->path = RULES_FILE;
 
 	return CLI_EXIT_SUCCESS;
 }
@@ -229,15 +315,15 @@ int check_rules_file(const char *path, int lint_rules)
 	int rc, lineno = 1, invalid = 0;
 	char *line = NULL;
 	llist temp_rules;
+	struct lint_path_status path_status;
 	unsigned int cnt;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
 
-	if (path == NULL) {
-		rc = default_rules_path(&path);
-		if (rc)
-			return rc;
-	}
+	rc = select_rules_path(path, lint_rules, &path_status);
+	if (rc)
+		return rc;
+	path = path_status.path;
 
 	f = fopen(path, "r");
 	if (f == NULL) {
@@ -281,7 +367,8 @@ int check_rules_file(const char *path, int lint_rules)
 
 	if (lint_rules) {
 		fflush(stdout);
-		rc = lint_rules_policy(&temp_rules);
+		rc = lint_rules_policy(&temp_rules, path,
+				       path_status.stale_old_rules);
 	} else
 		rc = CLI_EXIT_SUCCESS;
 
