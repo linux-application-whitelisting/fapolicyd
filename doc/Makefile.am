@@ -20,7 +20,11 @@
 #   Steve Grubb <sgrubb@redhat.com>
 #
 
-EXTRA_DIST = $(man_MANS)
+EXTRA_DIST = $(man_MANS) fapolicyd-perf-test.8 check-manpages.sh
+
+TEST_EXTENSIONS = .sh
+SH_LOG_COMPILER = $(SHELL)
+TESTS = check-manpages.sh
 
 man_MANS = \
 	fapolicyd.8 \
