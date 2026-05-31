@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "database.h"
+#include "failure-action.h"
 #include "fapolicyd-backend.h"
 
 #define CONCURRENT_READERS 32
@@ -698,6 +699,53 @@ static int test_lmdb_failed_candidate_preserves_generation(void)
 	return 0;
 }
 
+static int test_lmdb_reload_failure_preserves_generation(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	unsigned long before_failures, after_failures;
+	database_generation_test_report_t before, after;
+	const char *path = "/usr/bin/reload-preserved";
+	const char *digest =
+		"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+	char payload[256];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 210, "[ERROR:210] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
+		 SRC_FILE_DB, (size_t)300, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 211,
+	      "[ERROR:211] reload-preserve record import failed");
+	CHECK(database_generation_report_for_tests(&before) == 0, 212,
+	      "[ERROR:212] generation report failed before reload failure");
+
+	cfg.trust = "unsupported-test-backend";
+	before_failures =
+		failure_action_count(FAILURE_REASON_TRUST_RELOAD_FAILURE);
+	rc = database_reload_for_tests(&cfg);
+	after_failures =
+		failure_action_count(FAILURE_REASON_TRUST_RELOAD_FAILURE);
+	CHECK(rc != 0, 213, "[ERROR:213] reload failure unexpectedly passed");
+	CHECK(after_failures == before_failures + 1, 214,
+	      "[ERROR:214] reload failure was not recorded");
+	CHECK(database_generation_report_for_tests(&after) == 0, 215,
+	      "[ERROR:215] generation report failed after reload failure");
+	CHECK(after.generation == before.generation, 216,
+	      "[ERROR:216] failed reload changed active generation");
+	CHECK(check_trust_database(path, NULL, -1) == 1, 217,
+	      "[ERROR:217] failed reload lost previous trust DB");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 218,
+	      "[ERROR:218] reload-failure cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_autosize_generation_reload_target(void)
 {
 	unsigned int target;
@@ -1152,6 +1200,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_failed_candidate_preserves_generation();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_reload_failure_preserves_generation();
 	if (rc)
 		return rc;
 

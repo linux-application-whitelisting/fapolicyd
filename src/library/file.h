@@ -39,6 +39,14 @@ typedef enum {
 	FILE_HASH_ALG_SHA512,
 } file_hash_alg_t;
 
+typedef enum {
+	FILE_INIT_OK = 0,
+	FILE_INIT_MAGIC_FAST_OPEN_FAILED = 1,
+	FILE_INIT_MAGIC_FAST_LOAD_FAILED = 2,
+	FILE_INIT_MAGIC_FULL_OPEN_FAILED = 3,
+	FILE_INIT_MAGIC_FULL_LOAD_FAILED = 4,
+} file_init_status_t;
+
 #define MD5_LEN		16
 #define SHA1_LEN	20
 #define SHA256_LEN	32
@@ -63,6 +71,7 @@ struct file_info
 };
 
 int file_init(void);
+void file_init_failure_for_tests(file_init_status_t failure);
 void file_close(void);
 struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
 void file_info_reset_digest(struct file_info *info);

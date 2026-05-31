@@ -5516,12 +5516,12 @@ static void finish_trust_database_reload(void)
 	atomic_store_explicit(&reload_db_active, false, memory_order_release);
 }
 
-static void do_reload_db(conf_t* config)
+static int do_reload_db(conf_t *config)
 {
 	msg(LOG_INFO,
 	    "It looks like there was an update of the system... Syncing DB.");
 
-	int rc;
+	int rc = 0;
 	unsigned int old_db_max_size = config->db_max_size;
 	unsigned int old_reload_floor_mb = autosize_reload_floor_mb;
 
@@ -5534,30 +5534,54 @@ static void do_reload_db(conf_t* config)
 			config->db_max_size);
 
 		if (config->db_max_size < old_db_max_size) {
+			unsigned long old_trust_generation;
+			unsigned long old_env_generation;
+
 			/*
 			 * This is a map-size reopen, not controlled
 			 * compaction. If high-water usage needs physical file
 			 * rewrite, status reports recommend the explicit admin
 			 * compaction command instead of hiding a swap in reload.
 			 */
-			lock_update_thread();
-			close_env(0);
+			old_trust_generation =
+				trust_db_current_generation_number();
+			lmdb_environment_snapshot(&old_env_generation, NULL);
+			if (old_env_generation == 0)
+				old_env_generation = 1;
 
-			rc = init_db(config);
+			lock_update_thread();
+			close_env(1);
+
+			rc = init_db_with_generations(config,
+				old_trust_generation, old_env_generation);
+			if (rc) {
+				int reopen_rc;
+
+				msg(LOG_ERR,
+				    "Cannot open the resized trust database, init_db() (%d)",
+				    rc);
+				config->db_max_size = old_db_max_size;
+				autosize_reload_floor_mb = old_reload_floor_mb;
+				reopen_rc = init_db_with_generations(config,
+					old_trust_generation,
+					old_env_generation);
+				if (reopen_rc) {
+					msg(LOG_ERR,
+					    "Cannot reopen previous trust database, init_db() (%d)",
+					    reopen_rc);
+					rc = reopen_rc;
+				} else
+					msg(LOG_ERR,
+					    "Previous trust database preserved after reload sizing failure");
+			}
 			unlock_update_thread();
 
 			if (rc) {
-				msg(LOG_ERR,
-			     "Cannot open the trust database, init_db() (%d)",
-					rc);
 				if (stop)
 					goto out;
 
 				record_trust_reload_failure();
-				close(ffd[0].fd);
-				backend_close();
-				unlink_fifo();
-				exit(rc);
+				goto out;
 			}
 		} else if (config->db_max_size > old_db_max_size) {
 			lock_update_thread();
@@ -5579,14 +5603,12 @@ static void do_reload_db(conf_t* config)
 	if ((rc = backend_init(config))) {
 		msg(LOG_ERR, "Failed to load trust data from backend (%d)", rc);
 		record_trust_reload_failure();
-		close_db(0);
 		goto out;
 	}
 
 	if ((rc = backend_load(config))) {
 		msg(LOG_ERR, "Failed to load data from backend (%d)", rc);
 		record_trust_reload_failure();
-		close_db(0);
 		goto out;
 	}
 
@@ -5598,17 +5620,14 @@ static void do_reload_db(conf_t* config)
 
 		record_trust_reload_failure();
 		if (rc == UPDATE_DB_PRESERVED) {
-			// update_database() failed before clearing the live DB.
-			// Keep running with the last successfully built trust set.
 			msg(LOG_ERR,
 			    "Previous trust database preserved after reload failure");
 			goto out;
 		}
 
-		close(ffd[0].fd);
-		backend_close();
-		unlink_fifo();
-		exit(rc);
+		msg(LOG_ERR,
+		    "Trust database reload failed with active DB under daemon control");
+		goto out;
 	}
 
 	msg(LOG_INFO, "Updated");
@@ -5616,6 +5635,18 @@ static void do_reload_db(conf_t* config)
 out:
 	// Conserve memory
 	backend_close();
+	return rc;
+}
+
+/*
+ * database_reload_for_tests - run the trust reload path directly.
+ * @config: test configuration containing backend and LMDB settings.
+ *
+ * Returns 0 on success and non-zero when reload failed.
+ */
+int database_reload_for_tests(conf_t *config)
+{
+	return do_reload_db(config);
 }
 
 /*

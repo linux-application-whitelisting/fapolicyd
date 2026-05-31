@@ -123,6 +123,9 @@ file_filter_test_SOURCES = file_filter_test.c
 file_filter_test_SOURCES += test-stubs.c
 file_filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 file_filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
+check_PROGRAMS += rpm_backend_test
+rpm_backend_test_SOURCES = rpm_backend_test.c test-stubs.c
+rpm_backend_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 endif
 
 if WITH_DEB

@@ -270,6 +270,11 @@ static void remove_node(Queue *queue, const QNode *node)
 		goto out;
 	} else {
 		if (node->prev->next != node) {
+			/*
+			 * The LRU cache owns enforcement objects. Once neighbor
+			 * links disagree, continuing can detach or free the
+			 * wrong object, so this remains an invariant failure.
+			 */
 			msg(LOG_ERR, "Linked list corruption detected %s",
 				queue->name);
 			abort();
@@ -284,6 +289,11 @@ static void remove_node(Queue *queue, const QNode *node)
 			queue->end->next = NULL;
 	} else {
 		if (node->next->prev != node) {
+			/*
+			 * The LRU cache owns enforcement objects. Once neighbor
+			 * links disagree, continuing can detach or free the
+			 * wrong object, so this remains an invariant failure.
+			 */
 			msg(LOG_ERR, "Linked List corruption detected %s",
 				queue->name);
 			abort();
@@ -339,6 +349,11 @@ void lru_evict(Queue *queue, unsigned int key)
 	QNode *temp = queue->front;
 
 	if (hash->array[key] != temp) {
+		/*
+		 * Key-to-node mismatch means the hash table and eviction list
+		 * no longer describe the same cache. Evicting after that could
+		 * corrupt enforcement state, so stop at the invariant failure.
+		 */
 		msg(LOG_ERR, "lru_evict called with mismatched key %s",
 			queue->name);
 		abort();

@@ -168,6 +168,27 @@ static void close_magic_handles(void)
 }
 
 /*
+ * expect_file_init_magic_failure - verify file_init() reports libmagic errors.
+ */
+static void expect_file_init_magic_failure(void)
+{
+	struct decision_context *ctx;
+	int rc;
+
+	file_init_failure_for_tests(FILE_INIT_MAGIC_FAST_OPEN_FAILED);
+	rc = file_init();
+	file_init_failure_for_tests(FILE_INIT_OK);
+	if (rc != FILE_INIT_MAGIC_FAST_OPEN_FAILED)
+		error(1, 0, "file_init: expected fast magic failure got %d",
+		      rc);
+
+	ctx = decision_context_current();
+	if (ctx->magic_fast != NULL || ctx->magic_full != NULL)
+		error(1, 0, "file_init: failed init left magic handles open");
+	file_close();
+}
+
+/*
  * create_tmp_file - create a temporary file populated with text content.
  * Returns a readable descriptor on success.
  */
@@ -230,6 +251,8 @@ int main(void)
 	const unsigned char png_hdr[] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n' };
 	const unsigned char jpg_hdr[] = { 0xFF, 0xD8, 0xFF, 0xE0 };
 	const unsigned char gzip_hdr[] = { 0x1F, 0x8B, 0x08, 0x00 };
+
+	expect_file_init_magic_failure();
 
 	if (init_magic_handles() != 0)
 		error(1, 0, "failed to initialize test libmagic handles");

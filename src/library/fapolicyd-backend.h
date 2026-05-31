@@ -51,4 +51,9 @@ typedef struct _backend
 	long entries;
 } backend;
 
+#ifdef USE_RPM
+int rpm_backend_load_from_path_for_tests(const conf_t *conf,
+	const char *loader_path) __nonnull ((1, 2));
+#endif
+
 #endif

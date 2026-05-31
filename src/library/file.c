@@ -60,6 +60,7 @@ static char *get_program_cwd_from_pid(pid_t pid, size_t blen, char *buf)
 				__attr_access ((__write_only__, 3, 2));
 static void resolve_path(const char *pcwd, char *path, size_t len)
 				__attr_access ((__write_only__, 2, 3));
+static file_init_status_t file_init_failure;
 
 /*
  * file_close_context - release file helper state owned by a decision context.
@@ -123,6 +124,12 @@ int file_init(void)
 
 	// Setup libmagic
 	unsetenv("MAGIC");
+	if (file_init_failure == FILE_INIT_MAGIC_FAST_OPEN_FAILED) {
+		msg(LOG_ERR, "Unable to init fast libmagic");
+		file_close_context(ctx);
+		return FILE_INIT_MAGIC_FAST_OPEN_FAILED;
+	}
+
 	// Fast magic: minimal rules, all expensive checks disabled
 	ctx->magic_fast = magic_open(
 		MAGIC_MIME |
@@ -136,33 +143,48 @@ int file_init(void)
 		MAGIC_NO_CHECK_JSON        /* Skip JSON validation */
 		);
 	if (ctx->magic_fast == NULL) {
-		msg(LOG_ERR, "Unable to init libmagic");
+		msg(LOG_ERR, "Unable to init fast libmagic");
 		file_close_context(ctx);
-		return 1;
+		return FILE_INIT_MAGIC_FAST_OPEN_FAILED;
 	}
 
 	// Load only essential magic rules
+	if (file_init_failure == FILE_INIT_MAGIC_FAST_LOAD_FAILED) {
+		msg(LOG_ERR, "Unable to load fast magic database");
+		file_close_context(ctx);
+		return FILE_INIT_MAGIC_FAST_LOAD_FAILED;
+	}
 	if (magic_load(ctx->magic_fast, MAGIC_PATH) != 0) {
 		msg(LOG_ERR, "Unable to load fast magic database");
 		file_close_context(ctx);
-		return 2;
+		return FILE_INIT_MAGIC_FAST_LOAD_FAILED;
 	}
 
 	// Full magic: normal operation
+	if (file_init_failure == FILE_INIT_MAGIC_FULL_OPEN_FAILED) {
+		msg(LOG_ERR, "Unable to init full libmagic");
+		file_close_context(ctx);
+		return FILE_INIT_MAGIC_FULL_OPEN_FAILED;
+	}
 	ctx->magic_full = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
 			MAGIC_NO_CHECK_ELF);
 	if (ctx->magic_full == NULL) {
-		msg(LOG_ERR, "Unable to init libmagic");
+		msg(LOG_ERR, "Unable to init full libmagic");
 		file_close_context(ctx);
-		return 3;
+		return FILE_INIT_MAGIC_FULL_OPEN_FAILED;
 	}
 	// System default
+	if (file_init_failure == FILE_INIT_MAGIC_FULL_LOAD_FAILED) {
+		msg(LOG_ERR, "Unable to load default magic database");
+		file_close_context(ctx);
+		return FILE_INIT_MAGIC_FULL_LOAD_FAILED;
+	}
 	if (magic_load(ctx->magic_full, NULL) != 0) {
 		msg(LOG_ERR, "Unable to load default magic database");
 		file_close_context(ctx);
-		return 4;
+		return FILE_INIT_MAGIC_FULL_LOAD_FAILED;
 	}
-	return 0;
+	return FILE_INIT_OK;
 }
 
 
@@ -170,6 +192,18 @@ int file_init(void)
 void file_close(void)
 {
 	file_close_context(decision_context_current());
+}
+
+
+/*
+ * file_init_failure_for_tests - request one file_init() fault injection.
+ * @failure: file_init_status_t value to return, or FILE_INIT_OK to disable.
+ *
+ * Returns nothing.
+ */
+void file_init_failure_for_tests(file_init_status_t failure)
+{
+	file_init_failure = failure;
 }
 
 

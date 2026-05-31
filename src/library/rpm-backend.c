@@ -217,13 +217,15 @@ struct _hash_record {
 
 #define BUFFER_SIZE 4096
 #define MAX_DELIMS 3	// Trustdb has 4 fields - therefore 3 delimiters
+static const char *rpm_loader_path = BINARYDIR "/fapolicyd-rpm-loader";
+
 static int rpm_load_list(const conf_t *conf)
 {
 	// before the spawn
 	int sv[2];
 	if (socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv) < 0) {
 		msg(LOG_ERR, "socketpair failed");
-		exit(1);
+		return 1;
 	}
 
 	posix_spawn_file_actions_t actions;
@@ -238,7 +240,7 @@ static int rpm_load_list(const conf_t *conf)
 	char *custom_env[] = { "FAPO_SOCK_FD=3", NULL };
 
 	pid_t pid = -1;
-	int status = posix_spawn(&pid, BINARYDIR "/fapolicyd-rpm-loader",
+	int status = posix_spawn(&pid, rpm_loader_path,
 					 &actions, NULL, argv, custom_env);
 	close(sv[1]);  // Parent doesn't write
 
@@ -258,15 +260,20 @@ static int rpm_load_list(const conf_t *conf)
 		_msg.msg_controllen = sizeof cmsgbuf.buf;
 
 		if (recvmsg(sv[0], &_msg, 0) < 0) {
-			msg(LOG_ERR, "recvmesg failed");
-			exit(1);
+			msg(LOG_ERR, "recvmsg failed");
+			close(sv[0]);
+			waitpid(pid, &status, 0);
+			posix_spawn_file_actions_destroy(&actions);
+			return 1;
 		}
 		close(sv[0]);
 
 		struct cmsghdr *c = CMSG_FIRSTHDR(&_msg);
 		if (!c || c->cmsg_type != SCM_RIGHTS) {
 			msg(LOG_ERR, "missing fd");
-			exit(1);
+			waitpid(pid, &status, 0);
+			posix_spawn_file_actions_destroy(&actions);
+			return 1;
 		}
 
 		int memfd;
@@ -286,8 +293,10 @@ static int rpm_load_list(const conf_t *conf)
 		rpm_backend.memfd = memfd;
 
 		waitpid(pid, &status, 0);
-	} else
+	} else {
+		close(sv[0]);
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
+	}
 
 	posix_spawn_file_actions_destroy(&actions);
 
@@ -303,6 +312,25 @@ static int rpm_load_list(const conf_t *conf)
 		msg(LOG_ERR, "fapolicyd-rpm-loader exited with rc=%d", exit_rc);
 
 	return exit_rc;
+}
+
+/*
+ * rpm_backend_load_from_path_for_tests - exercise rpm loader IPC errors.
+ * @conf: test configuration.
+ * @loader_path: helper executable path to spawn.
+ *
+ * Returns the rpm backend load result without terminating the caller.
+ */
+int rpm_backend_load_from_path_for_tests(const conf_t *conf,
+					 const char *loader_path)
+{
+	const char *previous_loader_path = rpm_loader_path;
+	int rc;
+
+	rpm_loader_path = loader_path;
+	rc = rpm_load_list(conf);
+	rpm_loader_path = previous_loader_path;
+	return rc;
 }
 
 // this function is used in fapolicyd-rpm-loader
