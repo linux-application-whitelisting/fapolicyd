@@ -4091,12 +4091,12 @@ static int create_database_for_generation(struct trust_db_generation *gen,
 			if (be->backend->memfd != -1) {
 				rc = do_memfd_update_to_dbi(be->backend->memfd,
 				     gen->handle, &be->backend->entries);
-				if (rc)
+				if (rc) {
 					msg(LOG_ERR,
 					    "Failed to import trust data from %s backend",
 					    be->backend->name);
-				if (rc)
 					break;
+				}
 			}
 		}
 		log_lmdb_state(rc ? LOG_ERR : LOG_DEBUG,

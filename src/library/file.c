@@ -1699,17 +1699,19 @@ uint32_t gather_elf(int fd, off_t size)
 				if (ph_tbl[i].p_filesz > size)
 					goto err_out32;
 
+				num = ph_tbl[i].p_filesz / sizeof(Elf32_Dyn);
+				if (num > 1000)
+					goto err_out32;
+				if (num == 0)
+					continue;
+
 				Elf32_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+				if (dyn_tbl == NULL)
+					goto err_out32;
 
 				if((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
 						ph_tbl[i].p_offset) {
-					free(dyn_tbl);
-					goto err_out32;
-				}
-
-				num = ph_tbl[i].p_filesz / sizeof(Elf32_Dyn);
-				if (num > 1000) {
 					free(dyn_tbl);
 					goto err_out32;
 				}
@@ -1854,16 +1856,19 @@ done32_obj:
 				if (ph_tbl[i].p_filesz>(long unsigned int)size)
 					goto err_out64;
 
+				num = ph_tbl[i].p_filesz / sizeof(Elf64_Dyn);
+				if (num > 1000)
+					goto err_out64;
+				if (num == 0)
+					continue;
+
 				Elf64_Dyn *dyn_tbl = malloc(ph_tbl[i].p_filesz);
+				if (dyn_tbl == NULL)
+					goto err_out64;
 
 				if ((unsigned int)lseek(fd, ph_tbl[i].p_offset,
 							SEEK_SET) !=
 						ph_tbl[i].p_offset) {
-					free(dyn_tbl);
-					goto err_out64;
-				}
-				num = ph_tbl[i].p_filesz / sizeof(Elf64_Dyn);
-				if (num > 1000) {
 					free(dyn_tbl);
 					goto err_out64;
 				}

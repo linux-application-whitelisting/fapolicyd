@@ -328,10 +328,6 @@ filter_rc_t filter_check(const char *_path)
 		stack_destroy(&stack);
 		return FILTER_ERR_DEPTH;
 	}
-	stack_item = (stack_item_t *)stack_top(&stack);
-	filter = stack_item->filter;
-	offset = stack_item->offset;
-	level = stack_item->level;
 
 	while(!stack_is_empty(&stack)) {
 		int matched = 0;
@@ -483,8 +479,6 @@ filter_rc_t filter_check(const char *_path)
 		do {
 			if (stack_item) {
 				filter = stack_item->filter;
-				offset = stack_item->offset;
-				level = stack_item->level;
 
 				// assuimg that nothing has matched on the
 				// upper level so it's a directory match
@@ -504,7 +498,6 @@ filter_rc_t filter_check(const char *_path)
 		if (!stack_item)
 			break;
 
-		filter = stack_item->filter;
 		offset = stack_item->offset;
 		level = stack_item->level;
 	}
@@ -608,7 +601,6 @@ int filter_load_file(const char *path)
 		}
 	}
 
-	ssize_t nread;
 	size_t len = 0;
 	char * line = NULL;
 	long line_number = 0;
@@ -628,7 +620,7 @@ int filter_load_file(const char *path)
 		return 1; /* depth too deep */
 	}
 
-	while ((nread = getline(&line, &len, stream)) != -1) {
+	while (getline(&line, &len, stream) != -1) {
 		line_number++;
 
 		if (line[0] == '\0' || line[0] == '\n') {
