@@ -3,6 +3,7 @@
 - Mark dir=untrusted as deprecated in rules
 - Improve fapolicyd-cli --check-rules
 - Add fapolicyd-cli --compact-trustdb to rebuild and compact the trust database
+- Change the default value of db_max_size to auto
 
 1.5
 - Increase the line length of config files (Renaud Métrich)
