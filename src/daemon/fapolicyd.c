@@ -105,7 +105,7 @@ static atomic_bool reconfig_running = false;
 // Mount handling
 static atomic_bool mounts_running = false;
 
-static _Noreturn void usage(void);
+static __noreturn void usage(void);
 
 #ifndef HAVE_GETTID
 pid_t gettid(void)

@@ -22,6 +22,9 @@
 #ifndef __attribute_pure__
 #  define __attribute_pure__
 #endif
+#ifndef __noreturn
+#  define __noreturn __attribute__ ((__noreturn__))
+#endif
 #ifndef __nonnull
 #  define __nonnull(params)
 #endif
