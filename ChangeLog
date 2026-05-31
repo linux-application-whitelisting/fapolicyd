@@ -1,9 +1,13 @@
 1.6
 - Many internal changes
+- Preserve the active trust database when reloads fail
 - Mark dir=untrusted as deprecated in rules
-- Improve fapolicyd-cli --check-rules
+- Improve status, metrics, and timing report details and formatting
+- Improve fapolicyd-cli --check-rules diagnostics with source line locations
 - Add fapolicyd-cli --compact-trustdb to rebuild and compact the trust database
+- Expand fapolicyd-cli --check-ignore_mounts risk reporting
 - Change the default value of db_max_size to auto
+- Prompt before replacing existing decision timing reports
 
 1.5
 - Increase the line length of config files (Renaud Métrich)
