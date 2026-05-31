@@ -85,7 +85,7 @@ static const char *usage =
 "--check-trustdb       Check the trustdb against files on disk for problems\n"
 "--compact-trustdb     Rebuild and compact the daemon trustdb LMDB environment\n"
 "--check-watch_fs      Check watch_fs against currently mounted file systems\n"
-"--check-ignore_mounts [path] Scan ignored mounts for executable content\n"
+"--check-ignore_mounts [path] Scan ignored mounts for risky content\n"
 "--check-rules [path]  Validate rules file syntax without loading\n"
 "--lint                Enable policy lint warnings with --check-rules\n"
 "--reset-metrics       Dump metrics and reset counters when daemon allows it\n"

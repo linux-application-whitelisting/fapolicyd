@@ -32,7 +32,7 @@ rules_test policy_reload_test policy_concurrent_test failure_action_test \
 queue_test event_test \
 trustdb_format_test trustdb_lmdb_test lru_test notify_test \
 decision_defer_test decision_config_test \
-decision_timing_report_test
+decision_timing_report_test ignore_mounts_risk_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 AM_CFLAGS = -std=gnu11
@@ -52,6 +52,12 @@ fd_fgets_test_SOURCES = fd_fgets_test.c test-stubs.c
 fd_fgets_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 file_type_detect_test_SOURCES = file_type_detect_test.c test-stubs.c
 file_type_detect_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+ignore_mounts_risk_test_SOURCES = ignore_mounts_risk_test.c test-stubs.c
+ignore_mounts_risk_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+ignore_mounts_risk_test_CPPFLAGS = \
+	-I${top_builddir} \
+	-I${top_srcdir}/src/library/ \
+	-I${top_srcdir}/src/cli/
 rules_test_SOURCES = rules_test.c
 rules_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 rules_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"

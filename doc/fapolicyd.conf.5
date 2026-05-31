@@ -229,7 +229,11 @@ Run the advisory check:
 fapolicyd-cli --check-ignore_mounts[=MOUNT]
 \f[R]
 .fi
-to verify the mount exists, confirm \fBnoexec\fR, and scan for files matching the \fB%languages\fR macro. The command reports findings and returns a non\-zero status when potentially executable content is detected.
+to verify the mount exists, confirm \fBnoexec\fR, and scan for executable
+regular files, ELF/shared objects, archives/JARs/ZIPs, bytecode caches,
+plugin/runtime directories, and files matching the \fB%languages\fR macro.
+The command reports category counts and returns a non\-zero status when
+potentially executable content is detected.
 .IP \[bu]
 Reevaluate after workload changes; caches and logging trees evolve over time.
 .RE

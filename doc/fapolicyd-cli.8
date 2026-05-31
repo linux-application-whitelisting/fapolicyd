@@ -69,9 +69,11 @@ Check the mounted file systems against the watch_fs daemon config entry to deter
 Inspect the ignore_mounts list or the provided mount point for potentially
 executable content. The command verifies that each mount exists, confirms the
 presence of the \fBnoexec\fP option, and scans the directory tree for files
-matching the \fB%languages\fP macro. Any matches are reported and a summary per
-mount is displayed. A non-zero status is returned when suspicious files are
-found so automated workflows can gate changes.
+matching risk categories that fapolicyd cannot see on an ignored mount. The
+summary reports counts for executable regular files, ELF/shared objects,
+archives/JARs/ZIPs, bytecode caches, plugin/runtime directories, and files
+matching the \fB%languages\fP macro. A non-zero status is returned when risky
+entries are found so automated workflows can gate changes.
 .TP
 .B \-\-check-rules [path]
 Parse the rules file and validate its syntax without loading it into the daemon. If \fIpath\fP is omitted, the command checks the active rules file, using \fI/etc/fapolicyd/fapolicyd.rules\fP when present and \fI/etc/fapolicyd/compiled.rules\fP otherwise. If both installed rules files exist, the command reports a path configuration error unless \fB\-\-lint\fP is also used. A zero exit status means the file is valid.
@@ -180,7 +182,7 @@ Notifies fapolicyd to perform an update of the trust database.
 Notifies fapolicyd to perform a reload of the rules.
 .TP
 .B \-\-verbose
-Enable additional output for commands that support it. At present this affects \fB\-\-check-ignore_mounts\fP by printing each file that does not pass inspection.
+Enable additional output for commands that support it. At present this affects \fB\-\-check-ignore_mounts\fP by printing each file or directory that matched a risk category, the category names, and the detected MIME type when available.
 .SH RETURN CODES
 The following exit status values are used for error reporting and scripting:
 .TP

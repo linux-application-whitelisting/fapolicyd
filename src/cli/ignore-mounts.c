@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "avl.h"
@@ -35,13 +36,38 @@
 extern bool verbose;
 extern conf_t config;
 
+enum risk_category {
+	RISK_EXECUTABLE_REGULAR,
+	RISK_ELF_SHARED,
+	RISK_ARCHIVE,
+	RISK_BYTECODE,
+	RISK_PLUGIN_RUNTIME_DIR,
+	RISK_LANGUAGE,
+	RISK_CATEGORY_COUNT
+};
+
+#define RISK_BIT(risk) (1U << (risk))
+
+struct risk_counts {
+	unsigned long total_entries;
+	unsigned long category[RISK_CATEGORY_COUNT];
+};
+
 struct mount_scan_state {
 	const avl_tree_t *languages;
-	unsigned long *count;
+	struct risk_counts *counts;
 	int had_error;
 };
 
 static struct mount_scan_state scan_state;
+static const char * const risk_labels[RISK_CATEGORY_COUNT] = {
+	"executable regular files",
+	"ELF/shared objects",
+	"archives/JARs/ZIPs",
+	"bytecode caches",
+	"plugin/runtime directories",
+	"language/interpreter files",
+};
 
 /*
  * reset_ignore_mounts_config - release CLI config used during the scan.
@@ -92,6 +118,92 @@ static int populate_mount_list(const char *ignore_list, list_t *mounts)
 	if (rc) {
 		list_empty(mounts);
 		return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * path_basename - return the final path component without modifying path.
+ * @path: path to inspect.
+ * Returns a pointer inside @path.
+ */
+static const char *path_basename(const char *path)
+{
+	const char *slash = strrchr(path, '/');
+
+	return slash ? slash + 1 : path;
+}
+
+/*
+ * name_in_list - compare a name against a NULL terminated list.
+ * @name: file or directory basename.
+ * @list: NULL terminated list of lowercase names.
+ * Returns 1 when @name matches a list entry, 0 otherwise.
+ */
+static int name_in_list(const char *name, const char * const *list)
+{
+	for (unsigned int i = 0; list[i]; i++) {
+		if (strcasecmp(name, list[i]) == 0)
+			return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * path_has_suffix - case-insensitive suffix check for risk extensions.
+ * @path: path to inspect.
+ * @suffix: file suffix, including the leading period.
+ * Returns 1 when @path ends in @suffix, 0 otherwise.
+ */
+static int path_has_suffix(const char *path, const char *suffix)
+{
+	size_t path_len = strlen(path);
+	size_t suffix_len = strlen(suffix);
+
+	if (path_len < suffix_len)
+		return 0;
+
+	return strcasecmp(path + path_len - suffix_len, suffix) == 0;
+}
+
+/*
+ * path_has_suffix_list - check a path against known risk extensions.
+ * @path: path to inspect.
+ * @suffixes: NULL terminated list of suffixes.
+ * Returns 1 when any suffix matches, 0 otherwise.
+ */
+static int path_has_suffix_list(const char *path,
+				const char * const *suffixes)
+{
+	for (unsigned int i = 0; suffixes[i]; i++) {
+		if (path_has_suffix(path, suffixes[i]))
+			return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * path_has_component - find an exact component in a slash separated path.
+ * @path: path to inspect.
+ * @component: component name to find.
+ * Returns 1 when the component is present, 0 otherwise.
+ */
+static int path_has_component(const char *path, const char *component)
+{
+	const char *match = path;
+	size_t component_len = strlen(component);
+
+	while ((match = strstr(match, component))) {
+		int left_ok = match == path || match[-1] == '/';
+		int right_ok = match[component_len] == 0 ||
+			       match[component_len] == '/';
+
+		if (left_ok && right_ok)
+			return 1;
+		match += component_len;
 	}
 
 	return 0;
@@ -161,6 +273,335 @@ static void free_language_mimes(avl_tree_t *languages)
 		free(entry->mime);
 		free(entry);
 	}
+}
+
+/*
+ * mime_is_language - check whether MIME belongs to the %languages macro.
+ * @languages: AVL tree built from %languages.
+ * @mime: MIME string returned by file type detection.
+ * Returns 1 on match, 0 otherwise.
+ */
+static int mime_is_language(const avl_tree_t *languages, const char *mime)
+{
+	struct language_entry key = {
+		.mime = (char *)mime,
+	};
+
+	if (languages == NULL || mime == NULL)
+		return 0;
+
+	return avl_search(languages, &key.avl) != NULL;
+}
+
+/*
+ * mime_is_elf_shared - classify ELF, shared library, and object MIME names.
+ * @mime: MIME string returned by file type detection.
+ * Returns 1 when the MIME is ELF-related, 0 otherwise.
+ */
+static int mime_is_elf_shared(const char *mime)
+{
+	static const char * const elf_mimes[] = {
+		"application/x-bad-elf",
+		"application/x-executable",
+		"application/x-object",
+		"application/x-pie-executable",
+		"application/x-sharedlib",
+		NULL
+	};
+
+	return mime && name_in_list(mime, elf_mimes);
+}
+
+/*
+ * mime_is_archive - classify archive, compressed archive, JAR, and ZIP MIME.
+ * @mime: MIME string returned by file type detection.
+ * Returns 1 when the MIME is archive-like, 0 otherwise.
+ */
+static int mime_is_archive(const char *mime)
+{
+	static const char * const archive_mimes[] = {
+		"application/gzip",
+		"application/java-archive",
+		"application/vnd.android.package-archive",
+		"application/vnd.ms-cab-compressed",
+		"application/vnd.rar",
+		"application/x-archive",
+		"application/x-7z-compressed",
+		"application/x-bzip",
+		"application/x-bzip2",
+		"application/x-compress",
+		"application/x-cpio",
+		"application/x-gzip",
+		"application/x-java-jmod",
+		"application/x-java-archive",
+		"application/x-java-pack200",
+		"application/x-lrzip",
+		"application/x-lzip",
+		"application/x-rar",
+		"application/x-rpm",
+		"application/x-stuffit",
+		"application/x-tar",
+		"application/x-xz",
+		"application/x-xar",
+		"application/x-zip",
+		"application/x-zoo",
+		"application/x-zstd",
+		"application/zstd",
+		"application/zip",
+		NULL
+	};
+
+	return mime && name_in_list(mime, archive_mimes);
+}
+
+/*
+ * mime_is_bytecode - classify bytecode MIME names.
+ * @mime: MIME string returned by file type detection.
+ * Returns 1 when the MIME is bytecode-like, 0 otherwise.
+ */
+static int mime_is_bytecode(const char *mime)
+{
+	static const char * const bytecode_mimes[] = {
+		"application/java-vm",
+		"application/wasm",
+		"application/x-bytecode.python",
+		"application/x-elc",
+		"application/x-java-applet",
+		"application/x-lua-bytecode",
+		"application/x-python-bytecode",
+		NULL
+	};
+
+	if (mime == NULL)
+		return 0;
+	if (strstr(mime, "bytecode"))
+		return 1;
+
+	return name_in_list(mime, bytecode_mimes);
+}
+
+/*
+ * path_is_archive - classify archive-like paths by extension.
+ * @path: path to inspect.
+ * Returns 1 when the suffix indicates an archive, 0 otherwise.
+ */
+static int path_is_archive(const char *path)
+{
+	static const char * const archive_suffixes[] = {
+		".7z",
+		".apk",
+		".bz2",
+		".ear",
+		".egg",
+		".gz",
+		".jar",
+		".rar",
+		".tar",
+		".tar.bz2",
+		".tar.gz",
+		".tar.xz",
+		".tar.zst",
+		".tbz",
+		".tbz2",
+		".tgz",
+		".txz",
+		".war",
+		".whl",
+		".xz",
+		".zip",
+		".zst",
+		NULL
+	};
+
+	return path_has_suffix_list(path, archive_suffixes);
+}
+
+/*
+ * path_is_bytecode - classify bytecode files and cache paths.
+ * @path: path to inspect.
+ * Returns 1 when the path indicates bytecode, 0 otherwise.
+ */
+static int path_is_bytecode(const char *path)
+{
+	static const char * const bytecode_suffixes[] = {
+		".class",
+		".elc",
+		".luac",
+		".pyc",
+		".pyo",
+		".wasm",
+		NULL
+	};
+
+	return path_has_component(path, "__pycache__") ||
+	       path_has_suffix_list(path, bytecode_suffixes);
+}
+
+/*
+ * path_is_plugin_runtime_dir - classify plugin or runtime dependency dirs.
+ * @path: directory path to inspect.
+ * Returns 1 when the basename is a known plugin/runtime directory.
+ */
+static int path_is_plugin_runtime_dir(const char *path)
+{
+	static const char * const runtime_dirs[] = {
+		".venv",
+		"add-ons",
+		"addons",
+		"bower_components",
+		"dist-packages",
+		"extension",
+		"extensions",
+		"gems",
+		"node_modules",
+		"pear",
+		"pecl",
+		"perl5",
+		"plugin",
+		"plugins",
+		"site-packages",
+		"vendor",
+		"venv",
+		"virtualenv",
+		NULL
+	};
+
+	return name_in_list(path_basename(path), runtime_dirs);
+}
+
+/*
+ * classify_file_risks - classify a regular file into risk categories.
+ * @path: file path being scanned.
+ * @sb: stat data for the file.
+ * @mime: MIME string returned by file type detection.
+ * @languages: AVL tree built from %languages.
+ * Returns a bitmask of risk categories.
+ */
+static unsigned int classify_file_risks(const char *path,
+					const struct stat *sb,
+					const char *mime,
+					const avl_tree_t *languages)
+{
+	unsigned int risks = 0;
+
+	if (sb->st_mode & 0111)
+		risks |= RISK_BIT(RISK_EXECUTABLE_REGULAR);
+	if (mime_is_elf_shared(mime))
+		risks |= RISK_BIT(RISK_ELF_SHARED);
+	if (mime_is_archive(mime) || path_is_archive(path))
+		risks |= RISK_BIT(RISK_ARCHIVE);
+	if (mime_is_bytecode(mime) || path_is_bytecode(path))
+		risks |= RISK_BIT(RISK_BYTECODE);
+	if (mime_is_language(languages, mime))
+		risks |= RISK_BIT(RISK_LANGUAGE);
+
+	return risks;
+}
+
+/*
+ * classify_dir_risks - classify a directory into risk categories.
+ * @path: directory path being scanned.
+ * Returns a bitmask of risk categories.
+ */
+static unsigned int classify_dir_risks(const char *path)
+{
+	unsigned int risks = 0;
+
+	if (strcasecmp(path_basename(path), "__pycache__") == 0)
+		risks |= RISK_BIT(RISK_BYTECODE);
+	if (path_is_plugin_runtime_dir(path))
+		risks |= RISK_BIT(RISK_PLUGIN_RUNTIME_DIR);
+
+	return risks;
+}
+
+/*
+ * print_verbose_risks - print one verbose risk entry.
+ * @path: file or directory path that matched.
+ * @risks: risk bitmask for the path.
+ * @mime: optional MIME string for regular files.
+ * Returns nothing.
+ */
+static void print_verbose_risks(const char *path, unsigned int risks,
+				const char *mime)
+{
+	int first = 1;
+
+	printf("%s: ", path);
+	for (unsigned int i = 0; i < RISK_CATEGORY_COUNT; i++) {
+		if ((risks & RISK_BIT(i)) == 0)
+			continue;
+		printf("%s%s", first ? "" : ", ", risk_labels[i]);
+		first = 0;
+	}
+	if (mime && *mime)
+		printf(" (%s)", mime);
+	putchar('\n');
+}
+
+/*
+ * record_risk_entry - update counters and optionally print a verbose entry.
+ * @path: file or directory path that matched.
+ * @risks: risk bitmask for the path.
+ * @mime: optional MIME string for regular files.
+ * Returns nothing.
+ */
+static void record_risk_entry(const char *path, unsigned int risks,
+			      const char *mime)
+{
+	if (risks == 0)
+		return;
+
+	if (verbose)
+		print_verbose_risks(path, risks, mime);
+
+	if (scan_state.counts) {
+		scan_state.counts->total_entries++;
+		for (unsigned int i = 0; i < RISK_CATEGORY_COUNT; i++) {
+			if (risks & RISK_BIT(i))
+				scan_state.counts->category[i]++;
+		}
+	}
+}
+
+/*
+ * add_risk_counts - add per-mount counts into an aggregate.
+ * @total: aggregate counts to update.
+ * @mount: per-mount counts to add.
+ * Returns nothing.
+ */
+static void add_risk_counts(struct risk_counts *total,
+			    const struct risk_counts *mount)
+{
+	total->total_entries += mount->total_entries;
+	for (unsigned int i = 0; i < RISK_CATEGORY_COUNT; i++)
+		total->category[i] += mount->category[i];
+}
+
+/*
+ * print_risk_summary - print the per-mount risk summary.
+ * @mount: mount point that was scanned.
+ * @counts: risk counts collected while scanning the mount.
+ * Returns nothing.
+ */
+static void print_risk_summary(const char *mount,
+			       const struct risk_counts *counts)
+{
+	printf("Summary for %s:\n", mount);
+	printf("  total risky entries: %lu\n", counts->total_entries);
+	for (unsigned int i = 0; i < RISK_CATEGORY_COUNT; i++)
+		printf("  %s: %lu\n", risk_labels[i], counts->category[i]);
+}
+
+/*
+ * print_skipped_summary - print a summary for a mount that was not scanned.
+ * @mount: mount point or configured path that was skipped.
+ * Returns nothing.
+ */
+static void print_skipped_summary(const char *mount)
+{
+	printf("Summary for %s:\n", mount);
+	printf("  scan skipped\n");
 }
 
 /*
@@ -311,21 +752,28 @@ static int load_ignore_mounts_config(const char *override)
 }
 
 /*
- * inspect_mount_file - nftw callback that records suspicious files.
- * @fpath: path of the file being inspected.
- * @sb: stat buffer describing the file.
- * @typeflag_unused: unused nftw type flag.
+ * inspect_mount_entry - nftw callback that records risky files and dirs.
+ * @fpath: path of the entry being inspected.
+ * @sb: stat buffer describing the entry.
+ * @typeflag: nftw type flag.
  * @ftwbuf_unused: unused nftw traversal metadata.
  * Returns FTW_CONTINUE so the walk keeps running.
  */
-static int inspect_mount_file(const char *fpath, const struct stat *sb,
-	int typeflag_unused __attribute__ ((unused)),
+static int inspect_mount_entry(const char *fpath, const struct stat *sb,
+	int typeflag,
 	struct FTW *ftwbuf_unused __attribute__ ((unused)))
 {
 	int fd;
 	struct file_info info;
 	char buf[128];
 	char *mime;
+	unsigned int risks;
+
+	if (typeflag == FTW_D || typeflag == FTW_DP) {
+		risks = classify_dir_risks(fpath);
+		record_risk_entry(fpath, risks, NULL);
+		return FTW_CONTINUE;
+	}
 
 	/* Only evaluate regular files discovered during the walk. */
 	if (S_ISREG(sb->st_mode) == 0)
@@ -355,35 +803,26 @@ static int inspect_mount_file(const char *fpath, const struct stat *sb,
 		return FTW_CONTINUE;
 	}
 
-	/* Look up the MIME in the %languages tree and report matches. */
-	struct language_entry key = {
-		.mime = buf,
-	};
-
-	if (avl_search(scan_state.languages, &key.avl)) {
-		if (verbose)
-			printf("%s: %s\n", fpath, buf);
-		if (scan_state.count)
-			(*scan_state.count)++;
-	}
+	risks = classify_file_risks(fpath, sb, mime, scan_state.languages);
+	record_risk_entry(fpath, risks, buf);
 
 	return FTW_CONTINUE;
 }
 
 /*
- * scan_mount_entry - scan a single ignore_mounts entry for suspicious files.
+ * scan_mount_entry - scan a single ignore_mounts entry for risky content.
  * @mount: entry from config.ignore_mounts.
- * @suspicious_total: aggregate counter updated with matches.
+ * @risk_totals: aggregate counters updated with matches.
  * @override: 0 ignore_mounts list, 1 command line override
  * Returns 0 when the mount was scanned successfully and 1 when errors
  * prevent a full scan.
  */
-static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
+static int scan_mount_entry(const char *mount, struct risk_counts *risk_totals,
 			    int override)
 {
 	char resolved[PATH_MAX];
 	char *rpath;
-	unsigned long mount_count = 0;
+	struct risk_counts mount_counts = { 0 };
 	struct stat sb;
 	int rc = CLI_EXIT_SUCCESS;
 	int scanned = 0;
@@ -392,21 +831,18 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 	if (rpath == NULL) {
 		fprintf(stderr, "Cannot resolve %s (%s)\n", mount,
 			strerror(errno));
-		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
-		       mount);
+		print_skipped_summary(mount);
 		return CLI_EXIT_PATH_CONFIG;
 	}
 
 	if (stat(rpath, &sb)) {
 		fprintf(stderr, "%s does not exist\n", rpath);
-		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
-		       rpath);
+		print_skipped_summary(rpath);
 		return CLI_EXIT_PATH_CONFIG;
 	}
 	if (S_ISDIR(sb.st_mode) == 0) {
 		fprintf(stderr, "%s is not a directory\n", rpath);
-		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
-		       rpath);
+		print_skipped_summary(rpath);
 		return CLI_EXIT_PATH_CONFIG;
 	}
 
@@ -424,13 +860,12 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 	if (mount_rc != 1)
 		return CLI_EXIT_PATH_CONFIG;
 
-	scan_state.count = &mount_count;
+	scan_state.counts = &mount_counts;
 	scan_state.had_error = 0;
-	if (nftw(rpath, inspect_mount_file, 1024, FTW_PHYS)) {
+	if (nftw(rpath, inspect_mount_entry, 1024, FTW_PHYS)) {
 		fprintf(stderr, "Unable to scan %s (%s)\n", rpath,
 			strerror(errno));
-		printf("Summary for %s: 0 suspicious file(s) (scan skipped)\n",
-		       rpath);
+		print_skipped_summary(rpath);
 		rc = CLI_EXIT_IO;
 	} else
 		scanned = 1;
@@ -439,12 +874,11 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 		rc = CLI_EXIT_IO;
 
 	if (scanned) {
-		printf("Summary for %s: %lu suspicious file(s)\n", rpath,
-		       mount_count);
-		*suspicious_total += mount_count;
+		print_risk_summary(rpath, &mount_counts);
+		add_risk_counts(risk_totals, &mount_counts);
 	}
 
-	scan_state.count = NULL;
+	scan_state.counts = NULL;
 
 	if (!scanned)
 		return rc;
@@ -455,15 +889,15 @@ static int scan_mount_entry(const char *mount, unsigned long *suspicious_total,
 /*
  * check_ignore_mounts - validate ignore_mounts entries and scan for matches.
  * @override: optional mount path provided on the command line.
- * Returns CLI_EXIT_SUCCESS when no suspicious files are found, CLI_EXIT_GENERIC
- * when suspicious files are detected, and other CLI_EXIT_* codes on error.
+ * Returns CLI_EXIT_SUCCESS when no risky entries are found, CLI_EXIT_GENERIC
+ * when risky entries are detected, and other CLI_EXIT_* codes on error.
  */
 int check_ignore_mounts(const char *override)
 {
 	list_t mounts;
 	avl_tree_t languages;
 	int rc = CLI_EXIT_SUCCESS;
-	unsigned long suspicious_total = 0;
+	struct risk_counts risk_totals = { 0 };
 	int errors = 0;
 	int file_ready = 0;
 	const char *languages_path;
@@ -514,9 +948,9 @@ int check_ignore_mounts(const char *override)
 	file_ready = 1;
 	scan_state.languages = &languages;
 
-	/* Walk each ignore_mounts entry and flag suspicious MIME matches. */
+	/* Walk each ignore_mounts entry and flag risky files or directories. */
 	for (list_item_t *lptr = mounts.first; lptr; lptr = lptr->next) {
-		int scan_rc = scan_mount_entry(lptr->index, &suspicious_total,
+		int scan_rc = scan_mount_entry(lptr->index, &risk_totals,
 					       override ? 1 : 0);
 		if (scan_rc) {
 			errors = 1;
@@ -525,7 +959,7 @@ int check_ignore_mounts(const char *override)
 		}
 	}
 
-	if (errors == 0 && suspicious_total == 0)
+	if (errors == 0 && risk_totals.total_entries == 0)
 		rc = CLI_EXIT_SUCCESS;
 
 finish:
@@ -534,10 +968,10 @@ finish:
 	list_empty(&mounts);
 	free_language_mimes(&languages);
 	scan_state.languages = NULL;
-	scan_state.count = NULL;
+	scan_state.counts = NULL;
 	scan_state.had_error = 0;
 	reset_ignore_mounts_config();
-	if (suspicious_total > 0)
+	if (risk_totals.total_entries > 0)
 		return CLI_EXIT_GENERIC;
 	if (errors)
 		return rc;

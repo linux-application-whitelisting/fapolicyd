@@ -376,7 +376,7 @@ Starting with fapolicyd-1.3.8, there is a new performance option, ignore_mounts.
     fapolicyd-cli --check-ignore_mounts[=MOUNT] [--verbose]
 ```
 
- This verifies the mount exists, confirms noexec, scans for files matching the %languages macro (interpreter-consumable content), reports findings, and returns non-zero when suspicious files are found so automation can gate configuration changes.
+ This verifies the mount exists, confirms noexec, scans for executable regular files, ELF/shared objects, archives/JARs/ZIPs, bytecode caches, plugin/runtime directories, and files matching the %languages macro. It reports counts by risk category, and `--verbose` lists each matching file or directory with its categories so automation can gate configuration changes.
 
 + Add entries exactly as shown in the second column of /proc/mounts. Whitespace around comma-separated entries is ignored.
 
