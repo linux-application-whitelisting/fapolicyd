@@ -762,6 +762,22 @@ static int test_lmdb_autosize_generation_reload_target(void)
 	return 0;
 }
 
+static int test_lmdb_autosize_retry_uses_actual_map(void)
+{
+	unsigned int retry;
+
+	retry = database_autosize_retry_mb_for_tests(
+		/*old_mb*/8,
+		/*active_pages*/256,
+		/*map_pages*/25600,
+		/*page_size*/4096);
+	CHECK(retry >= 125, 134,
+	      "[ERROR:134] autosize retry ignored actual LMDB map size");
+	CHECK(retry > 8, 135,
+	      "[ERROR:135] autosize retry did not grow configured size");
+	return 0;
+}
+
 static int test_lmdb_manual_resize_report_is_gated(void)
 {
 	conf_t cfg;
@@ -1208,6 +1224,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_autosize_generation_reload_target();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_autosize_retry_uses_actual_map();
 	if (rc)
 		return rc;
 

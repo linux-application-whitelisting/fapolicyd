@@ -200,6 +200,11 @@ enum autosize_plan_mode {
  *   worst observed reader drain delay. Manual db_max_size deployments also
  *   get a resize recommendation here when the map is below the same safe
  *   reload target that auto sizing would use.
+ * - Auto sizing retries one MDB_MAP_FULL reload after growing the live map.
+ *   If an earlier bounded shrink target was too small for LMDB's current
+ *   allocation history, that emergency grow starts from the actual live map
+ *   size, not the stale configured target, and records a reload floor so later
+ *   live inspections do not immediately pick the same bad size again.
  * - database_metrics_report_reset() reports trust lookup count and reader-slot
  *   exhaustion. Reader-slot exhaustion indicates max reader pressure, not a
  *   generation leak.
@@ -2327,6 +2332,58 @@ static int autosize_database(conf_t *config, enum autosize_plan_mode mode)
 }
 
 /*
+ * autosize_reload_growth_step_mb - grow one emergency retry step.
+ * @base_mb: baseline map size in MiB.
+ *
+ * Returns a 25 percent growth step, or one MiB when integer rounding would
+ * otherwise leave the value unchanged.
+ */
+static unsigned long autosize_reload_growth_step_mb(unsigned long base_mb)
+{
+	unsigned long new_mb = base_mb + (base_mb / 4);
+
+	if (new_mb <= base_mb)
+		new_mb++;
+	return new_mb;
+}
+
+/*
+ * autosize_reload_grow_from_state_mb - choose a map-full retry size.
+ * @old_mb: Current configured map size.
+ * @state: Optional live LMDB sizing state.
+ *
+ * A bounded auto shrink can make config->db_max_size smaller than the live
+ * LMDB map if the file high-water allocation cannot physically shrink. On
+ * MDB_MAP_FULL, grow from the actual map in that case; growing from the stale
+ * configured value may call mdb_env_set_mapsize() with a size that still does
+ * not expand the mapping, causing the retry to repeat the same full map.
+ *
+ * Returns the retry target clamped to the configuration type range.
+ */
+static unsigned long autosize_reload_grow_from_state_mb(unsigned long old_mb,
+			const struct trust_db_sizing_state *state)
+{
+	unsigned long base_mb = old_mb;
+	unsigned long new_mb;
+
+	if (state && base_mb < state->current_mb)
+		base_mb = state->current_mb;
+
+	new_mb = autosize_reload_growth_step_mb(base_mb);
+	if (state) {
+		unsigned int target_mb = autosize_effective_target_mb(state,
+					AUTOSIZE_RELOAD_PREFLIGHT);
+
+		if (new_mb < target_mb)
+			new_mb = target_mb;
+	}
+
+	if (new_mb > UINT_MAX)
+		new_mb = UINT_MAX;
+	return new_mb;
+}
+
+/*
  * autosize_reload_grow_target_mb - choose a map-full retry size.
  * @old_mb: Current configured map size.
  *
@@ -2339,22 +2396,10 @@ static int autosize_database(conf_t *config, enum autosize_plan_mode mode)
 static unsigned long autosize_reload_grow_target_mb(unsigned long old_mb)
 {
 	struct trust_db_sizing_state state;
-	unsigned long new_mb = old_mb + (old_mb / 4);
 
-	if (new_mb <= old_mb)
-		new_mb++;
-
-	if (read_live_lmdb_sizing_state(&state) == 0) {
-		unsigned int target_mb = autosize_effective_target_mb(&state,
-					AUTOSIZE_RELOAD_PREFLIGHT);
-
-		if (new_mb < target_mb)
-			new_mb = target_mb;
-	}
-
-	if (new_mb > UINT_MAX)
-		new_mb = UINT_MAX;
-	return new_mb;
+	if (read_live_lmdb_sizing_state(&state) == 0)
+		return autosize_reload_grow_from_state_mb(old_mb, &state);
+	return autosize_reload_grow_from_state_mb(old_mb, NULL);
 }
 
 /* Grow the live LMDB map after encountering MDB_MAP_FULL during rebuilds.
@@ -5227,6 +5272,31 @@ unsigned int database_autosize_target_mb_for_tests(unsigned long active_pages,
 	complete_lmdb_sizing_state(&state);
 	return autosize_effective_target_mb(&state,
 					    AUTOSIZE_RELOAD_PREFLIGHT);
+}
+
+/*
+ * database_autosize_retry_mb_for_tests - compute auto retry grow target.
+ * @old_mb: Current configured map size.
+ * @active_pages: Pages used by the published trust DB.
+ * @map_pages: Current live LMDB map size in pages.
+ * @page_size: LMDB page size.
+ *
+ * Returns the MDB_MAP_FULL retry target used by auto sizing.
+ */
+unsigned int database_autosize_retry_mb_for_tests(unsigned long old_mb,
+	unsigned long active_pages, unsigned long map_pages,
+	unsigned long page_size)
+{
+	struct trust_db_sizing_state state;
+
+	memset(&state, 0, sizeof(state));
+	state.active_pages = active_pages;
+	state.allocated_pages = active_pages;
+	state.map_pages = map_pages;
+	state.page_size = page_size;
+	state.current_mb = pages_to_mb(map_pages, page_size);
+	complete_lmdb_sizing_state(&state);
+	return autosize_reload_grow_from_state_mb(old_mb, &state);
 }
 
 

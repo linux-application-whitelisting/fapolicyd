@@ -103,6 +103,9 @@ int database_generation_report_for_tests(
 unsigned int database_autosize_target_mb_for_tests(unsigned long active_pages,
 	unsigned long env_allocated_pages, unsigned long map_pages,
 	unsigned long page_size);
+unsigned int database_autosize_retry_mb_for_tests(unsigned long old_mb,
+	unsigned long active_pages, unsigned long map_pages,
+	unsigned long page_size);
 
 #define RELOAD_TRUSTDB_COMMAND '1'
 #define FLUSH_CACHE_COMMAND '2'
