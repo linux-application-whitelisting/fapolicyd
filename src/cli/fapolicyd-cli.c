@@ -1337,29 +1337,15 @@ static int do_test_filter(const char *path)
 }
 #endif
 
-int main(int argc, char * const argv[])
+/*
+ * run_cli_command - execute the requested CLI command.
+ * @arg_count: number of sanitized arguments.
+ * @args: sanitized argument vector.
+ * Returns a CLI_EXIT_* status code.
+ */
+static int run_cli_command(int arg_count, char **args)
 {
 	int opt, option_index, rc = CLI_EXIT_GENERIC;
-	int orig_argc = argc, arg_count = 0;
-	char *args[orig_argc+1];
-
-	for (int i = 0; i < orig_argc; i++) {
-		if (strcmp(argv[i], "--verbose") == 0) {
-			verbose = true;
-			continue;
-		}
-		if (strcmp(argv[i], "--lint") == 0) {
-			lint_rules = true;
-			continue;
-		}
-		if (strcmp(argv[i], "--yes") == 0 ||
-		    strcmp(argv[i], "-y") == 0) {
-			assume_yes = true;
-			continue;
-		}
-		args[arg_count++] = argv[i];
-	}
-	args[arg_count] = NULL;
 
 	if (arg_count == 1) {
 		fprintf(stderr, "Too few arguments\n\n");
@@ -1573,4 +1559,39 @@ args_err:
 	fprintf(stderr, "Too many arguments\n\n");
 	fprintf(stderr, "%s", usage);
 	return CLI_EXIT_USAGE;
+}
+
+int main(int argc, char * const argv[])
+{
+	int arg_count = 0;
+	char **args;
+	int rc;
+
+	args = calloc(argc + 1, sizeof(*args));
+	if (args == NULL) {
+		fprintf(stderr, "Cannot allocate argument list\n");
+		return CLI_EXIT_GENERIC;
+	}
+
+	for (int i = 0; i < argc; i++) {
+		if (strcmp(argv[i], "--verbose") == 0) {
+			verbose = true;
+			continue;
+		}
+		if (strcmp(argv[i], "--lint") == 0) {
+			lint_rules = true;
+			continue;
+		}
+		if (strcmp(argv[i], "--yes") == 0 ||
+		    strcmp(argv[i], "-y") == 0) {
+			assume_yes = true;
+			continue;
+		}
+		args[arg_count++] = argv[i];
+	}
+	args[arg_count] = NULL;
+
+	rc = run_cli_command(arg_count, args);
+	free(args);
+	return rc;
 }
