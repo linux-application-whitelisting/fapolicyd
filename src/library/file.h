@@ -73,7 +73,8 @@ struct file_info
 int file_init(void);
 void file_init_failure_for_tests(file_init_status_t failure);
 void file_close(void);
-struct file_info *stat_file_entry(int fd) __attr_dealloc_free;
+struct file_info *stat_file_entry(int fd)
+	__attr_dealloc_free __attr_fd_arg (1);
 void file_info_reset_digest(struct file_info *info);
 file_hash_alg_t file_hash_alg(unsigned len);
 file_hash_alg_t file_hash_alg_fast(const char *digest);
@@ -88,7 +89,7 @@ int iterate_ignore_mounts(const char *ignore_list,
 int check_ignore_mount_warning(const char *mounts_file, const char *point,
 	const char **warning);
 char *get_file_from_fd(int fd, pid_t pid, size_t blen, char *buf)
-	__attr_access ((__write_only__, 4, 3));
+	__attr_access ((__write_only__, 4, 3)) __attr_fd_arg (1);
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 	__attr_access ((__write_only__, 3, 2));
 const char *classify_device(mode_t mode);
@@ -100,12 +101,13 @@ const char *detect_by_magic_number(const unsigned char *hdr, size_t len);
 const char *detect_text_format(const char *hdr, size_t len);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	size_t blen, char *buf)
-	__attr_access ((__write_only__, 5, 4));
+	__attr_access ((__write_only__, 5, 4)) __attr_fd_arg_read (1);
 char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
 	 __attr_access ((__read_only__, 2, 3));
 char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
-	__attr_dealloc_free;
-int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha);
-uint32_t gather_elf(int fd, off_t size);
+	__attr_dealloc_free __attr_fd_arg_read (1);
+int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
+	__attr_fd_arg (1);
+uint32_t gather_elf(int fd, off_t size) __attr_fd_arg_read (1);
 
 #endif

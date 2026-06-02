@@ -117,7 +117,7 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 uid_t get_program_auid_from_pid(pid_t pid);
 int get_program_sessionid_from_pid(pid_t pid);
 int read_proc_status_fd(int fd, unsigned int fields,
-	struct proc_status_info *info);
+	struct proc_status_info *info) __attr_fd_arg_read (1);
 int read_proc_status(pid_t pid, unsigned int fields,
 	struct proc_status_info *info);
 int check_environ_from_pid(pid_t pid);

@@ -58,9 +58,10 @@ void unlock_update_thread(void);
 const char *lookup_tsource(unsigned int tsource) __attribute_const__;
 int preconstruct_fifo(const conf_t *config) __nonnull ((1));
 int init_database(conf_t *config) __nonnull ((1));
-int do_memfd_update(int memfd, long *entries) __nonnull ((2));
+int do_memfd_update(int memfd, long *entries)
+	__nonnull ((2)) __attr_fd_arg_read (1);
 int check_trust_database(const char *path, struct file_info *info, int fd)
-	__nonnull ((1));
+	__nonnull ((1)) __attr_fd_arg_read (3);
 void set_reload_trust_database(void);
 void close_database(void);
 void database_config_report(FILE *f);

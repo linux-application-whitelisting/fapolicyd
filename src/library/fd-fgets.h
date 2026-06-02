@@ -39,7 +39,8 @@ void fd_fgets_clear(void);
 int fd_fgets_eof(void);
 int fd_fgets_more(size_t blen);
 int fd_fgets(char *buf, size_t blen, int fd)
-	__attr_access ((__write_only__, 1, 2)) __wur;
+	__attr_access ((__write_only__, 1, 2)) __attr_fd_arg_read (3)
+	__wur;
 int fd_setvbuf(void *buf, size_t buff_size, enum fd_mem how)
 	__attr_access ((__read_only__, 1, 2));
 
@@ -50,7 +51,8 @@ void fd_fgets_clear_r(fd_fgets_state_t *st);
 int fd_fgets_eof_r(fd_fgets_state_t *st);
 int fd_fgets_more_r(fd_fgets_state_t *st, size_t blen);
 int fd_fgets_r(fd_fgets_state_t *st, char *buf, size_t blen, int fd)
-	__attr_access ((__write_only__, 2, 3)) __wur;
+	__attr_access ((__write_only__, 2, 3)) __attr_fd_arg_read (4)
+	__wur;
 int fd_setvbuf_r(fd_fgets_state_t *st, void *buf, size_t buff_size,
 		enum fd_mem how)
 		__attr_access ((__read_only__, 2, 3));
