@@ -28,6 +28,7 @@
 
 #include "config.h"
 #include <stdio.h>
+#include <stdatomic.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>
 #include "subject.h"
@@ -42,6 +43,8 @@ typedef struct ev {
 	s_array *s;
 	o_array *o;
 } event_t;
+
+extern atomic_bool needs_flush;
 
 int init_event_system(const conf_t *config);
 void destroy_event_system(void);

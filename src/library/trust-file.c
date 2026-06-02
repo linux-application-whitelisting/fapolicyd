@@ -73,11 +73,11 @@
 #define HEADER4 "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87\n"
 
 
-list_t _list;
-char *_path;
-int _count;
-bool _use_filter;
-int _memfd = -1;
+static list_t _list;
+static char *_path;
+static int _count;
+static bool _use_filter;
+static int _memfd = -1;
 
 struct trust_seen_entry {
 	const char *path;

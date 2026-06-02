@@ -926,7 +926,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
  *
  * Return: pointer to the requested attribute on success, NULL otherwise.
  */
-subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
+static subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
 {
 	unsigned int mask = policy_get_proc_status_mask();
 	struct proc_status_info info = {

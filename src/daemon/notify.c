@@ -53,6 +53,7 @@
 #include "message.h"
 #include "queue.h"
 #include "mounts.h"
+#include "notify.h"
 #include "state-report.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192

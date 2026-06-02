@@ -49,7 +49,7 @@
 
 
 
-list_t add_list;
+static list_t add_list;
 
 
 

@@ -55,6 +55,8 @@ typedef struct _filter
 	list_t list;
 } filter_t;
 
+extern filter_t *global_filter;
+
 
 typedef struct _stack_item
 {
