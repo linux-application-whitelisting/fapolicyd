@@ -127,9 +127,9 @@ enum autosize_plan_mode {
  *
  * Runtime reload path:
  * - set_reload_trust_database() records a request through
- *   request_reload_trust_database(). This coalesces duplicate requests while a
- *   reload is pending or active, preventing reload storms from queuing many
- *   identical rebuilds.
+ *   request_reload_trust_database(). This coalesces duplicate pending requests.
+ *   Requests arriving during an active reload leave one pending follow-up, so a
+ *   config-changing SIGHUP cannot be hidden by an earlier rebuild.
  * - update_thread_main() runs requests through run_trust_database_reload(),
  *   which marks the reload active with begin_trust_database_reload(), calls
  *   do_reload_db(), and finally clears the marker with
@@ -5500,33 +5500,28 @@ static int handle_record(const char * buffer)
  * @source: short log label for the caller requesting reload.
  *
  * A trust DB reload rebuilds the database from the current backend snapshots.
- * If another request arrives while a reload is pending or already active, the
- * later request does not add more ordering information: both reloads would
- * consume the same current backend state by the time the update thread can
- * run them. Coalescing those duplicates avoids back-to-back drop/rebuild
- * cycles that only churn LMDB high-water pages and make map pressure worse.
+ * If another request is already pending, the later request does not add more
+ * ordering information: both reloads would consume the same current backend
+ * state by the time the update thread can run them. Requests received during
+ * an active reload are left pending because SIGHUP can change the configured
+ * backend list after the active rebuild has already selected its snapshots.
+ * This still coalesces many in-flight requests into one follow-up rebuild.
  *
  * Returns 1 when a new request was queued, 0 when it was coalesced.
  */
 static int request_reload_trust_database(const char *source)
 {
-	bool expected = false;
-
-	if (atomic_load_explicit(&reload_db_active, memory_order_acquire)) {
-		msg(LOG_INFO,
-		    "Dropping trust database reload from %s: reload already active",
-		    source);
-		return 0;
-	}
-
-	if (!atomic_compare_exchange_strong_explicit(&reload_db, &expected,
-					true, memory_order_acq_rel,
-					memory_order_acquire)) {
+	if (atomic_exchange_explicit(&reload_db, true, memory_order_acq_rel)) {
 		msg(LOG_INFO,
 		    "Dropping trust database reload from %s: reload already pending",
 		    source);
 		return 0;
 	}
+
+	if (atomic_load_explicit(&reload_db_active, memory_order_acquire))
+		msg(LOG_INFO,
+		    "Queued trust database reload from %s: reload already active",
+		    source);
 
 	return 1;
 }
@@ -5562,17 +5557,25 @@ static int begin_trust_database_reload(const char *source)
 {
 	bool expected = false;
 
+	/*
+	 * Consume the request before publishing the active marker. A SIGHUP that
+	 * arrives after this point must remain pending for a follow-up reload;
+	 * clearing reload_db after reload_db_active becomes true could drop that
+	 * config-changing request.
+	 */
+	atomic_store_explicit(&reload_db, false, memory_order_release);
+
 	if (!atomic_compare_exchange_strong_explicit(&reload_db_active,
 					&expected, true,
 					memory_order_acq_rel,
 					memory_order_acquire)) {
+		atomic_store_explicit(&reload_db, true, memory_order_release);
 		msg(LOG_INFO,
-		    "Dropping trust database reload from %s: reload already active",
+		    "Deferring trust database reload from %s: reload already active",
 		    source);
 		return 0;
 	}
 
-	atomic_store_explicit(&reload_db, false, memory_order_release);
 	return 1;
 }
 
