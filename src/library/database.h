@@ -60,8 +60,12 @@ int preconstruct_fifo(const conf_t *config) __nonnull ((1));
 int init_database(conf_t *config) __nonnull ((1));
 int do_memfd_update(int memfd, long *entries)
 	__nonnull ((2)) __attr_fd_arg_read (1);
+/*
+ * fd is only consumed when info enables integrity checks. Path-only lookups
+ * may pass a sentinel fd because no file descriptor is available.
+ */
 int check_trust_database(const char *path, struct file_info *info, int fd)
-	__nonnull ((1)) __attr_fd_arg_read (3);
+	__nonnull ((1));
 void set_reload_trust_database(void);
 void close_database(void);
 void database_config_report(FILE *f);
