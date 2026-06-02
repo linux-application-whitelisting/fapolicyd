@@ -194,13 +194,16 @@ int file_append(const char *path, const char *fname, bool use_filter)
 
 	if (fname && !trust_file_name_valid(fname)) {
 		msg(LOG_ERR, "Invalid trust file name: %s", fname);
+		list_empty(&add_list);
 		return CLI_EXIT_USAGE;
 	}
 
 	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) :
 							TRUST_FILE_PATH;
-	if (dest == NULL)
+	if (dest == NULL) {
+		list_empty(&add_list);
 		return CLI_EXIT_INTERNAL;
+	}
 
 	rc = trust_file_append(dest, &add_list);
 
