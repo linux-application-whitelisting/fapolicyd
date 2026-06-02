@@ -266,10 +266,13 @@ static int insert_language_mime(avl_tree_t *languages, const char *mime)
 static void free_language_mimes(avl_tree_t *languages)
 {
 	while (languages->root) {
-		struct language_entry *entry =
-			(struct language_entry *)languages->root;
+		struct language_entry *entry;
 
-		avl_remove(languages, &entry->avl);
+		entry = (struct language_entry *)
+			avl_remove(languages, languages->root);
+		if (entry == NULL)
+			break;
+
 		free(entry->mime);
 		free(entry);
 	}

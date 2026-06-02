@@ -163,6 +163,7 @@ static void read_operating_mode_report(char *buf, size_t size)
 	fclose(f);
 }
 
+#if TEST_HAVE_FAN_FS_ERROR
 /*
  * read_fs_error_report - capture recent FAN_FS_ERROR detail output.
  * @buf: destination buffer.
@@ -184,6 +185,7 @@ static void read_fs_error_report(char *buf, size_t size)
 	buf[used] = 0;
 	fclose(f);
 }
+#endif
 
 /*
  * test_operating_mode_report_order - verify state field order.
@@ -346,7 +348,9 @@ int main(void)
 	};
 	unsigned long before, after;
 	unsigned long overflow_after, reply_after;
+#if TEST_HAVE_FAN_FS_ERROR
 	unsigned long fs_error_after = 0;
+#endif
 	char report[4096], expected[128];
 	int event_pipe[2];
 
