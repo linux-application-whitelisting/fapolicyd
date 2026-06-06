@@ -419,7 +419,7 @@ int do_rpm_load_list(const conf_t *conf, int memfd)
 			if (asprintf(	&data,
 					DATA_FORMAT,
 					tsource,
-					sz,
+					(unsigned long long)sz,
 					sha) == -1) {
 				data = NULL;
 			}

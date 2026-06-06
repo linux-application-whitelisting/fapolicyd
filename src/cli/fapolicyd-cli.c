@@ -277,7 +277,7 @@ static int do_dump_db(void)
 	do {
 		char *path = NULL, *data = NULL, sha[FILE_DIGEST_STRING_MAX];
 		unsigned int tsource;
-		size_t size;
+		unsigned long long ull_size;
 		const char *source;
 
 		path = malloc(key.mv_size + 1);
@@ -294,11 +294,11 @@ static int do_dump_db(void)
 		memcpy(data, val.mv_data, val.mv_size);
 		data[val.mv_size] = 0;
 
-		if (sscanf(data, DATA_FORMAT_IN, &tsource, &size, sha) != 3)
+		if (sscanf(data, DATA_FORMAT_IN, &tsource, &ull_size, sha) != 3)
 			goto next_record;
 
 		source = lookup_tsource(tsource);
-		printf("%s %s %zu %s\n", source, path, size, sha);
+		printf("%s %s %llu %s\n", source, path, ull_size, sha);
 
 next_record:
 		free(data);
@@ -857,6 +857,7 @@ static int check_trustdb(void)
 	do {
 		unsigned int tsource;
 		off_t size;
+		unsigned long long ull_size;
 		char sha[FILE_DIGEST_STRING_MAX];
 		char path[448];
 		char data[TRUSTDB_DATA_BUFSZ];
@@ -867,10 +868,11 @@ static int check_trustdb(void)
 			(char *) entry->path.mv_data);
 		snprintf(data, sizeof(data), "%.*s", (int) entry->data.mv_size,
 			(char *) entry->data.mv_data);
-		if (sscanf(data, DATA_FORMAT_IN, &tsource, &size, sha) != 3) {
+		if (sscanf(data, DATA_FORMAT_IN, &tsource, &ull_size, sha) != 3) {
 			fprintf(stderr, "%s data entry is corrupted\n", path);
 			continue;
 		}
+		size = (off_t)ull_size;
 		if (verify_file(path, size, sha, tsource))
 			found = 1;
 	} while (walk_database_next());
