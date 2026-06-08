@@ -96,6 +96,7 @@ int database_publish_memfd_for_tests(int memfd, conf_t *config)
 	__nonnull ((2));
 int database_publish_startup_memfd_for_tests(int memfd, conf_t *config)
 	__nonnull ((2));
+int database_nested_lookup_for_tests(const char *path) __nonnull ((1));
 int database_drop_candidate_after_import_for_tests(int memfd);
 int database_reload_for_tests(conf_t *config) __nonnull ((1));
 int database_compact_memfd_for_tests(int memfd, conf_t *config)

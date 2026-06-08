@@ -2586,7 +2586,13 @@ static int init_db_with_generations(const conf_t *config,
 				    unsigned long trust_generation,
 				    unsigned long env_generation)
 {
-	unsigned int flags = MDB_MAPASYNC|MDB_NOSYNC;
+	/*
+	 * Decision workers are long-lived across autosize close/reopen cycles
+	 * and may re-enter trust lookups from one OS thread. Keep LMDB reader
+	 * slots tied to transactions instead of thread TLS so each aborted read
+	 * transaction fully releases its slot before the next lookup.
+	 */
+	unsigned int flags = MDB_MAPASYNC|MDB_NOSYNC|MDB_NOTLS;
 	int rc;
 #ifndef DEBUG
 	flags |= MDB_WRITEMAP;
@@ -5133,6 +5139,26 @@ int database_publish_memfd_for_tests(int memfd, conf_t *config)
 int database_publish_startup_memfd_for_tests(int memfd, conf_t *config)
 {
 	return publish_memfd_for_tests(memfd, config, 1);
+}
+
+/*
+ * database_nested_lookup_for_tests - start a lookup while one read txn is open.
+ * @path: Path expected to exist in the active trust database.
+ *
+ * Returns the nested check_trust_database() result, or -1 when the setup read
+ * transaction cannot be opened.
+ */
+int database_nested_lookup_for_tests(const char *path)
+{
+	struct trust_db_read_handle read;
+	int rc;
+
+	if (trust_db_read_open(&read))
+		return -1;
+
+	rc = check_trust_database(path, NULL, -1);
+	trust_db_read_close(&read);
+	return rc;
 }
 
 /*

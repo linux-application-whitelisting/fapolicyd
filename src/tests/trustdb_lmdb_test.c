@@ -650,6 +650,38 @@ static int test_lmdb_concurrent_read_handles(void)
 	return 0;
 }
 
+static int test_lmdb_nested_read_transaction(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	const char *path = "/usr/bin/nested-reader";
+	const char *digest =
+		"8989898989898989898989898989898989898989898989898989898989898989";
+	char payload[256];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 154, "[ERROR:154] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
+		 SRC_FILE_DB, (size_t)556, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 155,
+	      "[ERROR:155] nested record import failed");
+
+	CHECK(database_nested_lookup_for_tests(path) == 1, 156,
+	      "[ERROR:156] nested trust lookup failed");
+	CHECK(check_trust_database(path, NULL, -1) == 1, 157,
+	      "[ERROR:157] post-nested trust lookup failed");
+
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 158,
+	      "[ERROR:158] nested cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_failed_candidate_preserves_generation(void)
 {
 	conf_t cfg;
@@ -1212,6 +1244,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_concurrent_read_handles();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_nested_read_transaction();
 	if (rc)
 		return rc;
 
