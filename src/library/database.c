@@ -6082,7 +6082,7 @@ finalize:
  ***********************************************************************/
 static walkdb_entry_t wdb_entry;
 
-// Returns 0 on success and 1 on failure
+// Returns WALK_DATABASE_SUCCESS, WALK_DATABASE_EMPTY, or WALK_DATABASE_ERROR
 int walk_database_start(conf_t *config)
 {
 	int rc;
@@ -6090,29 +6090,41 @@ int walk_database_start(conf_t *config)
 	// Initialize the database
 	if (init_db(config)) {
 		printf("Cannot open the trust database\n");
-		return 1;
+		return WALK_DATABASE_ERROR;
 	}
-	if (database_empty()) {
+	rc = database_empty();
+	if (rc > 0) {
 		printf("The trust database is empty - nothing to do\n");
-		return 1;
+		close_db(0);
+		return WALK_DATABASE_EMPTY;
+	} else if (rc < 0) {
+		close_db(0);
+		return WALK_DATABASE_ERROR;
 	}
 
 	// Position to the first entry
 	if (trust_db_read_open(&walk_read)) {
 		puts("Cannot open the trust database for reading");
-		return 1;
+		close_db(0);
+		return WALK_DATABASE_ERROR;
 	}
 
 	if ((rc = mdb_cursor_get(walk_read.cursor, &wdb_entry.path,
 							&wdb_entry.data,
 							MDB_FIRST)) == 0)
-		return 0;
+		return WALK_DATABASE_SUCCESS;
 
-	if (rc != MDB_NOTFOUND)
+	if (rc != MDB_NOTFOUND) {
 		puts(mdb_strerror(rc));
+		rc = WALK_DATABASE_ERROR;
+	} else {
+		printf("The trust database is empty - nothing to do\n");
+		rc = WALK_DATABASE_EMPTY;
+	}
 
 	trust_db_read_close(&walk_read);
-	return 1;
+	close_db(0);
+	return rc;
 }
 
 walkdb_entry_t *walk_database_get_entry(void)

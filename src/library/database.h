@@ -81,6 +81,12 @@ void lock_rule(void);
 void unlock_rule(void);
 
 // Database verification functions
+enum walk_database_status {
+	WALK_DATABASE_SUCCESS = 0,
+	WALK_DATABASE_ERROR = 1,
+	WALK_DATABASE_EMPTY = 2,
+};
+
 int walk_database_start(conf_t *config) __nonnull ((1));
 walkdb_entry_t *walk_database_get_entry(void);
 int walk_database_next(void);

@@ -929,6 +929,8 @@ static int check_trustdb(void)
 	}
 	int rc = walk_database_start(&config);
 	reset_config();
+	if (rc == WALK_DATABASE_EMPTY)
+		return CLI_EXIT_SUCCESS;
 	if (rc)
 		return CLI_EXIT_DB_ERROR;
 
