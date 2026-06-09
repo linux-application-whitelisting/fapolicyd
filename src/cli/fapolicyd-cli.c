@@ -1024,7 +1024,14 @@ static int check_path(void)
 		reset_config();
 		return CLI_EXIT_INTERNAL;
 	}
-	init_database(&config);
+	int rc = init_database(&config);
+	if (rc) {
+		set_message_mode(MSG_STDERR, DBG_NO);
+		fprintf(stderr, "Cannot initialize trust database (%d)\n", rc);
+		close_database();
+		reset_config();
+		return CLI_EXIT_DB_ERROR;
+	}
 	char *path = strdup(env_path);
 	ptr = strtok_r(path, ":", &saved);
 	while (ptr) {
