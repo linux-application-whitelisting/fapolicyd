@@ -66,6 +66,7 @@
 bool verbose = false;
 static bool lint_rules = false;
 static bool assume_yes = false;
+#define CLI_TRUST_DB_NAME_SIZE 64
 
 static int send_state_report_signal(unsigned int pid, report_intent_t intent,
 		char *reason, size_t reason_len)
@@ -180,6 +181,79 @@ static int do_delete_db(void)
 	return CLI_EXIT_SUCCESS;
 }
 
+/*
+ * dump_parse_metadata - read the active trust DB name from metadata.
+ * @data: NUL-terminated metadata value.
+ * @name: Destination for the active DB name.
+ *
+ * Returns 0 on success, ENOMEM on allocation failure, or EINVAL when the
+ * metadata does not contain the fields needed to select an active DB.
+ */
+static int dump_parse_metadata(const char *data,
+			       char name[CLI_TRUST_DB_NAME_SIZE])
+{
+	char *copy, *line, *save = NULL;
+	unsigned long ignored_generation;
+	int have_generation = 0, have_name = 0;
+
+	copy = strdup(data);
+	if (copy == NULL)
+		return ENOMEM;
+
+	name[0] = 0;
+	for (line = strtok_r(copy, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		if (sscanf(line, "generation=%lu", &ignored_generation) == 1) {
+			have_generation = 1;
+		} else if (strncmp(line, "name=", 5) == 0) {
+			snprintf(name, CLI_TRUST_DB_NAME_SIZE, "%s", line + 5);
+			have_name = name[0] != 0;
+		}
+	}
+
+	free(copy);
+	return have_generation && have_name ? 0 : EINVAL;
+}
+
+/*
+ * dump_active_db_name - find the named DB that fapolicyd-cli -D should read.
+ * @txn: Read transaction for the trust DB LMDB environment.
+ * @name: Destination for the active DB name.
+ *
+ * Older trust databases did not have generation metadata, so absent metadata
+ * falls back to DB_NAME. Present but unreadable metadata is treated as an
+ * error because otherwise the CLI may inspect a stale generation.
+ */
+static int dump_active_db_name(MDB_txn *txn,
+			       char name[CLI_TRUST_DB_NAME_SIZE])
+{
+	MDB_dbi metadata_dbi;
+	MDB_val meta_key, meta_value;
+	char data[4096];
+	int rc;
+
+	snprintf(name, CLI_TRUST_DB_NAME_SIZE, "%s", DB_NAME);
+
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0, &metadata_dbi);
+	if (rc == MDB_NOTFOUND)
+		return 0;
+	if (rc)
+		return rc;
+
+	meta_key.mv_data = (void *)TRUST_DB_METADATA_KEY;
+	meta_key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
+	rc = mdb_get(txn, metadata_dbi, &meta_key, &meta_value);
+	if (rc == MDB_NOTFOUND)
+		return 0;
+	if (rc)
+		return rc;
+	if (meta_value.mv_size >= sizeof(data))
+		return EINVAL;
+
+	memcpy(data, meta_value.mv_data, meta_value.mv_size);
+	data[meta_value.mv_size] = 0;
+	return dump_parse_metadata(data, name);
+}
 
 // This function opens the trust db and iterates over the entries.
 // It returns CLI_EXIT_SUCCESS on success and CLI_EXIT_DB_ERROR on failure
@@ -191,12 +265,10 @@ static int do_dump_db(void)
 	MDB_env *env;
 	MDB_txn *txn;
 	MDB_dbi dbi;
-	MDB_dbi metadata_dbi;
 	MDB_stat status;
 	MDB_cursor *cursor;
 	MDB_val key, val;
-	const char *active_name = DB_NAME;
-	char metadata_name[64];
+	char active_name[CLI_TRUST_DB_NAME_SIZE];
 
 	rc = mdb_env_create(&env);
 	if (rc) {
@@ -235,23 +307,12 @@ static int do_dump_db(void)
 	 * records the active name in metadata. Older databases did not have this
 	 * metadata, so fall back to DB_NAME for compatibility.
 	 */
-	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0, &metadata_dbi);
-	if (rc == 0) {
-		MDB_val meta_key, meta_value;
-
-		meta_key.mv_data = (void *)TRUST_DB_METADATA_KEY;
-		meta_key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
-		if (mdb_get(txn, metadata_dbi, &meta_key, &meta_value) == 0 &&
-		    meta_value.mv_size < 4096) {
-			char data[4096];
-			unsigned long ignored_generation;
-
-			memcpy(data, meta_value.mv_data, meta_value.mv_size);
-			data[meta_value.mv_size] = 0;
-			if (sscanf(data, "generation=%lu\nname=%63s",
-				   &ignored_generation, metadata_name) == 2)
-				active_name = metadata_name;
-		}
+	rc = dump_active_db_name(txn, active_name);
+	if (rc) {
+		fprintf(stderr, "trust metadata read failed, error %d %s\n",
+							rc, mdb_strerror(rc));
+		exit_rc = CLI_EXIT_DB_ERROR;
+		goto txn_abort;
 	}
 	rc = mdb_dbi_open(txn, active_name, MDB_DUPSORT, &dbi);
 	if (rc) {
@@ -260,19 +321,34 @@ static int do_dump_db(void)
 		exit_rc = CLI_EXIT_DB_ERROR;
 		goto txn_abort;
 	}
+	rc = mdb_stat(txn, dbi, &status);
+	if (rc) {
+		fprintf(stderr, "mdb_stat failed, error %d %s\n", rc,
+							mdb_strerror(rc));
+		exit_rc = CLI_EXIT_DB_ERROR;
+		goto dbi_close;
+	}
+	if (status.ms_entries == 0) {
+		printf("Trust database is empty\n");
+		goto dbi_close;
+	}
 	rc = mdb_cursor_open(txn, dbi, &cursor);
 	if (rc) {
 		fprintf(stderr, "mdb_cursor_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));
 		exit_rc = CLI_EXIT_DB_ERROR;
-		goto txn_abort;
+		goto dbi_close;
 	}
 	rc = mdb_cursor_get(cursor, &key, &val, MDB_FIRST);
 	if (rc) {
+		if (rc == MDB_NOTFOUND) {
+			printf("Trust database is empty\n");
+			goto cursor_close;
+		}
 		fprintf(stderr, "mdb_cursor_get failed, error %d %s\n", rc,
 							mdb_strerror(rc));
 		exit_rc = CLI_EXIT_DB_ERROR;
-		goto txn_abort;
+		goto cursor_close;
 	}
 	do {
 		char *path = NULL, *data = NULL, sha[FILE_DIGEST_STRING_MAX];
@@ -311,7 +387,9 @@ next_record:
 
 	if (rc != MDB_NOTFOUND)
 		exit_rc = CLI_EXIT_DB_ERROR;
+cursor_close:
 	mdb_cursor_close(cursor);
+dbi_close:
 	mdb_close(env, dbi);
 txn_abort:
 	mdb_txn_abort(txn);
