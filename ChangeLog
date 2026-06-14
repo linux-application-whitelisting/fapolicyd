@@ -1,4 +1,5 @@
 2.0
+- Add decision_threads configuration to fapolicyd.conf
 
 1.6
 - Many internal changes
