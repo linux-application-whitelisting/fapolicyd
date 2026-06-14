@@ -288,5 +288,5 @@ fi
 %endif
 
 %changelog
-* Wed May 20 2026 Petr Lautrbach <lautrbach@redhat.com> - 1.6-1
+* Thu Jun 11 2026 Petr Lautrbach <lautrbach@redhat.com> - 1.6-1
 - New release

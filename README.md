@@ -14,6 +14,19 @@ BUILDING
 
 See [BUILD.md](./BUILD.md) for build-time dependencies and instructions for building.
 
+DEPRECATION NOTICES
+-------------------
+
+### dir=untrusted rules
+
+The `dir=untrusted` rule macro is deprecated and is planned for removal in the
+2.1 release. Existing rules continue to parse for compatibility, but they emit
+a deprecation warning.
+
+New policy should match trust explicitly. Use object trust rules for the file
+being controlled instead of relying on the legacy `dir=untrusted` path
+exception.
+
 POLICIES
 --------
 The current design for policy is that it is split up into units of rules
@@ -322,6 +335,11 @@ pressure. The metrics report includes rule hit counts, default-allow
 fallthrough decisions, cache effectiveness, and subject/object attribute
 lookup activity.
 
+Starting with 1.6, status and metrics reports also identify the active
+configuration, ruleset, trust database, and LMDB environment generations. This
+helps correlate a report with the live state that was active after a reload,
+trust database rebuild, or controlled compaction.
+
 State and metrics reports can be scheduled periodically by setting the
 configuration option `report_interval`. This option is set to `0` by default,
 which disables the reporting interval. A positive value for this option
@@ -389,54 +407,69 @@ Starting with fapolicyd-1.3.8, there is a new performance option, ignore_mounts.
 
 MEMORY USAGE
 ------------
-Fapolicyd uses lmdb as its trust database. The database has very fast
-performance because it uses the kernel virtual memory system to put the
-whole database in memory. If the database is sized wrongly, then fapolicyd
-will reserve too much memory. Don't worry too much about this. The kernel is
-very smart and doesn't actually allocate the memory unless its used. However,
-we'd like to get it right sized.
+Fapolicyd uses LMDB as its trust database. LMDB is fast because it uses the
+kernel virtual memory system to map the database. The `db_max_size`
+configuration option controls the maximum LMDB map size.
 
-Starting with the 0.9.3 version of fapolicyd, statistics about the database
-is output when the program shuts down. On my system, it looks like this:
+Starting with the 1.6 release, the shipped default is:
 
 ```
-Database max pages: 9728
-Database pages in use: 7314 (75%)
+db_max_size = auto
 ```
 
-This also correlates to the following setting in the fapolicyd.conf file:
+Users with an older numeric `db_max_size` setting should migrate to
+`db_max_size = auto` with this release unless they have a specific operational
+requirement for a fixed manual limit. Auto sizing starts from the historical
+100 MiB baseline and lets the daemon grow or shrink the LMDB map as the trust
+database and package set change.
+
+Auto sizing is also aware of reload headroom. A trust database reload builds a
+candidate generation while the current generation remains available to active
+readers. That means safe sizing needs room for the active trust database, the
+candidate generation, and LMDB copy-on-write metadata.
+
+Use the status report to inspect the current trust database sizing state:
 
 ```
-db_max_size = 38
+fapolicyd-cli --check-status
 ```
 
-This size is in megabytes. So, if you take that and multiply by 1024 * 1024,
-we get 39845888. A page of memory is defined as 4096. So, if we divide
-max_size by the page size, we get 9728 which matches the setting. Each entry
-in the lmdb database is 512 bytes. So, for each 4k page, we can have data on
-8 trusted files.
-
-An ideal size for the database is for the statistics to come up around 75% in
-case you decide to install new software some day. The formula is 
+The most useful fields are:
 
 ```
- (db_max_size x percentage in use) / desired percentage = new db_max_size
+Trust database max pages
+Trust database pages in use
+Trust database allocated high-water pages
+Retired trust database generations
+Trust database resize recommended
+Trust database resize target
+Trust database compaction recommended
+Trust database compaction target
 ```
 
-So, working with example numbers, suppose max_size is 160 and it says it was
-68% occupied. That is wasting a little space. Putting the numbers in the
-formula, we get  (160 x 68) / 75 = 145.
+`Trust database pages in use` is the active trust database footprint.
+`Trust database allocated high-water pages` is LMDB's physical allocation
+high-water mark. The high-water value can be larger than active use after
+reload churn.
 
-If you have an embedded system and are not using rpm. But instead use the file
-trust source and you have a list of files, then your calculation is very
-different. Suppose for the sake of discussion, you have 317 files that are
-trusted. We take that number and divide by 8. We'll round that up to 40. Take
-that number and multiply by 100 and divide by 75. We come up with 53.33. So,
-let's call it 54. This is how many pages is needed. Turning that into real
-memory, it's 216K. One megabyte is the smallest allocation, so you would set
+Manual numeric values are not changed by the daemon. If a system keeps a
+manual `db_max_size` and the status report says resize is recommended, either
+set `db_max_size` to at least the reported target or migrate the system to:
+
 ```
-db_max_size = 1
+db_max_size = auto
 ```
+
+If the status report says compaction is recommended, use the controlled
+maintenance command:
+
+```
+sudo fapolicyd-cli --compact-trustdb
+```
+
+This rebuilds and validates a replacement LMDB environment, then swaps it into
+place during a controlled handoff. Normal package and trust file updates
+should still use `fapolicyd-cli --update`.
 
 Starting with the 0.9.4 release, the rpm backend filters most files in the
  /usr/share directory. It keeps anything with a with a python extension or
@@ -525,11 +558,11 @@ capabilities.
 | --check-config         | 1.1      | Parse fapolicyd.conf for syntax errors. |
 | --check-trustdb        | 1.1      | Check the trustdb against files on disk for mismatches that can cause run time problems. |
 | --check-watch_fs       | 1.1      | Compare mounted file systems with the watch_fs daemon configuration. |
-| --check-status         | 1.1.4    | Output daemon health and configuration state. |
+| --check-status         | 1.1.4    | Output daemon health and configuration state. Starting in 1.6, active generations and trust DB sizing guidance. |
 | --check-path           | 1.1.5    | Check that every file in $PATH is in the trustdb. |
 | --test-filter          | 1.3.6    | Test a path against filter rules to see whether it will be trusted. |
 | --check-ignore_mounts  | 1.4      | Check ignored mounts for noexec and suspicious files. |
-| --check-metrics        | 1.5      | Output runtime counters, rule hits, cache effectiveness, and attribute lookup metrics. |
+| --check-metrics        | 1.5      | Output runtime counters, rule hits, cache effectiveness, and attribute lookup metrics. Starting in 1.6, generation context. |
 | --check-rules [path]   | 1.5      | Validate rule syntax without loading the rules; use --lint for policy-shape warnings. |
 | --reset-metrics        | 1.5      | Output metrics and request a counter reset when the daemon configuration allows it. |
 | --timing-start         | 1.5      | Start a manual decision timing collection run. |
@@ -596,10 +629,12 @@ database should be known files that will get executed. See the fapolicyd-filter.
 man page for more information about writing filter rules.
 
 One last thing about the trustdb, lmdb is a very fast database. Normally it
-works fine. But it does not tolerate malformed databases. When this happens,
-it can segfault fapolicyd. The fix is to delete the database and restart
-the daemon. It will then rebuild the database and work as it should. To do
-this, run the following command:
+works fine. But it does not tolerate malformed databases. If the status report
+recommends compaction because the LMDB high-water mark is much larger than the
+active trust database, use `fapolicyd-cli --compact-trustdb`. If the database
+is malformed and cannot be opened, the fix is to delete the database and
+restart the daemon. It will then rebuild the database and work as it should.
+To do this, run the following command:
 
 ```
 fapolicyd-cli --delete-db
