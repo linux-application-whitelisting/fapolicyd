@@ -1,106 +1,81 @@
 # Repository Guidelines
 
-This project contains the code for the File Access Policy Deamon
-(fapolicyd). The repository uses autotools and has optional self-tests.  
-Follow the instructions below when making changes.
+## Working Agreements
 
-## Building
+- This is `fapolicyd`, an autotools C project for the daemon, CLI, policy
+  rules, trust database backends, and package manager integration helpers.
+- Before changing files, inspect `git status --short --branch`. Keep `main`
+  clean; work on a focused branch and leave unrelated local changes alone.
+- Prefer `rg`/`rg --files` for search. Make surgical changes that match the
+  existing module and style.
 
-1. Bootstrap and configure the build. The README shows an example:
+## Build And Test
 
-   ```
-   cd fapolicyd
-   autoreconf -f --install
-   ./configure --with-audit --with-rpm --with-deb --disable-shared
-   make
-   ```
+- Normal local build:
 
-2. Tests can be run with `make check` as described in INSTALL:
+  ```sh
+  ./autogen.sh
+  ./configure --with-audit --disable-shared
+  make -j$(nproc)
+  ```
 
-   ```
-   2. Type 'make' to compile the package.
+- `--with-rpm` is the default when librpm is available. Use `--without-rpm`
+  if rpm development libraries are missing.
+- On Fedora/RHEL hosts, skip Debian/libdpkg support unless `libdpkg` and
+  `libmd` are confirmed installed.
+- Useful optional configure flags: `--with-asan`, `--with-perf-test`, and
+  `--enable-stress`.
+- Run `make check` when feasible. For a targeted test after configuring, use
+  the Automake form, for example `make -C src/tests check TESTS=rules_test`.
+- The stress helper is opt-in: configure with `--enable-stress`, then build or
+  test under `src/tests/stress`. See `src/tests/stress/README.md` before using
+  it against a running daemon.
+- If you created autotools build artifacts, run `make maintainer-clean` before
+  finishing unless the user explicitly wants the build tree preserved.
 
-   3. Optionally, type 'make check' to run any self-tests that come with
-      the package, generally using the just-built uninstalled binaries.
+## Project Map
 
-3. Installation (`make install`) is typically performed only after
-successful tests.
+- `src/library`: shared policy, rules, trust DB, event, cache, metrics, and
+  utility code used by the daemon and CLI.
+- `src/daemon`: daemon entry point, fanotify handling, mounts, and state
+  reporting.
+- `src/cli`: `fapolicyd-cli`, rule linting, ignore-mount checks, and related
+  user-facing commands.
+- `src/handler`: package-manager helper programs such as the RPM loader.
+- `src/perf-test`: optional installed performance test utility.
+- `src/tests`: unit and regression tests; `src/tests/stress` is a separate
+  non-installed stress harness.
+- `init`: default config, magic database inputs, systemd unit, tmpfiles, and
+  bash completion.
+- `doc`: man pages and manpage checks.
+- `rules.d`: policy rule units consumed by `fagenrules`.
+- `dnf`, `deb`, `CI`, `.fmf`: packaging, integration, and CI metadata.
 
-## Project Structure for Navigation
+## C Style
 
-- `/src`: This is where the code that makes up fapolicyd and fapolicy-cli are located
-  - `/library`: This is where the common code between fapolicyd and the cli app is located
-  - `/daemon`: This is where the daemon code for fapolicyd is located
-  - `/cli`: This is where we find the code for the command line helper application.
-- `/dnf`: This holds the code for fapolicyd-dnf-plugin.py
-- `/deb`: This holds information about building for Debian
-- `/init`: This holds the code related to initializing the daemon and loading rules
-- `/docs`: This holds all of the man pages
-- `/rules.d`: This holds access control rules
+- Follow Linux kernel style: tabs are 8 columns, keep lines near 80 columns,
+  match existing brace style, and avoid unrelated whitespace churn.
+- New C functions need a short comment describing purpose, inputs, and return
+  behavior. Prefer comments that explain why edge-case code exists.
+- Try hard to keep functions at 4 arguments or fewer. If more data is needed,
+  consider a focused struct or smaller functions.
+- Keep `.c` files class-like and focused. Add small local helpers to the file
+  they support; extract a new module only when a related helper cluster has its
+  own state, lifecycle, naming prefix, or reusable purpose.
+- Preserve existing names and patterns unless the change requires otherwise.
 
-## Code Style
+## Rules And Policy Files
 
-Contributions should follow the Linux Kernel coding style:
+- The authoritative rule syntax reference is `doc/fapolicyd.rules.5`.
+- Keep `rules.d` files in the numbered groups documented in
+  `rules.d/README-rules`, and preserve natural sort order because first match
+  wins.
+- Do not add new `dir=untrusted` policy. It is deprecated and should be
+  replaced with explicit trust-based object matching.
 
-```
-So, if you would like to test it and report issues or even contribute code
-feel free to do so. But please discuss the contribution first to ensure
-that its acceptable. This project uses the Linux Kernel Style Guideline.
-Please follow it if you wish to contribute.
-```
+## Commits
 
-In practice this means:
-
-- Indent with tabs (8 spaces per tab).
-- Keep lines within ~80 columns.
-- Place braces and other formatting as in the kernel style. However, if the
-  basic block is a 1 liner, do not use curly braces for it.
-- Add a comment before any new function describing it, input variables, and
-  return codes.
-- Comments within a function may be C++ style.
-- Do not do any whitespace adustment of existing code.
-- Keep existing function and variable names.
-
-## Commit Messages
-
-- Use a concise one-line summary followed by a blank line and additional
-  details if needed (similar to existing commits).
-
-## Special Files
-
-The `rules.d` directory contains groups of access control rules intended for
-`fagenrules` and should remain organized as documented:
-
-```
-This group of rules are meant to be used with the fagenrules program.
-The fagenrules program expects rules to be located in /etc/fapolicy/rules.d/
-The rules will get processed in a specific order based on their natural
-sort order. To make things easier to use, the files in this directory are
-organized into groups with the following meanings:
-
- 10 - macros
- 20 - loop holes
- 30 - patterns
- 40 - ELF rules
- 50 - user/group access rules
- 60 - application access rules
- 70 - language rules
- 80 - trusted execute
- 90 - general open access to documents
-```
-
-When editing rule files, keep them in the correct group and preserve the
-intended ordering.
-
-## Summary
-
-- Build with `autoreconf`, `configure`, and `make`.
-- Run `make check` to execute the self-tests.
-- Follow Linux Kernel coding style (tabs, 80 columns).
-- Keep commit messages short and descriptive.
-- Always add comments to explain new code.
-- Maintain rule file organization as described in `rules.d/README-rules`.
-
-These guidelines should help future contributors and automated tools
-work consistently within the fapolicyd repository.
-
+- Commit only when asked. Make one logical commit per issue.
+- Do not commit on `main`.
+- Commit messages should have a concise subject plus body paragraphs explaining
+  what was wrong, how it was fixed, and what tests were added or run.
