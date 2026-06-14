@@ -40,6 +40,8 @@ libfapolicyd_la_SOURCES = \
 	library/conf.h \
 	library/database.c \
 	library/database.h \
+	library/database-internal.h \
+	library/database-update.c \
 	library/daemon-config.c \
 	library/daemon-config.h \
 	library/decision-config.c \

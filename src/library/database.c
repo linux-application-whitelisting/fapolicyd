@@ -29,16 +29,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdatomic.h>
-#include <stdbool.h>
-#include <poll.h>
 #include <pthread.h>
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <ctype.h>
 #include <openssl/sha.h>
-#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -46,6 +42,7 @@
 #include <ctype.h>	/* isspace() */
 
 #include "database.h"
+#include "database-internal.h"
 #include "decision-config.h"
 #include "decision-timing.h"
 #include "failure-action.h"
@@ -57,18 +54,9 @@
 #include "backend-manager.h"
 #include "gcc-attributes.h"
 #include "paths.h"
-#include "policy.h"
 
 // Local defines
 enum { READ_DATA, READ_TEST_KEY, READ_DATA_DUP };
-typedef enum {
-	DB_NO_OP,
-	ONE_FILE,
-	RELOAD_DB,
-	FLUSH_CACHE,
-	RELOAD_RULES,
-	COMPACT_DB,
-} db_ops_t;
 enum autosize_plan_mode {
 	AUTOSIZE_STARTUP_INSPECTION,
 	AUTOSIZE_LIVE_INSPECTION,
@@ -126,15 +114,10 @@ enum autosize_plan_mode {
  *   generation 1.
  *
  * Runtime reload path:
- * - set_reload_trust_database() records a request through
- *   request_reload_trust_database(). This coalesces duplicate pending requests.
- *   Requests arriving during an active reload leave one pending follow-up, so a
- *   config-changing SIGHUP cannot be hidden by an earlier rebuild.
- * - update_thread_main() runs requests through run_trust_database_reload(),
- *   which marks the reload active with begin_trust_database_reload(), calls
- *   do_reload_db(), and finally clears the marker with
- *   finish_trust_database_reload().
- * - do_reload_db() refreshes backends and calls update_database(config, 0).
+ * - database-update.c coalesces external reload requests from SIGHUP, the
+ *   update FIFO, and fapolicy-cli into database_reload_from_backends().
+ * - database_reload_from_backends() refreshes backends and calls
+ *   update_database(config, 0).
  *   update_database() runs autosize_reload_preflight(), creates a candidate
  *   generation, imports all backend records, publishes only a complete
  *   candidate, and requests a cache flush on success.
@@ -246,12 +229,7 @@ static unsigned int db_max_readers;
 static unsigned MDB_maxkeysize;
 static const char *data_dir = DB_DIR;
 static const char *db = DB_NAME;
-static int update_lock_inited;
-static int rule_lock_inited;
 static int lib_symlink=0, lib64_symlink=0, bin_symlink=0, sbin_symlink=0;
-static struct pollfd ffd[1] =  { {0, 0, 0} };
-static atomic_bool reload_db = false;
-static atomic_bool reload_db_active = false;
 static unsigned int autosize_reload_floor_mb;
 static unsigned int startup_compaction_target_mb;
 static unsigned int startup_compaction_fallback_mb;
@@ -263,10 +241,6 @@ static unsigned int ima_mismatch_err_budget = 5;
 static unsigned int ima_mismatch_crit_budget = 5;
 static int ima_mismatch_silenced;
 
-static pthread_t update_thread;
-static int update_thread_created;
-static pthread_rwlock_t update_lock;
-static pthread_mutex_t rule_lock;
 static pthread_mutex_t generation_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t generation_reclaim_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -386,7 +360,6 @@ struct lmdb_record {
 };
 
 // Local functions
-static void *update_thread_main(void *arg);
 static int update_database(conf_t *config, int startup_rebuild);
 static int write_db(const char *idx, size_t idx_len, const char *data)
 	__attr_access ((__read_only__, 1, 2))  __wur;
@@ -407,13 +380,10 @@ static int do_memfd_update_to_dbi_in_env(MDB_env *target_env, int memfd,
 	MDB_dbi target_dbi, unsigned int maxkeysize, long *entries);
 static void close_env(int do_close_dbi);
 static void log_lmdb_state(int priority, const char *context, int lmdb_rc);
-static void lock_trust_database_reader(void);
-static void unlock_trust_database_reader(void);
 
 // External variables
 extern atomic_bool stop;
 extern atomic_bool needs_flush;
-extern atomic_bool reload_rules;
 
 
 static int is_link(const char *path)
@@ -441,63 +411,6 @@ const char *lookup_tsource(unsigned int tsource)
 		return "filedb";
 	}
 	return "src_unknown";
-}
-
-int preconstruct_fifo(const conf_t *config)
-{
-	int rc;
-	char err_buff[BUFFER_SIZE];
-
-	/* Keep RUN_DIR mode/owner aligned with daemon IPC expectations. */
-	if (mkdir(RUN_DIR, 0770) && errno != EEXIST) {
-		msg(LOG_ERR, "Failed to create a directory %s (%s)", RUN_DIR,
-		    strerror_r(errno, err_buff, BUFFER_SIZE));
-		return 1;
-	} else {
-
-		if ((chmod(RUN_DIR, 0770))) {
-			msg(LOG_ERR, "Failed to fix mode of dir %s (%s)",
-			    RUN_DIR, strerror_r(errno, err_buff, BUFFER_SIZE));
-			return 1;
-		}
-
-		if ((chown(RUN_DIR, 0, config->gid))) {
-			msg(LOG_ERR, "Failed to fix ownership of dir %s (%s)",
-			    RUN_DIR, strerror_r(errno, err_buff, BUFFER_SIZE));
-			return 1;
-		}
-
-		/* Make sure that there is no such file/fifo */
-		unlink_fifo();
-	}
-
-	rc = mkfifo(fifo_path, 0660);
-
-	if (rc != 0) {
-		msg(LOG_ERR, "Failed to create a pipe %s (%s)", fifo_path,
-		    strerror_r(errno, err_buff, BUFFER_SIZE));
-		return 1;
-	}
-
-	if ((ffd[0].fd = open(fifo_path, O_RDWR)) == -1) {
-		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path,
-		    strerror_r(errno, err_buff, BUFFER_SIZE));
-		unlink_fifo();
-		return 1;
-	}
-
-	if (config->gid != getgid()) {
-		if ((fchown(ffd[0].fd, 0, config->gid))) {
-			msg(LOG_ERR, "Failed to fix ownership of pipe %s (%s)",
-			    fifo_path, strerror_r(errno, err_buff,
-						  BUFFER_SIZE));
-			unlink_fifo();
-			close(ffd[0].fd);
-			return 1;
-		}
-	}
-
-	return 0;
 }
 
 /*
@@ -3588,6 +3501,37 @@ static int write_db(const char *idx, size_t idx_len, const char *data)
 	return rc;
 }
 
+/*
+ * database_store_update_record - persist one FIFO path update in LMDB.
+ * @path: Trust path received from a backend helper.
+ * @size: File size to store with the record.
+ * @hash: SHA256 digest string received from a backend helper.
+ *
+ * This is the deliberate bridge from database-update.c into LMDB storage for
+ * incremental updates. The controller validates the command shape; database.c
+ * owns serialization, locking around the write transaction, and metadata
+ * refresh for the active generation.
+ *
+ * Returns 0 on success or the write_db() stage code on failure.
+ */
+int database_store_update_record(const char *path, size_t size,
+				 const char *hash)
+{
+	char data[BUFFER_SIZE];
+	int rc;
+
+	snprintf(data, BUFFER_SIZE, DATA_FORMAT, (unsigned int)SRC_UNKNOWN,
+		 size, hash);
+
+	lock_update_thread();
+	rc = write_db(path, 0, data);
+	if (rc == 0)
+		refresh_active_generation_metadata();
+	unlock_update_thread();
+
+	return rc;
+}
+
 
 /*
  * trust_db_read_open - open a private LMDB read transaction and cursor.
@@ -4685,17 +4629,17 @@ static int migrate_database(void)
 int init_database(conf_t *config)
 {
 	int rc;
-	char err_buff[BUFFER_SIZE];
 
 	msg(LOG_INFO, "Initializing the trust database");
 	startup_compaction_target_mb = 0;
 	startup_compaction_fallback_mb = 0;
 
-	// update_lock is used in update_database()
-	pthread_rwlock_init(&update_lock, NULL);
-	pthread_mutex_init(&rule_lock, NULL);
-	update_lock_inited = 1;
-	rule_lock_inited = 1;
+	rc = database_update_controls_init();
+	if (rc) {
+		msg(LOG_ERR, "Failed to initialize database update controls (%d)",
+		    rc);
+		return rc;
+	}
 
 	if (migrate_database())
 		return 1;
@@ -4755,15 +4699,8 @@ int init_database(conf_t *config)
 	// Conserve memory by dumping unneeded resources
 	backend_close();
 
-	if (rc == 0) {
-		rc = pthread_create(&update_thread, NULL, update_thread_main,
-				    config);
-		if (rc == 0)
-			update_thread_created = 1;
-		else
-			msg(LOG_ERR, "Failed to create update thread (%s)",
-			    strerror_r(rc, err_buff, sizeof(err_buff)));
-	}
+	if (rc == 0)
+		rc = database_update_thread_start(config);
 
 	return rc;
 }
@@ -4961,7 +4898,7 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 					     &total_timing);
 	decision_timing_trust_db_stage_begin(
 		DECISION_TIMING_TRUST_DB_LOCK_WAIT, &lock_timing);
-	lock_trust_database_reader();
+	database_update_read_lock();
 	decision_timing_stage_end(&lock_timing);
 
 	decision_timing_trust_db_stage_begin(DECISION_TIMING_TRUST_DB_READ,
@@ -5008,7 +4945,7 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 	trust_db_read_close(&read);
 out_unlock:
 	decision_timing_stage_end(&read_timing);
-	unlock_trust_database_reader();
+	database_update_read_unlock();
 	decision_timing_stage_end(&total_timing);
 
 	return retval;
@@ -5017,24 +4954,13 @@ out_unlock:
 
 void close_database(void)
 {
-	if (update_thread_created) {
-		pthread_join(update_thread, NULL);
-		update_thread_created = 0;
-	}
+	database_update_thread_stop();
 
 	// we can close db when we are really sure update_thread does not exist
 	close_db(1);
-	if (update_lock_inited) {
-		pthread_rwlock_destroy(&update_lock);
-		update_lock_inited = 0;
-	}
-	if (rule_lock_inited) {
-		pthread_mutex_destroy(&rule_lock);
-		rule_lock_inited = 0;
-	}
+	database_update_controls_destroy();
 
 	backend_close();
-	unlink_fifo();
 }
 
 /*
@@ -5045,16 +4971,11 @@ void close_database(void)
  */
 int database_open_for_tests(conf_t *config)
 {
-	if (!update_lock_inited) {
-		pthread_rwlock_init(&update_lock, NULL);
-		update_lock_inited = 1;
-	}
+	int rc;
 
-	if (!rule_lock_inited) {
-		pthread_mutex_init(&rule_lock, NULL);
-		rule_lock_inited = 1;
-	}
-
+	rc = database_update_controls_init();
+	if (rc)
+		return rc;
 	return init_db(config);
 }
 
@@ -5066,16 +4987,7 @@ int database_open_for_tests(conf_t *config)
 void database_close_for_tests(void)
 {
 	close_db(0);
-
-	if (update_lock_inited) {
-		pthread_rwlock_destroy(&update_lock);
-		update_lock_inited = 0;
-	}
-
-	if (rule_lock_inited) {
-		pthread_mutex_destroy(&rule_lock);
-		rule_lock_inited = 0;
-	}
+	database_update_controls_destroy();
 }
 
 /*
@@ -5325,78 +5237,6 @@ unsigned int database_autosize_retry_mb_for_tests(unsigned long old_mb,
 	return autosize_reload_grow_from_state_mb(old_mb, &state);
 }
 
-
-void unlink_fifo(void)
-{
-	unlink(fifo_path);
-}
-
-
-/*
- * lock_update_thread - take exclusive trust DB update ownership.
- *
- * Returns nothing.
- */
-void lock_update_thread(void) {
-	pthread_rwlock_wrlock(&update_lock);
-	//msg(LOG_DEBUG, "lock_update_thread()");
-}
-
-/*
- * unlock_update_thread - release exclusive trust DB update ownership.
- *
- * Returns nothing.
- */
-void unlock_update_thread(void) {
-	pthread_rwlock_unlock(&update_lock);
-	//msg(LOG_DEBUG, "unlock_update_thread()");
-}
-
-/*
- * lock_trust_database_reader - take shared trust DB read ownership.
- *
- * Returns nothing.
- */
-static void lock_trust_database_reader(void)
-{
-	pthread_rwlock_rdlock(&update_lock);
-}
-
-/*
- * unlock_trust_database_reader - release shared trust DB read ownership.
- *
- * Returns nothing.
- */
-static void unlock_trust_database_reader(void)
-{
-	pthread_rwlock_unlock(&update_lock);
-}
-
-/*
- * Lock wrapper for rule mutex
- */
-void lock_rule(void) {
-	/*
-	 * Rules load before init_database() creates this mutex, and the final
-	 * shutdown report can run after close_database() destroys it. Those
-	 * phases are single-threaded with no rule reload race to serialize.
-	 */
-	if (!rule_lock_inited)
-		return;
-	pthread_mutex_lock(&rule_lock);
-	//msg(LOG_DEBUG, "lock_rule()");
-}
-
-/*
- * Unlock wrapper for rule mutex
- */
-void unlock_rule(void) {
-	if (!rule_lock_inited)
-		return;
-	pthread_mutex_unlock(&rule_lock);
-	//msg(LOG_DEBUG, "unlock_rule()");
-}
-
 /*
  * update_database - reload backend snapshots into a new trust DB generation.
  * @config: Active daemon configuration.
@@ -5479,85 +5319,6 @@ static int update_database(conf_t *config, int startup_rebuild)
 }
 
 /*
- * handle_record - Process a single update command received from the FIFO.
- * @buffer: Raw line of text read from the update pipe. For file updates the
- *          buffer contains a path, file size, and SHA256 hash separated by
- *          whitespace.
- *
- * Returns 0 after successfully storing the record, 1 when processing should
- * stop due to malformed data or a shutdown request.
- */
-static int handle_record(const char * buffer)
-{
-	char path[2048+1];
-	char hash[64+1];
-	size_t size;
-
-	if (stop)
-		return 1;
-
-	// validating input
-	int res = sscanf(buffer, "%2048s %zu %64s", path, &size, hash);
-	msg(LOG_DEBUG, "update_thread: Parsing input buffer: %s", buffer);
-	msg(LOG_DEBUG,
-	    "update_thread: Parsing input words(expected 3): %d",
-	    res);
-
-	if (res != 3) {
-		msg(LOG_INFO, "Corrupted data read, ignoring...");
-		return 1;
-	}
-
-	char data[BUFFER_SIZE];
-	snprintf(data, BUFFER_SIZE, DATA_FORMAT, (unsigned int)SRC_UNKNOWN,
-		 size, hash);
-
-	msg(LOG_DEBUG, "update_thread: Saving %s %s", path, data);
-	lock_update_thread();
-	if (write_db(path, 0, data) == 0)
-		refresh_active_generation_metadata();
-	unlock_update_thread();
-
-	return 0;
-}
-
-/*
- * request_reload_trust_database - queue a trust DB reload if one is needed.
- * @source: short log label for the caller requesting reload.
- *
- * A trust DB reload rebuilds the database from the current backend snapshots.
- * If another request is already pending, the later request does not add more
- * ordering information: both reloads would consume the same current backend
- * state by the time the update thread can run them. Requests received during
- * an active reload are left pending because SIGHUP can change the configured
- * backend list after the active rebuild has already selected its snapshots.
- * This still coalesces many in-flight requests into one follow-up rebuild.
- *
- * Returns 1 when a new request was queued, 0 when it was coalesced.
- */
-static int request_reload_trust_database(const char *source)
-{
-	if (atomic_exchange_explicit(&reload_db, true, memory_order_acq_rel)) {
-		msg(LOG_INFO,
-		    "Dropping trust database reload from %s: reload already pending",
-		    source);
-		return 0;
-	}
-
-	if (atomic_load_explicit(&reload_db_active, memory_order_acquire))
-		msg(LOG_INFO,
-		    "Queued trust database reload from %s: reload already active",
-		    source);
-
-	return 1;
-}
-
-void set_reload_trust_database(void)
-{
-	request_reload_trust_database("SIGHUP");
-}
-
-/*
  * record_trust_reload_failure - count a failed trust database reload.
  * @void: no arguments are required.
  *
@@ -5573,49 +5334,18 @@ static void record_trust_reload_failure(void)
 }
 
 /*
- * begin_trust_database_reload - mark a trust DB reload active.
- * @source: short log label for the caller starting reload.
+ * database_reload_from_backends - reload backend snapshots into LMDB.
+ * @config: active daemon configuration.
  *
- * Returns 1 when the caller may run the reload, 0 when another reload is
- * already active.
- */
-static int begin_trust_database_reload(const char *source)
-{
-	bool expected = false;
-
-	/*
-	 * Consume the request before publishing the active marker. A SIGHUP that
-	 * arrives after this point must remain pending for a follow-up reload;
-	 * clearing reload_db after reload_db_active becomes true could drop that
-	 * config-changing request.
-	 */
-	atomic_store_explicit(&reload_db, false, memory_order_release);
-
-	if (!atomic_compare_exchange_strong_explicit(&reload_db_active,
-					&expected, true,
-					memory_order_acq_rel,
-					memory_order_acquire)) {
-		atomic_store_explicit(&reload_db, true, memory_order_release);
-		msg(LOG_INFO,
-		    "Deferring trust database reload from %s: reload already active",
-		    source);
-		return 0;
-	}
-
-	return 1;
-}
-
-/*
- * finish_trust_database_reload - clear the active trust DB reload marker.
+ * The update controller owns request coalescing and FIFO dispatch. This
+ * function owns the database work behind a reload: refreshing backend
+ * snapshots, applying any auto-size plan, and publishing a complete LMDB
+ * trust DB generation only after the rebuild succeeds.
  *
- * Returns nothing.
+ * Returns 0 on success and non-zero when the previous DB was preserved or a
+ * fatal reload error occurred.
  */
-static void finish_trust_database_reload(void)
-{
-	atomic_store_explicit(&reload_db_active, false, memory_order_release);
-}
-
-static int do_reload_db(conf_t *config)
+int database_reload_from_backends(conf_t *config)
 {
 	msg(LOG_INFO,
 	    "It looks like there was an update of the system... Syncing DB.");
@@ -5745,20 +5475,21 @@ out:
  */
 int database_reload_for_tests(conf_t *config)
 {
-	return do_reload_db(config);
+	return database_reload_from_backends(config);
 }
 
 /*
- * do_compact_db - perform explicit admin trust DB environment compaction.
+ * database_compact_from_backends - perform admin trust DB compaction.
  * @config: active daemon configuration.
  *
- * This is intentionally separate from do_reload_db(). A reload publishes a
- * logical trust DB generation inside the current LMDB environment; compaction
- * rebuilds a whole replacement environment and briefly closes the live one
- * after the replacement has validated. Keeping the entry points separate makes
- * operator intent clear in logs and avoids hidden filesystem swaps on SIGHUP.
+ * This is intentionally separate from database_reload_from_backends(). A
+ * reload publishes a logical trust DB generation inside the current LMDB
+ * environment; compaction rebuilds a whole replacement environment and briefly
+ * closes the live one after the replacement has validated. Keeping the entry
+ * points separate makes operator intent clear in logs and avoids hidden
+ * filesystem swaps on SIGHUP.
  */
-static void do_compact_db(conf_t *config)
+void database_compact_from_backends(conf_t *config)
 {
 	int rc;
 
@@ -5788,290 +5519,6 @@ static void do_compact_db(conf_t *config)
 
 out:
 	backend_close();
-}
-
-/*
- * run_trust_database_reload - run a coalesced trust DB reload request.
- * @config: active daemon configuration.
- * @source: short log label for the request source.
- *
- * Returns 1 when a reload ran, 0 when the request was coalesced with another
- * active reload.
- */
-static int run_trust_database_reload(conf_t *config, const char *source)
-{
-	if (!begin_trust_database_reload(source))
-		return 0;
-
-	do_reload_db(config);
-	finish_trust_database_reload();
-	return 1;
-}
-
-/*
- * reload_rules_from_file - perform a requested rule reload.
- * @config: daemon configuration used for parsing syslog fields.
- *
- * Returns 0 on success and non-zero on failure.
- */
-static int reload_rules_from_file(conf_t *config)
-{
-	int rc;
-
-	if (load_rule_file()) {
-		failure_action_record(FAILURE_REASON_RULE_RELOAD_FAILURE);
-		msg(LOG_ERR,
-		    "Rule reload aborted: unable to open rules file (%s)",
-		    strerror(errno));
-		return 1;
-	}
-
-	/*
-	 * Rules now publish as immutable snapshots. Parsing can be slow for
-	 * large macro/set based policies, so do not hold the legacy rule mutex
-	 * here; decisions keep using the old snapshot until publish succeeds.
-	 */
-	rc = do_reload_rules(config);
-	if (rc)
-		msg(LOG_ERR, "Rule reload failed; previous policy preserved");
-	return rc;
-}
-
-static void *update_thread_main(void *arg)
-{
-	int rc;
-	int flags;
-	sigset_t sigs;
-	char buff[BUFFER_SIZE];
-	char err_buff[BUFFER_SIZE];
-	conf_t *config = (conf_t *)arg;
-
-	int do_operation = DB_NO_OP;;
-
-#ifdef DEBUG
-	msg(LOG_DEBUG, "Update thread main started");
-#endif
-
-	/* This is a worker thread. Don't handle external signals. */
-	sigemptyset(&sigs);
-	sigaddset(&sigs, SIGTERM);
-	sigaddset(&sigs, SIGHUP);
-	sigaddset(&sigs, SIGUSR1);
-	sigaddset(&sigs, SIGINT);
-	sigaddset(&sigs, SIGQUIT);
-	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
-
-	if (ffd[0].fd == 0) {
-		if (preconstruct_fifo(config))
-			return NULL;
-	}
-
-	/*
-	 * fd_fgets_r() must not block if poll readiness is consumed or only
-	 * a partial line is available.
-	 */
-	flags = fcntl(ffd[0].fd, F_GETFL);
-	if (flags == -1) {
-		msg(LOG_ERR, "Failed to read pipe flags (%s)",
-		    strerror_r(errno, err_buff, BUFFER_SIZE));
-		goto finalize;
-	}
-	if (fcntl(ffd[0].fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-		msg(LOG_ERR, "Failed to set non-blocking pipe mode (%s)",
-		    strerror_r(errno, err_buff, BUFFER_SIZE));
-		goto finalize;
-	}
-	ffd[0].events = POLLIN;
-
-	while (!stop) {
-		int trust_reload_done_this_cycle = 0;
-
-		/*
-		 * The FIFO connected at ffd[0] carries update commands from
-		 * fapolicy-cli and backend helper processes. Commands may be
-		 * the single-character control values defined in paths.h
-		 * (for example RELOAD_TRUSTDB_COMMAND) or full path entries
-		 * emitted by the backend notifier when a package manager
-		 * changes a file.
-		 */
-		rc = poll(ffd, 1, 1000);
-
-		if (stop)
-			break;
-
-		if (reload_rules) {
-			reload_rules = false;
-			reload_rules_from_file(config);
-		}
-		// got SIGHUP
-		if (atomic_load_explicit(&reload_db, memory_order_acquire))
-			trust_reload_done_this_cycle =
-				run_trust_database_reload(config,
-							  "pending request");
-
-#ifdef DEBUG
-		msg(LOG_DEBUG, "Update poll interrupted");
-#endif
-
-		if (rc < 0) {
-			if (errno == EINTR) {
-#ifdef DEBUG
-				msg(LOG_DEBUG, "update poll rc = EINTR");
-#endif
-				continue;
-			} else {
-				msg(LOG_ERR, "Update poll error (%s)",
-				    strerror_r(errno, err_buff, BUFFER_SIZE));
-				goto finalize;
-			}
-		} else if (rc == 0) {
-#ifdef DEBUG
-			msg(LOG_DEBUG, "Update poll timeout expired");
-#endif
-			continue;
-		} else {
-			if (ffd[0].revents & POLLIN) {
-				fd_fgets_state_t *st = fd_fgets_init();
-				if (st == NULL) {
-					msg(LOG_ERR,
-				  "Failed to initialize buffered FIFO reader");
-					break;
-				}
-				do {
-					if (stop)
-						break;
-					int res = fd_fgets_r(st, buff,
-						sizeof(buff), ffd[0].fd);
-
-					// nothing to read
-					if (res == -1)
-						break;
-					else if (res > 0) {
-						char* end  = strchr(buff, '\n');
-
-						if (end == NULL) {
-							msg(LOG_ERR, "Too long line?");
-							continue;
-						}
-
-						int count = end - buff;
-
-						*end = '\0';
-
-						for (int i = 0 ; i < count ; i++) {
-							/*
-							 * Identify the requested action by scanning
-							 * the buffer. Control characters map directly
-							 * to db_ops_t values while a leading slash
-							 * indicates a file path update.
-							 */
-							if (stop)
-								break;
-							// assume file name
-							// operation = 0
-							if (buff[i] == '/') {
-								do_operation = ONE_FILE;
-								break;
-							}
-
-							if (buff[i] == RELOAD_TRUSTDB_COMMAND) {
-								do_operation = RELOAD_DB;
-								break;
-							}
-
-							if (buff[i] == FLUSH_CACHE_COMMAND) {
-								do_operation = FLUSH_CACHE;
-								break;
-							}
-
-							if (buff[i] == RELOAD_RULES_COMMAND) {
-								do_operation = RELOAD_RULES;
-								break;
-							}
-
-							if (buff[i] == COMPACT_TRUSTDB_COMMAND) {
-								do_operation = COMPACT_DB;
-								break;
-							}
-
-							if (isspace((unsigned char)buff[i]))
-								continue;
-
-							msg(LOG_ERR, "Cannot handle data \"%s\" from pipe", buff);
-							break;
-						}
-
-						*end = '\n';
-
-						if (stop)
-							break;
-
-						// got "1" -> reload db
-						if (do_operation == RELOAD_DB) {
-							/*
-							 * A RELOAD_TRUSTDB_COMMAND triggers a
-							 * complete rebuild from all configured
-							 * backends.
-							 */
-							do_operation = DB_NO_OP;
-							if (trust_reload_done_this_cycle) {
-								msg(LOG_INFO,
-								    "Dropping trust database reload from FIFO: "
-								    "reload already handled in this update cycle");
-							} else {
-								trust_reload_done_this_cycle =
-									run_trust_database_reload(config,
-													  "FIFO");
-							}
-						} else if (do_operation == RELOAD_RULES) {
-							/*
-							 * The rules command instructs the
-							 * daemon to re-parse policy files.
-							 */
-							do_operation = DB_NO_OP;
-							reload_rules_from_file(config);
-						} else if (do_operation == COMPACT_DB) {
-							/*
-							 * Explicit maintenance command: build a
-							 * replacement LMDB environment from backend
-							 * snapshots and swap it only after validation.
-							 */
-							do_operation = DB_NO_OP;
-							do_compact_db(config);
-
-							// got "2" -> flush cache
-						} else if (do_operation == FLUSH_CACHE) {
-							/*
-							 * Cache flushes originate from helper
-							 * tools needing clients to drop cached
-							 * trust decisions.
-							 */
-							do_operation = DB_NO_OP;
-							atomic_store_explicit(&needs_flush, true,
-									      memory_order_release);
-						} else if (do_operation == ONE_FILE) {
-							/*
-							 * Backend helpers send path/size/hash
-							 * tuples for individual files that
-							 * changed on disk.
-							 */
-							do_operation = DB_NO_OP;
-							if (handle_record(buff))
-								continue;
-						}
-					}
-
-				} while(!fd_fgets_eof_r(st) && !stop);
-				fd_fgets_destroy(st);
-			}
-		}
-	}
-
-finalize:
-	close(ffd[0].fd);
-	unlink_fifo();
-
-	return NULL;
 }
 
 
