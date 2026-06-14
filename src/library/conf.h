@@ -46,6 +46,7 @@ typedef struct conf
 	unsigned int permissive;
 	unsigned int nice_val;
 	unsigned int q_size;
+	unsigned int decision_threads;
 	uid_t uid;
 	gid_t gid;
 	unsigned int do_stat_report;

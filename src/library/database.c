@@ -43,6 +43,7 @@
 
 #include "database.h"
 #include "database-internal.h"
+#include "daemon-config.h"
 #include "decision-config.h"
 #include "decision-timing.h"
 #include "failure-action.h"
@@ -211,14 +212,6 @@ enum autosize_plan_mode {
  *   available slots. TRUST_DB_MAX_NAMED_DBS must stay comfortably above the
  *   slot count plus metadata and any legacy DB name.
  */
-/*
- * The decision worker configuration is added later in the worker-pool
- * roadmap. Size LMDB readers now for that planned cap plus maintenance users
- * so read-side concurrency does not immediately trip MDB_READERS_FULL.
- */
-#define TRUST_DB_DECISION_READER_CAP 32
-#define TRUST_DB_MAINTENANCE_READERS 8
-
 // Local variables
 static MDB_env *env;
 static MDB_dbi dbi;
@@ -450,16 +443,13 @@ unsigned get_default_db_max_size(void)
 
 /*
  * configured_reader_limit - compute LMDB reader slots to reserve.
- * @config: active daemon configuration. The future decision_threads setting
- *          will feed this calculation; today the roadmap worker cap is used.
+ * @config: active daemon configuration.
  *
  * Returns the number of LMDB reader slots requested for the environment.
  */
 static unsigned int configured_reader_limit(const conf_t *config)
 {
-	(void)config;
-
-	return TRUST_DB_DECISION_READER_CAP + TRUST_DB_MAINTENANCE_READERS;
+	return daemon_config_lmdb_reader_limit(config);
 }
 
 /*

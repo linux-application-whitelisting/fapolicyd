@@ -29,16 +29,42 @@
 #include "message.h"
 #include "file.h"
 #include "database.h"
+#include "decision-defer.h"
+#include "decision-event.h"
+#include "lru.h"
+#include "queue.h"
 
 #include <stdio.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
 #include <grp.h>
+#include <sys/resource.h>
 #include "paths.h"
+
+/*
+ * Leave room for daemon-owned descriptors outside queued fanotify permission
+ * event fds: fanotify, timer/signal machinery, pid and mount files, trust
+ * database files, syslog, and short-lived proc/config opens. The current fixed
+ * set is smaller, so 64 is a conservative reserve for validation.
+ */
+#define DAEMON_CONFIG_FD_RESERVE 64
+/*
+ * Fixed worker allocations should stay a minority of available memory. Use a
+ * quarter of physical memory or RLIMIT_AS as an early rejection threshold while
+ * leaving space for variable cache payloads, LMDB maps, libraries, and the OS.
+ */
+#define DAEMON_CONFIG_MEMORY_BUDGET_PERCENT 25
+/*
+ * Extra per-worker allowance for context state that is not represented by the
+ * cache, queue, and defer-array formulas below. This covers current small
+ * fields plus future per-worker helper handles and metric padding.
+ */
+#define DAEMON_CONFIG_WORKER_FIXED_OVERHEAD 16384ULL
 
 /* Local prototypes */
 struct nv_pair
@@ -68,6 +94,8 @@ static int permissive_parser(const struct nv_pair *nv, int line,
 static int nice_val_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int q_size_parser(const struct nv_pair *nv, int line,
+		conf_t *config);
+static int decision_threads_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
 static int uid_parser(const struct nv_pair *nv, int line,
 		conf_t *config);
@@ -109,6 +137,7 @@ static const struct kw_pair keywords[] =
   {"permissive",	permissive_parser },
   {"nice_val",		nice_val_parser },
   {"q_size",		q_size_parser },
+  {"decision_threads",	decision_threads_parser },
   {"uid",		uid_parser },
   {"gid",		gid_parser },
   {"detailed_report",	detailed_report_parser },
@@ -137,6 +166,7 @@ static void clear_daemon_config(conf_t *config)
 	config->permissive = 0;
 	config->nice_val = 10;
 	config->q_size = 800;
+	config->decision_threads = 1;
 	config->uid = 0;
 	config->gid = 0;
 	config->do_stat_report = 1;
@@ -180,7 +210,7 @@ int load_daemon_config(conf_t *config)
 		}
 		msg(LOG_WARNING,
 			"Config file %s doesn't exist, skipping", CONFIG_FILE);
-		return 0;
+		return validate_daemon_config(config);
 	}
 
 	/* Make into FILE struct and read line by line */
@@ -246,7 +276,7 @@ int load_daemon_config(conf_t *config)
 	}
 
 	fclose(f);
-	return 0;
+	return validate_daemon_config(config);
 }
 
 static char *get_line(FILE *f, char *buf, unsigned size, int *lineno,
@@ -373,6 +403,294 @@ void free_daemon_config(conf_t *config)
 	free((void*)config->syslog_format);
 }
 
+/*
+ * daemon_config_lmdb_reader_limit - compute LMDB reader slots to reserve.
+ * @config: daemon configuration to inspect.
+ *
+ * Returns the reader slots needed for decision workers plus maintenance
+ * readers, or 0 if the configured worker count exceeds the daemon's supported
+ * maximum. CPU-count validation belongs in validate_daemon_config(); reader
+ * sizing only needs a non-overflowing daemon-supported worker count.
+ */
+unsigned int daemon_config_lmdb_reader_limit(const conf_t *config)
+{
+	unsigned int threads = 1;
+
+	if (config && config->decision_threads)
+		threads = config->decision_threads;
+	if (threads > DAEMON_CONFIG_DECISION_THREADS_MAX)
+		return 0;
+
+	return threads + DAEMON_CONFIG_LMDB_MAINTENANCE_READERS;
+}
+
+/*
+ * u64_add_overflow - checked uint64_t addition.
+ * @total: accumulator updated on success.
+ * @value: value to add.
+ *
+ * Returns 0 on success and 1 when the sum would overflow.
+ */
+static int u64_add_overflow(uint64_t *total, uint64_t value)
+{
+	if (*total > UINT64_MAX - value)
+		return 1;
+
+	*total += value;
+	return 0;
+}
+
+/*
+ * u64_mul_overflow - checked uint64_t multiplication.
+ * @left: first factor.
+ * @right: second factor.
+ * @result: product written on success.
+ *
+ * Returns 0 on success and 1 when the product would overflow.
+ */
+static int u64_mul_overflow(uint64_t left, uint64_t right, uint64_t *result)
+{
+	if (left != 0 && right > UINT64_MAX / left)
+		return 1;
+
+	*result = left * right;
+	return 0;
+}
+
+/*
+ * decision_defer_capacity_estimate - match defer array sizing policy.
+ * @subj_cache_size: configured subject cache slots.
+ *
+ * Returns the number of deferred events one worker would preallocate.
+ */
+static unsigned int decision_defer_capacity_estimate(
+		unsigned int subj_cache_size)
+{
+	unsigned int capacity = subj_cache_size / DECISION_DEFER_RATIO;
+
+	if (capacity < DECISION_DEFER_MIN)
+		capacity = DECISION_DEFER_MIN;
+	return capacity;
+}
+
+/*
+ * lru_memory_estimate - estimate fixed memory for one LRU cache.
+ * @slots: configured LRU slots.
+ *
+ * Returns bytes allocated before per-entry subject/object attributes.
+ */
+static int lru_memory_estimate(unsigned int slots, uint64_t *bytes)
+{
+	uint64_t slot_bytes;
+
+	if (u64_mul_overflow(slots, sizeof(QNode) + sizeof(QNode *),
+			     &slot_bytes))
+		return 1;
+
+	*bytes = sizeof(Queue) + sizeof(Hash) + slot_bytes;
+	return 0;
+}
+
+/*
+ * worker_memory_estimate - estimate fixed memory per future worker.
+ * @config: daemon configuration being validated.
+ * @bytes: destination for the estimated bytes.
+ *
+ * Returns 0 on success and 1 when arithmetic overflows.
+ */
+static int worker_memory_estimate(const conf_t *config, uint64_t *bytes)
+{
+	uint64_t total = DAEMON_CONFIG_WORKER_FIXED_OVERHEAD;
+	uint64_t value;
+	unsigned int defer_capacity;
+	uint64_t defer_entry_size;
+
+	if (lru_memory_estimate(config->subj_cache_size, &value) ||
+	    u64_add_overflow(&total, value))
+		return 1;
+	if (lru_memory_estimate(config->obj_cache_size, &value) ||
+	    u64_add_overflow(&total, value))
+		return 1;
+
+	if (u64_mul_overflow(config->q_size, sizeof(decision_event_t),
+			     &value) ||
+	    u64_add_overflow(&total, sizeof(struct queue) + value))
+		return 1;
+
+	defer_capacity = decision_defer_capacity_estimate(
+		config->subj_cache_size);
+	defer_entry_size = sizeof(decision_event_t) +
+		(2 * sizeof(uint64_t)) + (2 * sizeof(unsigned int)) +
+		sizeof(int) + 16;
+	if (u64_mul_overflow(defer_capacity, defer_entry_size, &value) ||
+	    u64_add_overflow(&total, value))
+		return 1;
+
+	*bytes = total;
+	return 0;
+}
+
+/*
+ * effective_nofile_limit - estimate startup file descriptor capacity.
+ * @limit_out: destination for the limit, or UINT64_MAX when unlimited.
+ *
+ * The daemon raises RLIMIT_NOFILE to at least DAEMON_CONFIG_MIN_NOFILE during
+ * startup, so validation uses that startup target rather than the pre-start
+ * soft limit.
+ *
+ * Returns 0 on success and 1 when getrlimit fails.
+ */
+static int effective_nofile_limit(uint64_t *limit_out)
+{
+	struct rlimit limit;
+
+	if (getrlimit(RLIMIT_NOFILE, &limit)) {
+		msg(LOG_ERR, "Cannot inspect RLIMIT_NOFILE: %s",
+		    strerror(errno));
+		return 1;
+	}
+
+	if (limit.rlim_max == RLIM_INFINITY) {
+		*limit_out = UINT64_MAX;
+		return 0;
+	}
+
+	*limit_out = limit.rlim_max;
+	if (*limit_out < DAEMON_CONFIG_MIN_NOFILE)
+		*limit_out = DAEMON_CONFIG_MIN_NOFILE;
+	return 0;
+}
+
+/*
+ * memory_budget - estimate a fixed-allocation budget for workers.
+ *
+ * Returns a byte budget based on physical memory and RLIMIT_AS, or 0 when no
+ * meaningful memory ceiling can be inspected.
+ */
+static uint64_t memory_budget(void)
+{
+	struct rlimit limit;
+	uint64_t budget = 0;
+	long pages, page_size;
+
+	pages = sysconf(_SC_PHYS_PAGES);
+	page_size = sysconf(_SC_PAGESIZE);
+	if (pages > 0 && page_size > 0 &&
+	    (uint64_t)pages <= UINT64_MAX / (uint64_t)page_size) {
+		uint64_t physical = (uint64_t)pages * (uint64_t)page_size;
+
+		budget = (physical / 100) *
+			DAEMON_CONFIG_MEMORY_BUDGET_PERCENT;
+	}
+
+	if (getrlimit(RLIMIT_AS, &limit) == 0 &&
+	    limit.rlim_cur != RLIM_INFINITY) {
+		uint64_t as_budget = ((uint64_t)limit.rlim_cur / 100) *
+			DAEMON_CONFIG_MEMORY_BUDGET_PERCENT;
+
+		if (budget == 0 || as_budget < budget)
+			budget = as_budget;
+	}
+
+	return budget;
+}
+
+/*
+ * validate_decision_threads - validate the future worker count.
+ * @config: daemon configuration being validated.
+ *
+ * Returns 0 when the configured count fits the daemon's fixed worker limits
+ * and host resource limits, otherwise 1.
+ */
+static int validate_decision_threads(const conf_t *config)
+{
+	unsigned int threads, readers;
+	uint64_t fd_limit, fd_needed, per_worker, memory_needed, budget;
+	long cpus;
+
+	threads = config->decision_threads;
+	if (threads == 0) {
+		msg(LOG_ERR, "decision_threads must be at least 1");
+		return 1;
+	}
+	if (threads > DAEMON_CONFIG_DECISION_THREADS_MAX) {
+		msg(LOG_ERR,
+		    "decision_threads %u exceeds the maximum of %u",
+		    threads, DAEMON_CONFIG_DECISION_THREADS_MAX);
+		return 1;
+	}
+
+	cpus = sysconf(_SC_NPROCESSORS_ONLN);
+	if (cpus < 1) {
+		msg(LOG_ERR, "Cannot determine online CPU count");
+		return 1;
+	}
+	if (threads > (unsigned long)cpus) {
+		msg(LOG_ERR,
+		    "decision_threads %u exceeds online CPU count %ld",
+		    threads, cpus);
+		return 1;
+	}
+
+	readers = daemon_config_lmdb_reader_limit(config);
+	if (readers == 0 || readers > DAEMON_CONFIG_LMDB_MAX_READERS) {
+		msg(LOG_ERR,
+		    "decision_threads %u requires %u LMDB readers, max is %u",
+		    threads, readers, DAEMON_CONFIG_LMDB_MAX_READERS);
+		return 1;
+	}
+
+	if (effective_nofile_limit(&fd_limit))
+		return 1;
+	if (u64_mul_overflow(config->q_size, threads, &fd_needed) ||
+	    u64_add_overflow(&fd_needed, DAEMON_CONFIG_FD_RESERVE)) {
+		msg(LOG_ERR, "decision_threads file descriptor estimate "
+		    "overflowed");
+		return 1;
+	}
+	if (fd_needed > fd_limit) {
+		msg(LOG_ERR,
+		    "decision_threads %u with q_size %u needs about %llu "
+		    "file descriptors, limit is %llu",
+		    threads, config->q_size,
+		    (unsigned long long)fd_needed,
+		    (unsigned long long)fd_limit);
+		return 1;
+	}
+
+	if (worker_memory_estimate(config, &per_worker) ||
+	    u64_mul_overflow(per_worker, threads, &memory_needed)) {
+		msg(LOG_ERR, "decision_threads memory estimate overflowed");
+		return 1;
+	}
+	budget = memory_budget();
+	if (budget && memory_needed > budget) {
+		msg(LOG_ERR,
+		    "decision_threads %u needs about %llu MiB fixed worker "
+		    "memory, budget is %llu MiB",
+		    threads,
+		    (unsigned long long)(memory_needed / (1024 * 1024)),
+		    (unsigned long long)(budget / (1024 * 1024)));
+		return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * validate_daemon_config - validate cross-field daemon configuration.
+ * @config: daemon configuration populated from defaults and fapolicyd.conf.
+ *
+ * Returns 0 when the configuration is accepted, otherwise 1.
+ */
+int validate_daemon_config(const conf_t *config)
+{
+	if (config == NULL)
+		return 1;
+
+	return validate_decision_threads(config);
+}
+
 static int unsigned_int_parser(unsigned *i, const char *str, int line)
 {
 	const char *ptr = str;
@@ -433,6 +751,27 @@ static int q_size_parser(const struct nv_pair *nv, int line,
 	if (rc == 0 && config->q_size > 10480)
 		msg(LOG_WARNING,
 			"q_size might be unnecessarily large - line %d", line);
+	return rc;
+}
+
+/*
+ * decision_threads_parser - parse configured decision worker count.
+ * @nv: name/value pair describing the option.
+ * @line: line number where the option was found.
+ * @config: configuration structure to update.
+ *
+ * Returns 0 on success and 1 when the value is not a positive integer.
+ */
+static int decision_threads_parser(const struct nv_pair *nv, int line,
+		conf_t *config)
+{
+	int rc = unsigned_int_parser(&(config->decision_threads),
+				     nv->value, line);
+	if (rc == 0 && config->decision_threads == 0) {
+		msg(LOG_ERR, "decision_threads must be at least 1 - line %d",
+		    line);
+		return 1;
+	}
 	return rc;
 }
 

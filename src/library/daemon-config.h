@@ -27,8 +27,36 @@
 
 #include "conf.h"
 
+/*
+ * Keep this cap in sync with fixed-size per-worker arrays such as decision
+ * timing and attribute-lookup metrics. The value is intentionally tied to the
+ * largest CPU count this implementation is prepared to use, not to arbitrary
+ * configuration input.
+ */
+#define DAEMON_CONFIG_DECISION_THREADS_MAX 32
+/*
+ * Reserve LMDB reader slots for non-decision activity such as status walks,
+ * trust database reload inspection, compaction validation, and administrative
+ * checks. Eight gives those maintenance paths headroom without keeping the
+ * LMDB reader table much larger than the worker cap.
+ */
+#define DAEMON_CONFIG_LMDB_MAINTENANCE_READERS 8
+/* Largest LMDB reader table this config layer will request. */
+#define DAEMON_CONFIG_LMDB_MAX_READERS \
+	(DAEMON_CONFIG_DECISION_THREADS_MAX + \
+	 DAEMON_CONFIG_LMDB_MAINTENANCE_READERS)
+/*
+ * Startup raises RLIMIT_NOFILE to at least this value when possible. The value
+ * preserves the existing daemon behavior and lets default q_size plus future
+ * worker queues fit under the service limit without requiring immediate
+ * systemd LimitNOFILE changes.
+ */
+#define DAEMON_CONFIG_MIN_NOFILE 16384
+
 int load_daemon_config(conf_t *config);
+int validate_daemon_config(const conf_t *config);
 void free_daemon_config(conf_t *config);
+unsigned int daemon_config_lmdb_reader_limit(const conf_t *config);
 const char *lookup_integrity(unsigned value);
 const char *lookup_reset_strategy(unsigned value);
 const char *lookup_timing_collection(unsigned value);

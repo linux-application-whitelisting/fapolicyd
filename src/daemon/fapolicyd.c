@@ -461,12 +461,12 @@ static int reload_configuration(void)
 
 	/*
 	 * Remaining daemon_config fields require restart-time changes:
-	 * q_size, subj_cache_size, and obj_cache_size are consumed when the
-	 * event queue and caches are created. uid/gid, allow_filesystem_mark,
-	 * watch_fs, and ignore_mounts are applied while fanotify marks are
-	 * installed. db_max_size fixes the LMDB map when the database opens,
-	 * and report_interval is bound to the decision thread's timer. None
-	 * of these components support resizing in-place yet, so their
+	 * q_size, decision_threads, subj_cache_size, and obj_cache_size are
+	 * consumed when the event queue and caches are created. uid/gid,
+	 * allow_filesystem_mark, watch_fs, and ignore_mounts are applied while
+	 * fanotify marks are installed. db_max_size fixes the LMDB map when the
+	 * database opens, and report_interval is bound to the decision thread's
+	 * timer. None of these components support resizing in-place yet, so their
 	 * configuration stays static.
 	 */
 
@@ -957,6 +957,11 @@ void do_state_report(FILE *f, int shutdown)
 
 	fprintf(f, "\nResource configuration:\n");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
+	fprintf(f, "decision_threads: %u\n", config.decision_threads);
+	/*
+	 * TODO: If worker-pool activation cannot resize decision threads on
+	 * SIGHUP, add a separate active worker count here.
+	 */
 	fprintf(f, "q_size: %u\n", config.q_size);
 	fanotify_defer_config_report(f);
 	do_cache_config_report(f);
@@ -1219,10 +1224,10 @@ int main(int argc, const char *argv[])
 	limit.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_FSIZE, &limit);
 	getrlimit(RLIMIT_NOFILE, &limit);
-	if (limit.rlim_max >= 16384)
+	if (limit.rlim_max >= DAEMON_CONFIG_MIN_NOFILE)
 		limit.rlim_cur = limit.rlim_max;
 	else
-		limit.rlim_max = limit.rlim_cur = 16384;
+		limit.rlim_max = limit.rlim_cur = DAEMON_CONFIG_MIN_NOFILE;
 
 	if (setrlimit(RLIMIT_NOFILE, &limit))
 		msg(LOG_WARNING, "Can't increase file number rlimit - %s",
