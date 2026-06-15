@@ -24,10 +24,9 @@
 
 #define CHECK(cond, code, msg) \
 	do { \
-		if (!(cond)) { \
-			fprintf(stderr, "%s\n", msg); \
-			return code; \
-		} \
+		if (!(cond)) \
+			return check_failed(__func__, __LINE__, #cond, \
+					    code, msg); \
 	} while (0)
 
 struct concurrent_lookup {
@@ -45,16 +44,53 @@ struct reload_lookup {
 
 extern atomic_bool needs_flush;
 
+/*
+ * check_failed - report enough context to diagnose hidden Automake logs.
+ * @func: Test function containing the failed check.
+ * @line: Source line of the failed check.
+ * @expr: Failed expression text.
+ * @code: Exit code returned by the check.
+ * @msg: Human-readable failure message.
+ *
+ * Returns @code after writing failure context to stderr.
+ */
+static int check_failed(const char *func, int line, const char *expr,
+			int code, const char *msg)
+{
+	int saved_errno = errno;
+
+	fprintf(stderr, "%s\n", msg);
+	fprintf(stderr, "  test: %s\n", func);
+	fprintf(stderr, "  check: %s:%d: %s\n", __FILE__, line, expr);
+	if (saved_errno)
+		fprintf(stderr, "  last errno: %d (%s)\n",
+			saved_errno, strerror(saved_errno));
+
+	return code;
+}
+
 static int remove_lmdb_files(const char *dir)
 {
 	char path[512];
+	int rc;
 
 	snprintf(path, sizeof(path), "%s/data.mdb", dir);
-	unlink(path);
+	rc = unlink(path);
+	if (rc == -1 && errno != ENOENT)
+		fprintf(stderr, "failed to remove %s: %s\n",
+			path, strerror(errno));
 	snprintf(path, sizeof(path), "%s/lock.mdb", dir);
-	unlink(path);
+	rc = unlink(path);
+	if (rc == -1 && errno != ENOENT)
+		fprintf(stderr, "failed to remove %s: %s\n",
+			path, strerror(errno));
 
-	return rmdir(dir);
+	rc = rmdir(dir);
+	if (rc == -1)
+		fprintf(stderr, "failed to remove %s: %s\n",
+			dir, strerror(errno));
+
+	return rc;
 }
 
 /*
@@ -266,22 +302,44 @@ static int with_temp_db(char *tmpdir, size_t tmpdir_sz, conf_t *cfg)
 {
 	char template[] = "/tmp/fapolicyd-lmdb-XXXXXX";
 	char *dir = mkdtemp(template);
+	int rc;
 
-	if (dir == NULL)
+	if (dir == NULL) {
+		fprintf(stderr, "mkdtemp failed for %s: %s\n",
+			template, strerror(errno));
 		return 1;
+	}
 
-	if (strlen(dir) + 1 > tmpdir_sz)
+	if (strlen(dir) + 1 > tmpdir_sz) {
+		fprintf(stderr, "temporary LMDB path too long: %s\n", dir);
 		return 1;
+	}
 
 	strcpy(tmpdir, dir);
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->db_max_size = 16;
 	cfg->integrity = IN_NONE;
+	/*
+	 * Some subtests intentionally start CONCURRENT_READERS lookup threads.
+	 * Size the LMDB reader table for that pressure so success does not
+	 * depend on whether the scheduler overlaps more than the default
+	 * one-worker reader budget.
+	 */
+	cfg->decision_threads = CONCURRENT_READERS;
 
-	if (database_set_location(tmpdir, NULL))
+	rc = database_set_location(tmpdir, NULL);
+	if (rc) {
+		fprintf(stderr, "database_set_location(%s) failed: %d\n",
+			tmpdir, rc);
 		return 1;
+	}
 
-	return database_open_for_tests(cfg);
+	rc = database_open_for_tests(cfg);
+	if (rc)
+		fprintf(stderr, "database_open_for_tests(%s) failed: %d\n",
+			tmpdir, rc);
+
+	return rc;
 }
 
 static int test_data_format_round_trip(void)

@@ -186,7 +186,7 @@ install -m0644 -D fapolicyd.sysusers.conf %{buildroot}%{_sysusersdir}/fapolicyd.
   [ $default_changed -eq 0 ] && rm -rf %{_sysconfdir}/%{name}/%{name}.rules %{_sysconfdir}/%{name}/rules.d/* || : \
 
 %check
-make check
+make check VERBOSE=yes
 
 %pre
 %if 0%{?rhel} && 0%{?rhel} <= 9
