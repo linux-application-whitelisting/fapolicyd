@@ -117,7 +117,7 @@ int main(int argc, char * const argv[])
 	memcpy(CMSG_DATA(c), &memfd, sizeof(int));
 
 	if (sendmsg(sock_fd, &_msg, 0) < 0) {
-		msg(LOG_ERR, "sendmsg failed");
+		msg(LOG_ERR, "sendmsg failed (%s)", strerror(errno));
 		exit(1);
 	}
 
