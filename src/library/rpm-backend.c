@@ -259,8 +259,12 @@ static int rpm_load_list(const conf_t *conf)
 		_msg.msg_control = cmsgbuf.buf;
 		_msg.msg_controllen = sizeof cmsgbuf.buf;
 
-		if (recvmsg(sv[0], &_msg, 0) < 0) {
-			msg(LOG_ERR, "recvmsg failed");
+		ssize_t rc;
+		do {
+			rc = recvmsg(sv[0], &_msg, 0);
+		} while (rc < 0 && errno == EINTR);
+		if (rc < 0) {
+			msg(LOG_ERR, "recvmsg failed (%s)", strerror(errno));
 			close(sv[0]);
 			waitpid(pid, &status, 0);
 			posix_spawn_file_actions_destroy(&actions);
