@@ -65,7 +65,12 @@ int sock_fd = 3; // same number dup2’ed by parent
 int main(int argc, char * const argv[])
 {
 
-	set_message_mode(MSG_STDERR, DBG_YES);
+	if (isatty(STDERR_FILENO)) {
+		set_message_mode(MSG_STDERR, DBG_YES);
+	} else {
+		set_message_mode(MSG_SYSLOG, DBG_YES);
+		openlog("fapolicyd-rpm-loader", LOG_PID, LOG_DAEMON);
+	}
 
 	if (load_daemon_config(&config)) {
 		free_daemon_config(&config);
