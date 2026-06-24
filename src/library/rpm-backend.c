@@ -278,7 +278,9 @@ static int rpm_load_list(const conf_t *conf)
 			rc = recvmsg(sv[0], &_msg, 0);
 		} while (rc < 0 && errno == EINTR);
 		if (rc < 0) {
-			msg(LOG_ERR, "recvmsg failed");
+			char err_buff[BUFFER_SIZE];
+			msg(LOG_ERR, "recvmsg failed (%s)",
+			    strerror_r(errno, err_buff, BUFFER_SIZE));
 			close(sv[0]);
 			while (waitpid(pid, &status, 0) < 0 && errno == EINTR);
 			posix_spawn_file_actions_destroy(&actions);

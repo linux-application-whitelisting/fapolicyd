@@ -65,7 +65,8 @@ int sock_fd = 3; // same number dup2’ed by parent
 int main(int argc, char * const argv[])
 {
 
-	set_message_mode(MSG_STDERR, DBG_YES);
+	set_message_mode(MSG_SYSLOG, DBG_NO);
+	openlog("fapolicyd-rpm-loader", LOG_PID, LOG_DAEMON);
 
 	if (load_daemon_config(&config)) {
 		free_daemon_config(&config);
@@ -117,7 +118,9 @@ int main(int argc, char * const argv[])
 	memcpy(CMSG_DATA(c), &memfd, sizeof(int));
 
 	if (sendmsg(sock_fd, &_msg, 0) < 0) {
-		msg(LOG_ERR, "sendmsg failed");
+		char err_buff[256];
+		msg(LOG_ERR, "sendmsg failed (%s)",
+		    strerror_r(errno, err_buff, sizeof(err_buff)));
 		exit(1);
 	}
 
