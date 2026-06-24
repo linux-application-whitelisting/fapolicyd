@@ -223,7 +223,7 @@ static int rpm_load_list(const conf_t *conf)
 {
 	// before the spawn
 	int sv[2];
-	if (socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv) < 0) {
+	if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sv) < 0) {
 		msg(LOG_ERR, "socketpair failed");
 		return 1;
 	}
@@ -231,10 +231,13 @@ static int rpm_load_list(const conf_t *conf)
 	posix_spawn_file_actions_t actions;
 	posix_spawn_file_actions_init(&actions);
 
-	// child sees sv[1] as FD 3 (arbitrary but fixed)
+	// dup sv[1] to FD 3 for the child; SOCK_CLOEXEC ensures both
+	// sv[0] and sv[1] are closed on exec, and dup2 clears CLOEXEC
+	// on the target FD 3. When sv[1] is already 3, dup2(3,3) is a
+	// no-op that does NOT clear CLOEXEC, so we must do it ourselves.
+	if (sv[1] == 3)
+		fcntl(sv[1], F_SETFD, 0);
 	posix_spawn_file_actions_adddup2(&actions, sv[1], 3);
-	posix_spawn_file_actions_addclose(&actions, sv[0]);
-	posix_spawn_file_actions_addclose(&actions, sv[1]);
 
 	char *argv[] = { "fapolicyd-rpm-loader", NULL };
 	char *custom_env[] = { "FAPO_SOCK_FD=3", NULL };
