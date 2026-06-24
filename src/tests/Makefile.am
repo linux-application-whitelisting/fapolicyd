@@ -35,7 +35,7 @@ decision_defer_test decision_config_test \
 decision_timing_report_test daemon_config_test ignore_mounts_risk_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
-AM_CFLAGS = -std=gnu11
+AM_CFLAGS = -std=gnu11 -DSYSCONFDIR='"$(sysconfdir)"' -DLOCALSTATEDIR='"$(localstatedir)"' -DRUNSTATEDIR='"$(runstatedir)"' -DDATADIR='"$(datadir)"'
 
 avl_test_SOURCES = avl_test.c ${top_srcdir}/src/library/avl.c
 gid_proc_test_SOURCES = gid_proc_test.c test-stubs.c

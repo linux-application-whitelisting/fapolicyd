@@ -13,10 +13,9 @@ Documentation=man:fapolicyd(8)
 [Service]
 OOMScoreAdjust=-1000
 Type=forking
-RuntimeDirectory=fapolicyd
-PIDFile=/run/fapolicyd.pid
-ExecStartPre=/usr/sbin/fagenrules
-ExecStart=/usr/sbin/fapolicyd
+PIDFile=@runstatedir@/fapolicyd.pid
+ExecStartPre=@sbindir@/fagenrules
+ExecStart=@sbindir@/fapolicyd
 Restart=on-abnormal
 
 [Install]

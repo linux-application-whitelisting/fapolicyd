@@ -122,7 +122,6 @@ popd
 
 %install
 %make_install
-install -p -m 644 -D init/%{name}-tmpfiles.conf %{buildroot}/%{_tmpfilesdir}/%{name}.conf
 mkdir -p %{buildroot}/%{_localstatedir}/lib/%{name}
 mkdir -p %{buildroot}/run/%{name}
 mkdir -p %{buildroot}%{_sysconfdir}/%{name}/trust.d
@@ -249,7 +248,7 @@ fi
 %config(noreplace) %attr(644,root,%{name}) %{_sysconfdir}/%{name}/%{name}.trust
 %ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/compiled.rules
 %attr(644,root,root) %{_unitdir}/%{name}.service
-%attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
+%attr(644,root,root) %{_tmpfilesdir}/%{name}-tmpfiles.conf
 %attr(755,root,root) %{_sbindir}/%{name}
 %attr(755,root,root) %{_sbindir}/%{name}-cli
 %attr(755,root,root) %{_sbindir}/%{name}-perf-test

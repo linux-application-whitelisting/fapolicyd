@@ -209,9 +209,11 @@ AS_HELP_STRING([--enable-stress],
 use_stress=$enableval,use_stress=no)
 AM_CONDITIONAL(WITH_STRESS, test x$use_stress = xyes)
 
-dnl FIXME some day pass this on the command line
-def_systemdsystemunitdir=${prefix}/lib/systemd/system
-AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
+AC_ARG_WITH([systemdsystemunitdir],
+    AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [systemd system unit directory]),
+    [systemdsystemunitdir=$withval],
+    [systemdsystemunitdir=\${prefix}/lib/systemd/system])
+AC_SUBST([systemdsystemunitdir])
 
 echo .
 echo Checking for required header files

@@ -59,8 +59,12 @@ make dist
 This will create a tarball. You can use the new tarball with the spec file
 and create your own rpm. If you want to experiment without installing, just
 run make with no arguments. It should run fine from where it was built as
-long as you put the configuration files in /etc/fapolicyd (fapolicyd.rules,
-fapolicyd.trust, fapolicyd.conf).
+long as you put the configuration files in the configured sysconfdir
+(default: /usr/local/etc/fapolicyd when no --prefix is given).
+Note that --prefix=/usr alone sets sysconfdir to /usr/etc, not /etc.
+To get standard FHS paths, pass --sysconfdir=/etc --localstatedir=/var
+--runstatedir=/run explicitly (the RPM %configure macro does this
+automatically).
 
 Note that the shipped policy expects that auditing is enabled. This is done
 by passing --with-audit to ./configure.
@@ -97,7 +101,7 @@ If you chose to do it yourself, you need to do a couple prep steps:
 
 ```
 1) sed -i "s/%python2_path%/`readlink -f /bin/python2 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
-2) sed -i "s/%python2_path%/`readlink -f /bin/python3 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
+2) sed -i "s/%python3_path%/`readlink -f /bin/python3 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
 3) interpret=`readelf -e /usr/bin/bash \
                 | grep Requesting \
                 | sed 's/.$//' \
@@ -108,32 +112,34 @@ If you chose to do it yourself, you need to do a couple prep steps:
 This corrects the placeholders to match your current system. Then follow the
 rules listed above for compiling except run make install instead of make dist.
 
-CREATING RUNTIME ENVIRONMENT
-----------------------------
-If you are not using rpm's spec file and are doing it yourself, there are
-a few more steps. You need to create the necessary directories in the right
-spot:
+INSTALLING WITHOUT RPMS
+-----------------------
+`make install` handles installing all binaries, configuration files, systemd
+units, tmpfiles configuration, and the bash completion file. All paths
+respect the configured --prefix (default: /usr/local).
 
+After installing, create the fapolicyd user and set up the required
+directories:
+
+```bash
+prefix=/usr/local  # adjust to match your --prefix
+
+useradd -r -M -d ${prefix}/var/lib/fapolicyd -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
+
+# Create directories with proper ownership
+mkdir -p ${prefix}/etc/fapolicyd/{rules.d,trust.d}
+chown root:fapolicyd ${prefix}/etc/fapolicyd/
+chown root:fapolicyd ${prefix}/etc/fapolicyd/rules.d/
+chown root:fapolicyd ${prefix}/etc/fapolicyd/trust.d/
+
+# Copy sample rules
+cp rules.d/*.rules ${prefix}/etc/fapolicyd/rules.d/
+
+# Reload systemd and enable the tmpfiles configuration
+systemctl daemon-reload
+systemd-tmpfiles --create
 ```
-mkdir -p /etc/fapolicyd/{rules.d,trust.d}
-mkdir -p /var/lib/fapolicyd/
-mkdir --mode=0755 -p /usr/share/fapolicyd/
-mkdir -p /usr/lib/tmpfiles.d/
-mkdir --mode=0755 -p /run/fapolicyd/
 
-cd init
-cp fapolicyd.bash_completion /etc/bash_completion.d/
-cp fapolicyd.conf /etc/fapolicyd/
-cp fapolicyd-magic /usr/share/fapolicyd/
-cp fapolicyd-magic.mgc /usr/share/fapolicyd/
-cp fapolicyd.service /usr/lib/systemd/system/
-cp fapolicyd-tmpfiles.conf /usr/lib/tmpfiles.d/fapolicyd.conf
-cp fapolicyd.trust /etc/fapolicyd/trust.d/
-
-useradd -r -M -d /var/lib/fapolicyd -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
-chown root:fapolicyd /etc/fapolicyd/
-chown root:fapolicyd /etc/fapolicyd/rules.d/
-chown root:fapolicyd /etc/fapolicyd/trust.d/
-chown root:fapolicyd /var/lib/fapolicyd/
-```
+The trust database directory is created automatically by the daemon on
+first startup.
 

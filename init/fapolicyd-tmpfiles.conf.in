@@ -1,0 +1,3 @@
+d @runstatedir@/fapolicyd 0770 root fapolicyd -
+d @localstatedir@/lib/fapolicyd 770 root fapolicyd -
+Z @sysconfdir@/fapolicyd - root fapolicyd -

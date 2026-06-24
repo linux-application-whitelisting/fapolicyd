@@ -592,8 +592,8 @@ static int write_pid_file(void)
 	}
 	pidfd = open(pidfile, O_CREAT | O_TRUNC | O_NOFOLLOW | O_WRONLY, 0644);
 	if (pidfd < 0) {
-		msg(LOG_ERR, "Unable to create pidfile (%s)",
-			strerror(errno));
+		msg(LOG_ERR, "Unable to create pidfile %s (%s)",
+			pidfile, strerror(errno));
 		return 1;
 	}
 	if (write(pidfd, val, (unsigned int)len) != len) {
@@ -1271,6 +1271,16 @@ int main(int argc, const char *argv[])
 	if (preconstruct_fifo(&config)) {
 		unlink(pidfile);
 		msg(LOG_ERR, "Cannot construct a pipe");
+		exit(1);
+	}
+
+	// Create the trust database directory if missing (before dropping privileges)
+	if (mkdir(DB_DIR, 0770) == 0) {
+		chmod(DB_DIR, 0770);
+		chown(DB_DIR, 0, config.gid);
+	} else if (errno != EEXIST) {
+		msg(LOG_ERR, "Failed to create trust database directory %s (%s)",
+		    DB_DIR, strerror(errno));
 		exit(1);
 	}
 

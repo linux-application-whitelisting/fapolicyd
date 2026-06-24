@@ -16,7 +16,9 @@ AM_CPPFLAGS = -I${top_builddir} \
 	-I${top_srcdir}/src/library \
 	-DSTRESS_SCRIPT_DIR=\"$(abs_srcdir)/scripts\"
 AM_CFLAGS = -std=gnu11 -fPIE -DPIE -g -W -Wall -Wshadow -Wundef \
-	-Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
+	-Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE \
+	-DSYSCONFDIR='"$(sysconfdir)"' -DLOCALSTATEDIR='"$(localstatedir)"' \
+	-DRUNSTATEDIR='"$(runstatedir)"' -DDATADIR='"$(datadir)"'
 
 fapolicyd_stress_SOURCES = fapolicyd-stress.c
 fapolicyd_stress_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now

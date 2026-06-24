@@ -2556,7 +2556,8 @@ static int init_db_with_generations(const conf_t *config,
 
 	rc = mdb_env_open(env, data_dir, flags, 0660);
 	if (rc) {
-		msg(LOG_ERR, "env_open error: %s", mdb_strerror(rc));
+		msg(LOG_ERR, "env_open error on %s: %s", data_dir,
+		    mdb_strerror(rc));
 		/* Clean up environment on failure */
 		mdb_env_close(env);
 		env = NULL;
@@ -4648,6 +4649,7 @@ int init_database(conf_t *config)
 	int rc;
 
 	msg(LOG_INFO, "Initializing the trust database");
+
 	startup_compaction_target_mb = 0;
 	startup_compaction_fallback_mb = 0;
 

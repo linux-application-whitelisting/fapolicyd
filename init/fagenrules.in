@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Script to concatenate rules files found in a base fapolicyd rules directory
-# to form a single /etc/fapolicyd/compiled.rules file suitable for loading
+# to form a single @sysconfdir@/fapolicyd/compiled.rules file suitable for loading
 # into the daemon
 
 # When forming the interim rules file, both empty lines and comment
@@ -9,7 +9,7 @@
 # are processed.
 #
 # Having formed the interim rules file, the script checks if the file is empty
-# or is identical to the existing /etc/fapolicyd/compiled.rules and if either
+# or is identical to the existing @sysconfdir@/fapolicyd/compiled.rules and if either
 # of these cases are true, it does not replace the existing file.
 #
 
@@ -25,9 +25,9 @@
 #   Suffix for previous fapolicyd.rules file if this script replaces it.
 #   The file is left in the destination directory with suffix with $ASuffix
 
-OldDestinationFile=/etc/fapolicyd/fapolicyd.rules
-DestinationFile=/etc/fapolicyd/compiled.rules
-SourceRulesDir=/etc/fapolicyd/rules.d
+OldDestinationFile=@sysconfdir@/fapolicyd/fapolicyd.rules
+DestinationFile=@sysconfdir@/fapolicyd/compiled.rules
+SourceRulesDir=@sysconfdir@/fapolicyd/rules.d
 TmpRules=$(mktemp /tmp/farules.XXXXXXXX)
 ASuffix="prev"
 OnlyCheck=0

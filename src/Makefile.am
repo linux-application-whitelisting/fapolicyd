@@ -14,7 +14,7 @@ endif
 
 lib_LTLIBRARIES= libfapolicyd.la
 
-fapolicyd_CFLAGS = -std=gnu11 -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE
+fapolicyd_CFLAGS = -std=gnu11 -fPIE -DPIE -pthread -g -W -Wall -Wshadow -Wundef -Wno-unused-result -Wno-unused-parameter -D_GNU_SOURCE -DSYSCONFDIR='"$(sysconfdir)"' -DLOCALSTATEDIR='"$(localstatedir)"' -DRUNSTATEDIR='"$(runstatedir)"' -DDATADIR='"$(datadir)"'
 fapolicyd_LDFLAGS = -pie -Wl,-z,relro -Wl,-z,now  -static
 fapolicyd_LDADD = libfapolicyd.la
 
