@@ -63,6 +63,7 @@
 // External variables
 extern atomic_bool stop, run_stats;
 extern conf_t config;
+extern atomic_int rpm_loader_pid;
 
 // Local variables
 static pid_t our_pid;
@@ -1123,7 +1124,8 @@ void handle_events(void)
 
 		if (metadata->fd >= 0) {
 			if (metadata->mask & mask) {
-				if (metadata->pid == our_pid)
+				if (metadata->pid == our_pid ||
+				    metadata->pid == atomic_load(&rpm_loader_pid))
 					reply_event(fd, metadata, FAN_ALLOW,
 						    NULL);
 				else {

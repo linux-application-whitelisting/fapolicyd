@@ -865,6 +865,12 @@ static void wait_for_mounts_thread(void)
 		usleep(1000);
 }
 
+static void wait_for_reconfigure_thread(void)
+{
+	while (atomic_load(&reconfig_running))
+		usleep(1000);
+}
+
 
 static void usage(void)
 {
@@ -1404,6 +1410,7 @@ int main(int argc, const char *argv[])
 		}
 	}
 	msg(LOG_INFO, "shutting down...");
+	wait_for_reconfigure_thread();
 	wait_for_mounts_thread();
 	shutdown_fanotify(m);
 	close(pfd[0].fd);
