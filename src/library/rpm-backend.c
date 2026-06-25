@@ -217,7 +217,7 @@ struct _hash_record {
 
 #define BUFFER_SIZE 4096
 #define MAX_DELIMS 3	// Trustdb has 4 fields - therefore 3 delimiters
-static const char *rpm_loader_path = BINARYDIR "/fapolicyd-rpm-loader";
+static const char *rpm_loader_path = LIBEXECDIR "/fapolicyd-rpm-loader";
 
 static int rpm_load_list(const conf_t *conf)
 {
