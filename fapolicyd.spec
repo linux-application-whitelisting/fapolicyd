@@ -252,7 +252,7 @@ fi
 %attr(755,root,root) %{_sbindir}/%{name}
 %attr(755,root,root) %{_sbindir}/%{name}-cli
 %attr(755,root,root) %{_sbindir}/%{name}-perf-test
-%attr(755,root,root) %{_bindir}/%{name}-rpm-loader
+%attr(755,root,root) %{_libexecdir}/%{name}-rpm-loader
 %attr(755,root,root) %{_sbindir}/fagenrules
 %attr(644,root,root) %{_mandir}/man8/*
 %attr(644,root,root) %{_mandir}/man5/*

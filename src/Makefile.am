@@ -105,12 +105,12 @@ if WITH_RPM
 libfapolicyd_la_SOURCES += \
 	library/rpm-backend.c
 
-bin_PROGRAMS = fapolicyd-rpm-loader
+libexec_PROGRAMS = fapolicyd-rpm-loader
 
 fapolicyd_rpm_loader_SOURCES = \
 	handler/fapolicyd-rpm-loader.c
 
-fapolicyd_CFLAGS += -DBINARYDIR='"$(bindir)"'
+fapolicyd_CFLAGS += -DLIBEXECDIR='"$(libexecdir)"'
 fapolicyd_rpm_loader_CFLAGS = $(fapolicyd_CFLAGS)
 fapolicyd_rpm_loader_LDFLAGS = $(fapolicyd_LDFLAGS)
 fapolicyd_rpm_loader_LDADD = libfapolicyd.la
