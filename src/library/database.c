@@ -272,7 +272,6 @@ struct trust_db_metrics {
 };
 
 static struct trust_db_metrics trust_metrics;
-static struct trust_db_read_handle walk_read;
 
 struct trust_db_sizing_state {
 	size_t page_size;
@@ -373,6 +372,7 @@ static int do_memfd_update_to_dbi_in_env(MDB_env *target_env, int memfd,
 	MDB_dbi target_dbi, unsigned int maxkeysize, long *entries);
 static void close_env(int do_close_dbi);
 static void log_lmdb_state(int priority, const char *context, int lmdb_rc);
+static void walk_database_reset(void);
 
 // External variables
 extern atomic_bool stop;
@@ -2633,7 +2633,6 @@ static void close_env(int do_close_dbi)
 	env = NULL;
 	dbi_init = 0;
 	metadata_dbi_init = 0;
-	memset(&walk_read, 0, sizeof(walk_read));
 }
 
 struct lmdb_reader_log {
@@ -5518,65 +5517,150 @@ out:
  * only operation.
  ***********************************************************************/
 static walkdb_entry_t wdb_entry;
+static MDB_env *walk_env;
+static MDB_txn *walk_txn;
+static MDB_cursor *walk_cursor;
 
-// Returns WALK_DATABASE_SUCCESS, WALK_DATABASE_EMPTY, or WALK_DATABASE_ERROR
-int walk_database_start(conf_t *config)
+/*
+ * walk_database_reset - close private read-only CLI walk state.
+ * @void: no arguments are required.
+ *
+ * The walker owns these handles. They are intentionally separate from the
+ * daemon's global LMDB environment so cleanup here never closes or mutates
+ * daemon state.
+ *
+ * Returns nothing.
+ */
+static void walk_database_reset(void)
 {
-	int rc;
-
-	// Initialize the database
-	if (init_db(config)) {
-		printf("Cannot open the trust database\n");
-		return WALK_DATABASE_ERROR;
-	}
-	rc = database_empty();
-	if (rc > 0) {
-		printf("The trust database is empty - nothing to do\n");
-		close_db(0);
-		return WALK_DATABASE_EMPTY;
-	} else if (rc < 0) {
-		close_db(0);
-		return WALK_DATABASE_ERROR;
-	}
-
-	// Position to the first entry
-	if (trust_db_read_open(&walk_read)) {
-		puts("Cannot open the trust database for reading");
-		close_db(0);
-		return WALK_DATABASE_ERROR;
-	}
-
-	if ((rc = mdb_cursor_get(walk_read.cursor, &wdb_entry.path,
-							&wdb_entry.data,
-							MDB_FIRST)) == 0)
-		return WALK_DATABASE_SUCCESS;
-
-	if (rc != MDB_NOTFOUND) {
-		puts(mdb_strerror(rc));
-		rc = WALK_DATABASE_ERROR;
-	} else {
-		printf("The trust database is empty - nothing to do\n");
-		rc = WALK_DATABASE_EMPTY;
-	}
-
-	trust_db_read_close(&walk_read);
-	close_db(0);
-	return rc;
+	if (walk_cursor)
+		mdb_cursor_close(walk_cursor);
+	if (walk_txn)
+		mdb_txn_abort(walk_txn);
+	if (walk_env)
+		mdb_env_close(walk_env);
+	walk_cursor = NULL;
+	walk_txn = NULL;
+	walk_env = NULL;
 }
 
+/*
+ * walk_database_start - open the trust DB for CLI verification.
+ * @config: Unused legacy argument kept for the CLI walker API.
+ *
+ * This must stay a read-only walk. Do not call init_db() or
+ * trust_db_read_open() here: those paths open the daemon-style environment and
+ * may take write-side LMDB state while setting up handles. The CLI verifier
+ * only needs a private read transaction and cursor over the active named DB.
+ *
+ * Returns WALK_DATABASE_SUCCESS, WALK_DATABASE_EMPTY, or WALK_DATABASE_ERROR.
+ */
+int walk_database_start(conf_t *config)
+{
+	MDB_dbi walk_metadata_dbi, walk_dbi;
+	struct trust_db_metadata metadata;
+	char active_name[TRUST_DB_GENERATION_NAME_SIZE];
+	int rc;
+
+	(void)config;
+	walk_database_reset();
+	snprintf(active_name, sizeof(active_name), "%s", db);
+
+	rc = mdb_env_create(&walk_env);
+	if (rc) {
+		printf("Cannot create the trust database environment\n");
+		return WALK_DATABASE_ERROR;
+	}
+
+	rc = mdb_env_set_maxdbs(walk_env, TRUST_DB_MAX_NAMED_DBS);
+	if (rc)
+		goto error;
+
+	/*
+	 * MDB_NOLOCK is paired with MDB_RDONLY so the verifier never opens
+	 * lock.mdb or touches LMDB's shared robust mutexes.
+	 */
+	rc = mdb_env_open(walk_env, data_dir, MDB_RDONLY|MDB_NOLOCK, 0);
+	if (rc)
+		goto error;
+
+	rc = mdb_txn_begin(walk_env, NULL, MDB_RDONLY, &walk_txn);
+	if (rc)
+		goto error;
+
+	rc = mdb_dbi_open(walk_txn, TRUST_DB_METADATA_NAME, 0,
+			  &walk_metadata_dbi);
+	if (rc == 0) {
+		rc = trust_db_metadata_read_from_dbi(walk_txn, walk_metadata_dbi,
+						     &metadata);
+		if (rc == 0)
+			snprintf(active_name, sizeof(active_name), "%s",
+				 metadata.name);
+		else if (rc != MDB_NOTFOUND)
+			goto error;
+	} else if (rc != MDB_NOTFOUND)
+		goto error;
+
+	rc = mdb_dbi_open(walk_txn, active_name, MDB_DUPSORT, &walk_dbi);
+	if (rc)
+		goto error;
+
+	rc = mdb_cursor_open(walk_txn, walk_dbi, &walk_cursor);
+	if (rc)
+		goto error;
+
+	/*
+	 * Keep walk_txn open for the cursor lifetime. The returned MDB_val
+	 * buffers point into LMDB-managed memory and remain valid until the
+	 * cursor/transaction is closed by walk_database_reset().
+	 */
+	rc = mdb_cursor_get(walk_cursor, &wdb_entry.path, &wdb_entry.data,
+			    MDB_FIRST);
+	if (rc == 0) {
+		/* Keep handles open so walk_database_next() can continue. */
+		return WALK_DATABASE_SUCCESS;
+	}
+
+	if (rc == MDB_NOTFOUND) {
+		printf("The trust database is empty - nothing to do\n");
+		walk_database_reset();
+		return WALK_DATABASE_EMPTY;
+	}
+
+error:
+	if (rc)
+		puts(mdb_strerror(rc));
+	walk_database_reset();
+	return WALK_DATABASE_ERROR;
+}
+
+/*
+ * walk_database_get_entry - return the current walker entry.
+ * @void: no arguments are required.
+ *
+ * The entry's MDB_val buffers are owned by LMDB and are valid until the next
+ * walk_database_next() call or walk_database_finish().
+ *
+ * Returns a pointer to the current walker entry.
+ */
 walkdb_entry_t *walk_database_get_entry(void)
 {
 	return &wdb_entry;
 }
 
-// Returns 1 on success and 0 in error
+/*
+ * walk_database_next - advance the CLI verification cursor.
+ * @void: no arguments are required.
+ *
+ * Returns 1 when another entry is available and 0 at end of walk or on error.
+ */
 int walk_database_next(void)
 {
 	int rc;
 
-	if ((rc = mdb_cursor_get(walk_read.cursor, &wdb_entry.path,
-							&wdb_entry.data,
-							MDB_NEXT)) == 0)
+	rc = mdb_cursor_get(walk_cursor, &wdb_entry.path, &wdb_entry.data,
+			    MDB_NEXT);
+	if (rc == 0)
 		return 1;
 
 	if (rc != MDB_NOTFOUND)
@@ -5585,8 +5669,13 @@ int walk_database_next(void)
 	return 0;
 }
 
+/*
+ * walk_database_finish - close the CLI verification cursor.
+ * @void: no arguments are required.
+ *
+ * Returns nothing.
+ */
 void walk_database_finish(void)
 {
-	trust_db_read_close(&walk_read);
-	close_db(0);
+	walk_database_reset();
 }
