@@ -18,6 +18,7 @@
 #include <sys/fanotify.h>
 
 #define DECISION_EVENT_NO_SLOT UINT_MAX
+#define DECISION_EVENT_NO_WORKER UINT_MAX
 
 /*
  * decision_event - userspace envelope for one fanotify permission event.
@@ -56,6 +57,12 @@ typedef struct decision_event {
 	 * DECISION_EVENT_NO_SLOT means no deferred event should be released.
 	 */
 	unsigned int completed_subject_slot;
+	/*
+	 * Decision worker chosen by the fanotify dispatcher. This is recorded
+	 * before enqueue so later debugging can confirm which worker owned the
+	 * reply path for this permission fd.
+	 */
+	unsigned int worker_index;
 } decision_event_t;
 
 /*
@@ -71,6 +78,7 @@ static inline void decision_event_init(decision_event_t *event,
 	event->enqueue_ns = 0;
 	event->subject_slot = DECISION_EVENT_NO_SLOT;
 	event->completed_subject_slot = DECISION_EVENT_NO_SLOT;
+	event->worker_index = DECISION_EVENT_NO_WORKER;
 }
 
 #endif

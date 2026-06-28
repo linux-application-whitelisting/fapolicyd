@@ -16,10 +16,10 @@
  *
  * Subject deferral protects a subject cache slot while the process currently
  * occupying that slot is still building startup pattern state. The decision
- * thread computes an incoming event's subject slot before calling new_event().
+ * worker computes an incoming event's subject slot before calling new_event().
  * If the same slot already contains a different pid whose subject state is
  * before STATE_FULL, processing the incoming event would make new_event()
- * evict the in-progress subject. Instead, the decision thread copies the
+ * evict the in-progress subject. Instead, the decision worker copies the
  * incoming decision_event_t into this fixed-size defer array. Traced or stale
  * BUILDING occupants are the exception: event.c evicts those subjects and
  * lets the incoming event process normally because waiting may never
@@ -31,7 +31,7 @@
  * released subject slot, while pop_any() returns the oldest event regardless
  * of slot and is used during shutdown cleanup.
  *
- * The decision thread owns this array. No producer writes to it, and no other
+ * The decision worker owns this array. No producer writes to it, and no other
  * thread pops from it. That keeps the implementation simple and makes fd
  * ownership explicit: a deferred entry owns the fanotify permission fd in its
  * embedded decision_event_t until the entry is popped for normal processing or

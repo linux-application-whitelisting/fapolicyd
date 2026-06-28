@@ -53,6 +53,7 @@ int test_notify_defer_reset(unsigned int subj_cache_size);
 void test_notify_defer_destroy(void);
 int test_notify_defer_push(const decision_event_t *event);
 unsigned int test_notify_shutdown_deferred_events(void);
+unsigned int test_notify_worker_index(pid_t pid, unsigned int workers);
 
 #define CHECK(expr, code, msg) \
 	do { \
@@ -286,7 +287,7 @@ static void test_shutdown_deferred_events(void)
 /*
  * test_shutdown_queued_events - verify notify shutdown drains queue fds.
  *
- * The decision thread can observe stop before it processes every event already
+ * The decision worker can observe stop before it processes every event already
  * accepted from fanotify. Those queued permission events must still be answered
  * during shutdown or their requesting tasks can remain blocked.
  *
@@ -335,6 +336,30 @@ static void test_shutdown_queued_events(void)
 }
 
 /*
+ * test_dispatcher_worker_routing - verify stable subject worker selection.
+ *
+ * The dispatcher must not choose workers by queue pressure or round-robin:
+ * all events with the same subject key need the same decision owner so the
+ * subject cache sees an ordered startup sequence.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_dispatcher_worker_routing(void)
+{
+	CHECK(test_notify_worker_index(1001, 4) == 1, 77,
+	      "[ERROR:77] pid routing did not use stable modulo key");
+	CHECK(test_notify_worker_index(1001, 4) ==
+	      test_notify_worker_index(1001, 4), 78,
+	      "[ERROR:78] same pid did not route to same worker");
+	CHECK(test_notify_worker_index(1002, 4) == 2, 79,
+	      "[ERROR:79] adjacent pid routing mismatch");
+	CHECK(test_notify_worker_index(-1, 4) == 0, 80,
+	      "[ERROR:80] invalid pid did not use fallback key");
+	CHECK(test_notify_worker_index(1001, 0) == 0, 81,
+	      "[ERROR:81] zero worker fallback changed");
+}
+
+/*
  * main - exercise synthetic FAN_NOFD kernel metadata.
  * Returns 0 on success. Exits with error() on test failure.
  */
@@ -355,6 +380,7 @@ int main(void)
 	int event_pipe[2];
 
 	test_operating_mode_report_order();
+	test_dispatcher_worker_routing();
 
 	before = getKernelQueueOverflow();
 	metadata.mask = 0;

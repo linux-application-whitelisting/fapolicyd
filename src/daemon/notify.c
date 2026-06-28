@@ -23,6 +23,41 @@
  *   Radovan Sroka <rsroka@redhat.com>
  */
 
+/*
+ * Overview
+ * --------
+ *
+ * notify.c owns the fanotify permission group and is the boundary between
+ * kernel events and policy decisions. The main daemon thread reads fanotify
+ * batches in handle_events(); from that point it acts as a dispatcher, not as
+ * a policy worker. For each permission record it copies the kernel metadata
+ * into a decision_event_t, computes a stable subject routing key, chooses the
+ * owning decision worker, and enqueues directly to that worker's queue.
+ *
+ * The ownership rule is intentionally explicit:
+ *
+ *   kernel fanotify fd
+ *        -> handle_events() dispatcher
+ *        -> selected worker queue
+ *        -> decision_worker_main()
+ *        -> make_policy_decision()
+ *        -> reply_event()
+ *
+ * Before a successful enqueue, the dispatcher still owns the permission event
+ * and must reply on errors such as invalid masks or queue-full fallback. After
+ * a successful enqueue, the selected worker owns the embedded metadata fd and
+ * is the only path that may answer or close it, including deferred and
+ * shutdown cleanup.
+ *
+ * Routing is by stable subject identity rather than queue pressure or round
+ * robin. Today the stable key is the fanotify pid and only worker 0 is active;
+ * later worker-pool steps can increase the active worker count once each
+ * worker has a private decision context. Keeping the routing function here
+ * makes that future change visible and protects the subject-cache invariant:
+ * all events for one live subject must be serialized by the same decision
+ * owner so startup-pattern detection observes a coherent sequence.
+ */
+
 #include "config.h" /* Needed to get O_LARGEFILE definition */
 #include <string.h>
 #include <errno.h>
@@ -59,18 +94,25 @@
 #define FANOTIFY_BUFFER_SIZE 8192
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
 #define DEFER_RECHECK_INTERVAL_SEC 1
+#define DECISION_WORKER_BOOTSTRAP_COUNT 1
 
 // External variables
 extern atomic_bool stop, run_stats;
 extern conf_t config;
 
+struct decision_worker {
+	unsigned int id;
+	struct queue *queue;
+	pthread_t thread;
+	atomic_bool alive;
+};
+
 // Local variables
 static pid_t our_pid;
-static struct queue *q = NULL;
 static struct queue_metrics last_queue_metrics;
-static pthread_t decision_thread;
+static struct decision_worker decision_workers[DECISION_WORKER_BOOTSTRAP_COUNT];
+static unsigned int active_decision_workers;
 static pthread_t deadmans_switch_thread;
-static atomic_bool alive = true;
 static int fd = -1;
 static int rpt_timer_fd = -1;
 static uint64_t mask;
@@ -83,16 +125,23 @@ static struct message_rate_limit kernel_queue_overflow_log =
 #define last_defer_metrics (decision_context_current()->last_defer_metrics)
 
 // Local functions
-static void *decision_thread_main(void *arg);
+static void *decision_worker_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
-static void dispatch_decision_event(decision_event_t *event,
-				    int *rpt_is_stale);
+static void dispatch_decision_event(struct decision_worker *worker,
+		decision_event_t *event, int *rpt_is_stale);
 static void fanotify_failure_action(failure_reason_t reason);
-static unsigned int release_ready_deferred_events(int *rpt_is_stale);
+static unsigned int release_ready_deferred_events(
+		struct decision_worker *worker, int *rpt_is_stale);
 static unsigned int shutdown_deferred_events(void);
-static unsigned int shutdown_queued_events(void);
+static unsigned int shutdown_queued_events(struct decision_worker *worker);
 static unsigned int timing_queue_depth_reset(void *ctx);
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
+static struct decision_worker *dispatcher_worker_for_metadata(
+		const struct fanotify_event_metadata *metadata,
+		unsigned int *worker_index);
+static int dispatcher_enqueue_permission_event(
+		const struct fanotify_event_metadata *metadata,
+		unsigned int *worker_index);
 void fanotify_queue_report_reset(FILE *f, int reset);
 void nudge_queue(void);
 
@@ -150,6 +199,114 @@ int handle_kernel_event(const struct fanotify_event_metadata *metadata)
 }
 
 /*
+ * fanotify_active_worker_count - return workers currently receiving events.
+ * Returns zero before fanotify initialization, otherwise the active count.
+ */
+unsigned int fanotify_active_worker_count(void)
+{
+	return active_decision_workers;
+}
+
+/*
+ * dispatcher_subject_key - choose the stable key used for worker routing.
+ * @metadata: fanotify permission metadata.
+ *
+ * The first worker-pool implementation routes by pid. This deliberately
+ * matches the current subject state model; do not replace it with round-robin
+ * or queue-depth balancing because that would split one subject's startup
+ * sequence across workers.
+ *
+ * Returns a non-negative key suitable for modulo worker selection.
+ */
+static unsigned int dispatcher_subject_key(
+		const struct fanotify_event_metadata *metadata)
+{
+	if (metadata == NULL || metadata->pid <= 0)
+		return 0;
+
+	return (unsigned int)metadata->pid;
+}
+
+/*
+ * dispatcher_worker_index_from_key - map one subject key to a worker.
+ * @subject_key: stable key from dispatcher_subject_key().
+ * @worker_count: active decision workers.
+ *
+ * Returns the selected worker index. A zero worker count falls back to zero so
+ * unit tests can exercise the pure routing calculation without a live daemon.
+ */
+static unsigned int dispatcher_worker_index_from_key(
+		unsigned int subject_key, unsigned int worker_count)
+{
+	if (worker_count == 0)
+		return 0;
+
+	return subject_key % worker_count;
+}
+
+/*
+ * dispatcher_worker_for_metadata - select the worker for one permission event.
+ * @metadata: fanotify permission metadata.
+ * @worker_index: optional destination for the selected index.
+ *
+ * Returns the selected worker, or NULL when fanotify is not initialized.
+ */
+static struct decision_worker *dispatcher_worker_for_metadata(
+		const struct fanotify_event_metadata *metadata,
+		unsigned int *worker_index)
+{
+	unsigned int index;
+
+	index = dispatcher_worker_index_from_key(
+		dispatcher_subject_key(metadata), active_decision_workers);
+	if (worker_index)
+		*worker_index = index;
+
+	if (index >= active_decision_workers) {
+		errno = ENODEV;
+		return NULL;
+	}
+
+	if (decision_workers[index].queue == NULL) {
+		errno = ENODEV;
+		return NULL;
+	}
+
+	return &decision_workers[index];
+}
+
+/*
+ * dispatcher_enqueue_permission_event - hand one permission fd to a worker.
+ * @metadata: fanotify metadata read by handle_events().
+ * @worker_index: optional destination for the selected index.
+ *
+ * On success, the selected worker queue owns the copied metadata and therefore
+ * owns the permission fd reply/close obligation. On failure, ownership stays
+ * with the dispatcher and the caller must answer the fanotify event.
+ *
+ * Returns 0 on success and -1 on failure with errno set.
+ */
+static int dispatcher_enqueue_permission_event(
+		const struct fanotify_event_metadata *metadata,
+		unsigned int *worker_index)
+{
+	struct decision_worker *worker;
+	decision_event_t event;
+	unsigned int index;
+
+	worker = dispatcher_worker_for_metadata(metadata, &index);
+	if (worker_index)
+		*worker_index = index;
+	if (worker == NULL)
+		return -1;
+
+	decision_event_init(&event, metadata);
+	event.worker_index = index;
+
+	return q_enqueue(worker->queue, &event);
+}
+
+/*
  * escape_path_for_log - return a shell-escaped path for logging.
  * @path: path that may include control characters.
  * @escaped: optional output pointer to an allocated escaped buffer.
@@ -196,29 +353,45 @@ static int ignore_mounts_configured(const char *list)
 
 int init_fanotify(const conf_t *conf, mlist *m)
 {
+	struct decision_worker *worker = &decision_workers[0];
 	const char *path;
 	int ignore_mounts_enabled;
+	int rc;
 
-	// Get inter-thread queue ready
-	q = q_open(conf->q_size);
-	if (q == NULL) {
+	// For now, just hardcode a count. Later it will be based on config.
+	active_decision_workers = DECISION_WORKER_BOOTSTRAP_COUNT;
+	if (conf->decision_threads != active_decision_workers)
+		msg(LOG_INFO,
+		    "decision_threads configured as %u; activating %u "
+		    "fanotify decision worker until worker-private decision "
+		    "state is enabled",
+		    conf->decision_threads, active_decision_workers);
+
+	// Get the first worker queue ready before fanotify can dispatch events.
+	worker->id = 0;
+	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
+	worker->queue = q_open(conf->q_size);
+	if (worker->queue == NULL) {
 		msg(LOG_ERR, "Failed setting up queue (%s)",
 			strerror(errno));
+		active_decision_workers = 0;
 		exit(1);
 	}
-	q_metrics_snapshot(q, &last_queue_metrics);
+	q_metrics_snapshot(worker->queue, &last_queue_metrics);
 	if (defer_queue.entries == NULL &&
 	    decision_defer_init(&defer_queue, conf->subj_cache_size)) {
 		msg(LOG_ERR, "Failed setting up subject defer array (%s)",
 			strerror(errno));
-		q_close(q);
-		q = NULL;
+		q_close(worker->queue);
+		worker->queue = NULL;
+		active_decision_workers = 0;
 		exit(1);
 	}
 	decision_defer_metrics_snapshot_reset(&defer_queue,
 					      &last_defer_metrics, 0);
 	decision_timing_set_queue_depth_hooks(timing_queue_depth_reset,
-					      timing_queue_depth_restore, q);
+					      timing_queue_depth_restore,
+					      worker->queue);
 	our_pid = getpid();
 
 	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
@@ -244,27 +417,30 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	if (fd < 0) {
 		msg(LOG_ERR, "Failed opening fanotify fd (%s)",
 			strerror(errno));
-		q_close(q);
-		q = NULL;
+		q_close(worker->queue);
+		worker->queue = NULL;
+		active_decision_workers = 0;
 		exit(1);
 	}
 
 	if (reply_event_init(fd)) {
 		close(fd);
-		q_close(q);
-		q = NULL;
+		q_close(worker->queue);
+		worker->queue = NULL;
+		active_decision_workers = 0;
 		exit(1);
 	}
 
-	// Start decision thread so its ready when first event comes
+	// Start the decision worker so it is ready when first event comes.
 	rpt_interval = conf->report_interval;
-	int rc = pthread_create(&decision_thread, NULL,
-				decision_thread_main, NULL);
+	rc = pthread_create(&worker->thread, NULL, decision_worker_main, worker);
 	if (rc) {
-		msg(LOG_ERR, "Failed to create decision thread (%s)",
+		msg(LOG_ERR, "Failed to create decision worker (%s)",
 			strerror(rc));
 		close(fd);
-		q_close(q);
+		q_close(worker->queue);
+		worker->queue = NULL;
+		active_decision_workers = 0;
 		exit(1);
 	}
 
@@ -274,12 +450,14 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		msg(LOG_ERR, "Failed to create deadman's switch thread (%s)",
 		    strerror(rc));
 		atomic_store(&stop, true);
-		q_shutdown(q);
-		pthread_join(decision_thread, NULL);
+		q_shutdown(worker->queue);
+		pthread_join(worker->thread, NULL);
 		if (rpt_timer_fd != -1)
 			close(rpt_timer_fd);
 		close(fd);
-		q_close(q);
+		q_close(worker->queue);
+		worker->queue = NULL;
+		active_decision_workers = 0;
 		exit(1);
 	}
 
@@ -417,22 +595,41 @@ void unmark_fanotify(mlist *m)
 	}
 }
 
+/*
+ * primary_worker_queue - return worker 0's queue when initialized.
+ * Returns NULL before initialization or after shutdown.
+ */
+static struct queue *primary_worker_queue(void)
+{
+	if (active_decision_workers == 0)
+		return NULL;
+
+	return decision_workers[0].queue;
+}
+
 void shutdown_fanotify(mlist *m)
 {
+	struct decision_worker *worker = &decision_workers[0];
+
 	unmark_fanotify(m);
 
-	// End the thread
-	q_shutdown(q);
-	pthread_join(decision_thread, NULL);
+	// End the worker threads.
+	if (worker->queue)
+		q_shutdown(worker->queue);
+	pthread_join(worker->thread, NULL);
 	pthread_join(deadmans_switch_thread, NULL);
 
 	// Clean up
-	q_metrics_snapshot(q, &last_queue_metrics);
+	if (worker->queue)
+		q_metrics_snapshot(worker->queue, &last_queue_metrics);
 	decision_defer_metrics_snapshot_reset(&defer_queue,
 					      &last_defer_metrics, 0);
 	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
-	q_close(q);
-	q = NULL;
+	if (worker->queue) {
+		q_close(worker->queue);
+		worker->queue = NULL;
+	}
+	active_decision_workers = 0;
 	close(rpt_timer_fd);
 	fanotify_fs_error_close();
 	close(fd);
@@ -444,7 +641,10 @@ void shutdown_fanotify(mlist *m)
 
 void nudge_queue(void)
 {
-	q_shutdown(q);
+	unsigned int i;
+
+	for (i = 0; i < active_decision_workers; i++)
+		q_shutdown(decision_workers[i].queue);
 }
 
 /*
@@ -486,14 +686,16 @@ void fanotify_queue_report(FILE *f)
  */
 void fanotify_queue_report_reset(FILE *f, int reset)
 {
+	struct queue *queue = primary_worker_queue();
+
 	if (f == NULL)
 		return;
 
-	if (q) {
+	if (queue) {
 		struct queue_metrics metrics;
 		struct decision_defer_metrics defer_metrics;
 
-		q_metrics_snapshot_reset(q, &metrics, reset);
+		q_metrics_snapshot_reset(queue, &metrics, reset);
 		q_metrics_report(f, &metrics);
 		decision_defer_metrics_snapshot_reset(&defer_queue,
 						      &defer_metrics, reset);
@@ -516,7 +718,7 @@ void fanotify_defer_config_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (q)
+	if (primary_worker_queue())
 		decision_defer_metrics_snapshot_reset(&defer_queue,
 						      &metrics, 0);
 	else
@@ -536,7 +738,7 @@ void fanotify_defer_fallback_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (q)
+	if (primary_worker_queue())
 		decision_defer_metrics_snapshot_reset(&defer_queue,
 						      &metrics, 0);
 	else
@@ -556,7 +758,7 @@ void fanotify_defer_age_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (q)
+	if (primary_worker_queue())
 		decision_defer_metrics_snapshot_reset(&defer_queue,
 						      &metrics, 0);
 	else
@@ -576,7 +778,7 @@ void fanotify_defer_health_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (q)
+	if (primary_worker_queue())
 		decision_defer_metrics_snapshot_reset(&defer_queue,
 						      &metrics, 0);
 	else
@@ -602,6 +804,7 @@ void fanotify_metrics_report_reset(FILE *f, int reset)
 static void *deadmans_switch_thread_main(void *arg)
 {
 	sigset_t sigs;
+	unsigned int i;
 
 	/* This is a worker thread. Don't handle external signals. */
 	sigemptyset(&sigs);
@@ -613,20 +816,32 @@ static void *deadmans_switch_thread_main(void *arg)
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	do {
-		// Are you alive decision thread? The idea of triggering
-		// on 5 is that if it's less than 5 it's still alive and
-		// processing, although maybe running behind sometimes.
-		// But if we are over 5, we are losing the battle.
-		if (!atomic_load_explicit(&alive, memory_order_relaxed) &&
-		    !atomic_load_explicit(&stop, memory_order_relaxed) &&
-		    q_queue_length(q) > 5) {
-			failure_action_record(FAILURE_REASON_WORKER_STALL);
-			msg(LOG_ERR,
-			    "Deadman's switch activated...killing process");
-			raise(SIGKILL);
+		for (i = 0; i < active_decision_workers; i++) {
+			struct decision_worker *worker = &decision_workers[i];
+
+			/*
+			 * Are you alive decision worker? The idea of
+			 * triggering on queue depth > 5 is that smaller
+			 * backlogs usually mean the worker is still draining.
+			 */
+			if (!atomic_load_explicit(&worker->alive,
+						  memory_order_relaxed) &&
+			    !atomic_load_explicit(&stop,
+						  memory_order_relaxed) &&
+			    worker->queue &&
+			    q_queue_length(worker->queue) > 5) {
+				failure_action_record(
+					FAILURE_REASON_WORKER_STALL);
+				msg(LOG_ERR,
+				    "Deadman's switch activated for decision "
+				    "worker %u...killing process",
+				    worker->id);
+				raise(SIGKILL);
+			}
+			// OK, prove it again.
+			atomic_store_explicit(&worker->alive, false,
+					      memory_order_relaxed);
 		}
-		// OK, prove it again.
-		atomic_store_explicit(&alive, false, memory_order_relaxed);
 		sleep(3);
 	} while (!stop);
 	return NULL;
@@ -663,23 +878,26 @@ static void rpt_init(struct timespec *t)
 
 /*
  * run_decision_event - execute one policy decision for an event envelope.
+ * @worker: decision worker that owns the event and reply fd.
  * @event: event to process.
  *
  * Timing starts only when an event is actually processed. A deferred event
  * keeps its original queue timestamp so queue wait includes time spent parked
  * behind a building subject.
  */
-static void run_decision_event(decision_event_t *event)
+static void run_decision_event(struct decision_worker *worker,
+		decision_event_t *event)
 {
-	attr_lookup_metrics_set_worker(0);
-	decision_timing_decision_begin(0);
+	attr_lookup_metrics_set_worker(worker->id);
+	decision_timing_decision_begin(worker->id);
 	decision_timing_queue_dequeued(event->enqueue_ns);
 	make_policy_decision(event, fd, mask);
 	decision_timing_decision_end();
 }
 
 /*
- * dispatch_decision_event - route one dequeued event and release defers.
+ * dispatch_decision_event - process one worker-owned event and release defers.
+ * @worker: decision worker that owns the event and reply fd.
  * @event: event envelope from the inter-thread queue.
  * @rpt_is_stale: interval report dirty flag.
  *
@@ -688,8 +906,17 @@ static void run_decision_event(decision_event_t *event)
  * array is full, processing falls back to the historical eviction behavior so
  * memory and blocked permission events remain bounded.
  */
-static void dispatch_decision_event(decision_event_t *event, int *rpt_is_stale)
+static void dispatch_decision_event(struct decision_worker *worker,
+		decision_event_t *event, int *rpt_is_stale)
 {
+	if (event->worker_index == DECISION_EVENT_NO_WORKER)
+		event->worker_index = worker->id;
+	else if (event->worker_index != worker->id)
+		msg(LOG_WARNING,
+		    "Decision event worker ownership mismatch: dispatcher "
+		    "assigned worker %u but worker %u dequeued PID %d",
+		    event->worker_index, worker->id, event->metadata.pid);
+
 	// The wrapper may already carry a slot when it comes from the defer list.
 	if (event->subject_slot == DECISION_EVENT_NO_SLOT)
 		event->subject_slot = event_subject_slot(event->metadata.pid);
@@ -722,8 +949,9 @@ static void dispatch_decision_event(decision_event_t *event, int *rpt_is_stale)
 		 * event or a deferred event popped at the bottom of the loop.
 		 */
 		*rpt_is_stale = 1;
-		atomic_store_explicit(&alive, true, memory_order_relaxed);
-		run_decision_event(event);
+		atomic_store_explicit(&worker->alive, true,
+				      memory_order_relaxed);
+		run_decision_event(worker, event);
 
 		/*
 		 * make_policy_decision() sets completed_subject_slot only when
@@ -778,7 +1006,8 @@ static int deferred_event_is_ready(const decision_event_t *event, void *ctx)
  *
  * Returns the number of deferred events released.
  */
-static unsigned int release_ready_deferred_events(int *rpt_is_stale)
+static unsigned int release_ready_deferred_events(
+		struct decision_worker *worker, int *rpt_is_stale)
 {
 	decision_event_t event;
 	unsigned int count = 0;
@@ -786,7 +1015,7 @@ static unsigned int release_ready_deferred_events(int *rpt_is_stale)
 	while (defer_queue.current &&
 	       decision_defer_pop_if(&defer_queue, deferred_event_is_ready,
 				     NULL, &event)) {
-		dispatch_decision_event(&event, rpt_is_stale);
+		dispatch_decision_event(worker, &event, rpt_is_stale);
 		count++;
 	}
 
@@ -807,24 +1036,28 @@ static int shutdown_fallback_decision(void)
 }
 
 /*
- * shutdown_queued_events - reply to every event left in the input queue.
+ * shutdown_queued_events - reply to every event left in a worker queue.
+ * @worker: decision worker whose queue is being drained.
  *
- * The decision thread exits its main loop as soon as stop is observed. Any
- * permission event that reached the inter-thread queue but was not processed
- * yet still owns a live fd and can leave the requesting task blocked. During
- * shutdown, answer those queued events with the same permissive fallback policy
- * used for other bounded failure paths.
+ * A decision worker exits its main loop as soon as stop is observed. Any
+ * permission event that reached the worker queue but was not processed yet
+ * still owns a live fd and can leave the requesting task blocked. During
+ * shutdown, answer those queued events with the same permissive fallback
+ * policy used for other bounded failure paths.
  *
  * Returns the number of events answered.
  */
-static unsigned int shutdown_queued_events(void)
+static unsigned int shutdown_queued_events(struct decision_worker *worker)
 {
 	decision_event_t event;
 	unsigned int count = 0;
 	int decision = shutdown_fallback_decision();
 
-	while (q != NULL && q_queue_length(q) > 0) {
-		if (q_dequeue(q, &event) != 1)
+	if (worker == NULL || worker->queue == NULL)
+		return 0;
+
+	while (q_queue_length(worker->queue) > 0) {
+		if (q_dequeue(worker->queue, &event) != 1)
 			break;
 		reply_event(fd, &event.metadata, decision, NULL);
 		count++;
@@ -865,10 +1098,15 @@ static unsigned int shutdown_deferred_events(void)
  */
 int test_notify_queue_reset(unsigned int entries)
 {
-	if (q != NULL)
-		q_close(q);
-	q = q_open(entries);
-	return q == NULL ? -1 : 0;
+	struct decision_worker *worker = &decision_workers[0];
+
+	if (worker->queue != NULL)
+		q_close(worker->queue);
+	worker->id = 0;
+	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
+	worker->queue = q_open(entries);
+	active_decision_workers = worker->queue ? 1 : 0;
+	return worker->queue == NULL ? -1 : 0;
 }
 
 /*
@@ -877,10 +1115,13 @@ int test_notify_queue_reset(unsigned int entries)
  */
 void test_notify_queue_destroy(void)
 {
-	if (q == NULL)
+	struct decision_worker *worker = &decision_workers[0];
+
+	if (worker->queue == NULL)
 		return;
-	q_close(q);
-	q = NULL;
+	q_close(worker->queue);
+	worker->queue = NULL;
+	active_decision_workers = 0;
 }
 
 /*
@@ -891,7 +1132,7 @@ void test_notify_queue_destroy(void)
  */
 int test_notify_queue_push(const decision_event_t *event)
 {
-	return q_enqueue(q, event);
+	return q_enqueue(decision_workers[0].queue, event);
 }
 
 /*
@@ -900,7 +1141,7 @@ int test_notify_queue_push(const decision_event_t *event)
  */
 unsigned int test_notify_shutdown_queued_events(void)
 {
-	return shutdown_queued_events();
+	return shutdown_queued_events(&decision_workers[0]);
 }
 
 /*
@@ -943,10 +1184,28 @@ unsigned int test_notify_shutdown_deferred_events(void)
 {
 	return shutdown_deferred_events();
 }
+
+/*
+ * test_notify_worker_index - expose stable subject routing for tests.
+ * @pid: synthetic fanotify pid.
+ * @workers: synthetic active worker count.
+ *
+ * Returns the worker index selected by the dispatcher key function.
+ */
+unsigned int test_notify_worker_index(pid_t pid, unsigned int workers)
+{
+	struct fanotify_event_metadata metadata = {
+		.pid = pid,
+	};
+
+	return dispatcher_worker_index_from_key(
+		dispatcher_subject_key(&metadata), workers);
+}
 #endif
 
-static void *decision_thread_main(void *arg)
+static void *decision_worker_main(void *arg)
 {
+	struct decision_worker *worker = arg;
 	sigset_t sigs;
 
 	/* This is a worker thread. Don't handle external signals. */
@@ -957,6 +1216,9 @@ static void *decision_thread_main(void *arg)
 	sigaddset(&sigs, SIGINT);
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
+
+	if (worker == NULL || worker->queue == NULL)
+		return NULL;
 
 	// interval reporting state
 	int rpt_is_stale = 0;
@@ -975,7 +1237,7 @@ static void *decision_thread_main(void *arg)
 
 		/*
 		 * Apply asynchronous timing-control work on the decision
-		 * thread. SIGUSR1 handlers and overflow detection only set
+		 * worker. SIGUSR1 handlers and overflow detection only set
 		 * atomic request flags; this call starts/stops manual timing,
 		 * restores queue-depth accounting, and writes any required
 		 * timing report outside signal context.
@@ -985,7 +1247,8 @@ static void *decision_thread_main(void *arg)
 		// if an interval has been configured
 		if (rpt_interval) {
 			errno = 0;
-			rc = q_timed_dequeue(q, &event, &rpt_timeout);
+			rc = q_timed_dequeue(worker->queue, &event,
+					     &rpt_timeout);
 			if (rc == 0) {
 				uint64_t expired = 0;
 
@@ -1039,11 +1302,11 @@ static void *decision_thread_main(void *arg)
 				defer_timeout.tv_sec +=
 					DEFER_RECHECK_INTERVAL_SEC;
 				errno = 0;
-				rc = q_timed_dequeue(q, &event,
+				rc = q_timed_dequeue(worker->queue, &event,
 						     &defer_timeout);
 				timed_for_defer = 1;
 			} else {
-				rc = q_dequeue(q, &event);
+				rc = q_dequeue(worker->queue, &event);
 			}
 			if (rc == 0) {
 				if (run_stats) {
@@ -1052,7 +1315,7 @@ static void *decision_thread_main(void *arg)
 				}
 				if (timed_for_defer && errno == ETIMEDOUT)
 					release_ready_deferred_events(
-						&rpt_is_stale);
+						worker, &rpt_is_stale);
 				continue;
 			}
 			if (rc < 0)
@@ -1063,19 +1326,19 @@ static void *decision_thread_main(void *arg)
 			}
 		}
 
-		atomic_store_explicit(&alive, true, memory_order_relaxed);
-		dispatch_decision_event(&event, &rpt_is_stale);
+		dispatch_decision_event(worker, &event, &rpt_is_stale);
 	}
-	unsigned int queued = shutdown_queued_events();
+	unsigned int queued = shutdown_queued_events(worker);
 	unsigned int deferred = shutdown_deferred_events();
 
 	if (queued || deferred)
 		msg(LOG_INFO,
 		    "Replied to %u queued and %u deferred fanotify events during shutdown",
 		    queued, deferred);
-	msg(LOG_DEBUG, "Decision thread shutdown backlog: queued=%u deferred=%u",
-	    queued, deferred);
-	msg(LOG_DEBUG, "Exiting decision thread");
+	msg(LOG_DEBUG,
+	    "Decision worker %u shutdown backlog: queued=%u deferred=%u",
+	    worker->id, queued, deferred);
+	msg(LOG_DEBUG, "Exiting decision worker %u", worker->id);
 	return NULL;
 }
 
@@ -1127,21 +1390,23 @@ void handle_events(void)
 					reply_event(fd, metadata, FAN_ALLOW,
 						    NULL);
 				else {
-					decision_event_t event;
+					unsigned int worker_index =
+						DECISION_EVENT_NO_WORKER;
 
-					decision_event_init(&event, metadata);
-					if (q_enqueue(q, &event)) {
+					if (dispatcher_enqueue_permission_event(
+							metadata,
+							&worker_index)) {
 						int decision = FAN_DENY;
 
 						failure_action_record(
 						    FAILURE_REASON_QUEUE_FULL);
 						msg(LOG_ERR,
 						    "Failed to enqueue event "
-						    "for PID %d: queue is "
-						    "full, please consider "
-						    "tuning q_size if issue "
-						    "happens often",
-						    metadata->pid);
+						    "for PID %d to worker %u: "
+						    "queue is full, please "
+						    "consider tuning q_size if "
+						    "issue happens often",
+						    metadata->pid, worker_index);
 						if (decision_config_permissive(NULL))
 							decision = FAN_ALLOW;
 						reply_event(fd, metadata,

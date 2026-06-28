@@ -44,6 +44,7 @@ void fanotify_metrics_report_reset(FILE *f, int reset);
 void handle_events(void);
 int handle_kernel_event(const struct fanotify_event_metadata *metadata);
 unsigned long getKernelQueueOverflow(void);
+unsigned int fanotify_active_worker_count(void);
 void nudge_queue(void);
 
 #endif

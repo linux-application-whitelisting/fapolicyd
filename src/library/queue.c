@@ -60,6 +60,11 @@ struct queue_entry
  * therefore atomic. Using a ring buffer avoids per-event malloc/free and
  * keeps memory usage predictable. Per-queue metrics record queue pressure for
  * diagnostics and future structured status output.
+ *
+ * Fanotify reply ownership crosses the thread boundary at q_enqueue(): after a
+ * successful enqueue, the consumer worker owns the event fd inside the
+ * decision_event_t and must eventually call reply_event() or shutdown cleanup.
+ * Producers may answer only when enqueue fails.
  */
 
 /* Initialize a queue   */

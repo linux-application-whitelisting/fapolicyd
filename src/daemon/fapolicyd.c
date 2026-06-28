@@ -414,7 +414,7 @@ static int reload_configuration(void)
 				 new_config.timing_collection,
 				 __ATOMIC_RELAXED);
 		decision_timing_apply_config(new_config.timing_collection);
-		// Let the decision thread restore timing-owned queue metrics.
+		// Let the decision worker restore timing-owned queue metrics.
 		if (new_config.timing_collection == TIMING_COLLECTION_OFF)
 			nudge_queue();
 	}
@@ -465,7 +465,7 @@ static int reload_configuration(void)
 	 * consumed when the event queue and caches are created. uid/gid,
 	 * allow_filesystem_mark, watch_fs, and ignore_mounts are applied while
 	 * fanotify marks are installed. db_max_size fixes the LMDB map when the
-	 * database opens, and report_interval is bound to the decision thread's
+	 * database opens, and report_interval is bound to the decision worker's
 	 * timer. None of these components support resizing in-place yet, so their
 	 * configuration stays static.
 	 */
@@ -502,7 +502,7 @@ static void reconfigure(void)
  * Rule reload is transactional. The update thread opens the rule file and
  * builds a complete policy snapshot while the current policy remains active.
  * Readers hold references to the snapshot they started with, so reload can
- * parse slow macro/set based policies without parking the decision thread.
+ * parse slow macro/set based policies without parking the decision worker.
  * The new snapshot is published only after rule and syslog parsing succeed.
  * If any step fails, the previous policy snapshot stays active so decisions
  * and syslog fields do not fall back to empty, partial, or stale candidate
@@ -957,10 +957,8 @@ void do_state_report(FILE *f, int shutdown)
 	fprintf(f, "\nResource configuration:\n");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "decision_threads: %u\n", config.decision_threads);
-	/*
-	 * TODO: If worker-pool activation cannot resize decision threads on
-	 * SIGHUP, add a separate active worker count here.
-	 */
+	fprintf(f, "active_decision_workers: %u\n",
+		fanotify_active_worker_count());
 	fprintf(f, "q_size: %u\n", config.q_size);
 	fanotify_defer_config_report(f);
 	do_cache_config_report(f);
