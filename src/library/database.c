@@ -296,7 +296,6 @@ struct trust_db_metadata {
 	char name[TRUST_DB_GENERATION_NAME_SIZE];
 	long entries;
 	time_t publish_time;
-	struct trust_db_sizing_state sizing;
 };
 
 struct trust_db_generation {
@@ -1663,7 +1662,7 @@ static int write_offline_metadata(struct offline_lmdb *candidate)
 static int import_backends_to_offline_lmdb(struct offline_lmdb *candidate)
 {
 	long entries;
-	int rc = 0;
+	int rc;
 
 	for (backend_entry *be = backend_get_first();
 	     be != NULL && !stop; be = be->next) {
@@ -4789,8 +4788,7 @@ retry_res:
 		free(res);
 
 		// prepare for next reading
-		if (mode != READ_DATA_DUP)
-			mode = READ_DATA_DUP;
+		mode = READ_DATA_DUP;
 
 		if (integrity == IN_SIZE) {
 

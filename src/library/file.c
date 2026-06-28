@@ -928,7 +928,6 @@ const char *extract_shebang_interpreter(const char *data, size_t len,
 			} else if (is_env_assignment_token(tok, end)) {
 				/* NAME=VALUE tokens are not interpreters. */
 			} else {
-				p = tok;
 				break;
 			}
 
@@ -1119,10 +1118,9 @@ const char *detect_text_format(const char *hdr, size_t len)
 	/* Skip UTF-8 BOM if present */
 	const char *p = hdr;
 	const char *end = hdr + len;
-	if (len >= 3 &&
-	   (unsigned char)hdr[0] == 0xEF &&
-	   (unsigned char)hdr[1] == 0xBB &&
-	   (unsigned char)hdr[2] == 0xBF)
+	if ((unsigned char)hdr[0] == 0xEF &&
+	    (unsigned char)hdr[1] == 0xBB &&
+	    (unsigned char)hdr[2] == 0xBF)
 		p += 3;
 
 	/* Skip leading whitespace */
@@ -1137,7 +1135,7 @@ const char *detect_text_format(const char *hdr, size_t len)
 	/* HTML */
 	if (remaining >= 14 && strncasecmp(p, "<!DOCTYPE html", 14) == 0)
 		return "text/html";
-	if (remaining >= 5 && strncasecmp(p, "<html", 5) == 0)
+	if (strncasecmp(p, "<html", 5) == 0)
 		return "text/html";
 
 	return NULL;
@@ -1155,7 +1153,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	char header[512 + 1];
 	size_t header_len = 0;
 	ssize_t header_read;
-	uint32_t elf = 0;
+	uint32_t elf;
 	struct decision_timing_span timing;
 	struct decision_timing_span fast_timing;
 	struct decision_timing_span gather_timing;
@@ -1256,8 +1254,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 		DECISION_TIMING_MIME_LIBMAGIC_FALLBACK, &timing);
 	ptr = magic_descriptor(ctx->magic_fast, fd);
 	if (ptr == NULL ||
-	    (ptr && (memcmp(ptr, "text/plain", 10) == 0 ||
-		    memcmp(ptr, "application/octet-stream", 24) == 0))) {
+	    memcmp(ptr, "text/plain", 10) == 0 ||
+	    memcmp(ptr, "application/octet-stream", 24) == 0) {
 		// Fall back to the whole database lookup
 		rewind_fd(fd);
 		ptr = magic_descriptor(ctx->magic_full, fd);

@@ -706,7 +706,6 @@ static int parse_mount_entry(char *buf, char **point, char **type)
 		// If we hit the end, we are done
 		if (s[len] == '\0' || s[len] == '\n') {
 			s[len] = '\0';
-			field++;
 			break;
 		}
 

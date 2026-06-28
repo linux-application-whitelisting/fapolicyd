@@ -513,7 +513,7 @@ static void log_manual_metric_reset(unsigned int reset_requests, int reset)
 		    "not resetting counters");
 
 	if (!reset) {
-		if (strategy == RESET_MANUAL && uid != 0)
+		if (uid != 0)
 			msg(LOG_INFO,
 			    "Manual metrics reset ignored because uid=%d "
 			    "is not privileged",

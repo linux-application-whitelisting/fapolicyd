@@ -58,8 +58,10 @@ static atomic_ulong failure_counts[FAILURE_REASON_MAX];
  */
 static int failure_reason_valid(failure_reason_t reason)
 {
-	return reason >= 0 && reason < FAILURE_REASON_MAX &&
-	       failure_definitions[reason].name != NULL;
+	unsigned int index = (unsigned int)reason;
+
+	return index < FAILURE_REASON_MAX &&
+	       failure_definitions[index].name != NULL;
 }
 
 /*
