@@ -1,4 +1,5 @@
 # fapolicyd-cli (8) completion                             -*- shell-script -*-
+# shellcheck shell=bash
 
 _fapolicydcli()
 {
@@ -49,22 +50,22 @@ _fapolicydcli()
 				_filedir
 			else
 				compopt -o filenames 2>/dev/null
-				COMPREPLY=( $(compgen -f -- ${cur}) )
+				mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
 			fi
 			return 0
 		fi
 
 		if [[ -z ${subcmd} ]]; then
-			COMPREPLY=($(compgen -W 'add delete update' -- "${cur}"))
+			mapfile -t COMPREPLY < <(compgen -W 'add delete update' -- "${cur}")
 			return 0
 		fi
 
-		if [[ ${prev} == ${subcmd} || ( ${have_path} -eq 0 && ${cur} != -* && ${prev} != --filter ) ]]; then
+		if [[ ${prev} == "${subcmd}" || ( ${have_path} -eq 0 && ${cur} != -* && ${prev} != --filter ) ]]; then
 			if [ -e /usr/share/bash-completion/bash_completion ] ; then
 				_filedir
 			else
 				compopt -o filenames 2>/dev/null
-				COMPREPLY=( $(compgen -f -- ${cur}) )
+				mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
 			fi
 			return 0
 		fi
@@ -73,7 +74,7 @@ _fapolicydcli()
 		[[ ${filter_used} -eq 0 ]] && file_opts="${file_opts} --filter"
 		[[ ${trust_used} -eq 0 ]] && file_opts="${file_opts} --trust-file"
 		if [[ -n ${file_opts} && ( -z ${cur} || ${cur} == -* ) ]]; then
-			COMPREPLY=($(compgen -W "${file_opts}" -- "${cur}"))
+			mapfile -t COMPREPLY < <(compgen -W "${file_opts}" -- "${cur}")
 			[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
 			return 0
 		fi
@@ -87,7 +88,7 @@ _fapolicydcli()
 				return 0
 			else	# this is almost as good
 				compopt -o filenames 2>/dev/null
-				COMPREPLY=( $(compgen -f -- ${cur}) )
+				mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
 				return 0
 			fi
 		;;
@@ -97,16 +98,16 @@ _fapolicydcli()
 				return 0
 			else
 				compopt -o dirnames 2>/dev/null
-				COMPREPLY=( $(compgen -d -- ${cur}) )
+				mapfile -t COMPREPLY < <(compgen -d -- "${cur}")
 				return 0
 			fi
 		;;
 		--file|-f)
-			COMPREPLY=($(compgen -W 'add delete update' -- "$cur"))
+			mapfile -t COMPREPLY < <(compgen -W 'add delete update' -- "$cur")
 			return 0
 		;;
 		add|update|delete)
-			COMPREPLY=($(compgen -W '--filter --trust-file' -- "$cur"))
+			mapfile -t COMPREPLY < <(compgen -W '--filter --trust-file' -- "$cur")
 			[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
 			return 0
 		;;
@@ -115,20 +116,20 @@ _fapolicydcli()
 				_filedir
 			else
 				compopt -o filenames 2>/dev/null
-				COMPREPLY=( $(compgen -f -- ${cur}) )
+				mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
 			fi
 			return 0
 		;;
 		--check-rules)
 			if [[ ${cur} == -* ]]; then
-				COMPREPLY=($(compgen -W '--lint' -- "${cur}"))
+				mapfile -t COMPREPLY < <(compgen -W '--lint' -- "${cur}")
 				return 0
 			fi
 			if [ -e /usr/share/bash-completion/bash_completion ] ; then
 				_filedir
 			else
 				compopt -o filenames 2>/dev/null
-				COMPREPLY=( $(compgen -f -- ${cur}) )
+				mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
 			fi
 			return 0
 		;;
@@ -137,14 +138,14 @@ _fapolicydcli()
 				_filedir
 			else
 				compopt -o filenames 2>/dev/null
-				COMPREPLY=( $(compgen -f -- ${cur}) )
+				mapfile -t COMPREPLY < <(compgen -f -- "${cur}")
 			fi
 			return 0
 		;;
 	esac
 
 	if [[ $cur == -* ]]; then
-		COMPREPLY=($(compgen -W "${opts}" -- "$cur"))
+		mapfile -t COMPREPLY < <(compgen -W "${opts}" -- "$cur")
 		[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
 		return 0
 	fi
@@ -161,17 +162,17 @@ _fapolicyd()
 		local mount_cur=${cur#--mounts=}
 		if [ -e /usr/share/bash-completion/bash_completion ] ; then
 			_filedir
-			COMPREPLY=( ${COMPREPLY/#/--mounts=} )
+			COMPREPLY=( "${COMPREPLY[@]/#/--mounts=}" )
 		else
 			compopt -o filenames 2>/dev/null
-			COMPREPLY=( $(compgen -f -- ${mount_cur}) )
-			COMPREPLY=( ${COMPREPLY/#/--mounts=} )
+			mapfile -t COMPREPLY < <(compgen -f -- "${mount_cur}")
+			COMPREPLY=( "${COMPREPLY[@]/#/--mounts=}" )
 		fi
 		return 0
 	fi
 
 	if [[ ${cur} == -* ]] ; then
-		COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+		mapfile -t COMPREPLY < <(compgen -W "${opts}" -- "${cur}")
 		[[ ${COMPREPLY-} == *= ]] && compopt -o nospace
 		return 0
 	fi
