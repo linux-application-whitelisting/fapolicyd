@@ -75,8 +75,10 @@ enum {
 };
 
 #define UPDATE_BUFFER_SIZE 4096
+/* fd 0 is valid when the daemon starts with stdin closed. */
+#define UPDATE_FIFO_CLOSED_FD (-1)
 
-static struct pollfd ffd[1] = { { 0, 0, 0 } };
+static struct pollfd ffd[1] = { { UPDATE_FIFO_CLOSED_FD, 0, 0 } };
 static pthread_t update_thread;
 static int update_thread_created;
 static int update_lock_inited;
@@ -98,10 +100,11 @@ static void *update_thread_main(void *arg);
  */
 static void database_update_close_fifo(void)
 {
-	if (ffd[0].fd > 0) {
+	if (ffd[0].fd >= 0)
 		close(ffd[0].fd);
-		ffd[0].fd = 0;
-	}
+	ffd[0].fd = UPDATE_FIFO_CLOSED_FD;
+	ffd[0].events = 0;
+	ffd[0].revents = 0;
 }
 
 /*
@@ -151,7 +154,7 @@ int preconstruct_fifo(const conf_t *config)
 	if ((ffd[0].fd = open(fifo_path, O_RDWR)) == -1) {
 		msg(LOG_ERR, "Failed to open a pipe %s (%s)", fifo_path,
 		    strerror_r(errno, err_buff, UPDATE_BUFFER_SIZE));
-		ffd[0].fd = 0;
+		ffd[0].fd = UPDATE_FIFO_CLOSED_FD;
 		unlink_fifo();
 		return 1;
 	}
@@ -162,8 +165,7 @@ int preconstruct_fifo(const conf_t *config)
 			    fifo_path, strerror_r(errno, err_buff,
 						  UPDATE_BUFFER_SIZE));
 			unlink_fifo();
-			close(ffd[0].fd);
-			ffd[0].fd = 0;
+			database_update_close_fifo();
 			return 1;
 		}
 	}
@@ -538,7 +540,7 @@ static void *update_thread_main(void *arg)
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
-	if (ffd[0].fd == 0) {
+	if (ffd[0].fd < 0) {
 		if (preconstruct_fifo(config))
 			return NULL;
 	}
