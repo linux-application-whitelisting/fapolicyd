@@ -4428,7 +4428,7 @@ static long check_from_memfd(struct trust_db_read_handle *read, int memfd,
 			int delims = 0;
 			char *delim = NULL;
 			for (int i = size-1 ; i >= 0 ; i--) {
-				if (isspace(buff[i])) {
+				if (isspace((unsigned char)buff[i])) {
 					delim = &buff[i];
 					delims++;
 				}

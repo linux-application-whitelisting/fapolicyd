@@ -529,7 +529,7 @@ static int do_list(void)
 	while ((buf = get_line(f))) {
 		char *str = buf;
 		while (*str) {
-			if (!isblank(*str))
+			if (!isblank((unsigned char)*str))
 				break;
 			str++;
 		}

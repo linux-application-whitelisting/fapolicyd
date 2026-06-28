@@ -186,7 +186,7 @@ static int ignore_mounts_configured(const char *list)
 		return 0;
 
 	while (*list) {
-		if (!isspace(*list) && *list != ',')
+		if (!isspace((unsigned char)*list) && *list != ',')
 			return 1;
 		list++;
 	}

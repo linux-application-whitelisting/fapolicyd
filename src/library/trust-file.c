@@ -247,7 +247,7 @@ static int parse_line_backwards(char *line, char *path, size_t *size,
 	int stripped = 0;
 	for (int i = len - 1; i >= 0; i--) {
 		if (!stripped) {
-			if (isspace(line[i]))
+			if (isspace((unsigned char)line[i]))
 				line[i] = '\0';
 			else
 				stripped = 1;
@@ -324,7 +324,7 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 
 		line++;
 
-		if (iscntrl(buffer[0]) || buffer[0] == '#') {
+		if (iscntrl((unsigned char)buffer[0]) || buffer[0] == '#') {
 			if (line == 1 &&
 			   strncmp(buffer, HEADER_OLD, strlen(HEADER_OLD)) == 0)
 				escaped = 1;

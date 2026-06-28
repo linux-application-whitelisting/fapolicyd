@@ -281,7 +281,7 @@ static char * parse_set_name(char * buf)
 
 	// little validation
 	for (int i = 0 ; name[i] ; i++) {
-		if (!(isalnum(name[i]) || name[i] == '_' )) {
+		if (!(isalnum((unsigned char)name[i]) || name[i] == '_' )) {
 			return NULL;
 		}
 	}

@@ -698,7 +698,7 @@ static int unsigned_int_parser(unsigned *i, const char *str, int line)
 
 	/* check that all chars are numbers */
 	for (j=0; ptr[j]; j++) {
-		if (!isdigit(ptr[j])) {
+		if (!isdigit((unsigned char)ptr[j])) {
 			msg(LOG_ERR,
 				"Value %s should only be numbers - line %d",
 				str, line);
@@ -781,7 +781,7 @@ static int uid_parser(const struct nv_pair *nv, int line,
 	uid_t uid = 0;
 	gid_t gid = 0;
 
-	if (isdigit(nv->value[0])) {
+	if (isdigit((unsigned char)nv->value[0])) {
 		errno = 0;
 		uid = strtoul(nv->value, NULL, 10);
 		if (errno) {
@@ -811,7 +811,7 @@ static int gid_parser(const struct nv_pair *nv, int line,
 {
 	gid_t gid = 0;
 
-	if (isdigit(nv->value[0])) {
+	if (isdigit((unsigned char)nv->value[0])) {
 		errno = 0;
 		gid = strtoul(nv->value, NULL, 10);
 		if (errno) {

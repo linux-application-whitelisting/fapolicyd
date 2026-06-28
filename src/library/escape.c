@@ -127,7 +127,8 @@ void unescape_shell(char *s, const size_t len)
 	*buf = '\0';
 }
 
-#define IS_HEX(X) (isxdigit(X) > 0 && !(islower(X) > 0))
+#define IS_HEX(X) (isxdigit((unsigned char)(X)) > 0 && \
+		   !(islower((unsigned char)(X)) > 0))
 
 static char asciiHex2Bits(char X)
 {
