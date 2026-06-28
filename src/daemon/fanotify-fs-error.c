@@ -180,15 +180,13 @@ static const char *format_fs_error_time(time_t when, char *buf,
 		return NULL;
 
 	if (when == 0) {
-		strncpy(buf, "never", buf_size - 1);
-		buf[buf_size - 1] = 0;
+		snprintf(buf, buf_size, "%s", "never");
 		return buf;
 	}
 
 	if (localtime_r(&when, &tm) == NULL ||
 	    strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S %z", &tm) == 0) {
-		strncpy(buf, "unavailable", buf_size - 1);
-		buf[buf_size - 1] = 0;
+		snprintf(buf, buf_size, "%s", "unavailable");
 	}
 
 	return buf;
