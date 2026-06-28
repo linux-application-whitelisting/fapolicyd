@@ -272,6 +272,9 @@ struct trust_db_metrics {
 };
 
 static struct trust_db_metrics trust_metrics;
+static MDB_env *readonly_lookup_env;
+static MDB_dbi readonly_lookup_dbi;
+static int readonly_lookup_open;
 
 struct trust_db_sizing_state {
 	size_t page_size;
@@ -373,6 +376,8 @@ static int do_memfd_update_to_dbi_in_env(MDB_env *target_env, int memfd,
 static void close_env(int do_close_dbi);
 static void log_lmdb_state(int priority, const char *context, int lmdb_rc);
 static void walk_database_reset(void);
+static int check_trust_database_with_read(struct trust_db_read_handle *read,
+	const char *path, struct file_info *info, int fd);
 
 // External variables
 extern atomic_bool stop;
@@ -3732,7 +3737,9 @@ static char *trust_db_read_record(struct trust_db_read_handle *read,
 	// trusted.
 	*error = 0;
 	if (operation == READ_TEST_KEY) {
-		return strndup(read->generation->name, MDB_maxkeysize);
+		const char *name = read->generation ? read->generation->name : db;
+
+		return strndup(name, MDB_maxkeysize);
 	}
 
 	if ((data = malloc(value.mv_size+1))) {
@@ -4871,37 +4878,28 @@ retry_res:
 	return 0;
 }
 
-// Returns a 1 if trusted and 0 if not and -1 on error
-int check_trust_database(const char *path, struct file_info *info, int fd)
+/*
+ * check_trust_database_with_read - run trust lookup using caller's read handle.
+ * @read: active trust DB read handle.
+ * @path: filesystem path to check.
+ * @info: optional file metadata for integrity checks.
+ * @fd: optional open file descriptor for integrity checks.
+ *
+ * Returns 1 if trusted, 0 if untrusted, and -1 on read or integrity error.
+ */
+static int check_trust_database_with_read(struct trust_db_read_handle *read,
+	const char *path, struct file_info *info, int fd)
 {
 	int retval = 0, error;
 	int res;
-	struct trust_db_read_handle read;
 	struct trust_db_lookup lookup;
-	struct decision_timing_span lock_timing;
-	struct decision_timing_span read_timing;
-	struct decision_timing_span total_timing;
-
-	trust_metric_add(&trust_metrics.lookups, 1);
-	decision_timing_trust_db_stage_begin(DECISION_TIMING_TRUST_DB_TOTAL,
-					     &total_timing);
-	decision_timing_trust_db_stage_begin(
-		DECISION_TIMING_TRUST_DB_LOCK_WAIT, &lock_timing);
-	database_update_read_lock();
-	decision_timing_stage_end(&lock_timing);
-
-	decision_timing_trust_db_stage_begin(DECISION_TIMING_TRUST_DB_READ,
-					     &read_timing);
-	if (trust_db_read_open(&read)) {
-		retval = -1;
-		goto out_unlock;
-	}
 
 	lookup.path = path;
 	lookup.info = info;
 	lookup.fd = fd;
 	lookup.error = &error;
-	res = read_trust_db(&read, &lookup);
+	error = 0;
+	res = read_trust_db(read, &lookup);
 	if (error)
 		retval = -1;
 	else if (res)
@@ -4922,7 +4920,8 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 			     strncmp(&path[5], "sbin/", 5) == 0)) {
 				// We have a symlink, retry
 				lookup.path = &path[4];
-				res = read_trust_db(&read, &lookup);
+				error = 0;
+				res = read_trust_db(read, &lookup);
 				if (error)
 					retval = -1;
 				else if (res)
@@ -4931,12 +4930,190 @@ int check_trust_database(const char *path, struct file_info *info, int fd)
 		}
 	}
 
+	return retval;
+}
+
+/*
+ * check_trust_database - check trust using the daemon's live DB state.
+ * @path: filesystem path to check.
+ * @info: optional file metadata for integrity checks.
+ * @fd: optional open file descriptor for integrity checks.
+ *
+ * This is the normal daemon lookup path. It takes the database update read
+ * lock, opens a read handle on the current generation, and records timing and
+ * trust lookup metrics. fapolicyd-cli uses check_trust_database_readonly()
+ * when it needs a private read-only environment.
+ *
+ * Returns 1 if trusted, 0 if untrusted, and -1 on read or integrity error.
+ */
+int check_trust_database(const char *path, struct file_info *info, int fd)
+{
+	int retval;
+	struct trust_db_read_handle read;
+	struct decision_timing_span lock_timing;
+	struct decision_timing_span read_timing;
+	struct decision_timing_span total_timing;
+
+	trust_metric_add(&trust_metrics.lookups, 1);
+	decision_timing_trust_db_stage_begin(DECISION_TIMING_TRUST_DB_TOTAL,
+					     &total_timing);
+	decision_timing_trust_db_stage_begin(
+		DECISION_TIMING_TRUST_DB_LOCK_WAIT, &lock_timing);
+	database_update_read_lock();
+	decision_timing_stage_end(&lock_timing);
+
+	decision_timing_trust_db_stage_begin(DECISION_TIMING_TRUST_DB_READ,
+					     &read_timing);
+	if (trust_db_read_open(&read)) {
+		retval = -1;
+		goto out_unlock;
+	}
+
+	retval = check_trust_database_with_read(&read, path, info, fd);
 	trust_db_read_close(&read);
 out_unlock:
 	decision_timing_stage_end(&read_timing);
 	database_update_read_unlock();
 	decision_timing_stage_end(&total_timing);
 
+	return retval;
+}
+
+/*
+ * database_readonly_lookup_finish - close read-only CLI trust lookup state.
+ * @void: no arguments are required.
+ *
+ * This state is used only by fapolicyd-cli and is separate from the daemon's
+ * live LMDB environment.
+ *
+ * Returns nothing.
+ */
+void database_readonly_lookup_finish(void)
+{
+	if (readonly_lookup_env)
+		mdb_env_close(readonly_lookup_env);
+	readonly_lookup_env = NULL;
+	readonly_lookup_dbi = 0;
+	readonly_lookup_open = 0;
+}
+
+/*
+ * database_readonly_lookup_start - open a private read-only trust DB handle.
+ * @void: no arguments are required.
+ *
+ * This state is used only by fapolicyd-cli. The CLI opens its own read-only
+ * LMDB environment so path checks do not initialize or lock the daemon's live
+ * environment.
+ *
+ * Returns 0 on success or an LMDB error code.
+ */
+int database_readonly_lookup_start(void)
+{
+	MDB_txn *txn = NULL;
+	MDB_dbi readonly_metadata_dbi;
+	struct trust_db_metadata metadata;
+	char active_name[TRUST_DB_GENERATION_NAME_SIZE];
+	int rc;
+
+	database_readonly_lookup_finish();
+	snprintf(active_name, sizeof(active_name), "%s", db);
+
+	rc = mdb_env_create(&readonly_lookup_env);
+	if (rc)
+		return rc;
+
+	rc = mdb_env_set_maxdbs(readonly_lookup_env, TRUST_DB_MAX_NAMED_DBS);
+	if (rc)
+		goto error;
+
+	/*
+	 * MDB_NOLOCK is paired with MDB_RDONLY so fapolicyd-cli never opens
+	 * lock.mdb or touches LMDB's shared robust mutexes.
+	 */
+	rc = mdb_env_open(readonly_lookup_env, data_dir,
+			  MDB_RDONLY|MDB_NOLOCK, 0);
+	if (rc)
+		goto error;
+
+	rc = mdb_txn_begin(readonly_lookup_env, NULL, MDB_RDONLY, &txn);
+	if (rc)
+		goto error;
+
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0,
+			  &readonly_metadata_dbi);
+	if (rc == 0) {
+		rc = trust_db_metadata_read_from_dbi(txn,
+						     readonly_metadata_dbi,
+						     &metadata);
+		if (rc == 0)
+			snprintf(active_name, sizeof(active_name), "%s",
+				 metadata.name);
+		else if (rc != MDB_NOTFOUND)
+			goto out_abort;
+	} else if (rc != MDB_NOTFOUND)
+		goto out_abort;
+
+	rc = mdb_dbi_open(txn, active_name, MDB_DUPSORT,
+			  &readonly_lookup_dbi);
+	if (rc)
+		goto out_abort;
+
+	MDB_maxkeysize = mdb_env_get_maxkeysize(readonly_lookup_env);
+	lib_symlink = is_link("/lib");
+	lib64_symlink = is_link("/lib64");
+	bin_symlink = is_link("/bin");
+	sbin_symlink = is_link("/sbin");
+	readonly_lookup_open = 1;
+
+out_abort:
+	mdb_txn_abort(txn);
+	if (rc)
+		goto error;
+	return 0;
+
+error:
+	database_readonly_lookup_finish();
+	return rc;
+}
+
+/*
+ * check_trust_database_readonly - check trust through read-only CLI LMDB state.
+ * @path: filesystem path to check.
+ * @info: optional file metadata for integrity checks.
+ * @fd: optional open file descriptor for integrity checks.
+ *
+ * This entry point is used only by fapolicyd-cli after
+ * database_readonly_lookup_start(). It deliberately avoids daemon update
+ * locks and daemon LMDB handles.
+ *
+ * Returns 1 if trusted, 0 if untrusted, and -1 on read or integrity error.
+ */
+int check_trust_database_readonly(const char *path, struct file_info *info,
+		int fd)
+{
+	struct trust_db_read_handle read = { 0 };
+	int retval;
+	int rc;
+
+	if (!readonly_lookup_open)
+		return -1;
+
+	rc = mdb_txn_begin(readonly_lookup_env, NULL, MDB_RDONLY, &read.txn);
+	if (rc) {
+		msg(LOG_ERR, "txn_begin:%s", mdb_strerror(rc));
+		return -1;
+	}
+
+	rc = mdb_cursor_open(read.txn, readonly_lookup_dbi, &read.cursor);
+	if (rc) {
+		msg(LOG_ERR, "cursor_open:%s", mdb_strerror(rc));
+		mdb_txn_abort(read.txn);
+		return -1;
+	}
+
+	retval = check_trust_database_with_read(&read, path, info, fd);
+	mdb_cursor_close(read.cursor);
+	mdb_txn_abort(read.txn);
 	return retval;
 }
 

@@ -994,7 +994,7 @@ static int check_file(const char *fpath,
 		struct file_info info;
 		info.size = sb->st_size;
 
-		if (check_trust_database(fpath, &info, fd) != 1) {
+		if (check_trust_database_readonly(fpath, &info, fd) != 1) {
 			path_found = 1;
 			fprintf(stderr, "%s is not trusted\n", fpath);
 		}
@@ -1026,11 +1026,10 @@ static int check_path(void)
 		reset_config();
 		return CLI_EXIT_INTERNAL;
 	}
-	int rc = init_database(&config);
+	int rc = database_readonly_lookup_start();
 	if (rc) {
 		set_message_mode(MSG_STDERR, DBG_NO);
 		fprintf(stderr, "Cannot initialize trust database (%d)\n", rc);
-		close_database();
 		reset_config();
 		return CLI_EXIT_DB_ERROR;
 	}
@@ -1044,9 +1043,8 @@ static int check_path(void)
 next:
 		ptr = strtok_r(NULL, ":", &saved);
 	}
-	stop = 1; // Need this to terminate update thread
 	free(path);
-	close_database();
+	database_readonly_lookup_finish();
 	reset_config();
 
 	if (path_found == 0)

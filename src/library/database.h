@@ -91,6 +91,10 @@ int walk_database_start(conf_t *config) __nonnull ((1));
 walkdb_entry_t *walk_database_get_entry(void);
 int walk_database_next(void);
 void walk_database_finish(void);
+int database_readonly_lookup_start(void);
+int check_trust_database_readonly(const char *path, struct file_info *info,
+		int fd) __nonnull ((1));
+void database_readonly_lookup_finish(void);
 
 // Functions for unit test use
 typedef database_generation_report_t database_generation_test_report_t;
