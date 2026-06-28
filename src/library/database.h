@@ -40,6 +40,7 @@ typedef struct {
 
 #define TRUST_DB_METADATA_NAME "trust.meta"
 #define TRUST_DB_METADATA_KEY "current"
+#define TRUST_DB_GENERATION_NAME_SIZE 64
 
 typedef struct {
 	unsigned long generation;
@@ -77,6 +78,8 @@ int database_generation_snapshot(database_generation_report_t *report)
 int unlink_db(void) __wur;
 void unlink_fifo(void);
 unsigned get_default_db_max_size(void);
+int database_read_active_name(MDB_txn *txn, char *name, size_t name_size)
+	__nonnull ((1, 2));
 void lock_rule(void);
 void unlock_rule(void);
 

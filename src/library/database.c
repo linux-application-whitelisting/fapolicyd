@@ -75,7 +75,6 @@ enum autosize_plan_mode {
 #define TRUST_DB_SHRINK_HYSTERESIS_PERCENT 90
 #define TRUST_DB_RELOAD_WORK_FACTOR 2
 #define TRUST_DB_REBUILD_TXN_RECORDS 4096
-#define TRUST_DB_GENERATION_NAME_SIZE 64
 #define TRUST_DB_GENERATION_SLOT_PREFIX "trust.slot"
 #define TRUST_DB_GENERATION_DB_SLOTS 32
 /*
@@ -861,10 +860,8 @@ static int read_existing_lmdb_sizing_state(struct trust_db_sizing_state *state)
 	MDB_env *tmp_env = NULL;
 	MDB_envinfo info;
 	MDB_txn *txn = NULL;
-	MDB_dbi tmp_metadata_dbi;
 	MDB_dbi dbi_tmp;
-	struct trust_db_metadata metadata;
-	const char *active_name = db;
+	char active_name[TRUST_DB_GENERATION_NAME_SIZE];
 	int rc;
 
 	rc = mdb_env_create(&tmp_env);
@@ -887,28 +884,9 @@ static int read_existing_lmdb_sizing_state(struct trust_db_sizing_state *state)
 	if (rc)
 		goto out_close;
 
-	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0,
-			  &tmp_metadata_dbi);
-	if (rc == 0) {
-		MDB_val key, value;
-
-		key.mv_data = (void *)TRUST_DB_METADATA_KEY;
-		key.mv_size = sizeof(TRUST_DB_METADATA_KEY) - 1;
-		rc = mdb_get(txn, tmp_metadata_dbi, &key, &value);
-		if (rc == 0 && value.mv_size < BUFFER_SIZE) {
-			char data[BUFFER_SIZE];
-
-			memcpy(data, value.mv_data, value.mv_size);
-			data[value.mv_size] = 0;
-			memset(&metadata, 0, sizeof(metadata));
-			if (sscanf(data, "generation=%lu\nname=%63s",
-				   &metadata.generation,
-				   metadata.name) == 2)
-				active_name = metadata.name;
-		}
-	} else if (rc != MDB_NOTFOUND) {
+	rc = database_read_active_name(txn, active_name, sizeof(active_name));
+	if (rc)
 		goto out_abort;
-	}
 
 	rc = mdb_dbi_open(txn, active_name, 0, &dbi_tmp);
 	if (rc)
@@ -1091,6 +1069,50 @@ static int trust_db_metadata_read_from_dbi(MDB_txn *txn, MDB_dbi source_dbi,
 	data[value.mv_size] = 0;
 	if (trust_db_metadata_parse(data, metadata))
 		return EINVAL;
+	return 0;
+}
+
+/*
+ * database_read_active_name - read the currently published trust DB name.
+ * @txn: read transaction for an LMDB environment containing trust metadata.
+ * @name: destination buffer.
+ * @name_size: size of @name.
+ *
+ * Older trust databases did not have generation metadata, so missing metadata
+ * falls back to the default DB name. Present but unreadable metadata is an
+ * error because otherwise callers may inspect a stale generation.
+ */
+int database_read_active_name(MDB_txn *txn, char *name, size_t name_size)
+{
+	MDB_dbi active_metadata_dbi;
+	struct trust_db_metadata metadata;
+	int len;
+	int rc;
+
+	if (name_size == 0)
+		return EINVAL;
+
+	len = snprintf(name, name_size, "%s", db);
+	if (len < 0 || len >= (int)name_size)
+		return ENAMETOOLONG;
+
+	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0,
+			  &active_metadata_dbi);
+	if (rc == MDB_NOTFOUND)
+		return 0;
+	if (rc)
+		return rc;
+
+	rc = trust_db_metadata_read_from_dbi(txn, active_metadata_dbi,
+					     &metadata);
+	if (rc == MDB_NOTFOUND)
+		return 0;
+	if (rc)
+		return rc;
+
+	len = snprintf(name, name_size, "%s", metadata.name);
+	if (len < 0 || len >= (int)name_size)
+		return ENAMETOOLONG;
 	return 0;
 }
 
@@ -5010,8 +5032,6 @@ void database_readonly_lookup_finish(void)
 int database_readonly_lookup_start(void)
 {
 	MDB_txn *txn = NULL;
-	MDB_dbi readonly_metadata_dbi;
-	struct trust_db_metadata metadata;
 	char active_name[TRUST_DB_GENERATION_NAME_SIZE];
 	int rc;
 
@@ -5039,18 +5059,8 @@ int database_readonly_lookup_start(void)
 	if (rc)
 		goto error;
 
-	rc = mdb_dbi_open(txn, TRUST_DB_METADATA_NAME, 0,
-			  &readonly_metadata_dbi);
-	if (rc == 0) {
-		rc = trust_db_metadata_read_from_dbi(txn,
-						     readonly_metadata_dbi,
-						     &metadata);
-		if (rc == 0)
-			snprintf(active_name, sizeof(active_name), "%s",
-				 metadata.name);
-		else if (rc != MDB_NOTFOUND)
-			goto out_abort;
-	} else if (rc != MDB_NOTFOUND)
+	rc = database_read_active_name(txn, active_name, sizeof(active_name));
+	if (rc)
 		goto out_abort;
 
 	rc = mdb_dbi_open(txn, active_name, MDB_DUPSORT,
@@ -5734,8 +5744,7 @@ static void walk_database_reset(void)
  */
 int walk_database_start(conf_t *config)
 {
-	MDB_dbi walk_metadata_dbi, walk_dbi;
-	struct trust_db_metadata metadata;
+	MDB_dbi walk_dbi;
 	char active_name[TRUST_DB_GENERATION_NAME_SIZE];
 	int rc;
 
@@ -5765,17 +5774,9 @@ int walk_database_start(conf_t *config)
 	if (rc)
 		goto error;
 
-	rc = mdb_dbi_open(walk_txn, TRUST_DB_METADATA_NAME, 0,
-			  &walk_metadata_dbi);
-	if (rc == 0) {
-		rc = trust_db_metadata_read_from_dbi(walk_txn, walk_metadata_dbi,
-						     &metadata);
-		if (rc == 0)
-			snprintf(active_name, sizeof(active_name), "%s",
-				 metadata.name);
-		else if (rc != MDB_NOTFOUND)
-			goto error;
-	} else if (rc != MDB_NOTFOUND)
+	rc = database_read_active_name(walk_txn, active_name,
+				       sizeof(active_name));
+	if (rc)
 		goto error;
 
 	rc = mdb_dbi_open(walk_txn, active_name, MDB_DUPSORT, &walk_dbi);
