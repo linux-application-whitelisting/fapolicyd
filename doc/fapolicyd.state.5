@@ -248,6 +248,24 @@ the most recent error notification.
 The number of failed or short writes when sending fanotify permission responses
 back to the kernel.
 .TP
+.B Decision worker N current queue depth
+The number of fanotify permission events currently waiting in that worker's
+queue.
+.TP
+.B Decision worker N max queue depth
+The highest queue depth observed for that worker since the last metrics reset.
+.TP
+.B Decision worker N queue full count
+The number of failed enqueue attempts for that worker since the last metrics
+reset.
+.TP
+.B Decision worker N oldest queued age
+The age of the oldest event currently waiting in that worker's queue.
+The value is formatted with a human-readable unit such as
+.B ms
+or
+.BR s .
+.TP
 .B Subject defer fallbacks
 The number of times the defer array was full and fapolicyd fell back to the
 historical subject cache eviction behavior.
@@ -307,6 +325,10 @@ monitoring.
 .B Trust database generation ,
 .B LMDB environment generation ,
 .B Trust database entries ,
+.B Decision worker N current queue depth ,
+.B Decision worker N max queue depth ,
+.B Decision worker N queue full count ,
+.B Decision worker N oldest queued age ,
 .B Subject defer fallbacks ,
 .B Early subject cache evictions ,
 .B Subject BUILDING tracer evictions ,

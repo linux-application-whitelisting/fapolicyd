@@ -5,6 +5,7 @@
 #include <error.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "queue.h"
 
@@ -39,6 +40,45 @@ static void read_queue_report(const struct queue_metrics *metrics, char *buf,
 }
 
 /*
+ * read_queue_worker_report - capture per-worker queue report output.
+ * @metrics: metrics to write.
+ * @buf: destination buffer.
+ * @size: size of @buf.
+ * Returns nothing. Exits if the temporary stream cannot be used.
+ */
+static void read_queue_worker_report(const struct queue_metrics *metrics,
+				     char *buf, size_t size)
+{
+	FILE *f = tmpfile();
+	size_t used;
+
+	if (f == NULL)
+		error(1, 0, "tmpfile failed");
+
+	q_metrics_report_worker(f, 7, metrics);
+	fflush(f);
+	rewind(f);
+	used = fread(buf, 1, size - 1, f);
+	buf[used] = 0;
+	fclose(f);
+}
+
+/*
+ * wait_for_queue_age - give monotonic queue-age metrics time to advance.
+ * Returns nothing.
+ */
+static void wait_for_queue_age(void)
+{
+	struct timespec ts = {
+		.tv_sec = 0,
+		.tv_nsec = 1000000,
+	};
+
+	while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
+		;
+}
+
+/*
  * main - exercise queue current depth, max depth, full count, and reporting.
  * Returns 0 on success. Exits with error() on test failure.
  */
@@ -49,6 +89,7 @@ int main(void)
 	struct queue_metrics metrics;
 	struct queue *q;
 	char report[128];
+	char worker_report[256];
 	unsigned int run_max, saved;
 
 	q = q_open(2);
@@ -61,11 +102,14 @@ int main(void)
 	      "[ERROR:3] initial max depth not zero");
 	CHECK(metrics.full_count == 0, 4,
 	      "[ERROR:4] initial full count not zero");
+	CHECK(metrics.oldest_age_ns == 0, 31,
+	      "[ERROR:31] initial oldest age not zero");
 
 	CHECK(q_enqueue(q, &event) == 0, 5,
 	      "[ERROR:5] first enqueue failed");
 	CHECK(q_enqueue(q, &event) == 0, 6,
 	      "[ERROR:6] second enqueue failed");
+	wait_for_queue_age();
 
 	errno = 0;
 	CHECK(q_enqueue(q, &event) == -1 && errno == ENOSPC, 7,
@@ -78,6 +122,8 @@ int main(void)
 	      "[ERROR:9] max depth incorrect");
 	CHECK(metrics.full_count == 1, 10,
 	      "[ERROR:10] full count incorrect");
+	CHECK(metrics.oldest_age_ns > 0, 32,
+	      "[ERROR:32] full queue oldest age did not advance");
 
 	CHECK(q_dequeue(q, &out) == 1, 11,
 	      "[ERROR:11] dequeue failed");
@@ -93,6 +139,20 @@ int main(void)
 	CHECK(strcmp(report, "Inter-thread current queue depth: 1\n"
 			    "Inter-thread max queue depth: 2\n") == 0, 15,
 	      "[ERROR:15] queue report format changed");
+	read_queue_worker_report(&metrics, worker_report,
+				 sizeof(worker_report));
+	CHECK(strstr(worker_report,
+		     "Decision worker 7 current queue depth: 1\n") != NULL,
+	      33, "[ERROR:33] worker report missing current depth");
+	CHECK(strstr(worker_report,
+		     "Decision worker 7 max queue depth: 2\n") != NULL,
+	      34, "[ERROR:34] worker report missing max depth");
+	CHECK(strstr(worker_report,
+		     "Decision worker 7 queue full count: 1\n") != NULL,
+	      35, "[ERROR:35] worker report missing full count");
+	CHECK(strstr(worker_report,
+		     "Decision worker 7 oldest queued age: ") != NULL,
+	      36, "[ERROR:36] worker report missing oldest age");
 
 	q_metrics_snapshot_reset(q, &metrics, 1);
 	CHECK(metrics.current_depth == 1, 16,

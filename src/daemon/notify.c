@@ -76,6 +76,7 @@
 #include <time.h>
 #include "attr-lookup-metrics.h"
 #include "conf.h"
+#include "daemon-config.h"
 #include "decision-config.h"
 #include "decision-context.h"
 #include "decision-defer.h"
@@ -95,6 +96,7 @@
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
 #define DEFER_RECHECK_INTERVAL_SEC 1
 #define DECISION_WORKER_BOOTSTRAP_COUNT 1
+#define DECISION_WORKER_MAX DAEMON_CONFIG_DECISION_THREADS_MAX
 
 // External variables
 extern atomic_bool stop, run_stats;
@@ -109,8 +111,9 @@ struct decision_worker {
 
 // Local variables
 static pid_t our_pid;
-static struct queue_metrics last_queue_metrics;
-static struct decision_worker decision_workers[DECISION_WORKER_BOOTSTRAP_COUNT];
+static struct queue_metrics last_queue_metrics[DECISION_WORKER_MAX];
+static unsigned int last_queue_metrics_count;
+static struct decision_worker decision_workers[DECISION_WORKER_MAX];
 static unsigned int active_decision_workers;
 static pthread_t deadmans_switch_thread;
 static int fd = -1;
@@ -134,6 +137,7 @@ static unsigned int release_ready_deferred_events(
 		struct decision_worker *worker, int *rpt_is_stale);
 static unsigned int shutdown_deferred_events(void);
 static unsigned int shutdown_queued_events(struct decision_worker *worker);
+static void save_last_queue_metrics(void);
 static unsigned int timing_queue_depth_reset(void *ctx);
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
 static struct decision_worker *dispatcher_worker_for_metadata(
@@ -377,7 +381,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		active_decision_workers = 0;
 		exit(1);
 	}
-	q_metrics_snapshot(worker->queue, &last_queue_metrics);
+	save_last_queue_metrics();
 	if (defer_queue.entries == NULL &&
 	    decision_defer_init(&defer_queue, conf->subj_cache_size)) {
 		msg(LOG_ERR, "Failed setting up subject defer array (%s)",
@@ -607,27 +611,66 @@ static struct queue *primary_worker_queue(void)
 	return decision_workers[0].queue;
 }
 
+/*
+ * queue_metrics_merge - fold one worker queue snapshot into an aggregate.
+ * @aggregate: aggregate metrics being built.
+ * @metrics: worker queue metrics to add.
+ * Returns nothing.
+ */
+static void queue_metrics_merge(struct queue_metrics *aggregate,
+		const struct queue_metrics *metrics)
+{
+	aggregate->current_depth += metrics->current_depth;
+	if (metrics->max_depth > aggregate->max_depth)
+		aggregate->max_depth = metrics->max_depth;
+	aggregate->full_count += metrics->full_count;
+	if (metrics->oldest_age_ns > aggregate->oldest_age_ns)
+		aggregate->oldest_age_ns = metrics->oldest_age_ns;
+}
+
+/*
+ * save_last_queue_metrics - retain final queue snapshots for reports.
+ * Returns nothing.
+ */
+static void save_last_queue_metrics(void)
+{
+	unsigned int i;
+
+	last_queue_metrics_count = 0;
+	for (i = 0; i < active_decision_workers; i++) {
+		struct decision_worker *worker = &decision_workers[i];
+
+		if (worker->queue == NULL)
+			continue;
+
+		q_metrics_snapshot(worker->queue, &last_queue_metrics[i]);
+		last_queue_metrics_count = i + 1;
+	}
+}
+
 void shutdown_fanotify(mlist *m)
 {
-	struct decision_worker *worker = &decision_workers[0];
+	unsigned int i;
 
 	unmark_fanotify(m);
 
 	// End the worker threads.
-	if (worker->queue)
-		q_shutdown(worker->queue);
-	pthread_join(worker->thread, NULL);
+	for (i = 0; i < active_decision_workers; i++)
+		q_shutdown(decision_workers[i].queue);
+	for (i = 0; i < active_decision_workers; i++)
+		pthread_join(decision_workers[i].thread, NULL);
 	pthread_join(deadmans_switch_thread, NULL);
 
 	// Clean up
-	if (worker->queue)
-		q_metrics_snapshot(worker->queue, &last_queue_metrics);
+	save_last_queue_metrics();
 	decision_defer_metrics_snapshot_reset(&defer_queue,
 					      &last_defer_metrics, 0);
 	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
-	if (worker->queue) {
-		q_close(worker->queue);
-		worker->queue = NULL;
+	for (i = 0; i < active_decision_workers; i++) {
+		if (decision_workers[i].queue == NULL)
+			continue;
+		q_close(decision_workers[i].queue);
+		decision_workers[i].queue = NULL;
 	}
 	active_decision_workers = 0;
 	close(rpt_timer_fd);
@@ -686,24 +729,80 @@ void fanotify_queue_report(FILE *f)
  */
 void fanotify_queue_report_reset(FILE *f, int reset)
 {
-	struct queue *queue = primary_worker_queue();
+	struct queue_metrics aggregate = { 0 };
+	struct queue_metrics metrics[DECISION_WORKER_MAX];
+	unsigned int worker_ids[DECISION_WORKER_MAX];
+	unsigned int count = 0;
+	unsigned int i;
 
 	if (f == NULL)
 		return;
 
-	if (queue) {
-		struct queue_metrics metrics;
+	if (active_decision_workers) {
+		for (i = 0; i < active_decision_workers; i++) {
+			struct decision_worker *worker = &decision_workers[i];
+
+			if (worker->queue == NULL)
+				continue;
+
+			q_metrics_snapshot_reset(worker->queue, &metrics[count],
+						 reset);
+			worker_ids[count] = worker->id;
+			queue_metrics_merge(&aggregate, &metrics[count]);
+			count++;
+		}
+	} else {
+		for (i = 0; i < last_queue_metrics_count; i++) {
+			metrics[count] = last_queue_metrics[i];
+			worker_ids[count] = i;
+			queue_metrics_merge(&aggregate, &metrics[count]);
+			count++;
+		}
+	}
+
+	q_metrics_report(f, &aggregate);
+	for (i = 0; i < count; i++)
+		q_metrics_report_worker(f, worker_ids[i], &metrics[i]);
+
+	if (primary_worker_queue()) {
 		struct decision_defer_metrics defer_metrics;
 
-		q_metrics_snapshot_reset(queue, &metrics, reset);
-		q_metrics_report(f, &metrics);
 		decision_defer_metrics_snapshot_reset(&defer_queue,
 						      &defer_metrics, reset);
 		decision_defer_metrics_report(f, &defer_metrics);
 	} else {
-		q_metrics_report(f, &last_queue_metrics);
 		decision_defer_metrics_report(f, &last_defer_metrics);
 	}
+}
+
+/*
+ * fanotify_queue_health_report - write per-worker queue health indicators.
+ * @f: report stream.
+ * Returns nothing.
+ */
+void fanotify_queue_health_report(FILE *f)
+{
+	unsigned int i;
+
+	if (f == NULL)
+		return;
+
+	if (active_decision_workers) {
+		for (i = 0; i < active_decision_workers; i++) {
+			struct queue_metrics metrics;
+			struct decision_worker *worker = &decision_workers[i];
+
+			if (worker->queue == NULL)
+				continue;
+
+			q_metrics_snapshot(worker->queue, &metrics);
+			q_metrics_report_worker(f, worker->id, &metrics);
+		}
+		return;
+	}
+
+	for (i = 0; i < last_queue_metrics_count; i++)
+		q_metrics_report_worker(f, i, &last_queue_metrics[i]);
 }
 
 /*

@@ -53,6 +53,7 @@ struct queue_metrics
 	unsigned int current_depth;
 	unsigned int max_depth;
 	unsigned long full_count;
+	uint64_t oldest_age_ns;
 };
 
 /* Close Q. */
@@ -77,6 +78,10 @@ unsigned int q_max_depth_snapshot_restore(struct queue *q, unsigned int saved);
 
 /* Write queue metrics using the current text report format. */
 void q_metrics_report(FILE *f, const struct queue_metrics *metrics);
+
+/* Write queue metrics for one decision worker queue. */
+void q_metrics_report_worker(FILE *f, unsigned int worker_id,
+		const struct queue_metrics *metrics);
 
 /* Write out queue metrics for Q. */
 void q_report(FILE *f, const struct queue *q);

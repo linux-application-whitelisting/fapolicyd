@@ -37,10 +37,12 @@
 #include "decision-timing.h"
 #include "queue.h"
 #include "message.h"
+#include "string-util.h"
 
 struct queue_entry
 {
 	decision_event_t event;
+	atomic_ullong queued_ns;
 };
 
 /*
@@ -67,11 +69,62 @@ struct queue_entry
  * Producers may answer only when enqueue fails.
  */
 
+/*
+ * queue_now_ns - read monotonic time for queue age reporting.
+ * Returns monotonic nanoseconds, or zero if the clock cannot be read.
+ */
+static uint64_t queue_now_ns(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts))
+		return 0;
+
+	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+/*
+ * q_oldest_age_ns - compute the age of the oldest queued event.
+ * @q: queue to inspect.
+ * @current_depth: current queue depth already captured by the caller.
+ *
+ * The queue is SPSC, so the consumer index identifies the oldest queued slot.
+ * The timestamp is separate from decision_event_t timing because queue health
+ * reports must work even when decision timing collection is disabled.
+ *
+ * Returns age in nanoseconds, or zero when the queue is empty.
+ */
+static uint64_t q_oldest_age_ns(const struct queue *q,
+		unsigned int current_depth)
+{
+	unsigned int n;
+	uint64_t now, queued;
+
+	if (current_depth == 0)
+		return 0;
+
+	n = atomic_load_explicit(&q->q_last, memory_order_acquire);
+	if (n >= q->num_entries)
+		return 0;
+
+	queued = atomic_load_explicit(&q->events[n].queued_ns,
+				      memory_order_acquire);
+	if (queued == 0)
+		return 0;
+
+	now = queue_now_ns();
+	if (now < queued)
+		return 0;
+
+	return now - queued;
+}
+
 /* Initialize a queue   */
 struct queue *q_open(size_t num_entries)
 {
 	struct queue *q;
 	int saved_errno;
+	size_t i;
 
 	if (num_entries == 0 || num_entries > UINT32_MAX ||
 	    num_entries > SIZE_MAX / sizeof(struct queue_entry)) {
@@ -86,6 +139,8 @@ struct queue *q_open(size_t num_entries)
 	q->events = calloc(num_entries, sizeof(struct queue_entry));
 	if (q->events == NULL)
 		goto err;
+	for (i = 0; i < num_entries; i++)
+		atomic_init(&q->events[i].queued_ns, 0);
 
 	q->num_entries = num_entries;
 	atomic_store_explicit(&q->q_next, 0, memory_order_relaxed);
@@ -133,6 +188,7 @@ void q_metrics_snapshot(const struct queue *q, struct queue_metrics *metrics)
 						  memory_order_relaxed);
 	metrics->full_count = atomic_load_explicit(&q->full_count,
 						   memory_order_relaxed);
+	metrics->oldest_age_ns = q_oldest_age_ns(q, metrics->current_depth);
 }
 
 /*
@@ -161,6 +217,7 @@ void q_metrics_snapshot_reset(struct queue *q, struct queue_metrics *metrics,
 						      memory_order_relaxed);
 	metrics->full_count = atomic_exchange_explicit(&q->full_count, 0,
 						       memory_order_relaxed);
+	metrics->oldest_age_ns = q_oldest_age_ns(q, current);
 
 	current = atomic_load_explicit(&q->queue_length, memory_order_relaxed);
 	for (;;) {
@@ -237,6 +294,29 @@ void q_metrics_report(FILE *f, const struct queue_metrics *metrics)
 }
 
 /*
+ * q_metrics_report_worker - write metrics for one decision worker queue.
+ * @f: output stream.
+ * @worker_id: decision worker that owns the queue.
+ * @metrics: queue metrics to report.
+ * Returns nothing.
+ */
+void q_metrics_report_worker(FILE *f, unsigned int worker_id,
+		const struct queue_metrics *metrics)
+{
+	char age[32];
+
+	fapolicyd_format_ns(metrics->oldest_age_ns, age, sizeof(age));
+	fprintf(f, "Decision worker %u current queue depth: %u\n",
+		worker_id, metrics->current_depth);
+	fprintf(f, "Decision worker %u max queue depth: %u\n",
+		worker_id, metrics->max_depth);
+	fprintf(f, "Decision worker %u queue full count: %lu\n",
+		worker_id, metrics->full_count);
+	fprintf(f, "Decision worker %u oldest queued age: %s\n",
+		worker_id, age);
+}
+
+/*
  * q_report - snapshot and write queue metrics for a live queue.
  * @f: output stream.
  * @q: queue to report.
@@ -254,6 +334,7 @@ void q_report(FILE *f, const struct queue *q)
 int q_enqueue(struct queue *q, const decision_event_t *data)
 {
 	unsigned int n;
+	uint64_t queued_ns;
 
 	if (atomic_load_explicit(&q->queue_length, memory_order_relaxed) ==
 		q->num_entries) {
@@ -270,8 +351,11 @@ int q_enqueue(struct queue *q, const decision_event_t *data)
 	 * a relaxed load of q_next is sufficient here.
 	 */
 	n = atomic_load_explicit(&q->q_next, memory_order_relaxed);
+	queued_ns = queue_now_ns();
 	q->events[n].event = *data;
 	q->events[n].event.enqueue_ns = decision_timing_queue_enqueue_time();
+	atomic_store_explicit(&q->events[n].queued_ns, queued_ns,
+			      memory_order_release);
 
 	n++;
 	if (n == q->num_entries)

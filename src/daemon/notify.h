@@ -36,6 +36,7 @@ void unmark_fanotify(mlist *m);
 void shutdown_fanotify(mlist *m);
 void fanotify_queue_report(FILE *f);
 void fanotify_queue_report_reset(FILE *f, int reset);
+void fanotify_queue_health_report(FILE *f);
 void fanotify_defer_config_report(FILE *f);
 void fanotify_defer_fallback_report(FILE *f);
 void fanotify_defer_age_report(FILE *f);

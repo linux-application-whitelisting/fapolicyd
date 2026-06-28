@@ -125,6 +125,29 @@ static void read_decision_metrics_report(char *buf, size_t size)
 }
 
 /*
+ * read_fanotify_queue_report - capture fanotify queue metrics output.
+ * @buf: destination buffer.
+ * @size: size of @buf.
+ * @reset: non-zero resets interval queue counters.
+ * Returns nothing. Exits if the temporary stream cannot be used.
+ */
+static void read_fanotify_queue_report(char *buf, size_t size, int reset)
+{
+	FILE *f = tmpfile();
+	size_t used;
+
+	if (f == NULL)
+		error(1, 0, "tmpfile failed");
+
+	fanotify_queue_report_reset(f, reset);
+	fflush(f);
+	rewind(f);
+	used = fread(buf, 1, size - 1, f);
+	buf[used] = 0;
+	fclose(f);
+}
+
+/*
  * read_operating_mode_report - capture the state operating mode section.
  * @buf: destination buffer.
  * @size: size of @buf.
@@ -360,6 +383,52 @@ static void test_dispatcher_worker_routing(void)
 }
 
 /*
+ * test_notify_queue_report_reset - verify per-worker queue metrics reset.
+ *
+ * Worker queues own their metrics independently. A metrics reset must clear
+ * the full counter for the queue that reported it while preserving the live
+ * depth state for future reports.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_notify_queue_report_reset(void)
+{
+	decision_event_t event = { 0 };
+	char report[2048];
+
+	CHECK(test_notify_queue_reset(1) == 0, 82,
+	      "[ERROR:82] notify queue reset failed for metrics");
+	CHECK(test_notify_queue_push(&event) == 0, 83,
+	      "[ERROR:83] queue metrics push failed");
+	errno = 0;
+	CHECK(test_notify_queue_push(&event) == -1 && errno == ENOSPC, 84,
+	      "[ERROR:84] full queue did not reject metrics push");
+
+	read_fanotify_queue_report(report, sizeof(report), 1);
+	CHECK(strstr(report, "Inter-thread current queue depth: 1\n") != NULL,
+	      85, "[ERROR:85] aggregate queue depth missing");
+	CHECK(strstr(report,
+		     "Decision worker 0 current queue depth: 1\n") != NULL,
+	      86, "[ERROR:86] worker current depth missing");
+	CHECK(strstr(report,
+		     "Decision worker 0 max queue depth: 1\n") != NULL,
+	      87, "[ERROR:87] worker max depth missing");
+	CHECK(strstr(report,
+		     "Decision worker 0 queue full count: 1\n") != NULL,
+	      88, "[ERROR:88] worker full count missing before reset");
+	CHECK(strstr(report,
+		     "Decision worker 0 oldest queued age: ") != NULL,
+	      89, "[ERROR:89] worker oldest age missing");
+
+	read_fanotify_queue_report(report, sizeof(report), 0);
+	CHECK(strstr(report,
+		     "Decision worker 0 queue full count: 0\n") != NULL,
+	      90, "[ERROR:90] worker full count did not reset");
+
+	test_notify_queue_destroy();
+}
+
+/*
  * main - exercise synthetic FAN_NOFD kernel metadata.
  * Returns 0 on success. Exits with error() on test failure.
  */
@@ -381,6 +450,7 @@ int main(void)
 
 	test_operating_mode_report_order();
 	test_dispatcher_worker_routing();
+	test_notify_queue_report_reset();
 
 	before = getKernelQueueOverflow();
 	metadata.mask = 0;

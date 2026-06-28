@@ -982,6 +982,7 @@ void do_state_report(FILE *f, int shutdown)
 	fprintf(f, "Reply errors: %lu\n",
 		failure_action_metrics_count(&failures,
 			FAILURE_REASON_RESPONSE_WRITE_FAILURE));
+	fanotify_queue_health_report(f);
 	fanotify_defer_fallback_report(f);
 	do_cache_health_report(f);
 	fanotify_defer_age_report(f);
