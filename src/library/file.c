@@ -62,30 +62,6 @@ static void resolve_path(const char *pcwd, char *path, size_t len)
 				__attr_access ((__write_only__, 2, 3));
 static file_init_status_t file_init_failure;
 
-/*
- * file_close_context - release file helper state owned by a decision context.
- * @ctx: context whose libmagic, udev, and device cache state should be freed.
- * Returns nothing.
- */
-static void file_close_context(struct decision_context *ctx)
-{
-	if (ctx->file_udev) {
-		udev_unref(ctx->file_udev);
-		ctx->file_udev = NULL;
-	}
-	if (ctx->magic_fast) {
-		magic_close(ctx->magic_fast);
-		ctx->magic_fast = NULL;
-	}
-	if (ctx->magic_full) {
-		magic_close(ctx->magic_full);
-		ctx->magic_full = NULL;
-	}
-	free(ctx->device_cache.devname);
-	ctx->device_cache.devname = NULL;
-	ctx->device_cache.device = 0;
-}
-
 // readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
 static const char *interpreters[] = {
 	"/lib64/ld-linux-x86-64.so.2",
@@ -117,7 +93,7 @@ int file_init(void)
 {
 	struct decision_context *ctx = decision_context_current();
 
-	file_close_context(ctx);
+	decision_context_close_file_helpers(ctx);
 
 	// Setup udev
 	ctx->file_udev = udev_new();
@@ -126,7 +102,7 @@ int file_init(void)
 	unsetenv("MAGIC");
 	if (file_init_failure == FILE_INIT_MAGIC_FAST_OPEN_FAILED) {
 		msg(LOG_ERR, "Unable to init fast libmagic");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FAST_OPEN_FAILED;
 	}
 
@@ -144,44 +120,44 @@ int file_init(void)
 		);
 	if (ctx->magic_fast == NULL) {
 		msg(LOG_ERR, "Unable to init fast libmagic");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FAST_OPEN_FAILED;
 	}
 
 	// Load only essential magic rules
 	if (file_init_failure == FILE_INIT_MAGIC_FAST_LOAD_FAILED) {
 		msg(LOG_ERR, "Unable to load fast magic database");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FAST_LOAD_FAILED;
 	}
 	if (magic_load(ctx->magic_fast, MAGIC_PATH) != 0) {
 		msg(LOG_ERR, "Unable to load fast magic database");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FAST_LOAD_FAILED;
 	}
 
 	// Full magic: normal operation
 	if (file_init_failure == FILE_INIT_MAGIC_FULL_OPEN_FAILED) {
 		msg(LOG_ERR, "Unable to init full libmagic");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FULL_OPEN_FAILED;
 	}
 	ctx->magic_full = magic_open(MAGIC_MIME|MAGIC_ERROR|MAGIC_NO_CHECK_CDF|
 			MAGIC_NO_CHECK_ELF);
 	if (ctx->magic_full == NULL) {
 		msg(LOG_ERR, "Unable to init full libmagic");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FULL_OPEN_FAILED;
 	}
 	// System default
 	if (file_init_failure == FILE_INIT_MAGIC_FULL_LOAD_FAILED) {
 		msg(LOG_ERR, "Unable to load default magic database");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FULL_LOAD_FAILED;
 	}
 	if (magic_load(ctx->magic_full, NULL) != 0) {
 		msg(LOG_ERR, "Unable to load default magic database");
-		file_close_context(ctx);
+		decision_context_close_file_helpers(ctx);
 		return FILE_INIT_MAGIC_FULL_LOAD_FAILED;
 	}
 	return FILE_INIT_OK;
@@ -191,7 +167,7 @@ int file_init(void)
 // Release memory during shutdown
 void file_close(void)
 {
-	file_close_context(decision_context_current());
+	decision_context_close_file_helpers(decision_context_current());
 }
 
 

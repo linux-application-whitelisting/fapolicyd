@@ -233,6 +233,83 @@ static unsigned long policy_counter_snapshot(atomic_ulong *counter, int reset)
 	return atomic_load_explicit(counter, memory_order_relaxed);
 }
 
+enum policy_counter_id {
+	POLICY_COUNTER_ALLOWED,
+	POLICY_COUNTER_DENIED,
+};
+
+struct policy_counter_snapshot {
+	enum policy_counter_id id;
+	unsigned long total;
+	int reset;
+};
+
+struct decision_metrics_snapshot {
+	decision_metrics_t *metrics;
+	int reset;
+};
+
+/*
+ * policy_counter_from_context - select one lifetime counter from a context.
+ * @counters: worker-local policy counter block.
+ * @id: counter requested by a public getter.
+ *
+ * Returns the requested atomic counter, or NULL if @id is not valid.
+ */
+static atomic_ulong *policy_counter_from_context(
+		struct decision_policy_counters *counters,
+		enum policy_counter_id id)
+{
+	switch (id) {
+	case POLICY_COUNTER_ALLOWED:
+		return &counters->allowed;
+	case POLICY_COUNTER_DENIED:
+		return &counters->denied;
+	default:
+		return NULL;
+	}
+}
+
+/*
+ * policy_counter_snapshot_context - add one worker counter to an aggregate.
+ * @ctx: worker context being sampled.
+ * @data: struct policy_counter_snapshot aggregate.
+ * Returns nothing.
+ */
+static void policy_counter_snapshot_context(struct decision_context *ctx,
+		void *data)
+{
+	struct policy_counter_snapshot *snapshot = data;
+	atomic_ulong *counter;
+
+	if (ctx == NULL || snapshot == NULL)
+		return;
+
+	counter = policy_counter_from_context(&ctx->policy_counters,
+					      snapshot->id);
+	if (counter)
+		snapshot->total += policy_counter_snapshot(counter,
+							   snapshot->reset);
+}
+
+/*
+ * policy_counter_total_reset - aggregate one policy counter across workers.
+ * @id: counter to copy.
+ * @reset: non-zero resets counters after copying them.
+ * Returns the aggregate counter value.
+ */
+static unsigned long policy_counter_total_reset(enum policy_counter_id id,
+		int reset)
+{
+	struct policy_counter_snapshot snapshot = {
+		.id = id,
+		.reset = reset,
+	};
+
+	decision_context_for_each(policy_counter_snapshot_context, &snapshot);
+	return snapshot.total;
+}
+
 /*
  * getAllowedReset - copy the allowed counter, optionally resetting it.
  * @reset: non-zero resets the counter after copying it.
@@ -240,8 +317,7 @@ static unsigned long policy_counter_snapshot(atomic_ulong *counter, int reset)
  */
 unsigned long getAllowedReset(int reset)
 {
-	return policy_counter_snapshot(
-		&decision_context_current()->policy_counters.allowed, reset);
+	return policy_counter_total_reset(POLICY_COUNTER_ALLOWED, reset);
 }
 
 /*
@@ -251,8 +327,63 @@ unsigned long getAllowedReset(int reset)
  */
 unsigned long getDeniedReset(int reset)
 {
-	return policy_counter_snapshot(
-		&decision_context_current()->policy_counters.denied, reset);
+	return policy_counter_total_reset(POLICY_COUNTER_DENIED, reset);
+}
+
+/*
+ * decision_metrics_add_context - add one worker's decision counters.
+ * @ctx: worker context being sampled.
+ * @data: struct decision_metrics_snapshot aggregate.
+ * Returns nothing.
+ */
+static void decision_metrics_add_context(struct decision_context *ctx,
+		void *data)
+{
+	struct decision_metrics_snapshot *snapshot = data;
+	decision_metrics_t *metrics;
+	struct decision_policy_counters *counters;
+
+	if (ctx == NULL || snapshot == NULL || snapshot->metrics == NULL)
+		return;
+
+	metrics = snapshot->metrics;
+	counters = &ctx->policy_counters;
+	metrics->allowed_by_rule +=
+		policy_counter_snapshot(&counters->allowed_by_rule,
+					snapshot->reset);
+	metrics->allowed_by_fallthrough +=
+		policy_counter_snapshot(&counters->allowed_by_fallthrough,
+					snapshot->reset);
+	metrics->fallthrough_open +=
+		policy_counter_snapshot(&counters->fallthrough_open,
+					snapshot->reset);
+	metrics->fallthrough_execute +=
+		policy_counter_snapshot(&counters->fallthrough_execute,
+					snapshot->reset);
+	metrics->fallthrough_trusted +=
+		policy_counter_snapshot(&counters->fallthrough_trusted,
+					snapshot->reset);
+	metrics->fallthrough_untrusted +=
+		policy_counter_snapshot(&counters->fallthrough_untrusted,
+					snapshot->reset);
+	metrics->fallthrough_trust_unknown +=
+		policy_counter_snapshot(&counters->fallthrough_trust_unknown,
+					snapshot->reset);
+	metrics->fallthrough_executable +=
+		policy_counter_snapshot(&counters->fallthrough_executable,
+					snapshot->reset);
+	metrics->fallthrough_programmatic +=
+		policy_counter_snapshot(&counters->fallthrough_programmatic,
+					snapshot->reset);
+	metrics->fallthrough_sharedlib +=
+		policy_counter_snapshot(&counters->fallthrough_sharedlib,
+					snapshot->reset);
+	metrics->fallthrough_unknown_ftype +=
+		policy_counter_snapshot(&counters->fallthrough_unknown_ftype,
+					snapshot->reset);
+	metrics->fallthrough_other_ftype +=
+		policy_counter_snapshot(&counters->fallthrough_other_ftype,
+					snapshot->reset);
 }
 
 /*
@@ -275,44 +406,16 @@ void getDecisionMetrics(decision_metrics_t *metrics)
  */
 void getDecisionMetricsReset(decision_metrics_t *metrics, int reset)
 {
-	struct decision_policy_counters *counters =
-		&decision_context_current()->policy_counters;
+	struct decision_metrics_snapshot snapshot = {
+		.metrics = metrics,
+		.reset = reset,
+	};
 
 	if (!metrics)
 		return;
 
-	metrics->allowed_by_rule =
-		policy_counter_snapshot(&counters->allowed_by_rule, reset);
-	metrics->allowed_by_fallthrough =
-		policy_counter_snapshot(&counters->allowed_by_fallthrough,
-					reset);
-	metrics->fallthrough_open =
-		policy_counter_snapshot(&counters->fallthrough_open, reset);
-	metrics->fallthrough_execute =
-		policy_counter_snapshot(&counters->fallthrough_execute, reset);
-	metrics->fallthrough_trusted =
-		policy_counter_snapshot(&counters->fallthrough_trusted, reset);
-	metrics->fallthrough_untrusted =
-		policy_counter_snapshot(&counters->fallthrough_untrusted,
-					reset);
-	metrics->fallthrough_trust_unknown =
-		policy_counter_snapshot(&counters->fallthrough_trust_unknown,
-					reset);
-	metrics->fallthrough_executable =
-		policy_counter_snapshot(&counters->fallthrough_executable,
-					reset);
-	metrics->fallthrough_programmatic =
-		policy_counter_snapshot(&counters->fallthrough_programmatic,
-					reset);
-	metrics->fallthrough_sharedlib =
-		policy_counter_snapshot(&counters->fallthrough_sharedlib,
-					reset);
-	metrics->fallthrough_unknown_ftype =
-		policy_counter_snapshot(&counters->fallthrough_unknown_ftype,
-					reset);
-	metrics->fallthrough_other_ftype =
-		policy_counter_snapshot(&counters->fallthrough_other_ftype,
-					reset);
+	memset(metrics, 0, sizeof(*metrics));
+	decision_context_for_each(decision_metrics_add_context, &snapshot);
 	metrics->ruleset_generation =
 		atomic_load_explicit(&ruleset_generation,
 				     memory_order_relaxed);

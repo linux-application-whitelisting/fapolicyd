@@ -34,6 +34,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <errno.h>
+#include <libudev.h>
 
 #include "attr-lookup-metrics.h"
 #include "decision-context.h"
@@ -68,22 +69,29 @@ static struct decision_context default_decision_context = {
 	.building_stale_rate_limit =
 		MESSAGE_RATE_LIMIT_INIT(SUBJECT_BUILDING_LOG_INTERVAL),
 };
-static struct decision_context *current_decision_context =
-	&default_decision_context;
+static __thread struct decision_context *current_decision_context;
+static struct decision_context *report_contexts;
 
-#define subj_cache (current_decision_context->subject_cache)
-#define obj_cache (current_decision_context->object_cache)
-#define obj_cache_warned (current_decision_context->object_cache_warned)
+static inline struct decision_context *active_decision_context(void)
+{
+	if (current_decision_context == NULL)
+		return &default_decision_context;
+	return current_decision_context;
+}
+
+#define subj_cache (active_decision_context()->subject_cache)
+#define obj_cache (active_decision_context()->object_cache)
+#define obj_cache_warned (active_decision_context()->object_cache_warned)
 #define early_subj_cache_evictions \
-	(current_decision_context->early_subject_cache_evictions)
+	(active_decision_context()->early_subject_cache_evictions)
 #define building_tracer_evictions \
-	(current_decision_context->building_tracer_evict_count)
+	(active_decision_context()->building_tracer_evict_count)
 #define building_stale_evictions \
-	(current_decision_context->building_stale_evict_count)
+	(active_decision_context()->building_stale_evict_count)
 #define building_tracer_log \
-	(current_decision_context->building_tracer_rate_limit)
+	(active_decision_context()->building_tracer_rate_limit)
 #define building_stale_log \
-	(current_decision_context->building_stale_rate_limit)
+	(active_decision_context()->building_stale_rate_limit)
 
 atomic_bool needs_flush = false;
 
@@ -109,7 +117,7 @@ struct building_evict_context {
  */
 struct decision_context *decision_context_current(void)
 {
-	return current_decision_context;
+	return active_decision_context();
 }
 
 /*
@@ -119,10 +127,101 @@ struct decision_context *decision_context_current(void)
  */
 void decision_context_set_current(struct decision_context *ctx)
 {
+	current_decision_context = ctx;
+}
+
+/*
+ * decision_context_close_file_helpers - release context-owned file state.
+ * @ctx: context whose libmagic, udev, and device cache state should be freed.
+ * Returns nothing.
+ */
+void decision_context_close_file_helpers(struct decision_context *ctx)
+{
 	if (ctx == NULL)
-		current_decision_context = &default_decision_context;
-	else
-		current_decision_context = ctx;
+		return;
+
+	if (ctx->file_udev) {
+		udev_unref(ctx->file_udev);
+		ctx->file_udev = NULL;
+	}
+	if (ctx->magic_fast) {
+		magic_close(ctx->magic_fast);
+		ctx->magic_fast = NULL;
+	}
+	if (ctx->magic_full) {
+		magic_close(ctx->magic_full);
+		ctx->magic_full = NULL;
+	}
+	free(ctx->device_cache.devname);
+	ctx->device_cache.devname = NULL;
+	ctx->device_cache.device = 0;
+}
+
+/*
+ * decision_context_register - expose a worker context to report aggregation.
+ * @ctx: context whose private counters should be included in reports.
+ * Returns nothing.
+ */
+static void decision_context_register(struct decision_context *ctx)
+{
+	if (ctx == NULL || ctx == &default_decision_context ||
+	    ctx->report_registered)
+		return;
+
+	ctx->report_next = report_contexts;
+	ctx->report_registered = true;
+	report_contexts = ctx;
+}
+
+/*
+ * decision_context_unregister - remove a context from report aggregation.
+ * @ctx: context being destroyed.
+ * Returns nothing.
+ */
+static void decision_context_unregister(struct decision_context *ctx)
+{
+	struct decision_context **cur = &report_contexts;
+
+	if (ctx == NULL || !ctx->report_registered)
+		return;
+
+	while (*cur) {
+		if (*cur == ctx) {
+			*cur = ctx->report_next;
+			ctx->report_next = NULL;
+			ctx->report_registered = false;
+			return;
+		}
+		cur = &(*cur)->report_next;
+	}
+
+	ctx->report_next = NULL;
+	ctx->report_registered = false;
+}
+
+/*
+ * decision_context_for_each - visit contexts that own decision state.
+ * @iter: callback invoked for each registered context.
+ * @data: caller-private callback data.
+ *
+ * Policy-only tests can run without init_event_system(). In that case the
+ * default thread context is visited so metrics recorded through
+ * decision_context_current() remain visible to reports.
+ */
+void decision_context_for_each(decision_context_iter_fn iter, void *data)
+{
+	struct decision_context *ctx;
+
+	if (iter == NULL)
+		return;
+
+	if (report_contexts == NULL) {
+		iter(active_decision_context(), data);
+		return;
+	}
+
+	for (ctx = report_contexts; ctx; ctx = ctx->report_next)
+		iter(ctx, data);
 }
 
 /*
@@ -374,14 +473,66 @@ static void obj_evict_warn(void *unused)
 	}
 }
 
-// Return 0 on success and 1 on error
-int init_event_system(const conf_t *config)
+/*
+ * decision_context_destroy - release one worker's mutable decision state.
+ * @ctx: context returned by decision_context_create().
+ *
+ * The caller must stop the owning worker before destroying its context. The
+ * cleanup disables cache eviction warnings because every live entry is being
+ * intentionally discarded.
+ */
+void decision_context_destroy(struct decision_context *ctx)
+{
+	if (ctx == NULL || ctx == &default_decision_context)
+		return;
+
+	/* We're intentionally clearing the caches; disable warnings */
+	if (ctx->subject_cache)
+		ctx->subject_cache->evict_cb = NULL;
+	if (ctx->early_subject_cache_evictions)
+		msg(LOG_WARNING,
+		   "Processes are being evicted from the subject cache before "
+		   "pattern detection completes: increase subj_cache_size "
+		   "(total early evictions: %u)",
+		   ctx->early_subject_cache_evictions);
+	if (ctx->object_cache)
+		ctx->object_cache->evict_cb = NULL;
+	if (ctx->object_cache_warned)
+		msg(LOG_WARNING,
+		  "object cache eviction ratios high: increase obj_cache_size");
+
+	decision_context_unregister(ctx);
+	decision_context_close_file_helpers(ctx);
+	destroy_lru(ctx->subject_cache);
+	destroy_lru(ctx->object_cache);
+	decision_defer_destroy(&ctx->defer_queue);
+	free(ctx->working_buffer);
+	if (current_decision_context == ctx)
+		decision_context_set_current(NULL);
+	free(ctx);
+}
+
+/*
+ * decision_context_create - allocate private mutable state for one worker.
+ * @config: daemon cache and defer sizing configuration.
+ *
+ * The returned context owns its subject cache, object cache, defer array,
+ * policy counters, logging buffer storage, and file helper state. File helper
+ * handles are opened later by file_init() after the daemon has dropped to its
+ * runtime credentials.
+ *
+ * Returns a new registered context, or NULL on allocation failure.
+ */
+struct decision_context *decision_context_create(const struct conf *config)
 {
 	struct decision_context *ctx;
 
+	if (config == NULL)
+		return NULL;
+
 	ctx = calloc(1, sizeof(*ctx));
 	if (ctx == NULL)
-		return 1;
+		return NULL;
 	decision_context_init_rate_limits(ctx);
 	decision_context_init_policy_counters(&ctx->policy_counters);
 
@@ -395,28 +546,36 @@ int init_event_system(const conf_t *config)
 				(void (*)(void *))subject_clear, "Subject",
 				(void (*)(void *))subject_evict_warn);
 	if (!ctx->subject_cache) {
-		free(ctx);
-		return 1;
+		decision_context_destroy(ctx);
+		return NULL;
 	}
 
 	ctx->object_cache = init_lru(config->obj_cache_size,
 				(void (*)(void *))object_clear, "Object",
 				obj_evict_warn);
 	if (!ctx->object_cache) {
-		destroy_lru(ctx->subject_cache);
-		free(ctx);
-		return 1;
+		decision_context_destroy(ctx);
+		return NULL;
 	}
 
 	if (decision_defer_init(&ctx->defer_queue, config->subj_cache_size)) {
-		destroy_lru(ctx->subject_cache);
-		destroy_lru(ctx->object_cache);
-		free(ctx);
-		return 1;
+		decision_context_destroy(ctx);
+		return NULL;
 	}
 	decision_defer_metrics_snapshot_reset(&ctx->defer_queue,
 					      &ctx->last_defer_metrics, 0);
+	decision_context_register(ctx);
 
+	return ctx;
+}
+
+// Return 0 on success and 1 on error
+int init_event_system(const conf_t *config)
+{
+	struct decision_context *ctx = decision_context_create(config);
+
+	if (ctx == NULL)
+		return 1;
 	decision_context_set_current(ctx);
 	return 0;
 }
@@ -445,31 +604,13 @@ static int flush_cache(void)
 
 void destroy_event_system(void)
 {
-	struct decision_context *ctx = current_decision_context;
+	struct decision_context *ctx;
 
-	if (ctx == &default_decision_context)
-		return;
-
-	/* We're intentionally clearing the caches; disable warnings */
-	if (ctx->subject_cache)
-		ctx->subject_cache->evict_cb = NULL;
-	if (ctx->early_subject_cache_evictions)
-		msg(LOG_WARNING,
-		   "Processes are being evicted from the subject cache before "
-		   "pattern detection completes: increase subj_cache_size "
-		   "(total early evictions: %u)",
-		   ctx->early_subject_cache_evictions);
-	if (ctx->object_cache)
-		ctx->object_cache->evict_cb = NULL;
-	if (ctx->object_cache_warned)
-		msg(LOG_WARNING,
-		  "object cache eviction ratios high: increase obj_cache_size");
-	destroy_lru(ctx->subject_cache);
-	destroy_lru(ctx->object_cache);
-	decision_defer_destroy(&ctx->defer_queue);
-	free(ctx->working_buffer);
+	while (report_contexts) {
+		ctx = report_contexts;
+		decision_context_destroy(ctx);
+	}
 	decision_context_set_current(NULL);
-	free(ctx);
 }
 
 static inline void reset_subject_attributes(s_array *s)
@@ -1308,6 +1449,78 @@ static void print_cache_metrics(FILE *f, const struct lru_metrics *metrics)
 		metrics->hits ? (100*metrics->evictions)/metrics->hits : 0);
 }
 
+struct cache_report_snapshot {
+	struct lru_metrics subject;
+	struct lru_metrics object;
+	unsigned int early_evictions;
+	unsigned int tracer_evictions;
+	unsigned int stale_evictions;
+	int reset;
+};
+
+/*
+ * lru_metrics_merge - fold one worker cache snapshot into an aggregate.
+ * @aggregate: total cache metrics reported to operators.
+ * @metrics: metrics copied from one worker-owned cache.
+ * Returns nothing.
+ */
+static void lru_metrics_merge(struct lru_metrics *aggregate,
+		const struct lru_metrics *metrics)
+{
+	aggregate->count += metrics->count;
+	aggregate->total += metrics->total;
+	aggregate->hits += metrics->hits;
+	aggregate->misses += metrics->misses;
+	aggregate->collisions += metrics->collisions;
+	aggregate->evictions += metrics->evictions;
+}
+
+/*
+ * cache_report_snapshot_context - snapshot one worker context for reports.
+ * @ctx: worker context being sampled.
+ * @data: struct cache_report_snapshot aggregate.
+ * Returns nothing.
+ */
+static void cache_report_snapshot_context(struct decision_context *ctx,
+		void *data)
+{
+	struct cache_report_snapshot *snapshot = data;
+	struct lru_metrics metrics;
+
+	if (ctx == NULL || snapshot == NULL)
+		return;
+
+	lru_metrics_snapshot(ctx->subject_cache, &metrics, snapshot->reset);
+	lru_metrics_merge(&snapshot->subject, &metrics);
+	lru_metrics_snapshot(ctx->object_cache, &metrics, snapshot->reset);
+	lru_metrics_merge(&snapshot->object, &metrics);
+
+	snapshot->early_evictions += ctx->early_subject_cache_evictions;
+	snapshot->tracer_evictions += ctx->building_tracer_evict_count;
+	snapshot->stale_evictions += ctx->building_stale_evict_count;
+	if (snapshot->reset) {
+		ctx->early_subject_cache_evictions = 0;
+		ctx->building_tracer_evict_count = 0;
+		ctx->building_stale_evict_count = 0;
+	}
+}
+
+/*
+ * cache_report_snapshot_reset - aggregate cache counters across workers.
+ * @snapshot: destination for aggregate cache and BUILDING eviction metrics.
+ * @reset: non-zero resets interval counters after copying them.
+ * Returns nothing.
+ */
+static void cache_report_snapshot_reset(struct cache_report_snapshot *snapshot,
+		int reset)
+{
+	memset(snapshot, 0, sizeof(*snapshot));
+	snapshot->subject.name = "Subject";
+	snapshot->object.name = "Object";
+	snapshot->reset = reset;
+	decision_context_for_each(cache_report_snapshot_context, snapshot);
+}
+
 void run_usage_report(const conf_t *config, FILE *f)
 {
 	time_t t;
@@ -1425,15 +1638,14 @@ void do_cache_reports(FILE *f)
  */
 void do_cache_config_report(FILE *f)
 {
-	struct lru_metrics metrics;
+	struct cache_report_snapshot snapshot;
 
 	if (f == NULL)
 		return;
 
-	lru_metrics_snapshot(subj_cache, &metrics, 0);
-	print_cache_config(f, &metrics);
-	lru_metrics_snapshot(obj_cache, &metrics, 0);
-	print_cache_config(f, &metrics);
+	cache_report_snapshot_reset(&snapshot, 0);
+	print_cache_config(f, &snapshot.subject);
+	print_cache_config(f, &snapshot.object);
 }
 
 /*
@@ -1443,15 +1655,14 @@ void do_cache_config_report(FILE *f)
  */
 void do_cache_utilization_report(FILE *f)
 {
-	struct lru_metrics metrics;
+	struct cache_report_snapshot snapshot;
 
 	if (f == NULL)
 		return;
 
-	lru_metrics_snapshot(subj_cache, &metrics, 0);
-	print_cache_utilization(f, &metrics);
-	lru_metrics_snapshot(obj_cache, &metrics, 0);
-	print_cache_utilization(f, &metrics);
+	cache_report_snapshot_reset(&snapshot, 0);
+	print_cache_utilization(f, &snapshot.subject);
+	print_cache_utilization(f, &snapshot.object);
 }
 
 /*
@@ -1461,15 +1672,18 @@ void do_cache_utilization_report(FILE *f)
  */
 void do_cache_health_report(FILE *f)
 {
+	struct cache_report_snapshot snapshot;
+
 	if (f == NULL)
 		return;
 
+	cache_report_snapshot_reset(&snapshot, 0);
 	fprintf(f, "Early subject cache evictions: %u\n",
-		early_subj_cache_evictions);
+		snapshot.early_evictions);
 	fprintf(f, "Subject BUILDING tracer evictions: %u\n",
-		building_tracer_evictions);
+		snapshot.tracer_evictions);
 	fprintf(f, "Subject BUILDING stale evictions: %u\n",
-		building_stale_evictions);
+		snapshot.stale_evictions);
 }
 
 /*
@@ -1480,32 +1694,24 @@ void do_cache_health_report(FILE *f)
  */
 void do_cache_metrics_report_reset(FILE *f, int reset)
 {
-	struct lru_metrics metrics;
-	unsigned int early_evictions = early_subj_cache_evictions;
-	unsigned int tracer_evictions = building_tracer_evictions;
-	unsigned int stale_evictions = building_stale_evictions;
+	struct cache_report_snapshot snapshot;
 
 	if (f == NULL)
 		return;
 
-	if (reset) {
-		early_subj_cache_evictions = 0;
-		building_tracer_evictions = 0;
-		building_stale_evictions = 0;
-	}
+	cache_report_snapshot_reset(&snapshot, reset);
 
 	fprintf(f, "\nSubject cache effectiveness:\n");
-	lru_metrics_snapshot(subj_cache, &metrics, reset);
-	print_cache_metrics(f, &metrics);
-	fprintf(f, "Early subject cache evictions: %u\n", early_evictions);
+	print_cache_metrics(f, &snapshot.subject);
+	fprintf(f, "Early subject cache evictions: %u\n",
+		snapshot.early_evictions);
 	fprintf(f, "Subject BUILDING tracer evictions: %u\n",
-		tracer_evictions);
+		snapshot.tracer_evictions);
 	fprintf(f, "Subject BUILDING stale evictions: %u\n",
-		stale_evictions);
+		snapshot.stale_evictions);
 
 	fprintf(f, "\nObject cache effectiveness:\n");
-	lru_metrics_snapshot(obj_cache, &metrics, reset);
-	print_cache_metrics(f, &metrics);
+	print_cache_metrics(f, &snapshot.object);
 }
 
 /*

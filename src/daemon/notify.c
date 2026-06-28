@@ -105,6 +105,7 @@ extern conf_t config;
 struct decision_worker {
 	unsigned int id;
 	struct queue *queue;
+	struct decision_context *context;
 	pthread_t thread;
 	atomic_bool alive;
 };
@@ -124,9 +125,6 @@ static unsigned int rpt_interval;
 static struct message_rate_limit kernel_queue_overflow_log =
 	MESSAGE_RATE_LIMIT_INIT(KERNEL_OVERFLOW_LOG_INTERVAL);
 
-#define defer_queue (decision_context_current()->defer_queue)
-#define last_defer_metrics (decision_context_current()->last_defer_metrics)
-
 // Local functions
 static void *decision_worker_main(void *arg);
 static void *deadmans_switch_thread_main(void *arg);
@@ -135,7 +133,7 @@ static void dispatch_decision_event(struct decision_worker *worker,
 static void fanotify_failure_action(failure_reason_t reason);
 static unsigned int release_ready_deferred_events(
 		struct decision_worker *worker, int *rpt_is_stale);
-static unsigned int shutdown_deferred_events(void);
+static unsigned int shutdown_deferred_events(struct decision_worker *worker);
 static unsigned int shutdown_queued_events(struct decision_worker *worker);
 static void save_last_queue_metrics(void);
 static unsigned int timing_queue_depth_reset(void *ctx);
@@ -355,6 +353,34 @@ static int ignore_mounts_configured(const char *list)
 	return 0;
 }
 
+/*
+ * worker_context - return the decision context owned by a worker.
+ * @worker: decision worker, or NULL in unit-test helper paths.
+ *
+ * Unit tests can exercise queue/defer cleanup without full daemon startup. In
+ * that case the default thread context is used, matching the older single
+ * global-context behavior.
+ *
+ * Returns the worker context or the current thread context fallback.
+ */
+static struct decision_context *worker_context(struct decision_worker *worker)
+{
+	if (worker && worker->context)
+		return worker->context;
+	return decision_context_current();
+}
+
+/*
+ * worker_defer_queue - return the worker-local subject defer array.
+ * @worker: decision worker whose deferred events should be accessed.
+ * Returns the defer queue owned by the worker context.
+ */
+static struct decision_defer_queue *worker_defer_queue(
+		struct decision_worker *worker)
+{
+	return &worker_context(worker)->defer_queue;
+}
+
 int init_fanotify(const conf_t *conf, mlist *m)
 {
 	struct decision_worker *worker = &decision_workers[0];
@@ -373,6 +399,7 @@ int init_fanotify(const conf_t *conf, mlist *m)
 
 	// Get the first worker queue ready before fanotify can dispatch events.
 	worker->id = 0;
+	worker->context = decision_context_current();
 	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
 	worker->queue = q_open(conf->q_size);
 	if (worker->queue == NULL) {
@@ -382,8 +409,9 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		exit(1);
 	}
 	save_last_queue_metrics();
-	if (defer_queue.entries == NULL &&
-	    decision_defer_init(&defer_queue, conf->subj_cache_size)) {
+	if (worker->context->defer_queue.entries == NULL &&
+	    decision_defer_init(&worker->context->defer_queue,
+				conf->subj_cache_size)) {
 		msg(LOG_ERR, "Failed setting up subject defer array (%s)",
 			strerror(errno));
 		q_close(worker->queue);
@@ -391,8 +419,9 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		active_decision_workers = 0;
 		exit(1);
 	}
-	decision_defer_metrics_snapshot_reset(&defer_queue,
-					      &last_defer_metrics, 0);
+	decision_defer_metrics_snapshot_reset(&worker->context->defer_queue,
+					      &worker->context->last_defer_metrics,
+					      0);
 	decision_timing_set_queue_depth_hooks(timing_queue_depth_reset,
 					      timing_queue_depth_restore,
 					      worker->queue);
@@ -600,18 +629,6 @@ void unmark_fanotify(mlist *m)
 }
 
 /*
- * primary_worker_queue - return worker 0's queue when initialized.
- * Returns NULL before initialization or after shutdown.
- */
-static struct queue *primary_worker_queue(void)
-{
-	if (active_decision_workers == 0)
-		return NULL;
-
-	return decision_workers[0].queue;
-}
-
-/*
  * queue_metrics_merge - fold one worker queue snapshot into an aggregate.
  * @aggregate: aggregate metrics being built.
  * @metrics: worker queue metrics to add.
@@ -663,14 +680,22 @@ void shutdown_fanotify(mlist *m)
 
 	// Clean up
 	save_last_queue_metrics();
-	decision_defer_metrics_snapshot_reset(&defer_queue,
-					      &last_defer_metrics, 0);
+	for (i = 0; i < active_decision_workers; i++) {
+		struct decision_context *ctx = decision_workers[i].context;
+
+		if (ctx == NULL)
+			continue;
+		decision_defer_metrics_snapshot_reset(&ctx->defer_queue,
+						      &ctx->last_defer_metrics,
+						      0);
+	}
 	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
 	for (i = 0; i < active_decision_workers; i++) {
 		if (decision_workers[i].queue == NULL)
 			continue;
 		q_close(decision_workers[i].queue);
 		decision_workers[i].queue = NULL;
+		decision_workers[i].context = NULL;
 	}
 	active_decision_workers = 0;
 	close(rpt_timer_fd);
@@ -709,6 +734,70 @@ static unsigned int timing_queue_depth_reset(void *ctx)
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved)
 {
 	return q_max_depth_snapshot_restore(ctx, saved);
+}
+
+struct defer_report_snapshot {
+	struct decision_defer_metrics metrics;
+	int reset;
+};
+
+/*
+ * defer_metrics_merge - fold one worker defer snapshot into an aggregate.
+ * @aggregate: aggregate defer metrics reported to operators.
+ * @metrics: metrics copied from one worker-owned defer array.
+ * Returns nothing.
+ */
+static void defer_metrics_merge(struct decision_defer_metrics *aggregate,
+		const struct decision_defer_metrics *metrics)
+{
+	aggregate->capacity += metrics->capacity;
+	aggregate->current_depth += metrics->current_depth;
+	aggregate->deferred_events += metrics->deferred_events;
+	aggregate->max_depth += metrics->max_depth;
+	aggregate->fallbacks += metrics->fallbacks;
+	if (metrics->oldest_age_ns > aggregate->oldest_age_ns)
+		aggregate->oldest_age_ns = metrics->oldest_age_ns;
+}
+
+/*
+ * defer_report_snapshot_context - snapshot one worker defer array.
+ * @ctx: worker context being sampled.
+ * @data: struct defer_report_snapshot aggregate.
+ * Returns nothing.
+ */
+static void defer_report_snapshot_context(struct decision_context *ctx,
+		void *data)
+{
+	struct defer_report_snapshot *snapshot = data;
+	struct decision_defer_metrics metrics;
+
+	if (ctx == NULL || snapshot == NULL)
+		return;
+
+	decision_defer_metrics_snapshot_reset(&ctx->defer_queue, &metrics,
+					      snapshot->reset);
+	ctx->last_defer_metrics = metrics;
+	defer_metrics_merge(&snapshot->metrics, &metrics);
+}
+
+/*
+ * defer_report_snapshot_reset - aggregate defer counters across workers.
+ * @metrics: destination for aggregate defer metrics.
+ * @reset: non-zero resets interval counters after copying them.
+ * Returns nothing.
+ */
+static void defer_report_snapshot_reset(struct decision_defer_metrics *metrics,
+		int reset)
+{
+	struct defer_report_snapshot snapshot = {
+		.reset = reset,
+	};
+
+	if (metrics == NULL)
+		return;
+
+	decision_context_for_each(defer_report_snapshot_context, &snapshot);
+	*metrics = snapshot.metrics;
 }
 
 /*
@@ -764,14 +853,11 @@ void fanotify_queue_report_reset(FILE *f, int reset)
 	for (i = 0; i < count; i++)
 		q_metrics_report_worker(f, worker_ids[i], &metrics[i]);
 
-	if (primary_worker_queue()) {
+	{
 		struct decision_defer_metrics defer_metrics;
 
-		decision_defer_metrics_snapshot_reset(&defer_queue,
-						      &defer_metrics, reset);
+		defer_report_snapshot_reset(&defer_metrics, reset);
 		decision_defer_metrics_report(f, &defer_metrics);
-	} else {
-		decision_defer_metrics_report(f, &last_defer_metrics);
 	}
 }
 
@@ -817,11 +903,7 @@ void fanotify_defer_config_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (primary_worker_queue())
-		decision_defer_metrics_snapshot_reset(&defer_queue,
-						      &metrics, 0);
-	else
-		metrics = last_defer_metrics;
+	defer_report_snapshot_reset(&metrics, 0);
 	decision_defer_config_report(f, &metrics);
 }
 
@@ -837,11 +919,7 @@ void fanotify_defer_fallback_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (primary_worker_queue())
-		decision_defer_metrics_snapshot_reset(&defer_queue,
-						      &metrics, 0);
-	else
-		metrics = last_defer_metrics;
+	defer_report_snapshot_reset(&metrics, 0);
 	decision_defer_fallback_report(f, &metrics);
 }
 
@@ -857,11 +935,7 @@ void fanotify_defer_age_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (primary_worker_queue())
-		decision_defer_metrics_snapshot_reset(&defer_queue,
-						      &metrics, 0);
-	else
-		metrics = last_defer_metrics;
+	defer_report_snapshot_reset(&metrics, 0);
 	decision_defer_age_report(f, &metrics);
 }
 
@@ -877,11 +951,7 @@ void fanotify_defer_health_report(FILE *f)
 	if (f == NULL)
 		return;
 
-	if (primary_worker_queue())
-		decision_defer_metrics_snapshot_reset(&defer_queue,
-						      &metrics, 0);
-	else
-		metrics = last_defer_metrics;
+	defer_report_snapshot_reset(&metrics, 0);
 	decision_defer_health_report(f, &metrics);
 }
 
@@ -1008,6 +1078,8 @@ static void run_decision_event(struct decision_worker *worker,
 static void dispatch_decision_event(struct decision_worker *worker,
 		decision_event_t *event, int *rpt_is_stale)
 {
+	struct decision_defer_queue *defer = worker_defer_queue(worker);
+
 	if (event->worker_index == DECISION_EVENT_NO_WORKER)
 		event->worker_index = worker->id;
 	else if (event->worker_index != worker->id)
@@ -1028,11 +1100,11 @@ static void dispatch_decision_event(struct decision_worker *worker,
 	 */
 	if (event_subject_slot_is_blocked(event->subject_slot,
 					  event->metadata.pid)) {
-		if (decision_defer_push(&defer_queue, event) == 0) {
+		if (decision_defer_push(defer, event) == 0) {
 			*rpt_is_stale = 1;
 			return;
 		}
-		decision_defer_count_fallback(&defer_queue);
+		decision_defer_count_fallback(defer);
 	}
 
 	for (;;) {
@@ -1070,7 +1142,7 @@ static void dispatch_decision_event(struct decision_worker *worker,
 		 */
 		if (!event_subject_slot_is_unblocked(slot))
 			return;
-		if (!decision_defer_pop_slot(&defer_queue, slot, event))
+		if (!decision_defer_pop_slot(defer, slot, event))
 			return;
 	}
 }
@@ -1108,11 +1180,12 @@ static int deferred_event_is_ready(const decision_event_t *event, void *ctx)
 static unsigned int release_ready_deferred_events(
 		struct decision_worker *worker, int *rpt_is_stale)
 {
+	struct decision_defer_queue *defer = worker_defer_queue(worker);
 	decision_event_t event;
 	unsigned int count = 0;
 
-	while (defer_queue.current &&
-	       decision_defer_pop_if(&defer_queue, deferred_event_is_ready,
+	while (defer->current &&
+	       decision_defer_pop_if(defer, deferred_event_is_ready,
 				     NULL, &event)) {
 		dispatch_decision_event(worker, &event, rpt_is_stale);
 		count++;
@@ -1174,13 +1247,14 @@ static unsigned int shutdown_queued_events(struct decision_worker *worker)
  *
  * Returns the number of events answered.
  */
-static unsigned int shutdown_deferred_events(void)
+static unsigned int shutdown_deferred_events(struct decision_worker *worker)
 {
+	struct decision_defer_queue *defer = worker_defer_queue(worker);
 	decision_event_t event;
 	unsigned int count = 0;
 	int decision = shutdown_fallback_decision();
 
-	while (decision_defer_pop_any(&defer_queue, &event)) {
+	while (decision_defer_pop_any(defer, &event)) {
 		reply_event(fd, &event.metadata, decision, NULL);
 		count++;
 	}
@@ -1202,6 +1276,7 @@ int test_notify_queue_reset(unsigned int entries)
 	if (worker->queue != NULL)
 		q_close(worker->queue);
 	worker->id = 0;
+	worker->context = decision_context_current();
 	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
 	worker->queue = q_open(entries);
 	active_decision_workers = worker->queue ? 1 : 0;
@@ -1220,6 +1295,7 @@ void test_notify_queue_destroy(void)
 		return;
 	q_close(worker->queue);
 	worker->queue = NULL;
+	worker->context = NULL;
 	active_decision_workers = 0;
 }
 
@@ -1251,8 +1327,14 @@ unsigned int test_notify_shutdown_queued_events(void)
  */
 int test_notify_defer_reset(unsigned int subj_cache_size)
 {
-	decision_defer_destroy(&defer_queue);
-	return decision_defer_init(&defer_queue, subj_cache_size);
+	struct decision_worker *worker = &decision_workers[0];
+	struct decision_defer_queue *defer;
+
+	worker->id = 0;
+	worker->context = decision_context_current();
+	defer = worker_defer_queue(worker);
+	decision_defer_destroy(defer);
+	return decision_defer_init(defer, subj_cache_size);
 }
 
 /*
@@ -1261,7 +1343,10 @@ int test_notify_defer_reset(unsigned int subj_cache_size)
  */
 void test_notify_defer_destroy(void)
 {
-	decision_defer_destroy(&defer_queue);
+	struct decision_worker *worker = &decision_workers[0];
+
+	decision_defer_destroy(worker_defer_queue(worker));
+	worker->context = NULL;
 }
 
 /*
@@ -1272,7 +1357,8 @@ void test_notify_defer_destroy(void)
  */
 int test_notify_defer_push(const decision_event_t *event)
 {
-	return decision_defer_push(&defer_queue, event);
+	return decision_defer_push(worker_defer_queue(&decision_workers[0]),
+				   event);
 }
 
 /*
@@ -1281,7 +1367,7 @@ int test_notify_defer_push(const decision_event_t *event)
  */
 unsigned int test_notify_shutdown_deferred_events(void)
 {
-	return shutdown_deferred_events();
+	return shutdown_deferred_events(&decision_workers[0]);
 }
 
 /*
@@ -1316,8 +1402,15 @@ static void *decision_worker_main(void *arg)
 	sigaddset(&sigs, SIGQUIT);
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
-	if (worker == NULL || worker->queue == NULL)
+	if (worker == NULL || worker->queue == NULL ||
+	    worker->context == NULL)
 		return NULL;
+	/*
+	 * The decision path uses decision_context_current() in cache, file, and
+	 * policy helpers. Bind this thread before any event or report work so
+	 * all mutable state stays private to this worker.
+	 */
+	decision_context_set_current(worker->context);
 
 	// interval reporting state
 	int rpt_is_stale = 0;
@@ -1396,7 +1489,7 @@ static void *decision_worker_main(void *arg)
 			int timed_for_defer = 0;
 			struct timespec defer_timeout;
 
-			if (defer_queue.current &&
+			if (worker->context->defer_queue.current &&
 			    clock_gettime(CLOCK_REALTIME, &defer_timeout) == 0) {
 				defer_timeout.tv_sec +=
 					DEFER_RECHECK_INTERVAL_SEC;
@@ -1428,7 +1521,7 @@ static void *decision_worker_main(void *arg)
 		dispatch_decision_event(worker, &event, &rpt_is_stale);
 	}
 	unsigned int queued = shutdown_queued_events(worker);
-	unsigned int deferred = shutdown_deferred_events();
+	unsigned int deferred = shutdown_deferred_events(worker);
 
 	if (queued || deferred)
 		msg(LOG_INFO,
@@ -1438,6 +1531,7 @@ static void *decision_worker_main(void *arg)
 	    "Decision worker %u shutdown backlog: queued=%u deferred=%u",
 	    worker->id, queued, deferred);
 	msg(LOG_DEBUG, "Exiting decision worker %u", worker->id);
+	decision_context_set_current(NULL);
 	return NULL;
 }
 

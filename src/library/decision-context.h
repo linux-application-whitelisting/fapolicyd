@@ -22,6 +22,7 @@
 #include "message.h"
 
 struct udev;
+struct conf;
 
 struct file_device_cache {
 	dev_t device;
@@ -76,9 +77,19 @@ struct decision_context {
 	magic_t magic_fast;
 	magic_t magic_full;
 	struct file_device_cache device_cache;
+	/* Reporting walks registered worker contexts without owning them. */
+	struct decision_context *report_next;
+	bool report_registered;
 };
+
+typedef void (*decision_context_iter_fn)(struct decision_context *ctx,
+		void *data);
 
 struct decision_context *decision_context_current(void);
 void decision_context_set_current(struct decision_context *ctx);
+void decision_context_close_file_helpers(struct decision_context *ctx);
+struct decision_context *decision_context_create(const struct conf *config);
+void decision_context_destroy(struct decision_context *ctx);
+void decision_context_for_each(decision_context_iter_fn iter, void *data);
 
 #endif
