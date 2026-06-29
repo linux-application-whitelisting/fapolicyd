@@ -14,6 +14,7 @@
 * cases are described in the err_cases array below; QE can extend
 * coverage by appending new entries.
 */
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -237,6 +238,42 @@ static void add_trust_attrs(event_t *e, unsigned int subj_trusted,
 }
 
 /*
+* prep_pattern_event - build an event with explicit pattern state
+*
+* e: event to populate
+* state: startup-pattern state to expose to rule evaluation
+* elf_info: ELF classification flags to expose to rule evaluation
+* path1: first startup path recorded for the subject
+*
+* Returns: none
+*/
+static void prep_pattern_event(event_t *e, state_t state, uint32_t elf_info,
+			       const char *path1)
+{
+	memset(e, 0, sizeof(*e));
+	e->s = malloc(sizeof(s_array));
+	e->o = malloc(sizeof(o_array));
+	if (!e->s || !e->o)
+		error(1, errno, "malloc failed");
+
+	if (subject_create(e->s) || object_create(e->o))
+		error(1, errno, "event array allocation failed");
+
+	e->s->info = calloc(1, sizeof(struct proc_info));
+	if (!e->s->info)
+		error(1, errno, "calloc failed");
+
+	e->s->info->pid = getpid();
+	e->s->info->state = state;
+	e->s->info->elf_info = elf_info;
+	e->s->info->path1 = strdup(path1);
+	if (!e->s->info->path1)
+		error(1, errno, "strdup failed");
+
+	e->type = FAN_OPEN_EXEC_PERM;
+}
+
+/*
 * free_event - release memory from prep_event()
 */
 static void free_event(event_t *e)
@@ -284,6 +321,68 @@ static decision_t evaluate(const llist *l, event_t *e)
 	return NO_OPINION;
 }
 
+/*
+* evaluate_pattern_rule - parse and evaluate one pattern rule
+*
+* rule: policy rule text to parse
+* state: startup-pattern state for the synthetic event
+* elf_info: ELF classification flags for the synthetic event
+* path1: first startup path recorded for the synthetic event
+*
+* Returns: the decision produced by the parsed rule.
+*/
+static decision_t evaluate_pattern_rule(const char *rule, state_t state,
+					uint32_t elf_info, const char *path1)
+{
+	char err[ERRBUF];
+	llist l;
+	event_t e;
+	decision_t decision;
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+	if (append_capture(&l, rule, 1, err, sizeof(err)))
+		error(1, 0, "pattern rule parse failed: %s", err);
+
+	prep_pattern_event(&e, state, elf_info, path1);
+	decision = evaluate(&l, &e);
+	free_event(&e);
+	rules_clear(&l);
+	return decision;
+}
+
+/*
+* test_pattern_outcome_rules - verify policy-visible pattern outcomes
+*
+* Pattern rules mutate and then clear startup path state after evaluation.
+* Exercise each pattern in isolation so the test pins the policy-visible
+* outcome without depending on rule ordering side effects.
+*
+* Returns: none. Exits on test failure.
+*/
+static void test_pattern_outcome_rules(void)
+{
+	if (evaluate_pattern_rule("allow perm=any pattern=normal : all",
+				  STATE_FULL, IS_ELF|HAS_DYNAMIC,
+				  "/usr/bin/dynamic-app") != ALLOW)
+		error(1, 0, "normal pattern rule did not allow");
+
+	if (evaluate_pattern_rule("deny perm=any pattern=ld_so : all",
+				  STATE_FULL, IS_ELF|HAS_DYNAMIC,
+				  SYSTEM_LD_SO) != DENY)
+		error(1, 0, "ld_so pattern rule did not deny");
+
+	if (evaluate_pattern_rule("deny perm=any pattern=static : all",
+				  STATE_COLLECTING, IS_ELF,
+				  "/usr/bin/static-app") != DENY)
+		error(1, 0, "static pattern rule did not deny");
+
+	if (evaluate_pattern_rule("deny perm=any pattern=ld_so : all",
+				  STATE_FULL, IS_ELF|HAS_DYNAMIC,
+				  "/usr/bin/dynamic-app") != NO_OPINION)
+		error(1, 0, "ld_so pattern matched normal startup");
+}
+
 int main(void)
 {
 	char err[ERRBUF];
@@ -293,6 +392,8 @@ int main(void)
 	int rc;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
+
+	test_pattern_outcome_rules();
 
 	/* positive path using fixture file */
 	if (rules_create(&l))

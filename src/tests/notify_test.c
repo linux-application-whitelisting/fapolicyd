@@ -48,11 +48,24 @@ extern atomic_bool run_stats;
 extern atomic_uint signal_report_requests;
 extern conf_t config;
 
+#define DISPATCH_TRACE_CAP 32
+
 #define CHECK(expr, code, msg) \
 	do { \
 		if (!(expr)) \
 			error(1, 0, "%s", msg); \
 	} while (0)
+
+struct dispatch_trace_event {
+	pid_t pid;
+	int fd;
+};
+
+struct dispatch_trace_observed {
+	unsigned int worker;
+	pid_t pid;
+	int fd;
+};
 
 void do_stat_report_reset(FILE *f, int shutdown, int reset)
 {
@@ -512,6 +525,184 @@ static void test_dispatcher_pid_reuse_stability(void)
 }
 
 /*
+ * collect_worker_trace - append one worker queue to an observed trace.
+ * @worker_id: worker queue to drain.
+ * @observed: destination trace.
+ * @used: entries already populated in @observed.
+ *
+ * Returns the updated trace length. Exits if the fixed unit-test trace buffer
+ * would overflow.
+ */
+static unsigned int collect_worker_trace(unsigned int worker_id,
+		struct dispatch_trace_observed *observed, unsigned int used)
+{
+	pid_t pids[DISPATCH_TRACE_CAP];
+	int fds[DISPATCH_TRACE_CAP];
+	unsigned int drained, i;
+
+	CHECK(used < DISPATCH_TRACE_CAP, 130,
+	      "[ERROR:130] dispatcher trace buffer full");
+	drained = test_notify_worker_drain(worker_id, pids, fds,
+					   DISPATCH_TRACE_CAP - used);
+
+	for (i = 0; i < drained; i++) {
+		observed[used].worker = worker_id;
+		observed[used].pid = pids[i];
+		observed[used].fd = fds[i];
+		used++;
+	}
+
+	return used;
+}
+
+/*
+ * collect_pool_trace - drain every worker queue into an observed trace.
+ * @workers: number of synthetic workers to drain.
+ * @observed: destination trace.
+ *
+ * Returns the number of observed events.
+ */
+static unsigned int collect_pool_trace(unsigned int workers,
+		struct dispatch_trace_observed *observed)
+{
+	unsigned int i, used = 0;
+
+	for (i = 0; i < workers; i++)
+		used = collect_worker_trace(i, observed, used);
+
+	return used;
+}
+
+/*
+ * enqueue_dispatch_trace - enqueue a synthetic replay trace.
+ * @trace: PID/fd sequence to enqueue.
+ * @count: number of trace entries.
+ *
+ * Returns nothing. Exits when any enqueue fails.
+ */
+static void enqueue_dispatch_trace(const struct dispatch_trace_event *trace,
+		unsigned int count)
+{
+	unsigned int i;
+
+	for (i = 0; i < count; i++)
+		CHECK(test_notify_enqueue_pid_fd(trace[i].pid,
+						 trace[i].fd) == 0,
+		      131, "[ERROR:131] dispatcher trace enqueue failed");
+}
+
+/*
+ * test_dispatcher_single_multi_replay_parity - compare queue replay order.
+ *
+ * A multi-worker daemon may interleave different worker queues differently
+ * from the single-worker daemon, but each worker's input stream must equal the
+ * single-worker stream filtered by that worker's stable subject owner. That is
+ * the unit-testable invariant behind pattern-detection parity: all events
+ * that can mutate one subject startup state arrive at the same worker in the
+ * same order they had before worker-pool dispatch.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_dispatcher_single_multi_replay_parity(void)
+{
+	const struct dispatch_trace_event trace[] = {
+		{ 1001, 10 }, { 1002, 11 }, { 1001, 12 },
+		{ 1004, 13 }, { 1008, 14 }, { 1002, 15 },
+		{ 1005, 16 }, { 1001, 17 }, { 1009, 18 },
+		{ -1, 19 }, { 1004, 20 }, { 1005, 21 },
+	};
+	const unsigned int trace_count = sizeof(trace) / sizeof(trace[0]);
+	struct dispatch_trace_observed single[DISPATCH_TRACE_CAP];
+	struct dispatch_trace_observed multi[DISPATCH_TRACE_CAP];
+	unsigned int single_count, multi_count, worker, i, out;
+
+	CHECK(test_notify_worker_pool_reset(1, trace_count) == 0, 132,
+	      "[ERROR:132] single-worker replay reset failed");
+	enqueue_dispatch_trace(trace, trace_count);
+	single_count = collect_pool_trace(1, single);
+	CHECK(single_count == trace_count, 133,
+	      "[ERROR:133] single-worker replay count mismatch");
+	for (i = 0; i < trace_count; i++) {
+		CHECK(single[i].worker == 0, 134,
+		      "[ERROR:134] single-worker replay used wrong worker");
+		CHECK(single[i].pid == trace[i].pid &&
+		      single[i].fd == trace[i].fd, 135,
+		      "[ERROR:135] single-worker replay order changed");
+	}
+	test_notify_worker_pool_destroy();
+
+	CHECK(test_notify_worker_pool_reset(4, trace_count) == 0, 136,
+	      "[ERROR:136] multi-worker replay reset failed");
+	enqueue_dispatch_trace(trace, trace_count);
+	multi_count = collect_pool_trace(4, multi);
+	CHECK(multi_count == single_count, 137,
+	      "[ERROR:137] multi-worker replay count mismatch");
+
+	out = 0;
+	for (worker = 0; worker < 4; worker++) {
+		for (i = 0; i < single_count; i++) {
+			if (test_notify_worker_index(single[i].pid, 4) !=
+			    worker)
+				continue;
+			CHECK(out < multi_count, 138,
+			      "[ERROR:138] multi-worker replay ended early");
+			CHECK(multi[out].worker == worker, 139,
+			      "[ERROR:139] multi-worker replay worker mismatch");
+			CHECK(multi[out].pid == single[i].pid &&
+			      multi[out].fd == single[i].fd, 140,
+			      "[ERROR:140] multi-worker replay parity failed");
+			out++;
+		}
+	}
+	CHECK(out == multi_count, 141,
+	      "[ERROR:141] multi-worker replay had unexpected events");
+
+	test_notify_worker_pool_destroy();
+}
+
+/*
+ * test_dispatcher_hot_worker_queue_full - verify isolated queue pressure.
+ *
+ * Queue-full handling is per worker. When a hot subject bucket fills one
+ * worker queue, other workers must still accept their own events and the
+ * metrics report must identify the full worker.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_dispatcher_hot_worker_queue_full(void)
+{
+	char report[4096];
+
+	CHECK(test_notify_worker_pool_reset(4, 1) == 0, 142,
+	      "[ERROR:142] queue-full worker pool reset failed");
+	CHECK(test_notify_enqueue_pid_fd(1000, 50) == 0, 143,
+	      "[ERROR:143] hot worker first enqueue failed");
+	errno = 0;
+	CHECK(test_notify_enqueue_pid_fd(1004, 51) == -1 &&
+	      errno == ENOSPC, 144,
+	      "[ERROR:144] hot worker full enqueue did not fail");
+	CHECK(test_notify_enqueue_pid_fd(1001, 52) == 0, 145,
+	      "[ERROR:145] idle worker enqueue failed after hot worker full");
+
+	CHECK(test_notify_worker_queue_depth(0) == 1, 146,
+	      "[ERROR:146] hot worker depth mismatch");
+	CHECK(test_notify_worker_queue_depth(1) == 1, 147,
+	      "[ERROR:147] idle worker did not accept event");
+
+	read_fanotify_queue_report(report, sizeof(report), 0);
+	CHECK(strstr(report, "Inter-thread queue full count: 1\n") != NULL,
+	      148, "[ERROR:148] aggregate queue full count mismatch");
+	CHECK(strstr(report,
+		     "  Decision worker 0 queue full count: 1\n") != NULL,
+	      149, "[ERROR:149] hot worker full count missing");
+	CHECK(strstr(report,
+		     "  Decision worker 1 queue full count: 0\n") != NULL,
+	      150, "[ERROR:150] idle worker full count changed");
+
+	test_notify_worker_pool_destroy();
+}
+
+/*
  * test_dispatcher_worker_skew - verify hot PID buckets remain observable.
  *
  * Stable pid modulo routing can skew traffic. The dispatcher must expose that
@@ -635,6 +826,8 @@ int main(void)
 	test_dispatcher_worker_routing();
 	test_dispatcher_same_pid_ordering();
 	test_dispatcher_pid_reuse_stability();
+	test_dispatcher_single_multi_replay_parity();
+	test_dispatcher_hot_worker_queue_full();
 	test_dispatcher_worker_skew();
 	test_notify_queue_report_reset();
 
