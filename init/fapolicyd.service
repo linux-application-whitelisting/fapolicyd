@@ -17,7 +17,8 @@ RuntimeDirectory=fapolicyd
 PIDFile=/run/fapolicyd.pid
 ExecStartPre=/usr/sbin/fagenrules
 ExecStart=/usr/sbin/fapolicyd
-Restart=on-abnormal
+Restart=on-failure
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
