@@ -259,10 +259,14 @@ static int rpm_load_list(const conf_t *conf)
 		_msg.msg_control = cmsgbuf.buf;
 		_msg.msg_controllen = sizeof cmsgbuf.buf;
 
-		if (recvmsg(sv[0], &_msg, 0) < 0) {
+		ssize_t rc;
+		do {
+			rc = recvmsg(sv[0], &_msg, 0);
+		} while (rc < 0 && errno == EINTR);
+		if (rc < 0) {
 			msg(LOG_ERR, "recvmsg failed");
 			close(sv[0]);
-			waitpid(pid, &status, 0);
+			while (waitpid(pid, &status, 0) < 0 && errno == EINTR);
 			posix_spawn_file_actions_destroy(&actions);
 			return 1;
 		}
@@ -271,7 +275,7 @@ static int rpm_load_list(const conf_t *conf)
 		struct cmsghdr *c = CMSG_FIRSTHDR(&_msg);
 		if (!c || c->cmsg_type != SCM_RIGHTS) {
 			msg(LOG_ERR, "missing fd");
-			waitpid(pid, &status, 0);
+			while (waitpid(pid, &status, 0) < 0 && errno == EINTR);
 			posix_spawn_file_actions_destroy(&actions);
 			return 1;
 		}
@@ -292,7 +296,7 @@ static int rpm_load_list(const conf_t *conf)
 		// Pass the memfd to the backend representation
 		rpm_backend.memfd = memfd;
 
-		waitpid(pid, &status, 0);
+		while (waitpid(pid, &status, 0) < 0 && errno == EINTR);
 	} else {
 		close(sv[0]);
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
