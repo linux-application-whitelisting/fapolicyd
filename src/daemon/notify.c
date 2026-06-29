@@ -237,6 +237,13 @@ static unsigned int dispatcher_subject_key(
 
 /*
  * dispatcher_worker_index_from_key - map one subject key to a worker.
+ *
+ * NOTE: This is the only way possible to route incoming events to a worker.
+ * Rerouting to available workers is impossible because we need the same pid
+ * to always land on the same worker so that the pattern detection state
+ * machine can see the whole startup in the same cache. Never change this
+ * algorithm!
+ *
  * @subject_key: stable key from dispatcher_subject_key().
  * @worker_count: active decision workers.
  *
