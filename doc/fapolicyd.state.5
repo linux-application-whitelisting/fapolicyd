@@ -14,7 +14,8 @@ attribute lookup tables, and queue/defer activity are reported in
 .IR /run/fapolicyd/fapolicyd.metrics .
 Each field is printed as a
 .I name: value
-line. Section headers end in a colon.
+line. Section headers end in a colon. Worker-specific health and queue
+drill-down fields are indented by two spaces under the related section.
 .SH STATE REPORT
 .SS Operating mode
 .TP
@@ -88,6 +89,9 @@ decisions are still counted as denials even though the daemon permits kernel
 access.
 .SS Resource configuration
 .TP
+.B Daemon PID
+The process ID of the daemon process that wrote the report.
+.TP
 .B CPU cores
 The number of online processor cores reported by the system.
 .TP
@@ -95,17 +99,18 @@ The number of online processor cores reported by the system.
 The configured decision worker count from
 .BR fapolicyd.conf .
 .TP
-.B q_size
-The configured size of the internal event queue.
+.B Per worker q_size
+The configured size of each decision worker's internal event queue.
 .TP
-.B Subject defer array size
-The number of preallocated entries available for subject-slot deferral.
+.B Per worker Subject defer array size
+The number of preallocated entries available in each decision worker's
+subject-slot defer array.
 .TP
-.B Subject cache size
-The configured number of entries in the subject cache.
+.B Per worker Subject cache size
+The configured number of entries in each decision worker's subject cache.
 .TP
-.B Object cache size
-The configured number of entries in the object cache.
+.B Per worker Object cache size
+The configured number of entries in each decision worker's object cache.
 .TP
 .B Trust database max pages
 The current maximum LMDB map page count for the trust database environment.
@@ -248,6 +253,11 @@ the most recent error notification.
 The number of failed or short writes when sending fanotify permission responses
 back to the kernel.
 .TP
+.B Decision worker N health
+Compact health line for one decision worker. It includes the kernel TID for
+debugging and whether the deadman heartbeat currently considers the worker
+alive.
+.TP
 .B Decision worker N current queue depth
 The number of fanotify permission events currently waiting in that worker's
 queue.
@@ -325,6 +335,7 @@ monitoring.
 .B Trust database generation ,
 .B LMDB environment generation ,
 .B Trust database entries ,
+.B Decision worker N health ,
 .B Decision worker N current queue depth ,
 .B Decision worker N max queue depth ,
 .B Decision worker N queue full count ,

@@ -383,7 +383,8 @@ void decision_defer_config_report(FILE *f,
 	if (f == NULL || metrics == NULL)
 		return;
 
-	fprintf(f, "Subject defer array size: %u\n", metrics->capacity);
+	fprintf(f, "Per worker Subject defer array size: %u\n",
+		metrics->capacity);
 }
 
 /*
@@ -448,4 +449,32 @@ void decision_defer_metrics_report(FILE *f,
 		metrics->deferred_events);
 	fprintf(f, "Subject defer max depth: %u\n", metrics->max_depth);
 	fprintf(f, "Subject defer fallbacks: %lu\n", metrics->fallbacks);
+}
+
+/*
+ * decision_defer_metrics_report_worker - write one worker's defer counters.
+ * @f: output stream.
+ * @worker_id: decision worker that owns these counters.
+ * @metrics: defer metrics snapshot to report.
+ * Returns nothing.
+ */
+void decision_defer_metrics_report_worker(FILE *f, unsigned int worker_id,
+		const struct decision_defer_metrics *metrics)
+{
+	char age[32];
+
+	if (f == NULL || metrics == NULL)
+		return;
+
+	fapolicyd_format_ns(metrics->oldest_age_ns, age, sizeof(age));
+	fprintf(f, "  Decision worker %u Subject deferred events: %lu\n",
+		worker_id, metrics->deferred_events);
+	fprintf(f, "  Decision worker %u Subject defer max depth: %u\n",
+		worker_id, metrics->max_depth);
+	fprintf(f, "  Decision worker %u Subject defer fallbacks: %lu\n",
+		worker_id, metrics->fallbacks);
+	fprintf(f, "  Decision worker %u Subject defer current depth: %u\n",
+		worker_id, metrics->current_depth);
+	fprintf(f, "  Decision worker %u Subject defer oldest age: %s\n",
+		worker_id, age);
 }

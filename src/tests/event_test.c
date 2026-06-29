@@ -816,6 +816,34 @@ static int reset_cache_report_counters(void)
 }
 
 /*
+ * cache_report_contains - check whether do_cache_reports() emits text.
+ * @needle: text expected in the cache report.
+ * Returns 1 when found, 0 otherwise.
+ */
+static int cache_report_contains(const char *needle)
+{
+	FILE *report;
+	char buf[4096];
+	size_t used;
+
+	if (needle == NULL)
+		return 0;
+
+	report = tmpfile();
+	if (report == NULL)
+		return 0;
+
+	do_cache_reports(report);
+	fflush(report);
+	rewind(report);
+	used = fread(buf, 1, sizeof(buf) - 1, report);
+	buf[used] = 0;
+	fclose(report);
+
+	return strstr(buf, needle) != NULL;
+}
+
+/*
  * read_object_cache_metric - report an object-cache counter from event.c.
  * @metric: printable counter label from do_cache_reports(), e.g. "hits".
  * @value: output location for the parsed counter.
@@ -1056,6 +1084,27 @@ static int test_needs_flush_resets_object_cache(void)
 	return 0;
 }
 
+/*
+ * Verify that cache reports retain aggregate counters and add worker detail.
+ */
+static int test_cache_worker_report(void)
+{
+	CHECK(init_caches(2, 2) == 0, 120,
+	      "[ERROR:120] init_event_system failed");
+
+	CHECK(cache_report_contains("Subject hits:"), 121,
+	      "[ERROR:121] aggregate subject counters missing");
+	CHECK(cache_report_contains("Per-worker cache effectiveness:"), 122,
+	      "[ERROR:122] per-worker cache section missing");
+	CHECK(cache_report_contains("  Decision worker 0 Subject hits:"), 123,
+	      "[ERROR:123] worker subject counters missing");
+	CHECK(cache_report_contains("  Decision worker 0 Object hits:"), 124,
+	      "[ERROR:124] worker object counters missing");
+
+	destroy_event_system();
+	return 0;
+}
+
 /* Run each scenario in sequence, propagating the first non-zero error code. */
 int main(void)
 {
@@ -1094,6 +1143,10 @@ int main(void)
 		return rc;
 
 	rc = test_needs_flush_resets_object_cache();
+	if (rc)
+		return rc;
+
+	rc = test_cache_worker_report();
 	if (rc)
 		return rc;
 

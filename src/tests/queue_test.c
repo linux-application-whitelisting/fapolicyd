@@ -88,7 +88,7 @@ int main(void)
 	decision_event_t out = { 0 };
 	struct queue_metrics metrics;
 	struct queue *q;
-	char report[128];
+	char report[256];
 	char worker_report[256];
 	unsigned int run_max, saved;
 
@@ -136,22 +136,28 @@ int main(void)
 	      "[ERROR:14] dequeue changed full count");
 
 	read_queue_report(&metrics, report, sizeof(report));
-	CHECK(strcmp(report, "Inter-thread current queue depth: 1\n"
-			    "Inter-thread max queue depth: 2\n") == 0, 15,
-	      "[ERROR:15] queue report format changed");
+	CHECK(strstr(report,
+		     "Inter-thread current queue depth: 1\n") != NULL,
+	      15, "[ERROR:15] queue report missing current depth");
+	CHECK(strstr(report, "Inter-thread max queue depth: 2\n") != NULL,
+	      37, "[ERROR:37] queue report missing max depth");
+	CHECK(strstr(report, "Inter-thread queue full count: 1\n") != NULL,
+	      38, "[ERROR:38] queue report missing full count");
+	CHECK(strstr(report, "Inter-thread oldest queued age: ") != NULL,
+	      39, "[ERROR:39] queue report missing oldest age");
 	read_queue_worker_report(&metrics, worker_report,
 				 sizeof(worker_report));
 	CHECK(strstr(worker_report,
-		     "Decision worker 7 current queue depth: 1\n") != NULL,
+		     "  Decision worker 7 current queue depth: 1\n") != NULL,
 	      33, "[ERROR:33] worker report missing current depth");
 	CHECK(strstr(worker_report,
-		     "Decision worker 7 max queue depth: 2\n") != NULL,
+		     "  Decision worker 7 max queue depth: 2\n") != NULL,
 	      34, "[ERROR:34] worker report missing max depth");
 	CHECK(strstr(worker_report,
-		     "Decision worker 7 queue full count: 1\n") != NULL,
+		     "  Decision worker 7 queue full count: 1\n") != NULL,
 	      35, "[ERROR:35] worker report missing full count");
 	CHECK(strstr(worker_report,
-		     "Decision worker 7 oldest queued age: ") != NULL,
+		     "  Decision worker 7 oldest queued age: ") != NULL,
 	      36, "[ERROR:36] worker report missing oldest age");
 
 	q_metrics_snapshot_reset(q, &metrics, 1);

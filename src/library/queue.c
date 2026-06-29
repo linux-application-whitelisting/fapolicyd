@@ -288,9 +288,15 @@ unsigned int q_max_depth_snapshot_restore(struct queue *q, unsigned int saved)
  */
 void q_metrics_report(FILE *f, const struct queue_metrics *metrics)
 {
+	char age[32];
+
+	fapolicyd_format_ns(metrics->oldest_age_ns, age, sizeof(age));
 	fprintf(f, "Inter-thread current queue depth: %u\n",
 		metrics->current_depth);
 	fprintf(f, "Inter-thread max queue depth: %u\n", metrics->max_depth);
+	fprintf(f, "Inter-thread queue full count: %lu\n",
+		metrics->full_count);
+	fprintf(f, "Inter-thread oldest queued age: %s\n", age);
 }
 
 /*
@@ -306,13 +312,13 @@ void q_metrics_report_worker(FILE *f, unsigned int worker_id,
 	char age[32];
 
 	fapolicyd_format_ns(metrics->oldest_age_ns, age, sizeof(age));
-	fprintf(f, "Decision worker %u current queue depth: %u\n",
+	fprintf(f, "  Decision worker %u current queue depth: %u\n",
 		worker_id, metrics->current_depth);
-	fprintf(f, "Decision worker %u max queue depth: %u\n",
+	fprintf(f, "  Decision worker %u max queue depth: %u\n",
 		worker_id, metrics->max_depth);
-	fprintf(f, "Decision worker %u queue full count: %lu\n",
+	fprintf(f, "  Decision worker %u queue full count: %lu\n",
 		worker_id, metrics->full_count);
-	fprintf(f, "Decision worker %u oldest queued age: %s\n",
+	fprintf(f, "  Decision worker %u oldest queued age: %s\n",
 		worker_id, age);
 }
 

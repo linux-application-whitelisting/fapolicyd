@@ -955,9 +955,10 @@ void do_state_report(FILE *f, int shutdown)
 	fprintf(f, "Denied accesses: %lu\n", getDenied());
 
 	fprintf(f, "\nResource configuration:\n");
+	fprintf(f, "Daemon PID: %ld\n", (long)getpid());
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "decision_threads: %u\n", config.decision_threads);
-	fprintf(f, "q_size: %u\n", config.q_size);
+	fprintf(f, "Per worker q_size: %u\n", config.q_size);
 	fanotify_defer_config_report(f);
 	do_cache_config_report(f);
 	database_config_report(f);

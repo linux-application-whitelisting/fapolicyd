@@ -37,6 +37,7 @@
 #include <libudev.h>
 
 #include "attr-lookup-metrics.h"
+#include "daemon-config.h"
 #include "decision-context.h"
 #include "event.h"
 #include "database.h"
@@ -155,6 +156,19 @@ void decision_context_close_file_helpers(struct decision_context *ctx)
 	free(ctx->device_cache.devname);
 	ctx->device_cache.devname = NULL;
 	ctx->device_cache.device = 0;
+}
+
+/*
+ * decision_context_set_worker_id - label a context for per-worker reports.
+ * @ctx: worker-owned decision context to label.
+ * @worker_id: decision worker index that owns @ctx.
+ * Returns nothing.
+ */
+void decision_context_set_worker_id(struct decision_context *ctx,
+		unsigned int worker_id)
+{
+	if (ctx)
+		ctx->worker_id = worker_id;
 }
 
 /*
@@ -1430,7 +1444,8 @@ static void print_queue_stats(FILE *f, const struct lru_metrics *metrics)
  */
 static void print_cache_config(FILE *f, const struct lru_metrics *metrics)
 {
-	fprintf(f, "%s cache size: %u\n", metrics->name, metrics->total);
+	fprintf(f, "Per worker %s cache size: %u\n",
+		metrics->name, metrics->total);
 }
 
 /*
@@ -1464,12 +1479,23 @@ static void print_cache_metrics(FILE *f, const struct lru_metrics *metrics)
 		metrics->hits ? (100*metrics->evictions)/metrics->hits : 0);
 }
 
+struct cache_worker_snapshot {
+	unsigned int worker_id;
+	struct lru_metrics subject;
+	struct lru_metrics object;
+	unsigned int early_evictions;
+	unsigned int tracer_evictions;
+	unsigned int stale_evictions;
+};
+
 struct cache_report_snapshot {
 	struct lru_metrics subject;
 	struct lru_metrics object;
 	unsigned int early_evictions;
 	unsigned int tracer_evictions;
 	unsigned int stale_evictions;
+	unsigned int worker_count;
+	struct cache_worker_snapshot workers[DAEMON_CONFIG_DECISION_THREADS_MAX];
 	int reset;
 };
 
@@ -1500,37 +1526,72 @@ static void cache_report_snapshot_context(struct decision_context *ctx,
 		void *data)
 {
 	struct cache_report_snapshot *snapshot = data;
-	struct lru_metrics metrics;
+	struct cache_worker_snapshot *worker = NULL;
+	unsigned int index;
 
 	if (ctx == NULL || snapshot == NULL)
 		return;
 
-	lru_metrics_snapshot(ctx->subject_cache, &metrics, snapshot->reset);
-	lru_metrics_merge(&snapshot->subject, &metrics);
-	lru_metrics_snapshot(ctx->object_cache, &metrics, snapshot->reset);
-	lru_metrics_merge(&snapshot->object, &metrics);
+	index = snapshot->worker_count;
+	if (index < DAEMON_CONFIG_DECISION_THREADS_MAX) {
+		worker = &snapshot->workers[index];
+		worker->worker_id = ctx->worker_id;
+		lru_metrics_snapshot(ctx->subject_cache, &worker->subject,
+				      snapshot->reset);
+		lru_metrics_snapshot(ctx->object_cache, &worker->object,
+				      snapshot->reset);
+		lru_metrics_merge(&snapshot->subject, &worker->subject);
+		lru_metrics_merge(&snapshot->object, &worker->object);
+	} else {
+		struct lru_metrics metrics;
+
+		lru_metrics_snapshot(ctx->subject_cache, &metrics,
+				      snapshot->reset);
+		lru_metrics_merge(&snapshot->subject, &metrics);
+		lru_metrics_snapshot(ctx->object_cache, &metrics,
+				      snapshot->reset);
+		lru_metrics_merge(&snapshot->object, &metrics);
+	}
 
 	if (snapshot->reset) {
-		snapshot->early_evictions += atomic_exchange_explicit(
+		unsigned int early = atomic_exchange_explicit(
 			&ctx->early_subject_cache_evictions, 0,
 			memory_order_relaxed);
-		snapshot->tracer_evictions += atomic_exchange_explicit(
+		unsigned int tracer = atomic_exchange_explicit(
 			&ctx->building_tracer_evict_count, 0,
 			memory_order_relaxed);
-		snapshot->stale_evictions += atomic_exchange_explicit(
+		unsigned int stale = atomic_exchange_explicit(
 			&ctx->building_stale_evict_count, 0,
 			memory_order_relaxed);
+		snapshot->early_evictions += early;
+		snapshot->tracer_evictions += tracer;
+		snapshot->stale_evictions += stale;
+		if (worker) {
+			worker->early_evictions = early;
+			worker->tracer_evictions = tracer;
+			worker->stale_evictions = stale;
+		}
 	} else {
-		snapshot->early_evictions += atomic_load_explicit(
+		unsigned int early = atomic_load_explicit(
 			&ctx->early_subject_cache_evictions,
 			memory_order_relaxed);
-		snapshot->tracer_evictions += atomic_load_explicit(
+		unsigned int tracer = atomic_load_explicit(
 			&ctx->building_tracer_evict_count,
 			memory_order_relaxed);
-		snapshot->stale_evictions += atomic_load_explicit(
+		unsigned int stale = atomic_load_explicit(
 			&ctx->building_stale_evict_count,
 			memory_order_relaxed);
+		snapshot->early_evictions += early;
+		snapshot->tracer_evictions += tracer;
+		snapshot->stale_evictions += stale;
+		if (worker) {
+			worker->early_evictions = early;
+			worker->tracer_evictions = tracer;
+			worker->stale_evictions = stale;
+		}
 	}
+	if (snapshot->worker_count < DAEMON_CONFIG_DECISION_THREADS_MAX)
+		snapshot->worker_count++;
 }
 
 /*
@@ -1547,6 +1608,51 @@ static void cache_report_snapshot_reset(struct cache_report_snapshot *snapshot,
 	snapshot->object.name = "Object";
 	snapshot->reset = reset;
 	decision_context_for_each(cache_report_snapshot_context, snapshot);
+}
+
+/*
+ * cache_worker_snapshot_sort - order worker snapshots by worker id.
+ * @workers: worker snapshot array.
+ * @count: number of populated entries in @workers.
+ * Returns nothing.
+ */
+static void cache_worker_snapshot_sort(struct cache_worker_snapshot *workers,
+		unsigned int count)
+{
+	unsigned int i, j;
+
+	for (i = 0; i < count; i++) {
+		for (j = i + 1; j < count; j++) {
+			struct cache_worker_snapshot tmp;
+
+			if (workers[i].worker_id <= workers[j].worker_id)
+				continue;
+			tmp = workers[i];
+			workers[i] = workers[j];
+			workers[j] = tmp;
+		}
+	}
+}
+
+/*
+ * print_cache_metrics_worker - write one worker's cache counters.
+ * @f: report stream.
+ * @worker_id: decision worker that owns these cache counters.
+ * @metrics: cache metrics snapshot.
+ * Returns nothing.
+ */
+static void print_cache_metrics_worker(FILE *f, unsigned int worker_id,
+		const struct lru_metrics *metrics)
+{
+	fprintf(f, "  Decision worker %u %s hits: %lu\n",
+		worker_id, metrics->name, metrics->hits);
+	fprintf(f, "  Decision worker %u %s misses: %lu\n",
+		worker_id, metrics->name, metrics->misses);
+	fprintf(f, "  Decision worker %u %s collisions: %lu\n",
+		worker_id, metrics->name, metrics->collisions);
+	fprintf(f, "  Decision worker %u %s evictions: %lu (%lu%%)\n",
+		worker_id, metrics->name, metrics->evictions,
+		metrics->hits ? (100*metrics->evictions)/metrics->hits : 0);
 }
 
 void run_usage_report(const conf_t *config, FILE *f)
@@ -1669,13 +1775,21 @@ void do_cache_reports(FILE *f)
 void do_cache_config_report(FILE *f)
 {
 	struct cache_report_snapshot snapshot;
+	struct lru_metrics subject;
+	struct lru_metrics object;
 
 	if (f == NULL)
 		return;
 
 	cache_report_snapshot_reset(&snapshot, 0);
-	print_cache_config(f, &snapshot.subject);
-	print_cache_config(f, &snapshot.object);
+	subject = snapshot.subject;
+	object = snapshot.object;
+	if (snapshot.worker_count) {
+		subject.total /= snapshot.worker_count;
+		object.total /= snapshot.worker_count;
+	}
+	print_cache_config(f, &subject);
+	print_cache_config(f, &object);
 }
 
 /*
@@ -1742,6 +1856,32 @@ void do_cache_metrics_report_reset(FILE *f, int reset)
 
 	fprintf(f, "\nObject cache effectiveness:\n");
 	print_cache_metrics(f, &snapshot.object);
+
+	if (snapshot.worker_count) {
+		unsigned int i;
+
+		cache_worker_snapshot_sort(snapshot.workers,
+					   snapshot.worker_count);
+		fprintf(f, "\nPer-worker cache effectiveness:\n");
+		for (i = 0; i < snapshot.worker_count; i++) {
+			struct cache_worker_snapshot *worker =
+				&snapshot.workers[i];
+
+			print_cache_metrics_worker(f, worker->worker_id,
+						   &worker->subject);
+			fprintf(f,
+				"  Decision worker %u Early subject cache evictions: %u\n",
+				worker->worker_id, worker->early_evictions);
+			fprintf(f,
+				"  Decision worker %u Subject BUILDING tracer evictions: %u\n",
+				worker->worker_id, worker->tracer_evictions);
+			fprintf(f,
+				"  Decision worker %u Subject BUILDING stale evictions: %u\n",
+				worker->worker_id, worker->stale_evictions);
+			print_cache_metrics_worker(f, worker->worker_id,
+						   &worker->object);
+		}
+	}
 }
 
 /*

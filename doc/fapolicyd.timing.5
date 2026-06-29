@@ -143,6 +143,40 @@ Highest internal event queue depth observed during the timing run.
 If no enqueue timestamps were observed, the section prints
 .B not observed
 and still reports max queue depth.
+.SH PER-WORKER TIMING SKEW
+When more than one decision worker is active, the
+.B Per-worker timing skew
+section summarizes routing and latency balance by worker. The aggregate
+latency sections remain authoritative; this section exists to make uneven
+worker buckets visible.
+.TP
+.B decisions min/max/spread
+Smallest and largest number of timed decisions handled by any worker, plus the
+difference between them.
+.TP
+.B Worker
+Decision worker index.
+.TP
+.B Decisions
+Timed decisions handled by that worker.
+.TP
+.B Total
+Sum of that worker's
+.B decision:total
+latency.
+.TP
+.B Avg
+Average
+.B decision:total
+latency for that worker.
+.TP
+.B Max
+Slowest
+.B decision:total
+latency for that worker.
+.TP
+.B Queue p95
+Approximate 95th percentile queue-wait bucket for that worker.
 .SH DECISION PHASE TIMING
 The
 .B Decision phase timing

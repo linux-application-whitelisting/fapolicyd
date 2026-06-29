@@ -108,6 +108,7 @@ struct decision_worker {
 	struct decision_context *context;
 	pthread_t thread;
 	atomic_bool alive;
+	atomic_int tid;
 };
 
 // Local variables
@@ -140,6 +141,7 @@ static void save_last_queue_metrics(void);
 static int setup_decision_worker(const conf_t *conf, unsigned int worker_id);
 static void cleanup_worker_setup(unsigned int worker_count);
 static int worker_owns_reports(const struct decision_worker *worker);
+static void worker_health_report(FILE *f, const struct decision_worker *worker);
 static unsigned int timing_queue_depth_reset(void *ctx);
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
 static struct decision_worker *dispatcher_worker_for_metadata(
@@ -400,6 +402,28 @@ static int worker_owns_reports(const struct decision_worker *worker)
 }
 
 /*
+ * worker_health_report - write one compact decision-worker health line.
+ * @f: report stream.
+ * @worker: decision worker to describe.
+ *
+ * The kernel TID is recorded here, rather than on the configuration line, so
+ * operators have one place to map per-worker health to scheduler/debug data.
+ */
+static void worker_health_report(FILE *f, const struct decision_worker *worker)
+{
+	int tid;
+
+	if (f == NULL || worker == NULL)
+		return;
+
+	tid = atomic_load_explicit(&worker->tid, memory_order_relaxed);
+	fprintf(f, "  Decision worker %u health: TID=%d alive=%s\n",
+		worker->id, tid,
+		atomic_load_explicit(&worker->alive, memory_order_relaxed) ?
+			"true" : "false");
+}
+
+/*
  * setup_decision_worker - initialize one worker slot before threads start.
  * @conf: daemon configuration.
  * @worker_id: slot to initialize.
@@ -420,6 +444,7 @@ static int setup_decision_worker(const conf_t *conf, unsigned int worker_id)
 	worker->queue = NULL;
 	worker->context = NULL;
 	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
+	atomic_store_explicit(&worker->tid, 0, memory_order_relaxed);
 
 	if (worker_id == 0)
 		worker->context = previous;
@@ -447,6 +472,7 @@ static int setup_decision_worker(const conf_t *conf, unsigned int worker_id)
 		}
 		return -1;
 	}
+	decision_context_set_worker_id(worker->context, worker_id);
 
 	return 0;
 }
@@ -869,8 +895,15 @@ static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved)
 	return aggregate;
 }
 
+struct defer_worker_snapshot {
+	unsigned int worker_id;
+	struct decision_defer_metrics metrics;
+};
+
 struct defer_report_snapshot {
 	struct decision_defer_metrics metrics;
+	struct defer_worker_snapshot workers[DECISION_WORKER_MAX];
+	unsigned int worker_count;
 	int reset;
 };
 
@@ -903,6 +936,7 @@ static void defer_report_snapshot_context(struct decision_context *ctx,
 {
 	struct defer_report_snapshot *snapshot = data;
 	struct decision_defer_metrics metrics;
+	unsigned int index;
 
 	if (ctx == NULL || snapshot == NULL)
 		return;
@@ -911,26 +945,58 @@ static void defer_report_snapshot_context(struct decision_context *ctx,
 					      snapshot->reset);
 	ctx->last_defer_metrics = metrics;
 	defer_metrics_merge(&snapshot->metrics, &metrics);
+	index = snapshot->worker_count;
+	if (index < DECISION_WORKER_MAX) {
+		snapshot->workers[index].worker_id = ctx->worker_id;
+		snapshot->workers[index].metrics = metrics;
+		snapshot->worker_count++;
+	}
 }
 
 /*
- * defer_report_snapshot_reset - aggregate defer counters across workers.
- * @metrics: destination for aggregate defer metrics.
+ * defer_report_snapshot_reset - snapshot defer counters across workers.
+ * @snapshot: destination for aggregate and per-worker defer metrics.
  * @reset: non-zero resets interval counters after copying them.
  * Returns nothing.
  */
-static void defer_report_snapshot_reset(struct decision_defer_metrics *metrics,
+static void defer_report_snapshot_reset(struct defer_report_snapshot *snapshot,
 		int reset)
 {
-	struct defer_report_snapshot snapshot = {
-		.reset = reset,
-	};
-
-	if (metrics == NULL)
+	if (snapshot == NULL)
 		return;
 
-	decision_context_for_each(defer_report_snapshot_context, &snapshot);
-	*metrics = snapshot.metrics;
+	memset(snapshot, 0, sizeof(*snapshot));
+	snapshot->reset = reset;
+	decision_context_for_each(defer_report_snapshot_context, snapshot);
+}
+
+/*
+ * defer_worker_snapshot_sort - order worker defer snapshots by worker id.
+ * @snapshot: defer report snapshot to sort.
+ * Returns nothing.
+ */
+static void defer_worker_snapshot_sort(struct defer_report_snapshot *snapshot)
+{
+	unsigned int i, j;
+
+	if (snapshot == NULL)
+		return;
+
+	for (i = 0; i < snapshot->worker_count; i++) {
+		for (j = i + 1; j < snapshot->worker_count; j++) {
+			unsigned int left = snapshot->workers[i].worker_id;
+			unsigned int right = snapshot->workers[j].worker_id;
+
+			if (left <= right)
+				continue;
+			{
+				struct defer_worker_snapshot tmp =
+					snapshot->workers[i];
+				snapshot->workers[i] = snapshot->workers[j];
+				snapshot->workers[j] = tmp;
+			}
+		}
+	}
 }
 
 /*
@@ -987,10 +1053,18 @@ void fanotify_queue_report_reset(FILE *f, int reset)
 		q_metrics_report_worker(f, worker_ids[i], &metrics[i]);
 
 	{
-		struct decision_defer_metrics defer_metrics;
+		struct defer_report_snapshot defer_snapshot;
 
-		defer_report_snapshot_reset(&defer_metrics, reset);
-		decision_defer_metrics_report(f, &defer_metrics);
+		defer_report_snapshot_reset(&defer_snapshot, reset);
+		decision_defer_metrics_report(f, &defer_snapshot.metrics);
+		if (defer_snapshot.worker_count) {
+			defer_worker_snapshot_sort(&defer_snapshot);
+			fprintf(f, "\nPer-worker subject defer activity:\n");
+			for (i = 0; i < defer_snapshot.worker_count; i++)
+				decision_defer_metrics_report_worker(f,
+					defer_snapshot.workers[i].worker_id,
+					&defer_snapshot.workers[i].metrics);
+		}
 	}
 }
 
@@ -1014,6 +1088,7 @@ void fanotify_queue_health_report(FILE *f)
 			if (worker->queue == NULL)
 				continue;
 
+			worker_health_report(f, worker);
 			q_metrics_snapshot(worker->queue, &metrics);
 			q_metrics_report_worker(f, worker->id, &metrics);
 		}
@@ -1031,12 +1106,16 @@ void fanotify_queue_health_report(FILE *f)
  */
 void fanotify_defer_config_report(FILE *f)
 {
+	struct defer_report_snapshot snapshot;
 	struct decision_defer_metrics metrics;
 
 	if (f == NULL)
 		return;
 
-	defer_report_snapshot_reset(&metrics, 0);
+	defer_report_snapshot_reset(&snapshot, 0);
+	metrics = snapshot.metrics;
+	if (snapshot.worker_count)
+		metrics.capacity /= snapshot.worker_count;
 	decision_defer_config_report(f, &metrics);
 }
 
@@ -1047,13 +1126,13 @@ void fanotify_defer_config_report(FILE *f)
  */
 void fanotify_defer_fallback_report(FILE *f)
 {
-	struct decision_defer_metrics metrics;
+	struct defer_report_snapshot snapshot;
 
 	if (f == NULL)
 		return;
 
-	defer_report_snapshot_reset(&metrics, 0);
-	decision_defer_fallback_report(f, &metrics);
+	defer_report_snapshot_reset(&snapshot, 0);
+	decision_defer_fallback_report(f, &snapshot.metrics);
 }
 
 /*
@@ -1063,13 +1142,13 @@ void fanotify_defer_fallback_report(FILE *f)
  */
 void fanotify_defer_age_report(FILE *f)
 {
-	struct decision_defer_metrics metrics;
+	struct defer_report_snapshot snapshot;
 
 	if (f == NULL)
 		return;
 
-	defer_report_snapshot_reset(&metrics, 0);
-	decision_defer_age_report(f, &metrics);
+	defer_report_snapshot_reset(&snapshot, 0);
+	decision_defer_age_report(f, &snapshot.metrics);
 }
 
 /*
@@ -1079,13 +1158,13 @@ void fanotify_defer_age_report(FILE *f)
  */
 void fanotify_defer_health_report(FILE *f)
 {
-	struct decision_defer_metrics metrics;
+	struct defer_report_snapshot snapshot;
 
 	if (f == NULL)
 		return;
 
-	defer_report_snapshot_reset(&metrics, 0);
-	decision_defer_health_report(f, &metrics);
+	defer_report_snapshot_reset(&snapshot, 0);
+	decision_defer_health_report(f, &snapshot.metrics);
 }
 
 /*
@@ -1412,7 +1491,9 @@ int test_notify_queue_reset(unsigned int entries)
 		q_close(worker->queue);
 	worker->id = 0;
 	worker->context = decision_context_current();
+	decision_context_set_worker_id(worker->context, 0);
 	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
+	atomic_store_explicit(&worker->tid, 0, memory_order_relaxed);
 	worker->queue = q_open(entries);
 	active_decision_workers = worker->queue ? 1 : 0;
 	return worker->queue == NULL ? -1 : 0;
@@ -1467,6 +1548,7 @@ int test_notify_defer_reset(unsigned int subj_cache_size)
 
 	worker->id = 0;
 	worker->context = decision_context_current();
+	decision_context_set_worker_id(worker->context, 0);
 	defer = worker_defer_queue(worker);
 	decision_defer_destroy(defer);
 	return decision_defer_init(defer, subj_cache_size);
@@ -1550,7 +1632,10 @@ int test_notify_worker_pool_reset(unsigned int workers, unsigned int entries)
 	for (i = 0; i < workers; i++) {
 		decision_workers[i].id = i;
 		decision_workers[i].context = decision_context_current();
+		decision_context_set_worker_id(decision_workers[i].context, i);
 		atomic_store_explicit(&decision_workers[i].alive, true,
+				      memory_order_relaxed);
+		atomic_store_explicit(&decision_workers[i].tid, 0,
 				      memory_order_relaxed);
 		decision_workers[i].queue = q_open(entries);
 		if (decision_workers[i].queue == NULL) {
@@ -1669,6 +1754,8 @@ static void *decision_worker_main(void *arg)
 	if (worker == NULL || worker->queue == NULL ||
 	    worker->context == NULL)
 		return NULL;
+	atomic_store_explicit(&worker->tid, (int)syscall(SYS_gettid),
+			      memory_order_relaxed);
 	/*
 	 * The decision path uses decision_context_current() in cache, file, and
 	 * policy helpers. Bind this thread before any event or report work so

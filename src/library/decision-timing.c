@@ -102,6 +102,11 @@ struct decision_timing_stage_snapshot {
 	unsigned long long buckets[DECISION_TIMING_BUCKETS];
 };
 
+struct decision_timing_worker_snapshot {
+	unsigned int worker_id;
+	struct decision_timing_stage_snapshot stages[DECISION_TIMING_STAGE_COUNT];
+};
+
 struct decision_timing_stage_order {
 	unsigned int stages[DECISION_TIMING_STAGE_COUNT];
 	unsigned int count;
@@ -110,9 +115,11 @@ struct decision_timing_stage_order {
 struct decision_timing_report_ctx {
 	FILE *f;
 	const struct decision_timing_stage_snapshot *totals;
+	const struct decision_timing_worker_snapshot *workers;
 	const struct decision_timing_stage_order *order;
 	unsigned long long decisions;
 	unsigned long long duration_ns;
+	unsigned int worker_count;
 	unsigned int max_queue_depth;
 	unsigned int q_size;
 };
@@ -1113,6 +1120,63 @@ static void write_queueing(const struct decision_timing_report_ctx *ctx)
 		percentile_bucket(queue, 95));
 	fprintf(ctx->f, "  total queued time: %s\n", total);
 	fprintf(ctx->f, "  max queue depth: %u\n", ctx->max_queue_depth);
+}
+
+/*
+ * write_worker_skew - write per-worker timing skew summary.
+ * @ctx: report context.
+ * Returns nothing.
+ */
+static void write_worker_skew(const struct decision_timing_report_ctx *ctx)
+{
+	unsigned int i;
+	unsigned long long min_decisions = ULLONG_MAX;
+	unsigned long long max_decisions = 0;
+
+	if (ctx->workers == NULL || ctx->worker_count <= 1)
+		return;
+
+	for (i = 0; i < ctx->worker_count; i++) {
+		const struct decision_timing_stage_snapshot *decision =
+			&ctx->workers[i].stages[DECISION_TIMING_STAGE_TOTAL];
+
+		if (decision->count < min_decisions)
+			min_decisions = decision->count;
+		if (decision->count > max_decisions)
+			max_decisions = decision->count;
+	}
+
+	fprintf(ctx->f, "\nPer-worker timing skew:\n");
+	if (max_decisions == 0) {
+		fprintf(ctx->f, "  no decisions observed per worker\n");
+		return;
+	}
+
+	fprintf(ctx->f,
+		"  decisions min=%llu max=%llu spread=%llu\n",
+		min_decisions, max_decisions, max_decisions - min_decisions);
+	fprintf(ctx->f,
+		"  Worker %10s %12s %10s %10s %12s\n",
+		"Decisions", "Total", "Avg", "Max", "Queue p95");
+	for (i = 0; i < ctx->worker_count; i++) {
+		const struct decision_timing_worker_snapshot *worker =
+			&ctx->workers[i];
+		const struct decision_timing_stage_snapshot *decision =
+			&worker->stages[DECISION_TIMING_STAGE_TOTAL];
+		const struct decision_timing_stage_snapshot *queue =
+			&worker->stages[DECISION_TIMING_STAGE_QUEUE_WAIT];
+		char decisions[32], total[32], avg[32], max[32];
+
+		format_count(decision->count, decisions, sizeof(decisions));
+		format_human_duration(decision->total_ns, total,
+				      sizeof(total));
+		format_human_duration(stage_avg_ns(decision), avg,
+				      sizeof(avg));
+		format_human_duration(decision->max_ns, max, sizeof(max));
+		fprintf(ctx->f, "  %6u %10s %12s %10s %10s %12s\n",
+			worker->worker_id, decisions, total, avg, max,
+			percentile_bucket(queue, 95));
+	}
 }
 
 /*
@@ -2207,6 +2271,7 @@ static void write_report_sections(const struct decision_timing_report_ctx *ctx)
 	write_tldr(ctx);
 	write_overall_latency(ctx->f, &ctx->totals[DECISION_TIMING_STAGE_TOTAL]);
 	write_queueing(ctx);
+	write_worker_skew(ctx);
 	write_phase_timing(ctx);
 	write_helper_attribution_intro(ctx->f);
 	write_helper_by_driver(ctx);
@@ -2259,9 +2324,11 @@ void decision_timing_test_write_report(FILE *f,
 	sort_stages_by_total(totals, &order);
 	report.f = f;
 	report.totals = totals;
+	report.workers = NULL;
 	report.order = &order;
 	report.decisions = totals[DECISION_TIMING_STAGE_TOTAL].count;
 	report.duration_ns = input ? input->duration_ns : 0;
+	report.worker_count = 0;
 	report.max_queue_depth = input ? input->max_queue_depth : 0;
 	report.q_size = input ? input->q_size : 0;
 	write_report_sections(&report);
@@ -2276,6 +2343,8 @@ void decision_timing_test_write_report(FILE *f,
 static void write_timing_report(const conf_t *config)
 {
 	struct decision_timing_stage_snapshot totals[DECISION_TIMING_STAGE_COUNT];
+	struct decision_timing_worker_snapshot
+		worker_snapshots[DECISION_TIMING_MAX_WORKERS];
 	struct decision_timing_stage_order order;
 	struct decision_timing_report_ctx report;
 	FILE *f;
@@ -2295,15 +2364,20 @@ static void write_timing_report(const conf_t *config)
 	int tfd;
 
 	memset(totals, 0, sizeof(totals));
+	memset(worker_snapshots, 0, sizeof(worker_snapshots));
 	worker_count = atomic_load_explicit(&active_workers,
 					    memory_order_relaxed);
 	if (worker_count > DECISION_TIMING_MAX_WORKERS)
 		worker_count = DECISION_TIMING_MAX_WORKERS;
 
 	for (worker = 0; worker < worker_count; worker++) {
-		for (stage = 0; stage < DECISION_TIMING_STAGE_COUNT; stage++)
-			snapshot_stage(&totals[stage],
+		worker_snapshots[worker].worker_id = worker;
+		for (stage = 0; stage < DECISION_TIMING_STAGE_COUNT; stage++) {
+			snapshot_stage(&worker_snapshots[worker].stages[stage],
 				&workers[worker].stages[stage]);
+			stage_snapshot_add(&totals[stage],
+				&worker_snapshots[worker].stages[stage]);
+		}
 	}
 	sort_stages_by_total(totals, &order);
 
@@ -2337,9 +2411,11 @@ static void write_timing_report(const conf_t *config)
 					       memory_order_relaxed);
 	report.f = f;
 	report.totals = totals;
+	report.workers = worker_snapshots;
 	report.order = &order;
 	report.decisions = decision_count;
 	report.duration_ns = duration_ns;
+	report.worker_count = worker_count;
 	report.max_queue_depth = max_queue_depth;
 	report.q_size = config->q_size;
 

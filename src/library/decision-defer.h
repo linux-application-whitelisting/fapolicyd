@@ -69,5 +69,7 @@ void decision_defer_health_report(FILE *f,
 		const struct decision_defer_metrics *metrics);
 void decision_defer_metrics_report(FILE *f,
 		const struct decision_defer_metrics *metrics);
+void decision_defer_metrics_report_worker(FILE *f, unsigned int worker_id,
+		const struct decision_defer_metrics *metrics);
 
 #endif

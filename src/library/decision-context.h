@@ -60,6 +60,7 @@ struct decision_policy_counters {
  * ownership boundary explicit before multiple decision workers are added.
  */
 struct decision_context {
+	unsigned int worker_id;
 	Queue *subject_cache;
 	Queue *object_cache;
 	char *working_buffer;
@@ -88,6 +89,8 @@ typedef void (*decision_context_iter_fn)(struct decision_context *ctx,
 struct decision_context *decision_context_current(void);
 void decision_context_set_current(struct decision_context *ctx);
 void decision_context_close_file_helpers(struct decision_context *ctx);
+void decision_context_set_worker_id(struct decision_context *ctx,
+		unsigned int worker_id);
 struct decision_context *decision_context_create(const struct conf *config);
 void decision_context_destroy(struct decision_context *ctx);
 void decision_context_for_each(decision_context_iter_fn iter, void *data);

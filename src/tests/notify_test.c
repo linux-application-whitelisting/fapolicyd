@@ -494,10 +494,10 @@ static void test_dispatcher_worker_skew(void)
 
 	read_fanotify_queue_report(report, sizeof(report), 0);
 	CHECK(strstr(report,
-		     "Decision worker 0 current queue depth: 4\n") != NULL,
+		     "  Decision worker 0 current queue depth: 4\n") != NULL,
 	      114, "[ERROR:114] skew report missing hot worker depth");
 	CHECK(strstr(report,
-		     "Decision worker 1 current queue depth: 0\n") != NULL,
+		     "  Decision worker 1 current queue depth: 0\n") != NULL,
 	      115, "[ERROR:115] skew report missing idle worker depth");
 
 	test_notify_worker_pool_destroy();
@@ -529,21 +529,26 @@ static void test_notify_queue_report_reset(void)
 	CHECK(strstr(report, "Inter-thread current queue depth: 1\n") != NULL,
 	      85, "[ERROR:85] aggregate queue depth missing");
 	CHECK(strstr(report,
-		     "Decision worker 0 current queue depth: 1\n") != NULL,
+		     "  Decision worker 0 current queue depth: 1\n") != NULL,
 	      86, "[ERROR:86] worker current depth missing");
 	CHECK(strstr(report,
-		     "Decision worker 0 max queue depth: 1\n") != NULL,
+		     "  Decision worker 0 max queue depth: 1\n") != NULL,
 	      87, "[ERROR:87] worker max depth missing");
 	CHECK(strstr(report,
-		     "Decision worker 0 queue full count: 1\n") != NULL,
+		     "  Decision worker 0 queue full count: 1\n") != NULL,
 	      88, "[ERROR:88] worker full count missing before reset");
 	CHECK(strstr(report,
-		     "Decision worker 0 oldest queued age: ") != NULL,
+		     "  Decision worker 0 oldest queued age: ") != NULL,
 	      89, "[ERROR:89] worker oldest age missing");
+	CHECK(strstr(report, "Per-worker subject defer activity:\n") != NULL,
+	      116, "[ERROR:116] worker defer section missing");
+	CHECK(strstr(report,
+		     "  Decision worker 0 Subject defer fallbacks: 0\n") != NULL,
+	      117, "[ERROR:117] worker defer fallback missing");
 
 	read_fanotify_queue_report(report, sizeof(report), 0);
 	CHECK(strstr(report,
-		     "Decision worker 0 queue full count: 0\n") != NULL,
+		     "  Decision worker 0 queue full count: 0\n") != NULL,
 	      90, "[ERROR:90] worker full count did not reset");
 
 	test_notify_queue_destroy();

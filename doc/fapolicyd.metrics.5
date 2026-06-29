@@ -15,7 +15,8 @@ state report, written to
 answers whether the daemon is healthy and configured as expected.
 Each field is printed as a
 .I name: value
-line. Section headers end in a colon.
+line. Section headers end in a colon. Worker-specific drill-down fields are
+indented by two spaces under the related aggregate section.
 .SH HEADER
 .TP
 .B Last metrics reset
@@ -74,6 +75,13 @@ queues.
 The highest per-worker internal event queue depth observed since the last
 metrics reset.
 .TP
+.B Inter-thread queue full count
+The number of failed enqueue attempts across all worker queues since the last
+metrics reset.
+.TP
+.B Inter-thread oldest queued age
+The oldest currently queued event age across all worker queues.
+.TP
 .B Decision worker N current queue depth
 The number of fanotify permission events currently waiting in that worker's
 queue.
@@ -105,6 +113,26 @@ last metrics reset.
 The cumulative number of defer-array-full fallbacks since the last metrics
 reset. This field also appears in the state report because non-zero values are
 health indicators.
+.TP
+.B Decision worker N Subject deferred events
+The number of subject-slot deferrals owned by one decision worker since the
+last metrics reset.
+.TP
+.B Decision worker N Subject defer max depth
+The highest number of concurrently deferred subject events observed in one
+decision worker since the last metrics reset.
+.TP
+.B Decision worker N Subject defer fallbacks
+The number of defer-array-full fallbacks in one decision worker since the last
+metrics reset.
+.TP
+.B Decision worker N Subject defer current depth
+The number of subject events currently parked in one decision worker's defer
+array.
+.TP
+.B Decision worker N Subject defer oldest age
+The age of the oldest currently deferred event in one decision worker's defer
+array.
 .SH Subject cache effectiveness
 .TP
 .B Subject hits
@@ -135,6 +163,27 @@ the state report because non-zero values are health indicators.
 The number of BUILDING subject cache entries evicted because their startup
 state stayed incomplete past the bounded stale window. This field also appears
 in the state report because non-zero values are health indicators.
+.TP
+.B Decision worker N Subject hits
+The number of subject cache hits in one decision worker.
+.TP
+.B Decision worker N Subject misses
+The number of subject cache misses in one decision worker.
+.TP
+.B Decision worker N Subject collisions
+The number of subject cache collisions in one decision worker.
+.TP
+.B Decision worker N Subject evictions
+The number of subject cache evictions in one decision worker.
+.TP
+.B Decision worker N Early subject cache evictions
+The number of early subject cache evictions in one decision worker.
+.TP
+.B Decision worker N Subject BUILDING tracer evictions
+The number of traced BUILDING subject evictions in one decision worker.
+.TP
+.B Decision worker N Subject BUILDING stale evictions
+The number of stale BUILDING subject evictions in one decision worker.
 .SH Object cache effectiveness
 .TP
 .B Object hits
@@ -150,6 +199,18 @@ match the current event and therefore had to be evicted before reuse.
 .B Object evictions
 The number of object cache evictions and the eviction percentage relative to
 object cache hits.
+.TP
+.B Decision worker N Object hits
+The number of object cache hits in one decision worker.
+.TP
+.B Decision worker N Object misses
+The number of object cache misses in one decision worker.
+.TP
+.B Decision worker N Object collisions
+The number of object cache collisions in one decision worker.
+.TP
+.B Decision worker N Object evictions
+The number of object cache evictions in one decision worker.
 .SH Trust database lookups
 .TP
 .B Trust DB lookups

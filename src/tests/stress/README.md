@@ -586,7 +586,7 @@ Review:
 - `Denied accesses`
 - `Kernel queue overflow`
 - `Reply errors`
-- `Subject cache size`
+- `Per worker Subject cache size`
 - `Subject slots in use`
 - `Subject hits`
 - `Subject misses`
@@ -597,7 +597,7 @@ Review:
 - `Subject defer fallbacks`
 - `Subject defer oldest age`
 - `Early subject cache evictions`
-- `Object cache size`
+- `Per worker Object cache size`
 - `Object slots in use`
 - `Object hits`
 - `Object misses`
