@@ -3,7 +3,7 @@
 fapolicyd \- File Access Policy Daemon
 .SH SYNOPSIS
 .B fapolicyd
-.RI [ --debug | --debug-deny ]
+.RI [ --debug | --debug-deny | --foreground ]
 .RI [ --permissive ]
 .RI [ --no-details ]
 .RI [ --mounts=PATH ]
@@ -37,6 +37,10 @@ policy decisions can be observed.
 .TP
 .B \-\-debug\-deny
 Run the daemon in the foreground and write only deny decisions to stderr.
+.TP
+.B \-\-foreground
+Run the daemon in the foreground without enabling debug output. This is intended
+for service managers using readiness or watchdog supervision.
 .TP
 .B \-\-permissive
 Allow file access even when policy would deny it. This is useful when
@@ -99,6 +103,14 @@ file is the resulting merge of component rules in /etc/fapolicyd/rules.d/ See
 the
 .B fagenrules
 man page for more information.
+
+When built with systemd watchdog support, the packaged service uses
+.B Type=notify
+and starts fapolicyd with
+.BR --foreground .
+See
+.I systemd-watchdog.md
+in the documentation directory for watchdog timeout and drop-in examples.
 
 If you are running in the debug mode and wish to compare rule numbers reported in the output with which rule is actually triggering, you can see the rules with the corresponding number by running the following command:
 

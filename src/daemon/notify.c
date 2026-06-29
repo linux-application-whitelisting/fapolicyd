@@ -92,11 +92,18 @@
 #include "mounts.h"
 #include "notify.h"
 #include "state-report.h"
+#include "string-util.h"
+#include "systemd-notify.h"
 
 #define FANOTIFY_BUFFER_SIZE 8192
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
+#define SYSTEMD_WATCHDOG_LOG_INTERVAL 60
 #define DEFER_RECHECK_INTERVAL_SEC 1
 #define DECISION_WORKER_MAX DAEMON_CONFIG_DECISION_THREADS_MAX
+#define HEALTH_MONITOR_INTERVAL_SEC 3
+#define HEALTH_QUEUE_BACKLOG_THRESHOLD 5
+#define NSEC_PER_SEC 1000000000ULL
+#define USEC_TO_NSEC 1000ULL
 
 // External variables
 extern atomic_bool stop, run_stats;
@@ -107,8 +114,11 @@ struct decision_worker {
 	struct queue *queue;
 	struct decision_context *context;
 	pthread_t thread;
-	atomic_bool alive;
 	atomic_int tid;
+	atomic_ullong heartbeat_ns;
+	atomic_ullong current_event_started_ns;
+	atomic_ullong last_completed_event_ns;
+	atomic_bool stall_reported;
 };
 
 // Local variables
@@ -117,7 +127,7 @@ static struct queue_metrics last_queue_metrics[DECISION_WORKER_MAX];
 static unsigned int last_queue_metrics_count;
 static struct decision_worker decision_workers[DECISION_WORKER_MAX];
 static unsigned int active_decision_workers;
-static pthread_t deadmans_switch_thread;
+static pthread_t health_monitor_thread;
 static int fd = -1;
 static int rpt_timer_fd = -1;
 static uint64_t mask;
@@ -126,10 +136,12 @@ static unsigned int rpt_interval;
 static unsigned int timing_saved_queue_depth[DECISION_WORKER_MAX];
 static struct message_rate_limit kernel_queue_overflow_log =
 	MESSAGE_RATE_LIMIT_INIT(KERNEL_OVERFLOW_LOG_INTERVAL);
+static struct message_rate_limit systemd_watchdog_log =
+	MESSAGE_RATE_LIMIT_INIT(SYSTEMD_WATCHDOG_LOG_INTERVAL);
 
 // Local functions
 static void *decision_worker_main(void *arg);
-static void *deadmans_switch_thread_main(void *arg);
+static void *health_monitor_thread_main(void *arg);
 static void dispatch_decision_event(struct decision_worker *worker,
 		decision_event_t *event, int *rpt_is_stale);
 static void fanotify_failure_action(failure_reason_t reason);
@@ -408,26 +420,198 @@ static int worker_owns_reports(const struct decision_worker *worker)
 	return worker && worker->id == 0;
 }
 
+enum worker_health_state {
+	WORKER_HEALTH_IDLE,
+	WORKER_HEALTH_BUSY,
+};
+
+struct worker_health_snapshot {
+	enum worker_health_state state;
+	uint64_t heartbeat_age_ns;
+	uint64_t current_event_age_ns;
+};
+
+/*
+ * health_now_ns - read monotonic time for worker health checks.
+ * Returns monotonic nanoseconds, or zero if the clock cannot be read.
+ */
+static uint64_t health_now_ns(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts))
+		return 0;
+
+	return (uint64_t)ts.tv_sec * NSEC_PER_SEC + (uint64_t)ts.tv_nsec;
+}
+
+/*
+ * health_age_ns - compute an age from a monotonic timestamp.
+ * @now: current monotonic time in nanoseconds.
+ * @timestamp: older monotonic timestamp, or zero when unset.
+ * Returns age in nanoseconds, or zero when the timestamp is unset or invalid.
+ */
+static uint64_t health_age_ns(uint64_t now, uint64_t timestamp)
+{
+	if (timestamp == 0 || now < timestamp)
+		return 0;
+
+	return now - timestamp;
+}
+
+/*
+ * worker_health_state_name - convert a worker health state to report text.
+ * @state: health state to describe.
+ * Returns a static string for reports and logs.
+ */
+static const char *worker_health_state_name(enum worker_health_state state)
+{
+	switch (state) {
+	case WORKER_HEALTH_IDLE:
+		return "idle";
+	case WORKER_HEALTH_BUSY:
+		return "busy";
+	}
+
+	return "unknown";
+}
+
+/*
+ * worker_health_init - initialize health timestamps for one worker slot.
+ * @worker: worker slot being initialized.
+ * Returns nothing.
+ */
+static void worker_health_init(struct decision_worker *worker)
+{
+	uint64_t now;
+
+	if (worker == NULL)
+		return;
+
+	now = health_now_ns();
+	atomic_store_explicit(&worker->heartbeat_ns, now, memory_order_relaxed);
+	atomic_store_explicit(&worker->current_event_started_ns, 0,
+			      memory_order_relaxed);
+	atomic_store_explicit(&worker->last_completed_event_ns, 0,
+			      memory_order_relaxed);
+	atomic_store_explicit(&worker->stall_reported, false,
+			      memory_order_relaxed);
+}
+
+/*
+ * worker_health_heartbeat - record worker loop progress.
+ * @worker: worker that made progress.
+ * Returns nothing.
+ */
+static void worker_health_heartbeat(struct decision_worker *worker)
+{
+	if (worker == NULL)
+		return;
+
+	atomic_store_explicit(&worker->heartbeat_ns, health_now_ns(),
+			      memory_order_relaxed);
+}
+
+/*
+ * worker_health_event_begin - mark the start of a policy decision.
+ * @worker: worker processing the event.
+ * Returns nothing.
+ */
+static void worker_health_event_begin(struct decision_worker *worker)
+{
+	uint64_t now;
+
+	if (worker == NULL)
+		return;
+
+	now = health_now_ns();
+	atomic_store_explicit(&worker->current_event_started_ns, now,
+			      memory_order_release);
+	atomic_store_explicit(&worker->heartbeat_ns, now, memory_order_relaxed);
+}
+
+/*
+ * worker_health_event_end - mark a completed policy decision.
+ * @worker: worker that finished processing.
+ * Returns nothing.
+ */
+static void worker_health_event_end(struct decision_worker *worker)
+{
+	uint64_t now;
+
+	if (worker == NULL)
+		return;
+
+	now = health_now_ns();
+	atomic_store_explicit(&worker->last_completed_event_ns, now,
+			      memory_order_relaxed);
+	atomic_store_explicit(&worker->current_event_started_ns, 0,
+			      memory_order_release);
+	atomic_store_explicit(&worker->heartbeat_ns, now, memory_order_relaxed);
+	atomic_store_explicit(&worker->stall_reported, false,
+			      memory_order_relaxed);
+}
+
+/*
+ * worker_health_snapshot - copy one worker's health timestamps.
+ * @worker: worker to inspect.
+ * @snapshot: destination snapshot.
+ * @now: current monotonic time in nanoseconds.
+ * Returns nothing.
+ */
+static void worker_health_snapshot(const struct decision_worker *worker,
+		struct worker_health_snapshot *snapshot, uint64_t now)
+{
+	uint64_t heartbeat, current;
+
+	if (worker == NULL || snapshot == NULL)
+		return;
+
+	heartbeat = atomic_load_explicit(&worker->heartbeat_ns,
+					 memory_order_relaxed);
+	current = atomic_load_explicit(&worker->current_event_started_ns,
+				       memory_order_acquire);
+
+	if (current != 0)
+		snapshot->state = WORKER_HEALTH_BUSY;
+	else
+		snapshot->state = WORKER_HEALTH_IDLE;
+
+	snapshot->heartbeat_age_ns = health_age_ns(now, heartbeat);
+	snapshot->current_event_age_ns = health_age_ns(now, current);
+}
+
 /*
  * worker_health_report - write one compact decision-worker health line.
  * @f: report stream.
  * @worker: decision worker to describe.
- *
- * The kernel TID is recorded here, rather than on the configuration line, so
- * operators have one place to map per-worker health to scheduler/debug data.
  */
 static void worker_health_report(FILE *f, const struct decision_worker *worker)
 {
-	int tid;
+	struct worker_health_snapshot snapshot = { 0 };
+	char heartbeat[32], current[32];
+	const char *state;
+	uint64_t now;
 
 	if (f == NULL || worker == NULL)
 		return;
 
-	tid = atomic_load_explicit(&worker->tid, memory_order_relaxed);
-	fprintf(f, "  Decision worker %u health: TID=%d alive=%s\n",
-		worker->id, tid,
-		atomic_load_explicit(&worker->alive, memory_order_relaxed) ?
-			"true" : "false");
+	now = health_now_ns();
+	worker_health_snapshot(worker, &snapshot, now);
+	fapolicyd_format_ns(snapshot.heartbeat_age_ns, heartbeat,
+			    sizeof(heartbeat));
+	if (snapshot.state == WORKER_HEALTH_IDLE)
+		snprintf(current, sizeof(current), "idle");
+	else
+		fapolicyd_format_ns(snapshot.current_event_age_ns, current,
+				    sizeof(current));
+	if (atomic_load_explicit(&worker->stall_reported, memory_order_relaxed))
+		state = "stalled";
+	else
+		state = worker_health_state_name(snapshot.state);
+
+	fprintf(f, "  Decision worker %u health: state=%s heartbeat=%s "
+		"current_event=%s\n", worker->id, state, heartbeat, current);
 }
 
 /*
@@ -450,8 +634,8 @@ static int setup_decision_worker(const conf_t *conf, unsigned int worker_id)
 	worker->id = worker_id;
 	worker->queue = NULL;
 	worker->context = NULL;
-	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
 	atomic_store_explicit(&worker->tid, 0, memory_order_relaxed);
+	worker_health_init(worker);
 
 	if (worker_id == 0)
 		worker->context = previous;
@@ -603,10 +787,10 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	    active_decision_workers,
 	    active_decision_workers == 1 ? "" : "s");
 
-	rc = pthread_create(&deadmans_switch_thread, NULL,
-			    deadmans_switch_thread_main, NULL);
+	rc = pthread_create(&health_monitor_thread, NULL,
+			    health_monitor_thread_main, NULL);
 	if (rc) {
-		msg(LOG_ERR, "Failed to create deadman's switch thread (%s)",
+		msg(LOG_ERR, "Failed to create health monitor thread (%s)",
 		    strerror(rc));
 		atomic_store(&stop, true);
 		for (i = 0; i < active_decision_workers; i++)
@@ -802,7 +986,7 @@ void shutdown_fanotify(mlist *m)
 		q_shutdown(decision_workers[i].queue);
 	for (i = 0; i < active_decision_workers; i++)
 		pthread_join(decision_workers[i].thread, NULL);
-	pthread_join(deadmans_switch_thread, NULL);
+	pthread_join(health_monitor_thread, NULL);
 
 	// Clean up
 	save_last_queue_metrics();
@@ -1189,10 +1373,180 @@ void fanotify_metrics_report_reset(FILE *f, int reset)
 	fanotify_queue_report_reset(f, reset);
 }
 
-static void *deadmans_switch_thread_main(void *arg)
+/*
+ * health_monitor_interval_ns - choose the monitor wake interval.
+ * Returns half the systemd watchdog interval when enabled, otherwise the legacy
+ * three-second monitor cadence.
+ */
+static uint64_t health_monitor_interval_ns(void)
+{
+	uint64_t watchdog = systemd_watchdog_interval_usec();
+
+	if (watchdog)
+		return (watchdog * USEC_TO_NSEC) / 2;
+
+	return HEALTH_MONITOR_INTERVAL_SEC * NSEC_PER_SEC;
+}
+
+/*
+ * health_stall_timeout_ns - choose the worker stall deadline.
+ * Returns the systemd watchdog interval when enabled, otherwise the legacy
+ * three-second stall deadline.
+ */
+static uint64_t health_stall_timeout_ns(void)
+{
+	uint64_t watchdog = systemd_watchdog_interval_usec();
+
+	if (watchdog)
+		return watchdog * USEC_TO_NSEC;
+
+	return HEALTH_MONITOR_INTERVAL_SEC * NSEC_PER_SEC;
+}
+
+/*
+ * health_monitor_sleep - sleep in short chunks so shutdown is not delayed.
+ * @interval_ns: requested sleep interval in nanoseconds.
+ * Returns nothing.
+ */
+static void health_monitor_sleep(uint64_t interval_ns)
+{
+	while (!atomic_load_explicit(&stop, memory_order_relaxed) &&
+	       interval_ns > 0) {
+		struct timespec ts;
+		uint64_t chunk = interval_ns;
+
+		if (chunk > NSEC_PER_SEC)
+			chunk = NSEC_PER_SEC;
+		ts.tv_sec = (time_t)(chunk / NSEC_PER_SEC);
+		ts.tv_nsec = (long)(chunk % NSEC_PER_SEC);
+		while (nanosleep(&ts, &ts) && errno == EINTR)
+			;
+		interval_ns -= chunk;
+	}
+}
+
+/*
+ * worker_health_is_stalled - decide whether one worker stopped progressing.
+ * @snapshot: worker health timestamp snapshot.
+ * @metrics: queue metrics for the worker.
+ * @timeout_ns: stall deadline in nanoseconds.
+ *
+ * A single slow current decision can be legitimate storage latency, so the
+ * compatibility action requires visible queued pressure before treating it as
+ * a daemon-level stall. If no decision is active, an old queued event plus a
+ * stale heartbeat means the worker is not draining its queue.
+ *
+ * Returns 1 when the worker is stalled, 0 otherwise.
+ */
+static int worker_health_is_stalled(
+		const struct worker_health_snapshot *snapshot,
+		const struct queue_metrics *metrics, uint64_t timeout_ns)
+{
+	if (snapshot == NULL || metrics == NULL || timeout_ns == 0)
+		return 0;
+
+	if (snapshot->state != WORKER_HEALTH_IDLE &&
+	    snapshot->current_event_age_ns >= timeout_ns &&
+	    (metrics->current_depth > HEALTH_QUEUE_BACKLOG_THRESHOLD ||
+	     metrics->oldest_age_ns >= timeout_ns))
+		return 1;
+
+	if (snapshot->state == WORKER_HEALTH_IDLE &&
+	    metrics->current_depth > 0 &&
+	    metrics->oldest_age_ns >= timeout_ns &&
+	    snapshot->heartbeat_age_ns >= timeout_ns)
+		return 1;
+
+	return 0;
+}
+
+/*
+ * health_monitor_log_stall - record and report one worker stall.
+ * @worker: stalled worker.
+ * @snapshot: worker health snapshot.
+ * @metrics: queue metrics for the worker.
+ * Returns nothing.
+ */
+static void health_monitor_log_stall(struct decision_worker *worker,
+		const struct worker_health_snapshot *snapshot,
+		const struct queue_metrics *metrics)
+{
+	char heartbeat[32], current[32], oldest[32];
+	unsigned long total;
+	int tid;
+
+	if (worker == NULL || snapshot == NULL || metrics == NULL)
+		return;
+
+	if (atomic_exchange_explicit(&worker->stall_reported, true,
+				     memory_order_relaxed))
+		return;
+
+	total = failure_action_record(FAILURE_REASON_WORKER_STALL);
+	tid = atomic_load_explicit(&worker->tid, memory_order_relaxed);
+	fapolicyd_format_ns(snapshot->heartbeat_age_ns, heartbeat,
+			    sizeof(heartbeat));
+	if (snapshot->state == WORKER_HEALTH_IDLE)
+		snprintf(current, sizeof(current), "idle");
+	else
+		fapolicyd_format_ns(snapshot->current_event_age_ns, current,
+				    sizeof(current));
+	fapolicyd_format_ns(metrics->oldest_age_ns, oldest, sizeof(oldest));
+
+	msg(LOG_ERR,
+	    "Health monitor detected stalled decision worker %u: TID=%d "
+	    "state=%s heartbeat=%s current_event=%s "
+	    "queue_depth=%u oldest_queued=%s action=%s "
+	    "worker_stall=%lu",
+	    worker->id, tid, "stalled", heartbeat, current,
+	    metrics->current_depth, oldest,
+	    failure_action_name(failure_reason_action(
+		    FAILURE_REASON_WORKER_STALL)),
+	    total);
+	atomic_store_explicit(&run_stats, true, memory_order_relaxed);
+	nudge_queue();
+}
+
+/*
+ * health_monitor_check_workers - check every worker once.
+ * @timeout_ns: stall deadline in nanoseconds.
+ * Returns 1 when all workers are healthy, 0 when at least one is stalled.
+ */
+static int health_monitor_check_workers(uint64_t timeout_ns)
+{
+	unsigned int i;
+	uint64_t now = health_now_ns();
+	int healthy = 1;
+
+	for (i = 0; i < active_decision_workers; i++) {
+		struct decision_worker *worker = &decision_workers[i];
+		struct worker_health_snapshot snapshot = { 0 };
+		struct queue_metrics metrics;
+		int stalled;
+
+		if (worker->queue == NULL)
+			continue;
+
+		worker_health_snapshot(worker, &snapshot, now);
+		q_metrics_snapshot(worker->queue, &metrics);
+		stalled = worker_health_is_stalled(&snapshot, &metrics,
+						   timeout_ns);
+		if (stalled) {
+			healthy = 0;
+			health_monitor_log_stall(worker, &snapshot, &metrics);
+			failure_action_execute(FAILURE_REASON_WORKER_STALL);
+		} else {
+			atomic_store_explicit(&worker->stall_reported, false,
+					      memory_order_relaxed);
+		}
+	}
+
+	return healthy;
+}
+
+static void *health_monitor_thread_main(void *arg)
 {
 	sigset_t sigs;
-	unsigned int i;
 
 	/* This is a worker thread. Don't handle external signals. */
 	sigemptyset(&sigs);
@@ -1204,33 +1558,19 @@ static void *deadmans_switch_thread_main(void *arg)
 	pthread_sigmask(SIG_SETMASK, &sigs, NULL);
 
 	do {
-		for (i = 0; i < active_decision_workers; i++) {
-			struct decision_worker *worker = &decision_workers[i];
+		uint64_t interval_ns = health_monitor_interval_ns();
+		uint64_t timeout_ns = health_stall_timeout_ns();
+		int healthy = health_monitor_check_workers(timeout_ns);
 
-			/*
-			 * Are you alive decision worker? The idea of
-			 * triggering on queue depth > 5 is that smaller
-			 * backlogs usually mean the worker is still draining.
-			 */
-			if (!atomic_load_explicit(&worker->alive,
-						  memory_order_relaxed) &&
-			    !atomic_load_explicit(&stop,
-						  memory_order_relaxed) &&
-			    worker->queue &&
-			    q_queue_length(worker->queue) > 5) {
-				failure_action_record(
-					FAILURE_REASON_WORKER_STALL);
-				msg(LOG_ERR,
-				    "Deadman's switch activated for decision "
-				    "worker %u...killing process",
-				    worker->id);
-				raise(SIGKILL);
-			}
-			// OK, prove it again.
-			atomic_store_explicit(&worker->alive, false,
-					      memory_order_relaxed);
+		if (healthy && systemd_watchdog_enabled() &&
+		    systemd_watchdog_ping()) {
+			time_t now = time(NULL);
+
+			if (message_rate_limit_allow(&systemd_watchdog_log, now))
+				msg(LOG_WARNING,
+				    "Cannot refresh systemd watchdog deadline");
 		}
-		sleep(3);
+		health_monitor_sleep(interval_ns);
 	} while (!stop);
 	return NULL;
 }
@@ -1277,10 +1617,12 @@ static void run_decision_event(struct decision_worker *worker,
 		decision_event_t *event)
 {
 	attr_lookup_metrics_set_worker(worker->id);
+	worker_health_event_begin(worker);
 	decision_timing_decision_begin(worker->id);
 	decision_timing_queue_dequeued(event->enqueue_ns);
 	make_policy_decision(event, fd, mask);
 	decision_timing_decision_end();
+	worker_health_event_end(worker);
 }
 
 /*
@@ -1339,8 +1681,6 @@ static void dispatch_decision_event(struct decision_worker *worker,
 		 * event or a deferred event popped at the bottom of the loop.
 		 */
 		*rpt_is_stale = 1;
-		atomic_store_explicit(&worker->alive, true,
-				      memory_order_relaxed);
 		run_decision_event(worker, event);
 
 		/*
@@ -1499,8 +1839,8 @@ int test_notify_queue_reset(unsigned int entries)
 	worker->id = 0;
 	worker->context = decision_context_current();
 	decision_context_set_worker_id(worker->context, 0);
-	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
 	atomic_store_explicit(&worker->tid, 0, memory_order_relaxed);
+	worker_health_init(worker);
 	worker->queue = q_open(entries);
 	active_decision_workers = worker->queue ? 1 : 0;
 	return worker->queue == NULL ? -1 : 0;
@@ -1640,10 +1980,9 @@ int test_notify_worker_pool_reset(unsigned int workers, unsigned int entries)
 		decision_workers[i].id = i;
 		decision_workers[i].context = decision_context_current();
 		decision_context_set_worker_id(decision_workers[i].context, i);
-		atomic_store_explicit(&decision_workers[i].alive, true,
-				      memory_order_relaxed);
 		atomic_store_explicit(&decision_workers[i].tid, 0,
 				      memory_order_relaxed);
+		worker_health_init(&decision_workers[i]);
 		decision_workers[i].queue = q_open(entries);
 		if (decision_workers[i].queue == NULL) {
 			test_notify_worker_pool_destroy();
@@ -1763,6 +2102,7 @@ static void *decision_worker_main(void *arg)
 		return NULL;
 	atomic_store_explicit(&worker->tid, (int)syscall(SYS_gettid),
 			      memory_order_relaxed);
+	worker_health_heartbeat(worker);
 	/*
 	 * The decision path uses decision_context_current() in cache, file, and
 	 * policy helpers. Bind this thread before any event or report work so
@@ -1796,15 +2136,16 @@ static void *decision_worker_main(void *arg)
 		decision_timing_process_requests(&config);
 
 		// if an interval has been configured
-		if (owns_reports && rpt_interval) {
-			errno = 0;
-			rc = q_timed_dequeue(worker->queue, &event,
-					     &rpt_timeout);
-			if (rc == 0) {
-				uint64_t expired = 0;
+			if (owns_reports && rpt_interval) {
+				errno = 0;
+				rc = q_timed_dequeue(worker->queue, &event,
+						     &rpt_timeout);
+				if (rc == 0) {
+					uint64_t expired = 0;
 
-				// check for timer expirations
-				if (errno == ETIMEDOUT) {
+					worker_health_heartbeat(worker);
+					// check for timer expirations
+					if (errno == ETIMEDOUT) {
 					if (read(rpt_timer_fd, &expired,
 						sizeof(uint64_t)) == -1) {
 						// EAGAIN expected w/nonblocking
@@ -1848,25 +2189,29 @@ static void *decision_worker_main(void *arg)
 			}
 			if (rc < 0)
 				continue;
-		} else {
-			int timed_for_defer = 0;
-			struct timespec defer_timeout;
-
-			if (worker->context->defer_queue.current &&
-			    clock_gettime(CLOCK_REALTIME, &defer_timeout) == 0) {
-				defer_timeout.tv_sec +=
-					DEFER_RECHECK_INTERVAL_SEC;
-				errno = 0;
-				rc = q_timed_dequeue(worker->queue, &event,
-						     &defer_timeout);
-				timed_for_defer = 1;
 			} else {
-				rc = q_dequeue(worker->queue, &event);
-			}
-			if (rc == 0) {
-				if (owns_reports &&
-				    atomic_exchange_explicit(&run_stats, false,
-							    memory_order_relaxed)) {
+				int timed_for_defer = 0;
+				struct timespec timeout;
+				unsigned int timeout_sec =
+					HEALTH_MONITOR_INTERVAL_SEC;
+
+				if (worker->context->defer_queue.current)
+					timeout_sec = DEFER_RECHECK_INTERVAL_SEC;
+				if (clock_gettime(CLOCK_REALTIME, &timeout) == 0) {
+					timeout.tv_sec += timeout_sec;
+					errno = 0;
+					rc = q_timed_dequeue(worker->queue, &event,
+							     &timeout);
+					timed_for_defer =
+						worker->context->defer_queue.current != 0;
+				} else {
+					rc = q_dequeue(worker->queue, &event);
+				}
+				if (rc == 0) {
+					worker_health_heartbeat(worker);
+					if (owns_reports &&
+					    atomic_exchange_explicit(&run_stats, false,
+								    memory_order_relaxed)) {
 					state_report_write(STATE_REPORT_SIGNAL);
 				}
 				if (timed_for_defer && errno == ETIMEDOUT)

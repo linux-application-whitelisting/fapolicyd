@@ -58,7 +58,7 @@ struct queue_entry
  * to the semaphore.  q_dequeue() waits on the semaphore, reads from the
  * consumer slot and advances it.
  *
- * queue_length is read without locking by the deadman thread and is
+	 * queue_length is read without locking by the health monitor thread and is
  * therefore atomic. Using a ring buffer avoids per-event malloc/free and
  * keeps memory usage predictable. Per-queue metrics record queue pressure for
  * diagnostics and future structured status output.

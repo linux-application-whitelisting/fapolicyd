@@ -26,7 +26,8 @@ typedef enum {
 } failure_reason_t;
 
 typedef enum {
-	FAILURE_ACTION_OBSERVE
+	FAILURE_ACTION_OBSERVE,
+	FAILURE_ACTION_TERMINATE
 } failure_action_t;
 
 typedef struct {
@@ -38,6 +39,7 @@ failure_action_t failure_reason_action(failure_reason_t reason);
 const char *failure_action_name(failure_action_t action);
 unsigned long failure_action_record(failure_reason_t reason);
 unsigned long failure_action_count(failure_reason_t reason);
+void failure_action_execute(failure_reason_t reason);
 void failure_action_snapshot(failure_action_metrics_t *metrics, int reset);
 unsigned long failure_action_metrics_count(
 		const failure_action_metrics_t *metrics,

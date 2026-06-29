@@ -52,9 +52,15 @@ int main(void)
 	CHECK(failure_reason_action(FAILURE_REASON_QUEUE_FULL) ==
 	      FAILURE_ACTION_OBSERVE, 2,
 	      "[ERROR:2] queue_full default action changed");
-	CHECK(strcmp(failure_action_name(FAILURE_ACTION_OBSERVE),
-		     "observe") == 0, 3,
-	      "[ERROR:3] observe action name changed");
+		CHECK(strcmp(failure_action_name(FAILURE_ACTION_OBSERVE),
+			     "observe") == 0, 3,
+		      "[ERROR:3] observe action name changed");
+		CHECK(strcmp(failure_action_name(FAILURE_ACTION_TERMINATE),
+			     "terminate") == 0, 13,
+		      "[ERROR:13] terminate action name changed");
+		CHECK(failure_reason_action(FAILURE_REASON_WORKER_STALL) ==
+		      FAILURE_ACTION_TERMINATE, 14,
+		      "[ERROR:14] worker_stall default action changed");
 
 	CHECK(strcmp(failure_reason_name((failure_reason_t)-1),
 		     "unknown") == 0, 4,
@@ -77,10 +83,13 @@ int main(void)
 	CHECK(strstr(report,
 		     "Failure action trust_reload_failure (observe): ") != NULL,
 	      9, "[ERROR:9] report missing trust reload counter");
-	CHECK(strstr(report,
-		     "Failure action fanotify_filesystem_error (observe): ")
-	      != NULL, 12,
-	      "[ERROR:12] report missing FAN_FS_ERROR counter");
+		CHECK(strstr(report,
+			     "Failure action fanotify_filesystem_error (observe): ")
+		      != NULL, 12,
+		      "[ERROR:12] report missing FAN_FS_ERROR counter");
+		CHECK(strstr(report,
+			     "Failure action worker_stall (terminate): ") != NULL,
+		      15, "[ERROR:15] report missing worker stall action");
 
 	failure_action_snapshot(&metrics, 1);
 	CHECK(failure_action_metrics_count(&metrics,

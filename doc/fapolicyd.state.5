@@ -254,9 +254,17 @@ The number of failed or short writes when sending fanotify permission responses
 back to the kernel.
 .TP
 .B Decision worker N health
-Compact health line for one decision worker. It includes the kernel TID for
-debugging and whether the deadman heartbeat currently considers the worker
-alive.
+Compact health line for one decision worker. It includes a derived
+.BR state ,
+heartbeat age, and current event age. The state is
+.BR idle ,
+.BR busy ,
+or
+.BR stalled .
+An idle worker reports
+.BR current_event=idle .
+Queue depth and oldest queued event age are reported by the per-worker queue
+entries that follow.
 .TP
 .B Decision worker N current queue depth
 The number of fanotify permission events currently waiting in that worker's
@@ -305,7 +313,7 @@ Number of times the internal userspace event queue was full.
 .B Failure action kernel_queue_overflow (observe)
 Number of kernel fanotify queue overflow events.
 .TP
-.B Failure action worker_stall (observe)
+.B Failure action worker_stall (terminate)
 Number of decision worker stall detections.
 .TP
 .B Failure action rule_reload_failure (observe)

@@ -8,6 +8,7 @@
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/fanotify.h>
 #include <unistd.h>
@@ -20,6 +21,7 @@
 #include "decision-defer.h"
 #include "decision-timing.h"
 #include "state-report.h"
+#include "systemd-notify.h"
 
 #ifndef FAN_Q_OVERFLOW
 #define FAN_Q_OVERFLOW		0x00004000
@@ -151,6 +153,69 @@ static void read_fanotify_queue_report(char *buf, size_t size, int reset)
 	used = fread(buf, 1, size - 1, f);
 	buf[used] = 0;
 	fclose(f);
+}
+
+/*
+ * read_fanotify_health_report - capture fanotify worker health output.
+ * @buf: destination buffer.
+ * @size: size of @buf.
+ * Returns nothing. Exits if the temporary stream cannot be used.
+ */
+static void read_fanotify_health_report(char *buf, size_t size)
+{
+	FILE *f = tmpfile();
+	size_t used;
+
+	if (f == NULL)
+		error(1, 0, "tmpfile failed");
+
+	fanotify_queue_health_report(f);
+	fflush(f);
+	rewind(f);
+	used = fread(buf, 1, size - 1, f);
+	buf[used] = 0;
+	fclose(f);
+}
+
+/*
+ * test_systemd_notify_runtime_gate - verify debug-mode notify suppression.
+ *
+ * Debug runs can inherit arbitrary NOTIFY_SOCKET/WATCHDOG_* values from a
+ * shell. The runtime gate must make the watchdog helper ignore those values
+ * before it consults the environment.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_systemd_notify_runtime_gate(void)
+{
+	char pid[32];
+
+	snprintf(pid, sizeof(pid), "%ld", (long)getpid());
+	CHECK(setenv("NOTIFY_SOCKET", "/tmp/fapolicyd-test-notify", 1) == 0,
+	      122, "[ERROR:122] failed setting NOTIFY_SOCKET");
+	CHECK(setenv("WATCHDOG_USEC", "1234567", 1) == 0,
+	      123, "[ERROR:123] failed setting WATCHDOG_USEC");
+	CHECK(setenv("WATCHDOG_PID", pid, 1) == 0,
+	      124, "[ERROR:124] failed setting WATCHDOG_PID");
+
+	systemd_notify_set_enabled(0);
+	CHECK(systemd_watchdog_interval_usec() == 0, 125,
+	      "[ERROR:125] disabled notify gate used watchdog environment");
+	CHECK(!systemd_watchdog_enabled(), 126,
+	      "[ERROR:126] disabled notify gate enabled watchdog");
+
+	systemd_notify_set_enabled(1);
+#ifdef FAPOLICYD_ENABLE_SYSTEMD_WATCHDOG
+	CHECK(systemd_watchdog_interval_usec() == 1234567, 127,
+	      "[ERROR:127] enabled notify gate ignored watchdog environment");
+#else
+	CHECK(systemd_watchdog_interval_usec() == 0, 127,
+	      "[ERROR:127] disabled build returned watchdog interval");
+#endif
+
+	unsetenv("WATCHDOG_PID");
+	unsetenv("WATCHDOG_USEC");
+	unsetenv("NOTIFY_SOCKET");
 }
 
 /*
@@ -546,6 +611,13 @@ static void test_notify_queue_report_reset(void)
 		     "  Decision worker 0 Subject defer fallbacks: 0\n") != NULL,
 	      117, "[ERROR:117] worker defer fallback missing");
 
+	read_fanotify_health_report(report, sizeof(report));
+	CHECK(strstr(report,
+		     "  Decision worker 0 health: state=idle heartbeat=") != NULL,
+	      118, "[ERROR:118] worker health state missing");
+	CHECK(strstr(report, " current_event=idle\n") != NULL,
+	      119, "[ERROR:119] worker current event age missing");
+
 	read_fanotify_queue_report(report, sizeof(report), 0);
 	CHECK(strstr(report,
 		     "  Decision worker 0 queue full count: 0\n") != NULL,
@@ -714,7 +786,7 @@ int main(void)
 	      "[ERROR:15] status report missing response failure count");
 	CHECK(strstr(report, "Failure action queue_full (observe): ") != NULL,
 	      16, "[ERROR:16] status report missing queue full failure count");
-	CHECK(strstr(report, "Failure action worker_stall (observe): ") != NULL,
+	CHECK(strstr(report, "Failure action worker_stall (terminate): ") != NULL,
 	      17, "[ERROR:17] status report missing worker stall failure count");
 	CHECK(strstr(report, "Failure action rule_reload_failure (observe): ")
 	      != NULL, 18,
@@ -840,6 +912,7 @@ int main(void)
 
 	test_shutdown_deferred_events();
 	test_shutdown_queued_events();
+	test_systemd_notify_runtime_gate();
 
 	return 0;
 }

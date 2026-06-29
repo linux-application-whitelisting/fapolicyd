@@ -69,9 +69,11 @@
 #include "string-util.h"
 #include "filter.h"
 #include "state-report.h"
+#include "systemd-notify.h"
 
 // Global program variables
 unsigned int debug_mode = 0;
+static unsigned int foreground_mode;
 const char* mounts = MOUNTS_FILE;
 
 // Signal handler notifications
@@ -868,7 +870,7 @@ static void wait_for_mounts_thread(void)
 static void usage(void)
 {
 	fprintf(stderr,
-		"Usage: fapolicyd [--debug|--debug-deny] [--permissive] "
+		"Usage: fapolicyd [--debug|--debug-deny|--foreground] [--permissive] "
 		"[--no-details] [--version]\n");
 	exit(1);
 }
@@ -1142,6 +1144,8 @@ int main(int argc, const char *argv[])
 		if (strcmp(argv[i], "--permissive") == 0) {
 			__atomic_store_n(&config.permissive, 1,
 					 __ATOMIC_RELAXED);
+		} else if (strcmp(argv[i], "--foreground") == 0) {
+			foreground_mode = 1;
 		} else if (strcmp(argv[i], "--no-details") == 0) {
 			config.detailed_report = 0;
 		} else if (strncmp(argv[i], "--mounts", 8) == 0) {
@@ -1170,7 +1174,9 @@ int main(int argc, const char *argv[])
 			}
 			msg(LOG_INFO, "Overriding mounts file: %s", tmp);
 			mounts = tmp;
-		} else if (strcmp(argv[i], "--debug") == 0 || strcmp(argv[i], "--debug-deny") == 0) {
+		} else if (strcmp(argv[i], "--debug") == 0 ||
+			   strcmp(argv[i], "--debug-deny") == 0 ||
+			   strcmp(argv[i], "--foreground") == 0) {
 			// nop; debug flags already set
 		} else {
 			msg(LOG_ERR, "unknown command option:%s\n", argv[i]);
@@ -1178,6 +1184,12 @@ int main(int argc, const char *argv[])
 			usage();
 		}
 	}
+	/*
+	 * Debug runs are manually launched and should not trust inherited
+	 * NOTIFY_SOCKET/WATCHDOG_* values. --foreground remains notify-capable
+	 * because it is the production systemd service mode.
+	 */
+	systemd_notify_set_enabled(!debug_mode);
 
 	if (already_running()) {
 		msg(LOG_ERR, "fapolicyd is already running");
@@ -1243,9 +1255,12 @@ int main(int argc, const char *argv[])
 	if (load_rules(&config))
 		exit(1);
 	if (!debug_mode) {
-		if (become_daemon() < 0) {
-			msg(LOG_ERR, "Exiting due to failure daemonizing");
-			exit(1);
+		if (!foreground_mode) {
+			if (become_daemon() < 0) {
+				msg(LOG_ERR,
+				    "Exiting due to failure daemonizing");
+				exit(1);
+			}
 		}
 		set_message_mode(MSG_SYSLOG, DBG_NO);
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
@@ -1354,6 +1369,8 @@ int main(int argc, const char *argv[])
 #endif
 
 	msg(LOG_INFO, "Starting to listen for events");
+	if (systemd_notify_ready())
+		msg(LOG_WARNING, "Cannot notify systemd that startup is complete");
 	while (!stop) {
 		int rc;
 		if (hup) {
@@ -1401,6 +1418,8 @@ int main(int argc, const char *argv[])
 		}
 	}
 	msg(LOG_INFO, "shutting down...");
+	if (systemd_notify_stopping())
+		msg(LOG_WARNING, "Cannot notify systemd that shutdown started");
 	wait_for_mounts_thread();
 	shutdown_fanotify(m);
 	close(pfd[0].fd);

@@ -20,7 +20,8 @@
 #   Steve Grubb <sgrubb@redhat.com>
 #
 
-EXTRA_DIST = $(man_MANS) fapolicyd-perf-test.8 check-manpages.sh
+EXTRA_DIST = $(man_MANS) fapolicyd-perf-test.8 check-manpages.sh \
+	systemd-watchdog.md
 
 TEST_EXTENSIONS = .sh
 SH_LOG_COMPILER = $(SHELL)

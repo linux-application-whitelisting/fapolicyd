@@ -1,5 +1,5 @@
 EXTRA_DIST = \
-	fapolicyd.service \
+	fapolicyd.service.in \
 	fapolicyd.conf \
 	fapolicyd-filter.conf \
 	fapolicyd.trust \
@@ -16,7 +16,7 @@ dist_fapolicyd_DATA = \
 	fapolicyd.trust
 
 systemdservicedir = $(systemdsystemunitdir)
-dist_systemdservice_DATA = fapolicyd.service
+nodist_systemdservice_DATA = fapolicyd.service
 
 sbin_SCRIPTS = fagenrules
 
@@ -25,7 +25,7 @@ dist_completion_DATA = fapolicyd.bash_completion
 
 MAGIC = fapolicyd-magic.mgc
 pkgdata_DATA = ${MAGIC} 
-CLEANFILES = ${MAGIC}
+CLEANFILES = ${MAGIC} fapolicyd.service
 
 ${MAGIC}: $(EXTRA_DIST)
 	file -C -m ${top_srcdir}/init/fapolicyd-magic

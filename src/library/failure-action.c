@@ -10,6 +10,7 @@
  */
 
 #include "config.h"
+#include <signal.h>
 #include <stdatomic.h>
 #include "failure-action.h"
 
@@ -21,9 +22,10 @@ struct failure_definition {
 /*
  * failure_definitions - known daemon reliability failures
  *
- * Every failure starts in observe mode. Existing compatibility behavior, such
- * as queue-full denial or the deadman kill, stays at the call site until later
- * high-security configuration can choose fail-closed or degraded actions here.
+ * Most failures start in observe mode. Worker stall keeps the historical
+ * deadman behavior by default: terminate the daemon so the service manager can
+ * restart it. Later high-security configuration can choose fail-closed or
+ * degraded actions here.
  */
 static const struct failure_definition failure_definitions[] = {
 	[FAILURE_REASON_QUEUE_FULL] = {
@@ -33,7 +35,7 @@ static const struct failure_definition failure_definitions[] = {
 		"kernel_queue_overflow", FAILURE_ACTION_OBSERVE
 	},
 	[FAILURE_REASON_WORKER_STALL] = {
-		"worker_stall", FAILURE_ACTION_OBSERVE
+		"worker_stall", FAILURE_ACTION_TERMINATE
 	},
 	[FAILURE_REASON_RULE_RELOAD_FAILURE] = {
 		"rule_reload_failure", FAILURE_ACTION_OBSERVE
@@ -104,9 +106,32 @@ const char *failure_action_name(failure_action_t action)
 	switch (action) {
 	case FAILURE_ACTION_OBSERVE:
 		return "observe";
+	case FAILURE_ACTION_TERMINATE:
+		return "terminate";
 	}
 
 	return "unknown";
+}
+
+/*
+ * failure_action_execute - apply the configured action for one failure.
+ * @reason: failure reason whose action should run.
+ *
+ * The caller records and logs the failure before calling this helper. The
+ * terminate action intentionally uses SIGKILL to preserve the old deadman
+ * behavior when a decision worker stalls inside uninterruptible work.
+ *
+ * Returns nothing.
+ */
+void failure_action_execute(failure_reason_t reason)
+{
+	switch (failure_reason_action(reason)) {
+	case FAILURE_ACTION_OBSERVE:
+		return;
+	case FAILURE_ACTION_TERMINATE:
+		raise(SIGKILL);
+		return;
+	}
 }
 
 /*

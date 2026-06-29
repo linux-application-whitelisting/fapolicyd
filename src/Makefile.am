@@ -141,7 +141,9 @@ fapolicyd_SOURCES = \
 	daemon/notify.c \
 	daemon/notify.h \
 	daemon/state-report.c \
-	daemon/state-report.h
+	daemon/state-report.h \
+	daemon/systemd-notify.c \
+	daemon/systemd-notify.h
 
 fapolicyd_cli_SOURCES = \
 	cli/fapolicyd-cli.c \

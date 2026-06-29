@@ -12,11 +12,13 @@ Documentation=man:fapolicyd(8)
 
 [Service]
 OOMScoreAdjust=-1000
-Type=forking
+Type=@FAPOLICYD_SERVICE_TYPE@
+@FAPOLICYD_SERVICE_NOTIFY_ACCESS@
 RuntimeDirectory=fapolicyd
-PIDFile=/run/fapolicyd.pid
+@FAPOLICYD_SERVICE_PIDFILE@
 ExecStartPre=/usr/sbin/fagenrules
-ExecStart=/usr/sbin/fapolicyd
+ExecStart=@FAPOLICYD_SERVICE_EXEC@
+@FAPOLICYD_SERVICE_WATCHDOG@
 Restart=on-failure
 RestartSec=1s
 

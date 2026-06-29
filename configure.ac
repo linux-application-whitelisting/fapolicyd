@@ -209,6 +209,37 @@ AS_HELP_STRING([--enable-stress],
 use_stress=$enableval,use_stress=no)
 AM_CONDITIONAL(WITH_STRESS, test x$use_stress = xyes)
 
+AC_ARG_ENABLE(systemd-watchdog,
+AS_HELP_STRING([--disable-systemd-watchdog],
+[disable systemd Type=notify and watchdog support]),
+enable_systemd_watchdog=$enableval,enable_systemd_watchdog=yes)
+case x$enable_systemd_watchdog in
+	xyes)
+		AC_DEFINE([FAPOLICYD_ENABLE_SYSTEMD_WATCHDOG], [1],
+			[Define to enable systemd notify/watchdog integration])
+		FAPOLICYD_SERVICE_TYPE=notify
+		FAPOLICYD_SERVICE_NOTIFY_ACCESS=NotifyAccess=main
+		FAPOLICYD_SERVICE_PIDFILE=
+		FAPOLICYD_SERVICE_EXEC='/usr/sbin/fapolicyd --foreground'
+		FAPOLICYD_SERVICE_WATCHDOG=WatchdogSec=10s
+		;;
+	xno)
+		FAPOLICYD_SERVICE_TYPE=forking
+		FAPOLICYD_SERVICE_NOTIFY_ACCESS=
+		FAPOLICYD_SERVICE_PIDFILE=PIDFile=/run/fapolicyd.pid
+		FAPOLICYD_SERVICE_EXEC=/usr/sbin/fapolicyd
+		FAPOLICYD_SERVICE_WATCHDOG=
+		;;
+	*)
+		AC_MSG_ERROR([bad value $enableval for --enable-systemd-watchdog])
+		;;
+esac
+AC_SUBST([FAPOLICYD_SERVICE_TYPE])
+AC_SUBST([FAPOLICYD_SERVICE_NOTIFY_ACCESS])
+AC_SUBST([FAPOLICYD_SERVICE_PIDFILE])
+AC_SUBST([FAPOLICYD_SERVICE_EXEC])
+AC_SUBST([FAPOLICYD_SERVICE_WATCHDOG])
+
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
@@ -241,6 +272,7 @@ AC_CONFIG_FILES([Makefile
 	src/tests/Makefile
 	src/tests/stress/Makefile
 	init/Makefile
+	init/fapolicyd.service
 	doc/Makefile
 	rules.d/Makefile])
 AC_OUTPUT
@@ -259,5 +291,6 @@ echo "
   __attr_access support:  $ACCESS
   __attr_dealloc_free support: $DEALLOC
   FAN_FS_ERROR monitoring: $enable_fanotify_fs_error
+  systemd watchdog:      $enable_systemd_watchdog
 "
  
