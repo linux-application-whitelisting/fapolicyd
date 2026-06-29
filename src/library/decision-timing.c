@@ -2443,6 +2443,20 @@ void decision_timing_apply_config(timing_collection_t mode)
 }
 
 /*
+ * decision_timing_set_active_workers - publish active decision worker count.
+ * @worker_count: number of workers that can update timing blocks.
+ *
+ * Returns nothing.
+ */
+void decision_timing_set_active_workers(unsigned int worker_count)
+{
+	if (worker_count > DECISION_TIMING_MAX_WORKERS)
+		worker_count = DECISION_TIMING_MAX_WORKERS;
+	atomic_store_explicit(&active_workers, worker_count,
+			      memory_order_relaxed);
+}
+
+/*
  * decision_timing_set_queue_depth_hooks - install queue depth callbacks.
  * @reset: callback that resets max queue depth and returns the saved value.
  * @restore: callback that returns run max depth and restores saved if larger.

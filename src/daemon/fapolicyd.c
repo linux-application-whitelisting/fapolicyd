@@ -957,8 +957,6 @@ void do_state_report(FILE *f, int shutdown)
 	fprintf(f, "\nResource configuration:\n");
 	fprintf(f, "CPU cores: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
 	fprintf(f, "decision_threads: %u\n", config.decision_threads);
-	fprintf(f, "active_decision_workers: %u\n",
-		fanotify_active_worker_count());
 	fprintf(f, "q_size: %u\n", config.q_size);
 	fanotify_defer_config_report(f);
 	do_cache_config_report(f);

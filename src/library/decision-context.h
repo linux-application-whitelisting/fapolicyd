@@ -64,9 +64,9 @@ struct decision_context {
 	Queue *object_cache;
 	char *working_buffer;
 	bool object_cache_warned;
-	unsigned int early_subject_cache_evictions;
-	unsigned int building_tracer_evict_count;
-	unsigned int building_stale_evict_count;
+	atomic_uint early_subject_cache_evictions;
+	atomic_uint building_tracer_evict_count;
+	atomic_uint building_stale_evict_count;
 	struct message_rate_limit building_tracer_rate_limit;
 	struct message_rate_limit building_stale_rate_limit;
 	struct decision_defer_queue defer_queue;

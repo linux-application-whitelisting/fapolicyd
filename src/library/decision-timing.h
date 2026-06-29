@@ -102,6 +102,7 @@ typedef unsigned int (*decision_timing_queue_depth_restore_fn)(void *ctx,
 extern __thread struct decision_timing_context decision_timing_tls;
 
 void decision_timing_apply_config(timing_collection_t mode);
+void decision_timing_set_active_workers(unsigned int worker_count);
 void decision_timing_set_queue_depth_hooks(
 		decision_timing_queue_depth_reset_fn reset,
 		decision_timing_queue_depth_restore_fn restore,

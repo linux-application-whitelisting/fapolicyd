@@ -54,6 +54,12 @@ void test_notify_defer_destroy(void);
 int test_notify_defer_push(const decision_event_t *event);
 unsigned int test_notify_shutdown_deferred_events(void);
 unsigned int test_notify_worker_index(pid_t pid, unsigned int workers);
+int test_notify_worker_pool_reset(unsigned int workers, unsigned int entries);
+void test_notify_worker_pool_destroy(void);
+int test_notify_enqueue_pid_fd(pid_t pid, int event_fd);
+unsigned int test_notify_worker_queue_depth(unsigned int worker_id);
+unsigned int test_notify_worker_drain(unsigned int worker_id, pid_t *pids,
+		int *fds, unsigned int max);
 
 #define CHECK(expr, code, msg) \
 	do { \
@@ -383,6 +389,121 @@ static void test_dispatcher_worker_routing(void)
 }
 
 /*
+ * test_dispatcher_same_pid_ordering - verify FIFO ownership for one pid.
+ *
+ * Same-pid fanotify events must enter the same worker queue in arrival order
+ * so the subject startup state machine sees a coherent sequence.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_dispatcher_same_pid_ordering(void)
+{
+	pid_t pids[4];
+	int fds[4];
+	unsigned int worker;
+
+	CHECK(test_notify_worker_pool_reset(4, 8) == 0, 91,
+	      "[ERROR:91] worker pool reset failed");
+	CHECK(fanotify_active_worker_count() == 4, 92,
+	      "[ERROR:92] active worker count mismatch");
+
+	worker = test_notify_worker_index(1001, 4);
+	CHECK(test_notify_enqueue_pid_fd(1001, 10) == 0, 93,
+	      "[ERROR:93] first same-pid enqueue failed");
+	CHECK(test_notify_enqueue_pid_fd(1001, 11) == 0, 94,
+	      "[ERROR:94] second same-pid enqueue failed");
+	CHECK(test_notify_enqueue_pid_fd(1001, 12) == 0, 95,
+	      "[ERROR:95] third same-pid enqueue failed");
+	CHECK(test_notify_worker_queue_depth(worker) == 3, 96,
+	      "[ERROR:96] same-pid events did not share one queue");
+	CHECK(test_notify_worker_drain(worker, pids, fds, 4) == 3, 97,
+	      "[ERROR:97] same-pid drain count mismatch");
+	CHECK(pids[0] == 1001 && pids[1] == 1001 && pids[2] == 1001,
+	      98, "[ERROR:98] drained pid changed");
+	CHECK(fds[0] == 10 && fds[1] == 11 && fds[2] == 12, 99,
+	      "[ERROR:99] same-pid queue order changed");
+
+	test_notify_worker_pool_destroy();
+}
+
+/*
+ * test_dispatcher_pid_reuse_stability - verify reused pid routing stability.
+ *
+ * Numeric PID reuse is still handled by the subject fingerprint inside the
+ * owning worker. Routing must not send the reused numeric PID to a different
+ * worker, or stale/startup state could be split across caches.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_dispatcher_pid_reuse_stability(void)
+{
+	pid_t pids[4];
+	int fds[4];
+	unsigned int worker;
+
+	CHECK(test_notify_worker_pool_reset(4, 8) == 0, 100,
+	      "[ERROR:100] worker pool reset failed for pid reuse");
+	worker = test_notify_worker_index(2209, 4);
+	CHECK(test_notify_enqueue_pid_fd(2209, 20) == 0, 101,
+	      "[ERROR:101] first reused-pid enqueue failed");
+	CHECK(test_notify_enqueue_pid_fd(2210, 30) == 0, 102,
+	      "[ERROR:102] adjacent pid enqueue failed");
+	CHECK(test_notify_enqueue_pid_fd(2209, 21) == 0, 103,
+	      "[ERROR:103] second reused-pid enqueue failed");
+
+	CHECK(test_notify_worker_drain(worker, pids, fds, 4) == 2, 104,
+	      "[ERROR:104] reused-pid owner queue count mismatch");
+	CHECK(pids[0] == 2209 && pids[1] == 2209, 105,
+	      "[ERROR:105] reused pid did not stay on owner queue");
+	CHECK(fds[0] == 20 && fds[1] == 21, 106,
+	      "[ERROR:106] reused-pid queue order changed");
+
+	test_notify_worker_pool_destroy();
+}
+
+/*
+ * test_dispatcher_worker_skew - verify hot PID buckets remain observable.
+ *
+ * Stable pid modulo routing can skew traffic. The dispatcher must expose that
+ * pressure through per-worker queue metrics instead of rebalancing same-pid
+ * events onto other workers.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_dispatcher_worker_skew(void)
+{
+	char report[4096];
+
+	CHECK(test_notify_worker_pool_reset(4, 8) == 0, 107,
+	      "[ERROR:107] worker pool reset failed for skew");
+	CHECK(test_notify_enqueue_pid_fd(1000, 40) == 0, 108,
+	      "[ERROR:108] skew enqueue 1 failed");
+	CHECK(test_notify_enqueue_pid_fd(1004, 41) == 0, 109,
+	      "[ERROR:109] skew enqueue 2 failed");
+	CHECK(test_notify_enqueue_pid_fd(1008, 42) == 0, 110,
+	      "[ERROR:110] skew enqueue 3 failed");
+	CHECK(test_notify_enqueue_pid_fd(1012, 43) == 0, 111,
+	      "[ERROR:111] skew enqueue 4 failed");
+
+	CHECK(test_notify_worker_queue_depth(0) == 4, 112,
+	      "[ERROR:112] hot pid bucket did not stay on worker 0");
+	CHECK(test_notify_worker_queue_depth(1) == 0 &&
+	      test_notify_worker_queue_depth(2) == 0 &&
+	      test_notify_worker_queue_depth(3) == 0, 113,
+	      "[ERROR:113] skew was rebalanced across workers");
+
+	read_fanotify_queue_report(report, sizeof(report), 0);
+	CHECK(strstr(report,
+		     "Decision worker 0 current queue depth: 4\n") != NULL,
+	      114, "[ERROR:114] skew report missing hot worker depth");
+	CHECK(strstr(report,
+		     "Decision worker 1 current queue depth: 0\n") != NULL,
+	      115, "[ERROR:115] skew report missing idle worker depth");
+
+	test_notify_worker_pool_destroy();
+}
+
+/*
  * test_notify_queue_report_reset - verify per-worker queue metrics reset.
  *
  * Worker queues own their metrics independently. A metrics reset must clear
@@ -450,6 +571,9 @@ int main(void)
 
 	test_operating_mode_report_order();
 	test_dispatcher_worker_routing();
+	test_dispatcher_same_pid_ordering();
+	test_dispatcher_pid_reuse_stability();
+	test_dispatcher_worker_skew();
 	test_notify_queue_report_reset();
 
 	before = getKernelQueueOverflow();

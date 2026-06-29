@@ -24,6 +24,7 @@
 
 #ifndef LRU_HEADER
 #define LRU_HEADER
+#include <stdatomic.h>
 #include "gcc-attributes.h"
 
 // Queue is implemented using double linked list
@@ -45,12 +46,12 @@ typedef struct Hash
 // FIFO of Queue Nodes
 typedef struct Queue
 {
-	unsigned int count;  // Number of filled slots
+	atomic_uint count;  // Number of filled slots
 	unsigned int total;  // total number of slots
-	unsigned long hits;  // Number of times object was in cache
-	unsigned long misses;// number of times object was not in cache
-	unsigned long collisions;// cached object was unusable for this key
-	unsigned long evictions;// number of times cached object was not usable
+	atomic_ulong hits;  // Number of times object was in cache
+	atomic_ulong misses;// number of times object was not in cache
+	atomic_ulong collisions;// cached object was unusable for this key
+	atomic_ulong evictions;// number of times cached object was not usable
 	QNode *front;
 	QNode *end;
 	Hash *hash;

@@ -343,10 +343,12 @@ static void record_building_evict(enum building_evict_reason reason,
 	struct message_rate_limit *log_limit;
 
 	if (reason == BUILDING_EVICT_TRACER) {
-		building_tracer_evictions++;
+		atomic_fetch_add_explicit(&building_tracer_evictions, 1,
+					  memory_order_relaxed);
 		log_limit = &building_tracer_log;
 	} else {
-		building_stale_evictions++;
+		atomic_fetch_add_explicit(&building_stale_evictions, 1,
+					  memory_order_relaxed);
 		log_limit = &building_stale_log;
 	}
 
@@ -385,11 +387,13 @@ static void subject_evict_warn(s_array *s)
 		if (!((s->info->state == STATE_REOPEN) &&
 		      (s->info->elf_info & (HAS_SHEBANG|TEXT_SCRIPT))) ) {
 			warn = 1;
-			early_subj_cache_evictions++;
+			atomic_fetch_add_explicit(&early_subj_cache_evictions,
+						  1, memory_order_relaxed);
 		}
 	}
 
-	if (early_subj_cache_evictions > 5)
+	if (atomic_load_explicit(&early_subj_cache_evictions,
+				 memory_order_relaxed) > 5)
 		return;
 
 	if (warn) {
@@ -429,19 +433,25 @@ __attribute__((cold))
 static void obj_evict_warn(void *unused)
 {
 	unsigned long evicts, miss, hit, lookups, e_over_m, e_over_q;
+	unsigned long raw_evictions;
+	unsigned int count;
 	unsigned int occ, thr_m = 0, thr_q = 0;
 
 	if (obj_cache_warned)
 		return;
 
-	if (obj_cache->evictions & 0xF)
+	raw_evictions = atomic_load_explicit(&obj_cache->evictions,
+					     memory_order_relaxed);
+	if (raw_evictions & 0xF)
 		return;
 
-	evicts = obj_cache->evictions + 1;
-	miss = obj_cache->misses + 1;
-	hit = obj_cache->hits;
+	evicts = raw_evictions + 1;
+	miss = atomic_load_explicit(&obj_cache->misses,
+				    memory_order_relaxed) + 1;
+	hit = atomic_load_explicit(&obj_cache->hits, memory_order_relaxed);
 	lookups = hit + miss;
-	occ = (obj_cache->count * 100) / obj_cache->total;
+	count = atomic_load_explicit(&obj_cache->count, memory_order_relaxed);
+	occ = (count * 100) / obj_cache->total;
 	e_over_m = (evicts * 100) / miss;
 	e_over_q = (evicts * 100) / (lookups ? lookups : 1);
 
@@ -489,12 +499,14 @@ void decision_context_destroy(struct decision_context *ctx)
 	/* We're intentionally clearing the caches; disable warnings */
 	if (ctx->subject_cache)
 		ctx->subject_cache->evict_cb = NULL;
-	if (ctx->early_subject_cache_evictions)
+	if (atomic_load_explicit(&ctx->early_subject_cache_evictions,
+				 memory_order_relaxed))
 		msg(LOG_WARNING,
 		   "Processes are being evicted from the subject cache before "
 		   "pattern detection completes: increase subj_cache_size "
 		   "(total early evictions: %u)",
-		   ctx->early_subject_cache_evictions);
+		   atomic_load_explicit(&ctx->early_subject_cache_evictions,
+					memory_order_relaxed));
 	if (ctx->object_cache)
 		ctx->object_cache->evict_cb = NULL;
 	if (ctx->object_cache_warned)
@@ -534,6 +546,9 @@ struct decision_context *decision_context_create(const struct conf *config)
 	if (ctx == NULL)
 		return NULL;
 	decision_context_init_rate_limits(ctx);
+	atomic_init(&ctx->early_subject_cache_evictions, 0);
+	atomic_init(&ctx->building_tracer_evict_count, 0);
+	atomic_init(&ctx->building_stale_evict_count, 0);
 	decision_context_init_policy_counters(&ctx->policy_counters);
 
 	/*
@@ -582,7 +597,7 @@ int init_event_system(const conf_t *config)
 
 static int flush_cache(void)
 {
-	if (obj_cache->count == 0)
+	if (atomic_load_explicit(&obj_cache->count, memory_order_relaxed) == 0)
 		return 0;
 
 	const unsigned int size = obj_cache->total;
@@ -1495,13 +1510,26 @@ static void cache_report_snapshot_context(struct decision_context *ctx,
 	lru_metrics_snapshot(ctx->object_cache, &metrics, snapshot->reset);
 	lru_metrics_merge(&snapshot->object, &metrics);
 
-	snapshot->early_evictions += ctx->early_subject_cache_evictions;
-	snapshot->tracer_evictions += ctx->building_tracer_evict_count;
-	snapshot->stale_evictions += ctx->building_stale_evict_count;
 	if (snapshot->reset) {
-		ctx->early_subject_cache_evictions = 0;
-		ctx->building_tracer_evict_count = 0;
-		ctx->building_stale_evict_count = 0;
+		snapshot->early_evictions += atomic_exchange_explicit(
+			&ctx->early_subject_cache_evictions, 0,
+			memory_order_relaxed);
+		snapshot->tracer_evictions += atomic_exchange_explicit(
+			&ctx->building_tracer_evict_count, 0,
+			memory_order_relaxed);
+		snapshot->stale_evictions += atomic_exchange_explicit(
+			&ctx->building_stale_evict_count, 0,
+			memory_order_relaxed);
+	} else {
+		snapshot->early_evictions += atomic_load_explicit(
+			&ctx->early_subject_cache_evictions,
+			memory_order_relaxed);
+		snapshot->tracer_evictions += atomic_load_explicit(
+			&ctx->building_tracer_evict_count,
+			memory_order_relaxed);
+		snapshot->stale_evictions += atomic_load_explicit(
+			&ctx->building_stale_evict_count,
+			memory_order_relaxed);
 	}
 }
 
@@ -1539,7 +1567,8 @@ void run_usage_report(const conf_t *config, FILE *f)
 		fprintf(f,
 "---------------------------------------------------------------------------\n"
 			);
-		if (obj_cache->count == 0) {
+		if (atomic_load_explicit(&obj_cache->count,
+					 memory_order_relaxed) == 0) {
 			fprintf(f, "(none)\n");
 			return;
 		}
@@ -1580,7 +1609,8 @@ void run_usage_report(const conf_t *config, FILE *f)
 		fprintf(f,
 "---------------------------------------------------------------------------\n"
 			);
-		if (subj_cache->count == 0) {
+		if (atomic_load_explicit(&subj_cache->count,
+					 memory_order_relaxed) == 0) {
 			fprintf(f, "(none)\n");
 			return;
 		}

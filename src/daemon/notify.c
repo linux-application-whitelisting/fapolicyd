@@ -83,6 +83,7 @@
 #include "decision-timing.h"
 #include "failure-action.h"
 #include "fanotify-fs-error.h"
+#include "file.h"
 #include "policy.h"
 #include "event.h"
 #include "escape.h"
@@ -95,7 +96,6 @@
 #define FANOTIFY_BUFFER_SIZE 8192
 #define KERNEL_OVERFLOW_LOG_INTERVAL 60
 #define DEFER_RECHECK_INTERVAL_SEC 1
-#define DECISION_WORKER_BOOTSTRAP_COUNT 1
 #define DECISION_WORKER_MAX DAEMON_CONFIG_DECISION_THREADS_MAX
 
 // External variables
@@ -122,6 +122,7 @@ static int rpt_timer_fd = -1;
 static uint64_t mask;
 static unsigned int mark_flag;
 static unsigned int rpt_interval;
+static unsigned int timing_saved_queue_depth[DECISION_WORKER_MAX];
 static struct message_rate_limit kernel_queue_overflow_log =
 	MESSAGE_RATE_LIMIT_INIT(KERNEL_OVERFLOW_LOG_INTERVAL);
 
@@ -136,6 +137,9 @@ static unsigned int release_ready_deferred_events(
 static unsigned int shutdown_deferred_events(struct decision_worker *worker);
 static unsigned int shutdown_queued_events(struct decision_worker *worker);
 static void save_last_queue_metrics(void);
+static int setup_decision_worker(const conf_t *conf, unsigned int worker_id);
+static void cleanup_worker_setup(unsigned int worker_count);
+static int worker_owns_reports(const struct decision_worker *worker);
 static unsigned int timing_queue_depth_reset(void *ctx);
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved);
 static struct decision_worker *dispatcher_worker_for_metadata(
@@ -381,50 +385,129 @@ static struct decision_defer_queue *worker_defer_queue(
 	return &worker_context(worker)->defer_queue;
 }
 
+/*
+ * worker_owns_reports - determine whether a worker owns daemon reports.
+ * @worker: decision worker to inspect.
+ *
+ * Interval and signal-triggered reports use shared report state. Keep that
+ * control-plane work on worker 0 while other workers only process decisions.
+ *
+ * Returns 1 when @worker owns reports, 0 otherwise.
+ */
+static int worker_owns_reports(const struct decision_worker *worker)
+{
+	return worker && worker->id == 0;
+}
+
+/*
+ * setup_decision_worker - initialize one worker slot before threads start.
+ * @conf: daemon configuration.
+ * @worker_id: slot to initialize.
+ *
+ * Worker 0 reuses the context created by init_event_system(). Additional
+ * workers get private contexts and private file-helper state so libmagic,
+ * udev, caches, counters, and defers are not shared across decision threads.
+ *
+ * Returns 0 on success and -1 on failure with errno set when practical.
+ */
+static int setup_decision_worker(const conf_t *conf, unsigned int worker_id)
+{
+	struct decision_context *previous = decision_context_current();
+	struct decision_worker *worker = &decision_workers[worker_id];
+	int rc;
+
+	worker->id = worker_id;
+	worker->queue = NULL;
+	worker->context = NULL;
+	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
+
+	if (worker_id == 0)
+		worker->context = previous;
+	else {
+		worker->context = decision_context_create(conf);
+		if (worker->context == NULL)
+			return -1;
+
+		decision_context_set_current(worker->context);
+		rc = file_init();
+		decision_context_set_current(previous);
+		if (rc) {
+			decision_context_destroy(worker->context);
+			worker->context = NULL;
+			errno = ENOMEM;
+			return -1;
+		}
+	}
+
+	worker->queue = q_open(conf->q_size);
+	if (worker->queue == NULL) {
+		if (worker_id != 0) {
+			decision_context_destroy(worker->context);
+			worker->context = NULL;
+		}
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * cleanup_worker_setup - release partially initialized worker startup state.
+ * @worker_count: number of worker slots that may own resources.
+ *
+ * Returns nothing.
+ */
+static void cleanup_worker_setup(unsigned int worker_count)
+{
+	unsigned int i;
+
+	for (i = 0; i < worker_count; i++) {
+		struct decision_worker *worker = &decision_workers[i];
+
+		if (worker->queue) {
+			q_close(worker->queue);
+			worker->queue = NULL;
+		}
+		if (i != 0 && worker->context) {
+			decision_context_destroy(worker->context);
+			worker->context = NULL;
+		}
+	}
+	active_decision_workers = 0;
+	decision_timing_set_active_workers(0);
+	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
+}
+
 int init_fanotify(const conf_t *conf, mlist *m)
 {
-	struct decision_worker *worker = &decision_workers[0];
 	const char *path;
 	int ignore_mounts_enabled;
 	int rc;
+	unsigned int i, started_workers = 0;
 
-	// For now, just hardcode a count. Later it will be based on config.
-	active_decision_workers = DECISION_WORKER_BOOTSTRAP_COUNT;
-	if (conf->decision_threads != active_decision_workers)
-		msg(LOG_INFO,
-		    "decision_threads configured as %u; activating %u "
-		    "fanotify decision worker until worker-private decision "
-		    "state is enabled",
-		    conf->decision_threads, active_decision_workers);
-
-	// Get the first worker queue ready before fanotify can dispatch events.
-	worker->id = 0;
-	worker->context = decision_context_current();
-	atomic_store_explicit(&worker->alive, true, memory_order_relaxed);
-	worker->queue = q_open(conf->q_size);
-	if (worker->queue == NULL) {
-		msg(LOG_ERR, "Failed setting up queue (%s)",
-			strerror(errno));
-		active_decision_workers = 0;
+	active_decision_workers = 0;
+	decision_timing_set_active_workers(0);
+	if (conf->decision_threads == 0 ||
+	    conf->decision_threads > DECISION_WORKER_MAX) {
+		msg(LOG_ERR, "Invalid decision_threads value %u",
+		    conf->decision_threads);
 		exit(1);
 	}
+
+	for (i = 0; i < conf->decision_threads; i++) {
+		if (setup_decision_worker(conf, i)) {
+			msg(LOG_ERR, "Failed setting up decision worker %u (%s)",
+			    i, strerror(errno));
+			cleanup_worker_setup(i + 1);
+			exit(1);
+		}
+	}
+	active_decision_workers = conf->decision_threads;
+	decision_timing_set_active_workers(active_decision_workers);
 	save_last_queue_metrics();
-	if (worker->context->defer_queue.entries == NULL &&
-	    decision_defer_init(&worker->context->defer_queue,
-				conf->subj_cache_size)) {
-		msg(LOG_ERR, "Failed setting up subject defer array (%s)",
-			strerror(errno));
-		q_close(worker->queue);
-		worker->queue = NULL;
-		active_decision_workers = 0;
-		exit(1);
-	}
-	decision_defer_metrics_snapshot_reset(&worker->context->defer_queue,
-					      &worker->context->last_defer_metrics,
-					      0);
 	decision_timing_set_queue_depth_hooks(timing_queue_depth_reset,
 					      timing_queue_depth_restore,
-					      worker->queue);
+					      NULL);
 	our_pid = getpid();
 
 	fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT |
@@ -450,32 +533,42 @@ int init_fanotify(const conf_t *conf, mlist *m)
 	if (fd < 0) {
 		msg(LOG_ERR, "Failed opening fanotify fd (%s)",
 			strerror(errno));
-		q_close(worker->queue);
-		worker->queue = NULL;
-		active_decision_workers = 0;
+		cleanup_worker_setup(active_decision_workers);
 		exit(1);
 	}
 
 	if (reply_event_init(fd)) {
 		close(fd);
-		q_close(worker->queue);
-		worker->queue = NULL;
-		active_decision_workers = 0;
+		cleanup_worker_setup(active_decision_workers);
 		exit(1);
 	}
 
 	// Start the decision worker so it is ready when first event comes.
 	rpt_interval = conf->report_interval;
-	rc = pthread_create(&worker->thread, NULL, decision_worker_main, worker);
-	if (rc) {
-		msg(LOG_ERR, "Failed to create decision worker (%s)",
-			strerror(rc));
-		close(fd);
-		q_close(worker->queue);
-		worker->queue = NULL;
-		active_decision_workers = 0;
-		exit(1);
+	for (i = 0; i < active_decision_workers; i++) {
+		struct decision_worker *worker = &decision_workers[i];
+
+		rc = pthread_create(&worker->thread, NULL,
+				    decision_worker_main, worker);
+		if (rc) {
+			msg(LOG_ERR,
+			    "Failed to create decision worker %u (%s)",
+			    worker->id, strerror(rc));
+			atomic_store(&stop, true);
+			for (i = 0; i < started_workers; i++)
+				q_shutdown(decision_workers[i].queue);
+			for (i = 0; i < started_workers; i++)
+				pthread_join(decision_workers[i].thread, NULL);
+			close(fd);
+			cleanup_worker_setup(active_decision_workers);
+			exit(1);
+		}
+		started_workers++;
 	}
+
+	msg(LOG_INFO, "Activated %u fanotify decision worker%s",
+	    active_decision_workers,
+	    active_decision_workers == 1 ? "" : "s");
 
 	rc = pthread_create(&deadmans_switch_thread, NULL,
 			    deadmans_switch_thread_main, NULL);
@@ -483,14 +576,14 @@ int init_fanotify(const conf_t *conf, mlist *m)
 		msg(LOG_ERR, "Failed to create deadman's switch thread (%s)",
 		    strerror(rc));
 		atomic_store(&stop, true);
-		q_shutdown(worker->queue);
-		pthread_join(worker->thread, NULL);
+		for (i = 0; i < active_decision_workers; i++)
+			q_shutdown(decision_workers[i].queue);
+		for (i = 0; i < active_decision_workers; i++)
+			pthread_join(decision_workers[i].thread, NULL);
 		if (rpt_timer_fd != -1)
 			close(rpt_timer_fd);
 		close(fd);
-		q_close(worker->queue);
-		worker->queue = NULL;
-		active_decision_workers = 0;
+		cleanup_worker_setup(active_decision_workers);
 		exit(1);
 	}
 
@@ -690,6 +783,7 @@ void shutdown_fanotify(mlist *m)
 						      0);
 	}
 	decision_timing_set_queue_depth_hooks(NULL, NULL, NULL);
+	decision_timing_set_active_workers(0);
 	for (i = 0; i < active_decision_workers; i++) {
 		if (decision_workers[i].queue == NULL)
 			continue;
@@ -698,7 +792,10 @@ void shutdown_fanotify(mlist *m)
 		decision_workers[i].context = NULL;
 	}
 	active_decision_workers = 0;
-	close(rpt_timer_fd);
+	if (rpt_timer_fd != -1) {
+		close(rpt_timer_fd);
+		rpt_timer_fd = -1;
+	}
 	fanotify_fs_error_close();
 	close(fd);
 
@@ -717,23 +814,59 @@ void nudge_queue(void)
 
 /*
  * timing_queue_depth_reset - reset timing run max queue depth.
- * @ctx: queue pointer.
- * Returns the max depth value saved before reset.
+ * @ctx: unused.
+ *
+ * Returns the largest max-depth value saved across worker queues.
  */
 static unsigned int timing_queue_depth_reset(void *ctx)
 {
-	return q_max_depth_snapshot_reset(ctx);
+	unsigned int i, saved, aggregate = 0;
+
+	(void)ctx;
+
+	for (i = 0; i < active_decision_workers; i++) {
+		struct decision_worker *worker = &decision_workers[i];
+
+		if (worker->queue == NULL) {
+			timing_saved_queue_depth[i] = 0;
+			continue;
+		}
+		saved = q_max_depth_snapshot_reset(worker->queue);
+		timing_saved_queue_depth[i] = saved;
+		if (saved > aggregate)
+			aggregate = saved;
+	}
+
+	return aggregate;
 }
 
 /*
  * timing_queue_depth_restore - snapshot timing run queue depth and restore.
- * @ctx: queue pointer.
- * @saved: max depth value saved before timing reset.
- * Returns the max depth observed during the timing run.
+ * @ctx: unused.
+ * @saved: aggregate value returned by timing_queue_depth_reset().
+ *
+ * Returns the largest max depth observed across worker queues during the run.
  */
 static unsigned int timing_queue_depth_restore(void *ctx, unsigned int saved)
 {
-	return q_max_depth_snapshot_restore(ctx, saved);
+	unsigned int i, current, aggregate = 0;
+
+	(void)ctx;
+	(void)saved;
+
+	for (i = 0; i < active_decision_workers; i++) {
+		struct decision_worker *worker = &decision_workers[i];
+
+		if (worker->queue == NULL)
+			continue;
+		current = q_max_depth_snapshot_restore(worker->queue,
+				timing_saved_queue_depth[i]);
+		if (current > aggregate)
+			aggregate = current;
+		timing_saved_queue_depth[i] = 0;
+	}
+
+	return aggregate;
 }
 
 struct defer_report_snapshot {
@@ -1263,6 +1396,8 @@ static unsigned int shutdown_deferred_events(struct decision_worker *worker)
 }
 
 #ifdef TEST_SUBJECT_DEFER
+void test_notify_worker_pool_destroy(void);
+
 /*
  * test_notify_queue_reset - initialize notify.c queue state for unit tests.
  * @entries: fixed queue capacity.
@@ -1386,12 +1521,141 @@ unsigned int test_notify_worker_index(pid_t pid, unsigned int workers)
 	return dispatcher_worker_index_from_key(
 		dispatcher_subject_key(&metadata), workers);
 }
+
+/*
+ * test_notify_worker_pool_reset - initialize multiple worker queues for tests.
+ * @workers: number of synthetic active workers.
+ * @entries: queue capacity per worker.
+ *
+ * Returns 0 on success and -1 on allocation failure.
+ */
+int test_notify_worker_pool_reset(unsigned int workers, unsigned int entries)
+{
+	unsigned int i;
+
+	if (workers == 0 || workers > DECISION_WORKER_MAX) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	for (i = 0; i < DECISION_WORKER_MAX; i++) {
+		if (decision_workers[i].queue) {
+			q_close(decision_workers[i].queue);
+			decision_workers[i].queue = NULL;
+		}
+		decision_workers[i].context = NULL;
+	}
+	active_decision_workers = 0;
+
+	for (i = 0; i < workers; i++) {
+		decision_workers[i].id = i;
+		decision_workers[i].context = decision_context_current();
+		atomic_store_explicit(&decision_workers[i].alive, true,
+				      memory_order_relaxed);
+		decision_workers[i].queue = q_open(entries);
+		if (decision_workers[i].queue == NULL) {
+			test_notify_worker_pool_destroy();
+			return -1;
+		}
+	}
+	active_decision_workers = workers;
+	decision_timing_set_active_workers(workers);
+	return 0;
+}
+
+/*
+ * test_notify_worker_pool_destroy - release synthetic worker queues.
+ * Returns nothing.
+ */
+void test_notify_worker_pool_destroy(void)
+{
+	unsigned int i;
+
+	for (i = 0; i < DECISION_WORKER_MAX; i++) {
+		if (decision_workers[i].queue) {
+			q_close(decision_workers[i].queue);
+			decision_workers[i].queue = NULL;
+		}
+		decision_workers[i].context = NULL;
+	}
+	active_decision_workers = 0;
+	decision_timing_set_active_workers(0);
+}
+
+/*
+ * test_notify_enqueue_pid_fd - route one synthetic event through dispatcher.
+ * @pid: synthetic fanotify pid.
+ * @event_fd: marker stored in metadata.fd for ordering assertions.
+ *
+ * Returns 0 on successful enqueue and -1 on dispatcher/queue failure.
+ */
+int test_notify_enqueue_pid_fd(pid_t pid, int event_fd)
+{
+	struct fanotify_event_metadata metadata = {
+		.fd = event_fd,
+		.pid = pid,
+		.mask = FAN_OPEN_PERM,
+	};
+
+	return dispatcher_enqueue_permission_event(&metadata, NULL);
+}
+
+/*
+ * test_notify_worker_queue_depth - return synthetic worker queue depth.
+ * @worker_id: worker queue to inspect.
+ *
+ * Returns the current queue depth, or UINT_MAX when @worker_id is invalid.
+ */
+unsigned int test_notify_worker_queue_depth(unsigned int worker_id)
+{
+	if (worker_id >= active_decision_workers ||
+	    decision_workers[worker_id].queue == NULL)
+		return UINT_MAX;
+
+	return q_queue_length(decision_workers[worker_id].queue);
+}
+
+/*
+ * test_notify_worker_drain - drain one synthetic worker queue.
+ * @worker_id: worker queue to drain.
+ * @pids: optional destination for dequeued pids.
+ * @fds: optional destination for dequeued metadata fd markers.
+ * @max: maximum entries available in @pids and @fds.
+ *
+ * Returns the number of events drained.
+ */
+unsigned int test_notify_worker_drain(unsigned int worker_id, pid_t *pids,
+		int *fds, unsigned int max)
+{
+	decision_event_t event;
+	unsigned int count = 0;
+	struct queue *queue;
+
+	if (worker_id >= active_decision_workers)
+		return 0;
+	queue = decision_workers[worker_id].queue;
+	if (queue == NULL)
+		return 0;
+
+	while (count < max && q_queue_length(queue) > 0) {
+		if (q_dequeue(queue, &event) != 1)
+			break;
+		if (pids)
+			pids[count] = event.metadata.pid;
+		if (fds)
+			fds[count] = event.metadata.fd;
+		count++;
+	}
+
+	return count;
+}
 #endif
 
 static void *decision_worker_main(void *arg)
 {
 	struct decision_worker *worker = arg;
 	sigset_t sigs;
+	int owns_reports = worker_owns_reports(worker);
 
 	/* This is a worker thread. Don't handle external signals. */
 	sigemptyset(&sigs);
@@ -1417,11 +1681,12 @@ static void *decision_worker_main(void *arg)
 	struct timespec rpt_timeout;
 
 	// if an interval was configured, reports are enabled
-	if (rpt_interval)
+	if (owns_reports && rpt_interval)
 		rpt_init(&rpt_timeout);
 
 	// start with a fresh report
-	run_stats = 1;
+	if (owns_reports)
+		atomic_store_explicit(&run_stats, true, memory_order_relaxed);
 
 	while (!stop) {
 		int rc;
@@ -1437,7 +1702,7 @@ static void *decision_worker_main(void *arg)
 		decision_timing_process_requests(&config);
 
 		// if an interval has been configured
-		if (rpt_interval) {
+		if (owns_reports && rpt_interval) {
 			errno = 0;
 			rc = q_timed_dequeue(worker->queue, &event,
 					     &rpt_timeout);
@@ -1459,15 +1724,19 @@ static void *decision_worker_main(void *arg)
 					}
 				}
 				// timer expired or stats explicitly requested
-				if (expired || run_stats) {
+				if (expired || atomic_load_explicit(&run_stats,
+							memory_order_relaxed)) {
+					bool stats_requested =
+						atomic_exchange_explicit(
+							&run_stats, false,
+							memory_order_relaxed);
 					// write a new report only when one of
 					// 1. new events seen since last report
 					// 2. explicitly requested w/run_stats
-					if (rpt_is_stale || run_stats) {
+					if (rpt_is_stale || stats_requested) {
 						state_report_write(
 						    state_report_reason_for_triggers(
 							expired));
-						run_stats = 0;
 						rpt_is_stale = 0;
 					}
 					// adjust the timed dequeue timeout to
@@ -1501,9 +1770,10 @@ static void *decision_worker_main(void *arg)
 				rc = q_dequeue(worker->queue, &event);
 			}
 			if (rc == 0) {
-				if (run_stats) {
+				if (owns_reports &&
+				    atomic_exchange_explicit(&run_stats, false,
+							    memory_order_relaxed)) {
 					state_report_write(STATE_REPORT_SIGNAL);
-					run_stats = 0;
 				}
 				if (timed_for_defer && errno == ETIMEDOUT)
 					release_ready_deferred_events(
@@ -1512,9 +1782,10 @@ static void *decision_worker_main(void *arg)
 			}
 			if (rc < 0)
 				continue;
-			if (run_stats) {
+			if (owns_reports &&
+			    atomic_exchange_explicit(&run_stats, false,
+						    memory_order_relaxed)) {
 				state_report_write(STATE_REPORT_SIGNAL);
-				run_stats = 0;
 			}
 		}
 

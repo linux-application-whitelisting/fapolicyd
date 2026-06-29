@@ -106,14 +106,25 @@ static void qnode_free(Queue *queue, QNode *node)
 
 static void dump_queue_stats(const Queue *q)
 {
+	unsigned int count = atomic_load_explicit(&q->count,
+						  memory_order_relaxed);
+	unsigned long hits = atomic_load_explicit(&q->hits,
+						  memory_order_relaxed);
+	unsigned long misses = atomic_load_explicit(&q->misses,
+						    memory_order_relaxed);
+	unsigned long collisions = atomic_load_explicit(&q->collisions,
+							memory_order_relaxed);
+	unsigned long evictions = atomic_load_explicit(&q->evictions,
+						       memory_order_relaxed);
+
 	msg(LOG_DEBUG, "%s cache size: %u", q->name, q->total);
-	msg(LOG_DEBUG, "%s slots in use: %u (%u%%)", q->name, q->count,
-				q->total ? (100*q->count)/q->total : 0);
-	msg(LOG_DEBUG, "%s hits: %lu", q->name, q->hits);
-	msg(LOG_DEBUG, "%s misses: %lu", q->name, q->misses);
-	msg(LOG_DEBUG, "%s collisions: %lu", q->name, q->collisions);
-	msg(LOG_DEBUG, "%s evictions: %lu (%lu%%)", q->name, q->evictions,
-				q->hits ? (100*q->evictions)/q->hits : 0);
+	msg(LOG_DEBUG, "%s slots in use: %u (%u%%)", q->name, count,
+				q->total ? (100*count)/q->total : 0);
+	msg(LOG_DEBUG, "%s hits: %lu", q->name, hits);
+	msg(LOG_DEBUG, "%s misses: %lu", q->name, misses);
+	msg(LOG_DEBUG, "%s collisions: %lu", q->name, collisions);
+	msg(LOG_DEBUG, "%s evictions: %lu (%lu%%)", q->name, evictions,
+				hits ? (100*evictions)/hits : 0);
 }
 
 static Queue *create_queue(unsigned int qsize, const char *name)
@@ -125,11 +136,11 @@ static Queue *create_queue(unsigned int qsize, const char *name)
 		return queue;
 
 	// The queue is empty
-	queue->count = 0;
-	queue->hits = 0;
-	queue->misses = 0;
-	queue->collisions = 0;
-	queue->evictions = 0;
+	atomic_init(&queue->count, 0);
+	atomic_init(&queue->hits, 0);
+	atomic_init(&queue->misses, 0);
+	atomic_init(&queue->collisions, 0);
+	atomic_init(&queue->evictions, 0);
 	queue->front = queue->end = NULL;
 
 	// Number of slots that can be stored in memory
@@ -161,7 +172,7 @@ static void destroy_queue(Queue *queue)
 	// However, static analysis apps are incapable of seeing that in
 	// remove_node, end is updated to a prior node as part of detaching
 	// the current end node.
-	while (queue->count)
+	while (atomic_load_explicit(&queue->count, memory_order_relaxed))
 		dequeue(queue);
 
 	free(queue->pool);
@@ -170,7 +181,8 @@ static void destroy_queue(Queue *queue)
 
 static unsigned int are_all_slots_full(const Queue *queue)
 {
-	return queue->count == queue->total;
+	return atomic_load_explicit(&queue->count, memory_order_relaxed) ==
+		queue->total;
 }
 
 static unsigned int queue_is_empty(const Queue *queue)
@@ -200,7 +212,8 @@ static void sanity_check_queue(Queue *q, const char *id)
 			msg(LOG_DEBUG, "%s - corruption found %u", id, i);
 			abort();
 		}
-		if (i == q->count) {
+		if (i == atomic_load_explicit(&q->count,
+					      memory_order_relaxed)) {
 			msg(LOG_DEBUG, "%s - forward loop found %u", id, i);
 			abort();
 		}
@@ -321,7 +334,7 @@ static void dequeue(Queue *queue)
 	qnode_free(queue, temp);
 
 	// decrement the total of full slots by 1
-	queue->count--;
+	atomic_fetch_sub_explicit(&queue->count, 1, memory_order_relaxed);
 }
 
 /*
@@ -370,8 +383,9 @@ void lru_evict(Queue *queue, unsigned int key)
 	qnode_free(queue, temp);
 
 	// decrement the total of full slots by 1
-	queue->count--;
-	queue->evictions++;
+	atomic_fetch_sub_explicit(&queue->count, 1, memory_order_relaxed);
+	atomic_fetch_add_explicit(&queue->evictions, 1,
+				  memory_order_relaxed);
 }
 
 /*
@@ -386,7 +400,8 @@ void lru_evict(Queue *queue, unsigned int key)
 void lru_record_collision(Queue *queue)
 {
 	if (queue)
-		queue->collisions++;
+		atomic_fetch_add_explicit(&queue->collisions, 1,
+					  memory_order_relaxed);
 }
 
 /*
@@ -432,7 +447,7 @@ static void enqueue(Queue *queue, unsigned int key)
 	hash->array[key] = temp;
 
 	// increment number of full slots
-	queue->count++;
+	atomic_fetch_add_explicit(&queue->count, 1, memory_order_relaxed);
 }
 
 // This function is called needing an item from cache.
@@ -454,7 +469,8 @@ QNode *check_lru_cache(Queue *queue, unsigned int key)
 	// item is not in cache, make new spot for it
 	if (reqPage == NULL) {
 		enqueue(queue, key);
-		queue->misses++;
+		atomic_fetch_add_explicit(&queue->misses, 1,
+					  memory_order_relaxed);
 
 	// item is there but not at front. Move it
 	} else if (reqPage != queue->front) {
@@ -465,9 +481,11 @@ QNode *check_lru_cache(Queue *queue, unsigned int key)
 
 		// Increment cached object metrics
 		queue->front->uses++;
-		queue->hits++;
+		atomic_fetch_add_explicit(&queue->hits, 1,
+					  memory_order_relaxed);
 	} else
-		queue->hits++;
+		atomic_fetch_add_explicit(&queue->hits, 1,
+					  memory_order_relaxed);
 
 	return queue->front;
 }
@@ -518,18 +536,28 @@ void lru_metrics_snapshot(Queue *queue, struct lru_metrics *metrics,
 		return;
 
 	metrics->name = queue->name ? queue->name : "Unknown";
-	metrics->count = queue->count;
+	metrics->count = atomic_load_explicit(&queue->count,
+					      memory_order_relaxed);
 	metrics->total = queue->total;
-	metrics->hits = queue->hits;
-	metrics->misses = queue->misses;
-	metrics->collisions = queue->collisions;
-	metrics->evictions = queue->evictions;
+	metrics->hits = atomic_load_explicit(&queue->hits,
+					     memory_order_relaxed);
+	metrics->misses = atomic_load_explicit(&queue->misses,
+					       memory_order_relaxed);
+	metrics->collisions = atomic_load_explicit(&queue->collisions,
+						   memory_order_relaxed);
+	metrics->evictions = atomic_load_explicit(&queue->evictions,
+						  memory_order_relaxed);
 
 	if (reset) {
-		queue->hits = 0;
-		queue->misses = 0;
-		queue->collisions = 0;
-		queue->evictions = 0;
+		metrics->hits = atomic_exchange_explicit(&queue->hits, 0,
+							 memory_order_relaxed);
+		metrics->misses = atomic_exchange_explicit(&queue->misses,
+							   0,
+							   memory_order_relaxed);
+		metrics->collisions = atomic_exchange_explicit(
+			&queue->collisions, 0, memory_order_relaxed);
+		metrics->evictions = atomic_exchange_explicit(
+			&queue->evictions, 0, memory_order_relaxed);
 	}
 }
 
