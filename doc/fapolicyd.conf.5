@@ -16,7 +16,17 @@ This option gives fapolicyd a scheduler boost. The number can be from 0 to 20. T
 
 .TP
 .B q_size
-This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 800. Also note, this value means that fapolicyd gets a file descriptor for that entry. There is an rlimit cap controlled by systemd's LimitNOFILE setting for the service. You may also need to adjust it if the q_size exceeds it's value.
+This option is used to control how big of an internal queue that fapolicyd will use. If requests come in faster than fapolicyd can answer, the queue holds the pending requests. If the do_stat_report is enabled, when fapolicyd shutsdown it will provide some statistics which includes maximum queue depth used. This information can be used to help tune performance. The default value is 800. Also note, this value means that fapolicyd gets a file descriptor for that entry. There is an rlimit cap controlled by systemd's LimitNOFILE setting for the service. You may also need to adjust it if the q_size exceeds its value.
+
+When
+.B decision_threads
+is greater than 1, this value is applied to each decision worker. The total
+userspace queue capacity and approximate fanotify permission file descriptor
+budget are therefore
+.B decision_threads
+multiplied by
+.BR q_size ,
+plus the daemon's other descriptors.
 
 .TP
 .B decision_threads
@@ -27,6 +37,11 @@ maximum. Startup validation also checks that the configured worker count fits
 the LMDB reader-slot reservation, estimated fixed worker memory budget, and
 file descriptor budget implied by
 .BR q_size .
+Each decision worker owns its own event queue, subject cache, object cache,
+and subject-slot defer array. Increasing this value can reduce queueing when
+decision processing is CPU-bound, but it also increases the fixed memory and
+file descriptor footprint of those per-worker resources. The trust database
+map is shared, but each worker still needs an LMDB reader slot.
 This setting is applied when the daemon starts; restart fapolicyd after
 changing it.
 
@@ -66,10 +81,21 @@ sets change.
 .TP
 .B subj_cache_size
 This option controls how many entries the subject cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the subject and this slows performance. There are only 64k processes allowed at any time, so this would be the upper limit. The default value is 4099.
+With multiple
+.B decision_threads ,
+this value is per worker. Leaving it unchanged increases total subject cache
+capacity and memory. Reducing it to keep the memory footprint stable can
+increase subject collisions, early subject cache evictions, and subject defer
+fallbacks.
 
 .TP
 .B obj_cache_size
 This option controls how many entries the object cache holds. You want the size to be big enough that you are not getting too many evictions compared to hits. But you don't want to waste memory. Whenever there is an eviction, fapolicyd has to regenerate information about the object and this slows performance. The default value is 8191.
+With multiple
+.B decision_threads ,
+this value is per worker. Leaving it unchanged increases total object cache
+capacity and memory. Reducing it to keep the memory footprint stable can
+increase object cache misses, collisions, and evictions.
 
 .TP
 .B watch_fs
@@ -159,6 +185,44 @@ stopped, the daemon writes \fI/run/fapolicyd/fapolicyd.timing\fP. Normal state
 reports include only timing control state, not the timing histograms. See
 \fBfapolicyd.timing\fP(5) for the timing report fields.
 
+.SH "DECISION WORKER RESOURCE TUNING"
+Do not treat
+.B decision_threads
+as only a CPU setting. A higher value creates more decision workers, and each
+worker preallocates its own queue, subject cache, object cache, and
+subject-slot defer array. The subject defer array is sized from
+.B subj_cache_size
+with a fixed minimum, so increasing workers also increases total defer
+capacity and memory.
+.PP
+Increase
+.B decision_threads
+when metrics show that decision work is backing up, such as high queue wait,
+high
+.B "Inter-thread max queue depth"
+relative to
+.BR q_size ,
+or non-zero
+.BR "Inter-thread queue full count" .
+After changing it, compare
+.BR fapolicyd-cli (8)
+status or metrics reports before and after the restart. Watch queue depth,
+queue full count, subject and object cache collisions and evictions, subject
+defer fallbacks, and the reported glibc heap usage.
+.PP
+On systems with enough memory, keep
+.BR q_size ,
+.BR subj_cache_size ,
+and
+.B obj_cache_size
+unchanged when adding workers so total queue and cache capacity grows with the
+available decision parallelism. On memory-constrained systems, reduce those
+per-worker values only after estimating the total footprint. Reducing cache
+sizes can keep memory more stable, but it may increase cache misses,
+collisions, evictions, and subject defer fallbacks. Any sustained non-zero
+subject defer fallback count means the subject cache and derived defer array
+are too small for the workload.
+
 .SH "RELOAD BEHAVIOR"
 On
 .BR SIGHUP ,
@@ -201,7 +265,8 @@ long-lived runtime objects are created:
 .RS
 .IP \[bu] 2
 \fBq_size\fP, \fBdecision_threads\fP, \fBsubj_cache_size\fP, and
-\fBobj_cache_size\fP size the event queue, worker count, and caches.
+\fBobj_cache_size\fP size the per-worker event queues, worker count,
+caches, and subject defer arrays.
 .IP \[bu]
 \fBuid\fP and \fBgid\fP control the daemon identity selected during startup.
 .IP \[bu]
