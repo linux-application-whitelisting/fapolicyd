@@ -136,6 +136,8 @@ fapolicyd_SOURCES = \
 	daemon/fanotify-fs-error.c \
 	daemon/fanotify-fs-error.h \
 	daemon/fapolicyd.c \
+	daemon/decision-worker.c \
+	daemon/decision-worker.h \
 	daemon/mounts.c \
 	daemon/mounts.h \
 	daemon/notify.c \
@@ -143,7 +145,9 @@ fapolicyd_SOURCES = \
 	daemon/state-report.c \
 	daemon/state-report.h \
 	daemon/systemd-notify.c \
-	daemon/systemd-notify.h
+	daemon/systemd-notify.h \
+	daemon/worker-health.c \
+	daemon/worker-health.h
 
 fapolicyd_cli_SOURCES = \
 	cli/fapolicyd-cli.c \

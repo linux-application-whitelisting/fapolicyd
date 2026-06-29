@@ -16,6 +16,7 @@
 #include "failure-action.h"
 #include "fanotify-fs-error.h"
 #include "notify.h"
+#include "decision-worker.h"
 #include "policy.h"
 #include "decision-config.h"
 #include "decision-defer.h"
@@ -46,22 +47,6 @@ struct test_fanotify_fs_error_info {
 extern atomic_bool run_stats;
 extern atomic_uint signal_report_requests;
 extern conf_t config;
-
-int test_notify_queue_reset(unsigned int entries);
-void test_notify_queue_destroy(void);
-int test_notify_queue_push(const decision_event_t *event);
-unsigned int test_notify_shutdown_queued_events(void);
-int test_notify_defer_reset(unsigned int subj_cache_size);
-void test_notify_defer_destroy(void);
-int test_notify_defer_push(const decision_event_t *event);
-unsigned int test_notify_shutdown_deferred_events(void);
-unsigned int test_notify_worker_index(pid_t pid, unsigned int workers);
-int test_notify_worker_pool_reset(unsigned int workers, unsigned int entries);
-void test_notify_worker_pool_destroy(void);
-int test_notify_enqueue_pid_fd(pid_t pid, int event_fd);
-unsigned int test_notify_worker_queue_depth(unsigned int worker_id);
-unsigned int test_notify_worker_drain(unsigned int worker_id, pid_t *pids,
-		int *fds, unsigned int max);
 
 #define CHECK(expr, code, msg) \
 	do { \
