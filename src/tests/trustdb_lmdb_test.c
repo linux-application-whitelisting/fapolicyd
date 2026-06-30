@@ -697,6 +697,46 @@ static int test_lmdb_readonly_probe_does_not_break_live_env(void)
 	return 0;
 }
 
+/*
+ * test_lmdb_readonly_lookup_keeps_dbi_valid - Guard CLI read-only lookups.
+ *
+ * Returns 0 when the DBI opened during read-only lookup setup remains usable
+ * by later lookup transactions.
+ */
+static int test_lmdb_readonly_lookup_keeps_dbi_valid(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	const char *trusted_path = "/usr/bin/readonly-dbi";
+	const char *digest =
+		"abababababababababababababababababababababababababababababababab";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 250, "[ERROR:250] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n",
+		 trusted_path, SRC_FILE_DB, (size_t)789, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 251,
+	      "[ERROR:251] readonly lookup record import failed");
+
+	database_close_for_tests();
+
+	rc = database_readonly_lookup_start();
+	CHECK(rc == 0, 252, "[ERROR:252] readonly lookup start failed");
+	CHECK(check_trust_database_readonly(trusted_path, NULL, -1) == 1, 253,
+	      "[ERROR:253] readonly lookup could not read trusted path");
+
+	database_readonly_lookup_finish();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 254,
+	      "[ERROR:254] readonly lookup cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_chunked_import(void)
 {
 	const unsigned int record_count = 4105;
@@ -1535,6 +1575,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_readonly_probe_does_not_break_live_env();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_readonly_lookup_keeps_dbi_valid();
 	if (rc)
 		return rc;
 

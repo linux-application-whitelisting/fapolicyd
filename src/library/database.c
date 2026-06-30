@@ -5078,18 +5078,25 @@ int database_readonly_lookup_start(void)
 	if (rc)
 		goto out_abort;
 
+	/*
+	 * LMDB DBI handles opened in a transaction stay private until that
+	 * transaction commits. Aborting here would close readonly_lookup_dbi
+	 * before check_trust_database_readonly() starts its lookup transaction.
+	 */
+	rc = mdb_txn_commit(txn);
+	if (rc)
+		goto error;
+
 	MDB_maxkeysize = mdb_env_get_maxkeysize(readonly_lookup_env);
 	lib_symlink = is_link("/lib");
 	lib64_symlink = is_link("/lib64");
 	bin_symlink = is_link("/bin");
 	sbin_symlink = is_link("/sbin");
 	readonly_lookup_open = 1;
+	return 0;
 
 out_abort:
 	mdb_txn_abort(txn);
-	if (rc)
-		goto error;
-	return 0;
 
 error:
 	database_readonly_lookup_finish();
