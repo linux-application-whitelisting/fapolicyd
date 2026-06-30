@@ -625,6 +625,8 @@ static int test_lmdb_long_path_shared_prefix_no_collision(void)
 
 	CHECK(walk_database_start(&cfg) == 0, 45,
 	      "[ERROR:45] walk_database_start failed");
+	CHECK(database_walk_reader_slots_for_tests() > 0, 49,
+	      "[ERROR:49] walker did not register an LMDB reader");
 	entry = walk_database_get_entry();
 	CHECK(entry != NULL, 46, "[ERROR:46] walk_database_get_entry failed");
 	while (walk_database_next())

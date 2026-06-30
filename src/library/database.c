@@ -144,8 +144,11 @@ enum autosize_plan_mode {
  *   transaction and cursor. trust_db_read_close() releases that reference.
  * - Retired generations remain open while their readers count is non-zero.
  *   trust_db_reclaim_retired() drops the LMDB named database only after all
- *   readers drain. If drop fails, the retired generation is put back on the
- *   list so it is retried later instead of being forgotten.
+ *   daemon-local readers drain. If drop fails, the retired generation is put
+ *   back on the list so it is retried later instead of being forgotten.
+ * - CLI maintenance readers open their own MDB_RDONLY environment but still use
+ *   LMDB's reader table. They do not pin daemon generation structs, so LMDB
+ *   must keep their old transaction pages from being reused after reload.
  *
  * LMDB environment generations:
  * - Trust DB generations are logical content epochs inside one open LMDB
@@ -5053,11 +5056,12 @@ int database_readonly_lookup_start(void)
 		goto error;
 
 	/*
-	 * MDB_NOLOCK is paired with MDB_RDONLY so fapolicyd-cli never opens
-	 * lock.mdb or touches LMDB's shared robust mutexes.
+	 * This stays read-only, but it must use LMDB's reader table.  A live
+	 * CLI transaction that bypasses locking is invisible to daemon reloads,
+	 * which may otherwise drop retired named DBs while the CLI still reads
+	 * their old pages.
 	 */
-	rc = mdb_env_open(readonly_lookup_env, data_dir,
-			  MDB_RDONLY|MDB_NOLOCK, 0);
+	rc = mdb_env_open(readonly_lookup_env, data_dir, MDB_RDONLY, 0);
 	if (rc)
 		goto error;
 
@@ -5769,10 +5773,11 @@ int walk_database_start(conf_t *config)
 		goto error;
 
 	/*
-	 * MDB_NOLOCK is paired with MDB_RDONLY so the verifier never opens
-	 * lock.mdb or touches LMDB's shared robust mutexes.
+	 * This stays read-only, but it must use LMDB's reader table.  The walk
+	 * keeps one transaction open across iteration, so MDB_NOLOCK would let a
+	 * daemon reload reclaim old named DB pages behind the verifier's cursor.
 	 */
-	rc = mdb_env_open(walk_env, data_dir, MDB_RDONLY|MDB_NOLOCK, 0);
+	rc = mdb_env_open(walk_env, data_dir, MDB_RDONLY, 0);
 	if (rc)
 		goto error;
 
@@ -5862,4 +5867,22 @@ int walk_database_next(void)
 void walk_database_finish(void)
 {
 	walk_database_reset();
+}
+
+/*
+ * database_walk_reader_slots_for_tests - report walker LMDB reader table use.
+ * @void: no arguments are required.
+ *
+ * Returns the number of reader slots LMDB has allocated for the active walker
+ * environment, or -1 when no walker is active or LMDB cannot report state.
+ */
+int database_walk_reader_slots_for_tests(void)
+{
+	MDB_envinfo info;
+
+	if (walk_env == NULL || walk_txn == NULL)
+		return -1;
+	if (mdb_env_info(walk_env, &info))
+		return -1;
+	return (int)info.me_numreaders;
 }

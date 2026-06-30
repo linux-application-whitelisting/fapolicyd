@@ -202,7 +202,12 @@ static int do_dump_db(void)
 		return CLI_EXIT_DB_ERROR;
 	}
 	mdb_env_set_maxdbs(env, 128);
-	rc = mdb_env_open(env, DB_DIR, MDB_RDONLY|MDB_NOLOCK, 0660);
+	/*
+	 * Dumping walks the live database while the daemon may reload trust DB
+	 * generations, so this read-only transaction must enter LMDB's reader
+	 * table instead of bypassing locking.
+	 */
+	rc = mdb_env_open(env, DB_DIR, MDB_RDONLY, 0660);
 	if (rc) {
 		fprintf(stderr, "mdb_env_open failed, error %d %s\n", rc,
 							mdb_strerror(rc));

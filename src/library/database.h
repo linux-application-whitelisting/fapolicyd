@@ -119,6 +119,7 @@ void database_generation_release_for_tests(void *cookie);
 void database_reclaim_generations_for_tests(void);
 int database_generation_report_for_tests(
 	database_generation_test_report_t *report) __nonnull ((1));
+int database_walk_reader_slots_for_tests(void);
 unsigned int database_autosize_target_mb_for_tests(unsigned long active_pages,
 	unsigned long env_allocated_pages, unsigned long map_pages,
 	unsigned long page_size);
