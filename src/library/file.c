@@ -1587,8 +1587,12 @@ uint32_t gather_elf(int fd, off_t size)
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		unsigned long sz =
-			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
+		/*
+		 * Promote before multiplying so malformed headers cannot
+		 * wrap in unsigned int before the bounds check.
+		 */
+		unsigned long sz = (unsigned long)hdr->e_phentsize *
+			(unsigned long)hdr->e_phnum;
 
 		// Program headers are meaning for executable & shared obj only
 		if (sz == 0 && type == ET_REL)
@@ -1744,8 +1748,12 @@ done32_obj:
 
 		// Look for program header information
 		// We want to do a basic size check to make sure
-		unsigned long sz =
-			(unsigned)hdr->e_phentsize * (unsigned)hdr->e_phnum;
+		/*
+		 * Promote before multiplying so malformed headers cannot
+		 * wrap in unsigned int before the bounds check.
+		 */
+		unsigned long sz = (unsigned long)hdr->e_phentsize *
+			(unsigned long)hdr->e_phnum;
 
 		// Program headers are meaning for executable & shared obj only
 		if (sz == 0 && type == ET_REL)
