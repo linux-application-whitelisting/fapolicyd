@@ -1,6 +1,8 @@
 2.0
 - Add decision_threads configuration to fapolicyd.conf
 - Allow multiple decision threads
+- Adjust reports to include aggregate and per decision worker numbers
+- Convert fapolicyd service type to watchdog based
 
 1.6
 - Many internal changes
