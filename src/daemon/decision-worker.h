@@ -46,6 +46,10 @@ void decision_worker_pool_defer_health_report(FILE *f);
 int test_notify_queue_reset(unsigned int entries);
 void test_notify_queue_destroy(void);
 int test_notify_queue_push(const decision_event_t *event);
+uint64_t test_notify_worker_heartbeat_ns(unsigned int worker_id);
+void test_notify_worker_set_heartbeat_ns(unsigned int worker_id,
+		uint64_t heartbeat_ns);
+int test_notify_worker_dequeue_dispatch(unsigned int worker_id);
 unsigned int test_notify_shutdown_queued_events(void);
 int test_notify_defer_reset(unsigned int subj_cache_size);
 void test_notify_defer_destroy(void);

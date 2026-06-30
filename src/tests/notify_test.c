@@ -16,12 +16,17 @@
 #include "failure-action.h"
 #include "fanotify-fs-error.h"
 #include "notify.h"
+#include "decision-context.h"
 #include "decision-worker.h"
 #include "policy.h"
 #include "decision-config.h"
 #include "decision-defer.h"
 #include "decision-timing.h"
+#include "event.h"
+#include "lru.h"
+#include "process.h"
 #include "state-report.h"
+#include "subject.h"
 #include "systemd-notify.h"
 
 #ifndef FAN_Q_OVERFLOW
@@ -66,6 +71,44 @@ struct dispatch_trace_observed {
 	pid_t pid;
 	int fd;
 };
+
+/*
+ * seed_building_subject - place one live BUILDING subject in the cache.
+ * @pid: live process id used for the cached subject fingerprint.
+ * @slot: subject-cache slot that should be occupied.
+ *
+ * The deferred-dispatch regression needs event_subject_slot_is_blocked() to
+ * take the same branch it takes for a real pre-STATE_FULL subject. Use a live
+ * proc fingerprint so the stale-BUILDING guard does not evict the fixture.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void seed_building_subject(pid_t pid, unsigned int slot)
+{
+	struct decision_context *ctx = decision_context_current();
+	struct proc_info *info;
+	s_array *subject;
+	QNode *node;
+
+	CHECK(ctx != NULL && ctx->subject_cache != NULL, 151,
+	      "[ERROR:151] decision context missing subject cache");
+
+	info = stat_proc_entry(pid);
+	CHECK(info != NULL, 152,
+	      "[ERROR:152] failed to create subject fingerprint");
+
+	subject = malloc(sizeof(*subject));
+	CHECK(subject != NULL, 153,
+	      "[ERROR:153] failed to allocate subject fixture");
+	CHECK(subject_create(subject) == 0, 154,
+	      "[ERROR:154] failed to initialize subject fixture");
+	subject->info = info;
+
+	node = check_lru_cache(ctx->subject_cache, slot);
+	CHECK(node != NULL && node->item == NULL, 155,
+	      "[ERROR:155] failed to reserve subject cache slot");
+	node->item = subject;
+}
 
 void do_stat_report_reset(FILE *f, int shutdown, int reset)
 {
@@ -803,6 +846,72 @@ static void test_notify_queue_report_reset(void)
 }
 
 /*
+ * test_deferred_dispatch_refreshes_health - verify dequeue liveness.
+ *
+ * A worker that dequeues an event and parks it behind a BUILDING subject has
+ * still made progress. The worker heartbeat must be refreshed before dispatch
+ * can return from the successful deferral branch, otherwise the health monitor
+ * can misclassify bounded deferral as a stalled worker under queue pressure.
+ *
+ * Returns nothing. Exits on test failure.
+ */
+static void test_deferred_dispatch_refreshes_health(void)
+{
+	conf_t cfg = { 0 };
+	decision_event_t event;
+	pid_t owner = getpid();
+	pid_t blocked = owner + 1;
+	unsigned int slot;
+	uint64_t before, after;
+	int pipes[2];
+
+	cfg.subj_cache_size = 1;
+	cfg.obj_cache_size = 1;
+	CHECK(init_event_system(&cfg) == 0, 156,
+	      "[ERROR:156] failed to initialize event system");
+	CHECK(test_notify_queue_reset(2) == 0, 157,
+	      "[ERROR:157] notify queue reset failed");
+
+	slot = event_subject_slot(owner);
+	seed_building_subject(owner, slot);
+	CHECK(slot == event_subject_slot(blocked), 158,
+	      "[ERROR:158] subject cache did not force a collision");
+	CHECK(event_subject_slot_is_blocked(slot, blocked) == 1, 159,
+	      "[ERROR:159] fixture subject did not block collision");
+
+	CHECK(pipe(pipes) == 0, 160,
+	      "[ERROR:160] deferred dispatch pipe setup failed");
+	memset(&event, 0, sizeof(event));
+	event.metadata.fd = pipes[0];
+	event.metadata.pid = blocked;
+	event.metadata.mask = FAN_OPEN_PERM;
+	event.subject_slot = slot;
+	event.completed_subject_slot = DECISION_EVENT_NO_SLOT;
+	CHECK(test_notify_queue_push(&event) == 0, 161,
+	      "[ERROR:161] deferred dispatch queue push failed");
+
+	test_notify_worker_set_heartbeat_ns(0, 1);
+	before = test_notify_worker_heartbeat_ns(0);
+	CHECK(test_notify_worker_dequeue_dispatch(0) == 1, 162,
+	      "[ERROR:162] deferred dispatch did not process one event");
+	after = test_notify_worker_heartbeat_ns(0);
+	CHECK(after > before, 163,
+	      "[ERROR:163] deferred dispatch did not refresh heartbeat");
+	CHECK(test_notify_worker_queue_depth(0) == 0, 164,
+	      "[ERROR:164] dispatched event remained queued");
+	CHECK(test_notify_shutdown_deferred_events() == 1, 166,
+	      "[ERROR:166] deferred dispatch cleanup missed event");
+
+	errno = 0;
+	CHECK(close(pipes[0]) == -1 && errno == EBADF, 167,
+	      "[ERROR:167] deferred dispatch fd was not closed");
+	close(pipes[1]);
+
+	test_notify_queue_destroy();
+	destroy_event_system();
+}
+
+/*
  * main - exercise synthetic FAN_NOFD kernel metadata.
  * Returns 0 on success. Exits with error() on test failure.
  */
@@ -830,6 +939,7 @@ int main(void)
 	test_dispatcher_hot_worker_queue_full();
 	test_dispatcher_worker_skew();
 	test_notify_queue_report_reset();
+	test_deferred_dispatch_refreshes_health();
 
 	before = getKernelQueueOverflow();
 	metadata.mask = 0;

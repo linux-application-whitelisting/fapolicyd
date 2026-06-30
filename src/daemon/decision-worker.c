@@ -1072,6 +1072,25 @@ static void dispatch_decision_event(struct decision_worker *worker,
 }
 
 /*
+ * dispatch_dequeued_decision_event - record queue progress before dispatch.
+ * @worker: decision worker that dequeued the event.
+ * @event: event envelope removed from the inter-thread queue.
+ * @rpt_is_stale: interval report dirty flag.
+ *
+ * A successful dequeue is worker progress even when dispatch parks the event
+ * in the defer array and returns without running a policy decision. Refresh
+ * health first so bounded deferral cannot look like a stalled worker.
+ *
+ * Returns nothing.
+ */
+static void dispatch_dequeued_decision_event(struct decision_worker *worker,
+		decision_event_t *event, int *rpt_is_stale)
+{
+	worker_health_heartbeat(&worker->health);
+	dispatch_decision_event(worker, event, rpt_is_stale);
+}
+
+/*
  * deferred_event_is_ready - test whether a parked event can run now.
  * @event: deferred event to inspect.
  * @ctx: unused predicate context.
@@ -1238,6 +1257,73 @@ void test_notify_queue_destroy(void)
 int test_notify_queue_push(const decision_event_t *event)
 {
 	return q_enqueue(decision_workers[0].queue, event);
+}
+
+/*
+ * test_notify_worker_heartbeat_ns - expose worker health for unit tests.
+ * @worker_id: worker whose heartbeat should be read.
+ *
+ * Returns the raw heartbeat timestamp, or 0 when @worker_id is invalid.
+ */
+uint64_t test_notify_worker_heartbeat_ns(unsigned int worker_id)
+{
+	if (worker_id >= active_decision_workers)
+		return 0;
+
+	return atomic_load_explicit(
+		&decision_workers[worker_id].health.heartbeat_ns,
+		memory_order_relaxed);
+}
+
+/*
+ * test_notify_worker_set_heartbeat_ns - set worker health for unit tests.
+ * @worker_id: worker whose heartbeat should be changed.
+ * @heartbeat_ns: raw timestamp to store.
+ *
+ * Returns nothing.
+ */
+void test_notify_worker_set_heartbeat_ns(unsigned int worker_id,
+		uint64_t heartbeat_ns)
+{
+	if (worker_id >= active_decision_workers)
+		return;
+
+	atomic_store_explicit(
+		&decision_workers[worker_id].health.heartbeat_ns,
+		heartbeat_ns, memory_order_relaxed);
+}
+
+/*
+ * test_notify_worker_dequeue_dispatch - run one production dequeue dispatch.
+ * @worker_id: worker queue to drain once.
+ *
+ * Returns 1 when one event was dispatched, 0 for an empty queue, or -1 on
+ * invalid worker/queue state.
+ */
+int test_notify_worker_dequeue_dispatch(unsigned int worker_id)
+{
+	struct decision_worker *worker;
+	decision_event_t event;
+	int rpt_is_stale = 0;
+	int rc;
+
+	if (worker_id >= active_decision_workers) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	worker = &decision_workers[worker_id];
+	if (worker->queue == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	rc = q_dequeue(worker->queue, &event);
+	if (rc != 1)
+		return rc;
+
+	dispatch_dequeued_decision_event(worker, &event, &rpt_is_stale);
+	return 1;
 }
 
 /*
@@ -1599,7 +1685,8 @@ static void *decision_worker_main(void *arg)
 			}
 		}
 
-		dispatch_decision_event(worker, &event, &rpt_is_stale);
+		dispatch_dequeued_decision_event(worker, &event,
+						 &rpt_is_stale);
 	}
 	unsigned int queued = shutdown_queued_events(worker);
 	unsigned int deferred = shutdown_deferred_events(worker);
