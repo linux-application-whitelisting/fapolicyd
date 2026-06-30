@@ -5,12 +5,14 @@
 #include "config.h"
 
 #include <error.h>
+#include <stdatomic.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "fapolicyd-backend.h"
 
 extern backend rpm_backend;
+extern atomic_int rpm_loader_pid;
 
 #define CHECK(expr, code, msg) \
 	do { \
@@ -48,12 +50,17 @@ int main(void)
 	rpm_backend.memfd = -1;
 	rpm_backend.entries = -1;
 
+	CHECK(atomic_load(&rpm_loader_pid) == -1, 10,
+	      "[ERROR:10] rpm_loader_pid not -1 before load");
+
 	rc = rpm_backend_load_from_path_for_tests(&cfg, path);
 	CHECK(rc != 0, 1, "[ERROR:1] rpm IPC failure returned success");
 	CHECK(rpm_backend.memfd == -1, 2,
 	      "[ERROR:2] failed rpm load published a memfd");
 	CHECK(rpm_backend.entries == -1, 3,
 	      "[ERROR:3] failed rpm load published entries");
+	CHECK(atomic_load(&rpm_loader_pid) == -1, 4,
+	      "[ERROR:4] rpm_loader_pid not cleared after failed load");
 
 	return 0;
 }

@@ -59,6 +59,7 @@
 
 
 extern atomic_bool stop;
+atomic_int rpm_loader_pid = -1;
 
 int do_rpm_init_backend(void);
 int do_rpm_load_list(const conf_t *, int memfd);
@@ -245,6 +246,7 @@ static int rpm_load_list(const conf_t *conf)
 	close(sv[1]);  // Parent doesn't write
 
 	if (status == 0) {
+		atomic_store(&rpm_loader_pid, pid);
 		msg(LOG_DEBUG, "fapolicyd-rpm-loader spawned with pid: %d",pid);
 
 		struct msghdr  _msg  = {0};
@@ -263,6 +265,7 @@ static int rpm_load_list(const conf_t *conf)
 			msg(LOG_ERR, "recvmsg failed");
 			close(sv[0]);
 			waitpid(pid, &status, 0);
+			atomic_store(&rpm_loader_pid, -1);
 			posix_spawn_file_actions_destroy(&actions);
 			return 1;
 		}
@@ -272,6 +275,7 @@ static int rpm_load_list(const conf_t *conf)
 		if (!c || c->cmsg_type != SCM_RIGHTS) {
 			msg(LOG_ERR, "missing fd");
 			waitpid(pid, &status, 0);
+			atomic_store(&rpm_loader_pid, -1);
 			posix_spawn_file_actions_destroy(&actions);
 			return 1;
 		}
@@ -293,6 +297,7 @@ static int rpm_load_list(const conf_t *conf)
 		rpm_backend.memfd = memfd;
 
 		waitpid(pid, &status, 0);
+		atomic_store(&rpm_loader_pid, -1);
 	} else {
 		close(sv[0]);
 		msg(LOG_ERR, "posix_spawn failed: %s\n", strerror(status));
