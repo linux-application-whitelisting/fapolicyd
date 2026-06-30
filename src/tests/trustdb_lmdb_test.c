@@ -15,6 +15,8 @@
 #include <unistd.h>
 
 #include "database.h"
+#include "database-internal.h"
+#include "decision-config.h"
 #include "failure-action.h"
 #include "fapolicyd-backend.h"
 
@@ -196,6 +198,156 @@ static int drop_candidate_records(const char *payload)
 	rc = database_drop_candidate_after_import_for_tests(fd);
 	close(fd);
 	return rc;
+}
+
+/*
+ * write_all - write a complete test payload to an open descriptor.
+ * @fd: descriptor to write.
+ * @contents: NUL-terminated test payload.
+ *
+ * Returns 0 after writing all bytes, or 1 on write failure.
+ */
+static int write_all(int fd, const char *contents)
+{
+	size_t len = strlen(contents);
+	size_t done = 0;
+
+	while (done < len) {
+		ssize_t written = write(fd, contents + done, len - done);
+
+		if (written == -1) {
+			if (errno == EINTR)
+				continue;
+			return 1;
+		}
+		if (written == 0)
+			return 1;
+		done += written;
+	}
+
+	return 0;
+}
+
+/*
+ * write_contents - replace the contents of an open test file.
+ * @fd: descriptor to rewrite and rewind.
+ * @contents: NUL-terminated test payload.
+ *
+ * Returns 0 on success, or 1 on truncate, seek, or write failure.
+ */
+static int write_contents(int fd, const char *contents)
+{
+	if (ftruncate(fd, 0) == -1)
+		return 1;
+	if (lseek(fd, 0, SEEK_SET) == -1)
+		return 1;
+	if (write_all(fd, contents))
+		return 1;
+	if (lseek(fd, 0, SEEK_SET) == -1)
+		return 1;
+
+	return 0;
+}
+
+/*
+ * create_test_file - create a temporary file with known contents.
+ * @path: caller buffer receiving the created path.
+ * @path_size: size of @path.
+ * @contents: NUL-terminated test payload.
+ *
+ * Returns an open descriptor on success, or -1 on failure.
+ */
+static int create_test_file(char *path, size_t path_size, const char *contents)
+{
+	char template[] = "/tmp/fapolicyd-trustdb-file-XXXXXX";
+	int fd;
+	int saved_errno;
+
+	fd = mkstemp(template);
+	if (fd == -1)
+		return -1;
+
+	if (strlen(template) + 1 > path_size) {
+		saved_errno = ENAMETOOLONG;
+		close(fd);
+		unlink(template);
+		errno = saved_errno;
+		return -1;
+	}
+
+	if (write_contents(fd, contents)) {
+		saved_errno = errno;
+		close(fd);
+		unlink(template);
+		errno = saved_errno;
+		return -1;
+	}
+
+	strcpy(path, template);
+	return fd;
+}
+
+/*
+ * replace_test_file - atomically replace a path while old fds stay open.
+ * @path: existing path to replace with a new inode.
+ * @contents: NUL-terminated replacement payload.
+ *
+ * Returns 0 on success, or 1 on failure.
+ */
+static int replace_test_file(const char *path, const char *contents)
+{
+	char template[] = "/tmp/fapolicyd-trustdb-replacement-XXXXXX";
+	int fd;
+	int saved_errno;
+
+	fd = mkstemp(template);
+	if (fd == -1)
+		return 1;
+
+	if (write_contents(fd, contents))
+		goto fail;
+	if (close(fd) == -1) {
+		fd = -1;
+		goto fail;
+	}
+	fd = -1;
+
+	if (rename(template, path) == -1)
+		goto fail;
+
+	return 0;
+
+fail:
+	saved_errno = errno;
+	if (fd != -1)
+		close(fd);
+	unlink(template);
+	errno = saved_errno;
+	return 1;
+}
+
+/*
+ * describe_test_file - collect file metadata and SHA256 digest for trust.
+ * @fd: descriptor to describe.
+ * @info: receives allocated file metadata.
+ * @hash: receives allocated SHA256 digest text.
+ *
+ * Returns 0 on success, or 1 on stat/hash failure.
+ */
+static int describe_test_file(int fd, struct file_info **info, char **hash)
+{
+	*info = stat_file_entry(fd);
+	if (*info == NULL)
+		return 1;
+
+	*hash = get_hash_from_fd2(fd, (*info)->size, FILE_HASH_ALG_SHA256);
+	if (*hash == NULL) {
+		free(*info);
+		*info = NULL;
+		return 1;
+	}
+
+	return 0;
 }
 
 /*
@@ -836,6 +988,93 @@ static int test_lmdb_reload_failure_preserves_generation(void)
 	return 0;
 }
 
+/*
+ * test_lmdb_incremental_update_keeps_duplicate_hashes - package update window.
+ *
+ * A package transaction can replace a trusted executable and then run the new
+ * file from a scriptlet before the next full trust DB rebuild publishes. The
+ * per-file update path must add the new hash to the active generation without
+ * dropping the old hash that existing open executables may still need.
+ *
+ * Returns 0 when both old and new file contents are trusted after an
+ * incremental active update.
+ */
+static int test_lmdb_incremental_update_keeps_duplicate_hashes(void)
+{
+	const char old_contents[] = "shadow-utils-useradd-old\n";
+	const char new_contents[] = "shadow-utils-useradd-new\n";
+	conf_t cfg;
+	char dir[128];
+	char path[128];
+	char payload[512];
+	struct file_info *old_info = NULL;
+	struct file_info *new_info = NULL;
+	char *old_hash = NULL;
+	char *new_hash = NULL;
+	long entries = 0;
+	int old_fd = -1;
+	int new_fd = -1;
+	int rc;
+
+	old_fd = create_test_file(path, sizeof(path), old_contents);
+	CHECK(old_fd != -1, 230,
+	      "[ERROR:230] failed to create old package file");
+	rc = describe_test_file(old_fd, &old_info, &old_hash);
+	CHECK(rc == 0, 231, "[ERROR:231] failed to hash old package file");
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 232, "[ERROR:232] failed to open temporary LMDB");
+
+	cfg.integrity = IN_SHA256;
+	rc = decision_config_publish(&cfg);
+	CHECK(rc == 0, 233,
+	      "[ERROR:233] failed to publish SHA256 integrity config");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
+		 SRC_RPM, (size_t)old_info->size, old_hash);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 234,
+	      "[ERROR:234] old package record import failed");
+	CHECK(check_trust_database(path, old_info, old_fd) == 1, 235,
+	      "[ERROR:235] old package file was not trusted");
+
+	rc = replace_test_file(path, new_contents);
+	CHECK(rc == 0, 236, "[ERROR:236] failed to replace package file");
+	new_fd = open(path, O_RDONLY|O_CLOEXEC);
+	CHECK(new_fd != -1, 237,
+	      "[ERROR:237] failed to open replacement package file");
+	rc = describe_test_file(new_fd, &new_info, &new_hash);
+	CHECK(rc == 0, 238,
+	      "[ERROR:238] failed to hash replacement package file");
+	CHECK(old_info->size == new_info->size, 239,
+	      "[ERROR:239] replacement test contents changed size");
+	CHECK(strcmp(old_hash, new_hash) != 0, 240,
+	      "[ERROR:240] replacement test contents did not change hash");
+	CHECK(check_trust_database(path, new_info, new_fd) == 0, 241,
+	      "[ERROR:241] replacement file trusted before incremental update");
+
+	rc = database_store_update_record(path, (size_t)new_info->size, new_hash);
+	CHECK(rc == 0, 242, "[ERROR:242] incremental update failed");
+	CHECK(check_trust_database(path, new_info, new_fd) == 1, 243,
+	      "[ERROR:243] replacement file was not trusted after update");
+	CHECK(check_trust_database(path, old_info, old_fd) == 1, 244,
+	      "[ERROR:244] old duplicate hash was not retained");
+
+	close(new_fd);
+	close(old_fd);
+	unlink(path);
+	free(new_hash);
+	free(old_hash);
+	free(new_info);
+	free(old_info);
+	decision_config_destroy();
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 245,
+	      "[ERROR:245] incremental-duplicate cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_autosize_generation_reload_target(void)
 {
 	unsigned int target;
@@ -1314,6 +1553,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_reload_failure_preserves_generation();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_incremental_update_keeps_duplicate_hashes();
 	if (rc)
 		return rc;
 

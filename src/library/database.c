@@ -3527,6 +3527,14 @@ static int write_db(const char *idx, size_t idx_len, const char *data)
  * owns serialization, locking around the write transaction, and metadata
  * refresh for the active generation.
  *
+ * Package-manager integrations may send these records while an rpm/dnf
+ * transaction is still running. That intentionally updates the active
+ * generation instead of waiting for the next full reload, because scriptlets
+ * can execute a newly installed file before the candidate generation is built
+ * and published. The active DB uses duplicate keys so old and new hashes for
+ * one path can coexist during that window; the next successful full reload
+ * publishes a backend snapshot and drops stale duplicates.
+ *
  * Returns 0 on success or the write_db() stage code on failure.
  */
 int database_store_update_record(const char *path, size_t size,
