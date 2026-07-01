@@ -20,7 +20,7 @@ NotifyAccess=main
 ExecStart=/usr/sbin/fapolicyd --foreground
 WatchdogSec=10s
 Restart=on-failure
-RestartSec=1s
+RestartSec=5s
 ```
 
 `WatchdogSec=` is the worker stall deadline. The health monitor checks workers
