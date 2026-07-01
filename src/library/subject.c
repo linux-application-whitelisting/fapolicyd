@@ -85,6 +85,7 @@ subject_attr_t *subject_access(const s_array *a, subject_type_t t)
 int subject_add(s_array *a, const subject_attr_t *subj)
 {
 	subject_attr_t* newnode;
+	subject_attr_t **slot;
 	subject_type_t t;
 
 	if (a == NULL || a->subj == NULL)
@@ -118,8 +119,19 @@ int subject_add(s_array *a, const subject_attr_t *subj)
 	} else
 		return 1;
 
-	a->subj[t - SUBJ_START] = newnode;
-	a->cnt++;
+	slot = &a->subj[t - SUBJ_START];
+	if (*slot) {
+		subject_attr_t *old = *slot;
+
+		if (old->type == GID || old->type == UID)
+			attr_set_destroy(old->set);
+		else if (old->type >= COMM)
+			free(old->str);
+		free(old);
+	} else
+		a->cnt++;
+
+	*slot = newnode;
 	sanity_check_array(a, "subject_add 2");
 
 	return 0;

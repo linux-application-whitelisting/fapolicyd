@@ -672,6 +672,58 @@ static int init_caches(unsigned int subj_size, unsigned int obj_size)
 }
 
 /*
+ * test_attribute_replacement_preserves_count - verify subject/object array
+ * replacement keeps cnt as an occupied-slot count.
+ * Returns 0 on success, test error code otherwise.
+ */
+static int test_attribute_replacement_preserves_count(void)
+{
+	s_array subjects;
+	o_array objects;
+	subject_attr_t old_exe = { .type = EXE, .str = strdup("/old-exe") };
+	subject_attr_t new_exe = { .type = EXE, .str = strdup("/new-exe") };
+	object_attr_t old_path = { .type = PATH, .o = strdup("/old-path") };
+	object_attr_t new_path = { .type = PATH, .o = strdup("/new-path") };
+	subject_attr_t *cached_subject;
+	object_attr_t *cached_object;
+
+	CHECK(old_exe.str && new_exe.str && old_path.o && new_path.o, 130,
+	      "[ERROR:130] failed to allocate replacement attributes");
+	CHECK(subject_create(&subjects) == 0, 131,
+	      "[ERROR:131] failed to allocate subject array");
+	CHECK(object_create(&objects) == 0, 132,
+	      "[ERROR:132] failed to allocate object array");
+
+	CHECK(subject_add(&subjects, &old_exe) == 0, 133,
+	      "[ERROR:133] failed to add original subject attribute");
+	CHECK(subject_add(&subjects, &new_exe) == 0, 134,
+	      "[ERROR:134] failed to replace subject attribute");
+	CHECK(subjects.cnt == 1, 135,
+	      "[ERROR:135] subject replacement changed slot count");
+	cached_subject = subject_access(&subjects, EXE);
+	CHECK(cached_subject != NULL, 136,
+	      "[ERROR:136] replacement subject attribute missing");
+	CHECK(strcmp(cached_subject->str, "/new-exe") == 0, 137,
+	      "[ERROR:137] replacement subject attribute not cached");
+
+	CHECK(object_add(&objects, &old_path) == 0, 138,
+	      "[ERROR:138] failed to add original object attribute");
+	CHECK(object_add(&objects, &new_path) == 0, 139,
+	      "[ERROR:139] failed to replace object attribute");
+	CHECK(objects.cnt == 1, 140,
+	      "[ERROR:140] object replacement changed slot count");
+	cached_object = object_access(&objects, PATH);
+	CHECK(cached_object != NULL, 141,
+	      "[ERROR:141] replacement object attribute missing");
+	CHECK(strcmp(cached_object->o, "/new-path") == 0, 142,
+	      "[ERROR:142] replacement object attribute not cached");
+
+	subject_clear(&subjects);
+	object_clear(&objects);
+	return 0;
+}
+
+/*
  * test_attr_lookup_metrics - verify request, miss, dependency, and reset data.
  * Returns 0 on success, test error code otherwise.
  */
@@ -1119,6 +1171,10 @@ int main(void)
 		return rc;
 
 	rc = test_filedb_accepts_sha256();
+	if (rc)
+		return rc;
+
+	rc = test_attribute_replacement_preserves_count();
 	if (rc)
 		return rc;
 

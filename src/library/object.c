@@ -78,6 +78,7 @@ object_attr_t *object_access(const o_array *a, object_type_t t)
 int object_add(o_array *a, const object_attr_t *obj)
 {
 	object_attr_t *newnode;
+	object_attr_t **slot;
 
 	if (a == NULL || a->obj == NULL)
 		return 1;
@@ -95,8 +96,14 @@ int object_add(o_array *a, const object_attr_t *obj)
 	} else
 		return 1;
 
-	a->obj[obj->type - OBJ_START] = newnode;
-	a->cnt++;
+	slot = &a->obj[obj->type - OBJ_START];
+	if (*slot) {
+		free((*slot)->o);
+		free(*slot);
+	} else
+		a->cnt++;
+
+	*slot = newnode;
 
 	return 0;
 }
