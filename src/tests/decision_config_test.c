@@ -40,9 +40,12 @@ int main(void)
 	      "[ERROR:4] pinned permissive mode is wrong");
 	CHECK(decision_config_integrity(pinned) == IN_NONE, 5,
 	      "[ERROR:5] pinned integrity mode is wrong");
+	CHECK(decision_config_rpm_sha256_only(pinned) == 0, 15,
+	      "[ERROR:15] pinned rpm_sha256_only flag is wrong");
 
 	config.permissive = 1;
 	config.integrity = IN_SHA256;
+	config.rpm_sha256_only = 1;
 	CHECK(decision_config_publish(&config) == 0, 6,
 	      "[ERROR:6] second publish failed");
 	second_generation = decision_config_active_generation();
@@ -55,6 +58,8 @@ int main(void)
 	      "[ERROR:9] pinned permissive mode was mutated");
 	CHECK(decision_config_integrity(NULL) == IN_NONE, 10,
 	      "[ERROR:10] pinned integrity mode was mutated");
+	CHECK(decision_config_rpm_sha256_only(NULL) == 0, 16,
+	      "[ERROR:16] pinned rpm_sha256_only flag was mutated");
 
 	decision_config_unpin(pinned);
 	CHECK(decision_config_generation(NULL) == second_generation, 11,
@@ -63,6 +68,8 @@ int main(void)
 	      "[ERROR:12] active permissive mode is wrong");
 	CHECK(decision_config_integrity(NULL) == IN_SHA256, 13,
 	      "[ERROR:13] active integrity mode is wrong");
+	CHECK(decision_config_rpm_sha256_only(NULL) == 1, 17,
+	      "[ERROR:17] active rpm_sha256_only flag is wrong");
 
 	decision_config_destroy();
 	CHECK(decision_config_generation(NULL) == 0, 14,

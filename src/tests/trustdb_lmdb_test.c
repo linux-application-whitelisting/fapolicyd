@@ -369,6 +369,32 @@ fail:
 }
 
 /*
+ * describe_test_file_hash - collect file metadata and selected digest.
+ * @fd: descriptor to describe.
+ * @info: receives allocated file metadata.
+ * @hash: receives allocated digest text.
+ * @alg: digest algorithm to calculate.
+ *
+ * Returns 0 on success, or 1 on stat/hash failure.
+ */
+static int describe_test_file_hash(int fd, struct file_info **info,
+				   char **hash, file_hash_alg_t alg)
+{
+	*info = stat_file_entry(fd);
+	if (*info == NULL)
+		return 1;
+
+	*hash = get_hash_from_fd2(fd, (*info)->size, alg);
+	if (*hash == NULL) {
+		free(*info);
+		*info = NULL;
+		return 1;
+	}
+
+	return 0;
+}
+
+/*
  * describe_test_file - collect file metadata and SHA256 digest for trust.
  * @fd: descriptor to describe.
  * @info: receives allocated file metadata.
@@ -378,18 +404,7 @@ fail:
  */
 static int describe_test_file(int fd, struct file_info **info, char **hash)
 {
-	*info = stat_file_entry(fd);
-	if (*info == NULL)
-		return 1;
-
-	*hash = get_hash_from_fd2(fd, (*info)->size, FILE_HASH_ALG_SHA256);
-	if (*hash == NULL) {
-		free(*info);
-		*info = NULL;
-		return 1;
-	}
-
-	return 0;
+	return describe_test_file_hash(fd, info, hash, FILE_HASH_ALG_SHA256);
 }
 
 /*
@@ -1221,6 +1236,79 @@ static int test_lmdb_incremental_update_keeps_duplicate_hashes(void)
 	return 0;
 }
 
+/*
+ * test_lmdb_rpm_sha256_only_rejects_stale_sha1 - enforce lookup hash floor.
+ *
+ * RPM compatibility mode must continue trusting SHA1 RPM records for older
+ * third-party repositories.  Once rpm_sha256_only is enabled, even an already
+ * imported stale SHA1 record must not be trusted by SHA256 integrity lookups.
+ *
+ * Returns 0 when the same SHA1 record is accepted only in compatibility mode.
+ */
+static int test_lmdb_rpm_sha256_only_rejects_stale_sha1(void)
+{
+	const char contents[] = "third-party-sha1-rpm-payload\n";
+	conf_t cfg;
+	char dir[128];
+	char path[128];
+	char payload[512];
+	struct file_info *info = NULL;
+	char *sha1_hash = NULL;
+	char *sha256_hash = NULL;
+	long entries = 0;
+	int fd = -1;
+	int rc;
+
+	fd = create_test_file(path, sizeof(path), contents);
+	CHECK(fd != -1, 246, "[ERROR:246] failed to create SHA1 RPM file");
+	rc = describe_test_file_hash(fd, &info, &sha1_hash, FILE_HASH_ALG_SHA1);
+	CHECK(rc == 0, 247, "[ERROR:247] failed to SHA1 hash RPM file");
+	sha256_hash = get_hash_from_fd2(fd, info->size, FILE_HASH_ALG_SHA256);
+	CHECK(sha256_hash != NULL, 255,
+	      "[ERROR:255] failed to SHA256 hash RPM file");
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 248, "[ERROR:248] failed to open temporary LMDB");
+
+	cfg.integrity = IN_SHA256;
+	cfg.rpm_sha256_only = 0;
+	rc = decision_config_publish(&cfg);
+	CHECK(rc == 0, 249,
+	      "[ERROR:249] failed to publish SHA1-compatible config");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
+		 SRC_RPM, (size_t)info->size, sha1_hash);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 250,
+	      "[ERROR:250] SHA1 RPM record import failed");
+	CHECK(check_trust_database(path, info, fd) == 1, 251,
+	      "[ERROR:251] SHA1 RPM record not trusted in compatibility mode");
+
+	cfg.rpm_sha256_only = 1;
+	rc = decision_config_publish(&cfg);
+	CHECK(rc == 0, 252,
+	      "[ERROR:252] failed to publish SHA1-strict config");
+	CHECK(check_trust_database(path, info, fd) == 0, 253,
+	      "[ERROR:253] stale SHA1 RPM record trusted in strict mode");
+
+	rc = database_store_update_record(path, (size_t)info->size, sha256_hash);
+	CHECK(rc == 0, 256, "[ERROR:256] SHA256 duplicate update failed");
+	CHECK(check_trust_database(path, info, fd) == 1, 257,
+	      "[ERROR:257] SHA256 duplicate not trusted in strict mode");
+
+	close(fd);
+	unlink(path);
+	free(sha256_hash);
+	free(sha1_hash);
+	free(info);
+	decision_config_destroy();
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 254,
+	      "[ERROR:254] SHA1 RPM cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_autosize_generation_reload_target(void)
 {
 	unsigned int target;
@@ -1712,6 +1800,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_incremental_update_keeps_duplicate_hashes();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_rpm_sha256_only_rejects_stale_sha1();
 	if (rc)
 		return rc;
 

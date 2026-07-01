@@ -154,7 +154,17 @@ Example:
 
 .TP
 .B rpm_sha256_only
-When this option is set to 1, it will force the daemon to work only with SHA256 and larger hashes. This is useful on the systems where the integrity is set to SHA256 or IMA and some rpms were originally built with e.g. SHA1. The daemon will ignore these SHA1 entries. If set to 0 the daemon stores SHA1/MD5 in trustdb as well. This is compatible with older behavior which works with the integrity set to NONE and SIZE. The NONE or SIZE integrity setting considers the files installed via rpm as trusted and it does not care about their hashes at all. On the other hand the integrity set to SHA256 or IMA will never consider a file with SHA1 in trustdb as trusted. The default value is 0.
+When this option is set to 1, it will force RPM trust entries to use SHA256
+or larger hashes. This is useful on systems where the integrity is set to
+SHA256 or IMA and some rpms were originally built with e.g. SHA1. The daemon
+will ignore these SHA1 entries when the RPM backend imports trust data. Hash
+integrity lookups also reject SHA1/MD5 records that are already present in the
+active trust database, so stale weak RPM entries do not remain trusted after a
+configuration reload enables this option. If set to 0 the daemon stores and
+uses SHA1/MD5 from RPM trust data as well. This is compatible with older
+behavior which works with the integrity set to NONE and SIZE. The NONE or SIZE
+integrity setting considers the files installed via rpm as trusted and it does
+not care about their hashes at all. The default value is 0.
 
 .TP
 .B allow_filesystem_mark
@@ -239,8 +249,9 @@ The following
 settings are live after a successful reload:
 .RS
 .IP \[bu] 2
-\fBpermissive\fP and \fBintegrity\fP are decision-used fields and are
-published together as one immutable generation.
+\fBpermissive\fP, \fBintegrity\fP, and the lookup-side
+\fBrpm_sha256_only\fP digest floor are decision-used fields and are published
+together as one immutable generation.
 .IP \[bu]
 \fBnice_val\fP, \fBdo_stat_report\fP, \fBdetailed_report\fP,
 \fBreset_strategy\fP, and \fBtiming_collection\fP are applied directly by the
@@ -248,8 +259,8 @@ reload path.
 .IP \[bu]
 \fBsyslog_format\fP is used by the next successfully published ruleset.
 .IP \[bu]
-\fBtrust\fP and \fBrpm_sha256_only\fP are used by the next trust database
-reload.
+\fBtrust\fP and the \fBrpm_sha256_only\fP RPM ingestion filter are used by the
+next trust database reload.
 .RE
 .PP
 The

@@ -4748,6 +4748,7 @@ static int read_trust_db(struct trust_db_read_handle *read,
 {
 	int do_integrity = 0, mode = READ_TEST_KEY;
 	integrity_t integrity = decision_config_integrity(NULL);
+	unsigned int rpm_sha256_only = decision_config_rpm_sha256_only(NULL);
 	char *res;
 	int retry = 0;
 	char sha_xattr[FILE_DIGEST_STRING_MAX];
@@ -4757,11 +4758,16 @@ static int read_trust_db(struct trust_db_read_handle *read,
 	struct file_info *info = lookup->info;
 	int fd = lookup->fd;
 	int *error = lookup->error;
+	file_hash_alg_t calc_alg = FILE_HASH_ALG_NONE;
+	file_hash_alg_t ima_alg = FILE_HASH_ALG_NONE;
+	int have_ima_hash = 0;
+	int ima_rehash_attempted = 0;
 
 	if (integrity != IN_NONE && info) {
 		do_integrity = 1;
 		mode = READ_DATA;
 		sha_xattr[0] = 0; // Make sure we can't re-use stack value
+		calc_digest[0] = 0;
 	}
 
 retry_res:
@@ -4801,6 +4807,17 @@ retry_res:
 		// prepare for next reading
 		mode = READ_DATA_DUP;
 
+		/*
+		 * rpm_sha256_only is enforced during RPM ingestion, but a stale
+		 * LMDB generation can still contain old SHA1/MD5 records after
+		 * a config change or failed rebuild.  Digest-based integrity
+		 * modes must not trust those records when the floor is enabled.
+		 */
+		if (rpm_sha256_only &&
+		    (integrity == IN_SHA256 || integrity == IN_IMA) &&
+		    file_hash_length(record.alg) < SHA256_LEN)
+			goto retry_res;
+
 		if (integrity == IN_SIZE) {
 
 			// match!
@@ -4813,23 +4830,29 @@ retry_res:
 		} else if (integrity == IN_IMA) {
 			int rc = 1;
 			char *hash = NULL;
-			file_hash_alg_t ima_alg = FILE_HASH_ALG_NONE;
 
-			// read xattr only the first time
-			if (retry == 1)
+			// read xattr only once, even when weak records are skipped
+			if (!have_ima_hash) {
 				rc = get_ima_hash(fd, &ima_alg, sha_xattr);
+				if (rc)
+					have_ima_hash = 1;
+			}
 
-			if (rc) {
-				if ((record.size == info->size) &&
-				(strcmp(record.digest,
-				sha_xattr) == 0)) {
-					file_info_cache_digest(info, ima_alg);
-					strncpy(info->digest, sha_xattr,
-						FILE_DIGEST_STRING_MAX-1);
-					info->digest[FILE_DIGEST_STRING_MAX-1]=0;
-					return 1;
-				} else if (retry == 1 &&
-						ima_alg != FILE_HASH_ALG_NONE) {
+			if (!have_ima_hash) {
+				*error = 1;
+				return 0;
+			}
+
+			if ((record.size == info->size) &&
+			    (strcmp(record.digest, sha_xattr) == 0)) {
+				file_info_cache_digest(info, ima_alg);
+				strncpy(info->digest, sha_xattr,
+					FILE_DIGEST_STRING_MAX - 1);
+				info->digest[FILE_DIGEST_STRING_MAX - 1] = 0;
+				return 1;
+			} else if (!ima_rehash_attempted &&
+				   ima_alg != FILE_HASH_ALG_NONE) {
+				ima_rehash_attempted = 1;
 				/*
 				 * Rehash using the IMA algorithm to separate
 				 * metadata drift from content changes. This maps
@@ -4840,29 +4863,24 @@ retry_res:
 				hash = get_hash_from_fd2(fd, info->size, ima_alg);
 				if (hash) {
 					strncpy(calc_digest, hash,
-					FILE_DIGEST_STRING_MAX-1);
-					calc_digest[FILE_DIGEST_STRING_MAX-1]=0;
+						FILE_DIGEST_STRING_MAX - 1);
+					calc_digest[FILE_DIGEST_STRING_MAX - 1] = 0;
 					free(hash);
 					file_info_cache_digest(info, ima_alg);
 					strncpy(info->digest, calc_digest,
-						FILE_DIGEST_STRING_MAX-1);
-					info->digest[FILE_DIGEST_STRING_MAX-1]=0;
+						FILE_DIGEST_STRING_MAX - 1);
+					info->digest[FILE_DIGEST_STRING_MAX - 1] = 0;
 					if ((record.size == info->size) &&
-					(strcmp(record.digest, calc_digest)==0))
+					    (strcmp(record.digest, calc_digest) == 0))
 						return 1;
 				} else {
 					*error = 1;
 					return 0;
 				}
-				}
-
-				log_ima_mismatch(path, record.alg, ima_alg);
-				goto retry_res;
-
-			} else {
-				*error = 1;
-				return 0;
 			}
+
+			log_ima_mismatch(path, record.alg, ima_alg);
+			goto retry_res;
 
 		} else if (integrity == IN_SHA256) {
 			/*
@@ -4875,22 +4893,22 @@ retry_res:
 
 			char *hash = NULL;
 
-			// Calculate a hash only one time
-			if (retry == 1) {
+			// Calculate once per digest algorithm seen in duplicates.
+			if (calc_alg != record.alg) {
 				hash = get_hash_from_fd2(fd, info->size,
 							 record.alg);
 				if (hash) {
 					strncpy(calc_digest, hash,
-						FILE_DIGEST_STRING_MAX-1);
-					calc_digest[FILE_DIGEST_STRING_MAX-1]=0;
+						FILE_DIGEST_STRING_MAX - 1);
+					calc_digest[FILE_DIGEST_STRING_MAX - 1] = 0;
 					if (digest_len < FILE_DIGEST_STRING_MAX)
 						calc_digest[digest_len] = 0;
 					free(hash);
-					file_info_cache_digest(info,
-							       record.alg);
+					file_info_cache_digest(info, record.alg);
 					strncpy(info->digest, calc_digest,
-						FILE_DIGEST_STRING_MAX-1);
-				     info->digest[FILE_DIGEST_STRING_MAX-1] = 0;
+						FILE_DIGEST_STRING_MAX - 1);
+					info->digest[FILE_DIGEST_STRING_MAX - 1] = 0;
+					calc_alg = record.alg;
 				} else {
 					*error = 1;
 					return 0;

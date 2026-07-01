@@ -24,11 +24,12 @@
  * A permission event pins one generation before event construction and keeps
  * using it through trust checks and the final fanotify response. Reloads
  * publish a new object instead of mutating the active one, so a decision never
- * observes permissive mode from one reload and integrity mode from another.
+ * observes permissive mode from one reload and digest policy from another.
  */
 struct decision_config {
 	unsigned int permissive;
 	integrity_t integrity;
+	unsigned int rpm_sha256_only;
 	unsigned int generation;
 	time_t effective_since;
 	struct decision_config *previous;
@@ -37,6 +38,7 @@ struct decision_config {
 static struct decision_config default_decision_config = {
 	.permissive = 0,
 	.integrity = IN_NONE,
+	.rpm_sha256_only = 0,
 	.generation = 0,
 	.effective_since = 0,
 	.previous = NULL,
@@ -79,6 +81,7 @@ int decision_config_publish(const conf_t *config)
 
 	snapshot->permissive = config->permissive ? 1 : 0;
 	snapshot->integrity = config->integrity;
+	snapshot->rpm_sha256_only = config->rpm_sha256_only ? 1 : 0;
 	now = time(NULL);
 	snapshot->effective_since = now == (time_t)-1 ? 0 : now;
 
@@ -161,6 +164,19 @@ integrity_t decision_config_integrity(const struct decision_config *config)
 	if (config == NULL)
 		config = decision_config_current();
 	return config->integrity;
+}
+
+/*
+ * decision_config_rpm_sha256_only - return the active RPM digest floor flag.
+ * @config: config generation to inspect, or NULL for the current generation.
+ * Returns 1 when RPM trust records must be SHA256 or stronger, otherwise 0.
+ */
+unsigned int decision_config_rpm_sha256_only(
+	const struct decision_config *config)
+{
+	if (config == NULL)
+		config = decision_config_current();
+	return config->rpm_sha256_only;
 }
 
 unsigned int decision_config_active_generation(void)
