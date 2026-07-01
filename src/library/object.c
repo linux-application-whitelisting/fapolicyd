@@ -47,7 +47,7 @@ int object_create(o_array *a)
 }
 
 #ifdef DEBUG
-static void sanity_check_array(o_array *a, const char *id)
+static void sanity_check_array(const o_array *a, const char *id)
 {
 	int i;
 	unsigned int num = 0;
