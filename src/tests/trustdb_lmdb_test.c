@@ -95,6 +95,49 @@ static int remove_lmdb_files(const char *dir)
 }
 
 /*
+ * remove_lmdb_lock_file - remove only the LMDB lock file.
+ * @dir: LMDB environment directory.
+ *
+ * Returns 0 on success or when lock.mdb is already absent, and 1 on error.
+ */
+static int remove_lmdb_lock_file(const char *dir)
+{
+	char path[512];
+
+	snprintf(path, sizeof(path), "%s/lock.mdb", dir);
+	if (unlink(path) == -1 && errno != ENOENT) {
+		fprintf(stderr, "failed to remove %s: %s\n",
+			path, strerror(errno));
+		return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * lmdb_lock_file_mode - read lock.mdb's permission bits.
+ * @dir: LMDB environment directory.
+ * @mode: receives the low permission bits from st_mode.
+ *
+ * Returns 0 on success and 1 on error.
+ */
+static int lmdb_lock_file_mode(const char *dir, mode_t *mode)
+{
+	char path[512];
+	struct stat sb;
+
+	snprintf(path, sizeof(path), "%s/lock.mdb", dir);
+	if (stat(path, &sb)) {
+		fprintf(stderr, "failed to stat %s: %s\n",
+			path, strerror(errno));
+		return 1;
+	}
+
+	*mode = sb.st_mode & 0777;
+	return 0;
+}
+
+/*
  * make_memfd_input - Build an in-memory backend snapshot payload.
  * @text: Newline-delimited trust records.
  *
@@ -733,6 +776,67 @@ static int test_lmdb_readonly_lookup_keeps_dbi_valid(void)
 	database_set_location(NULL, NULL);
 	CHECK(remove_lmdb_files(dir) == 0, 254,
 	      "[ERROR:254] readonly lookup cleanup failed");
+	return 0;
+}
+
+/*
+ * test_lmdb_readonly_helpers_create_lock_with_trust_mode - Guard lock mode.
+ *
+ * Returns 0 when read-only CLI helpers recreate a missing lock.mdb with the
+ * normal trust DB permissions.
+ */
+static int test_lmdb_readonly_helpers_create_lock_with_trust_mode(void)
+{
+	conf_t cfg;
+	char dir[128];
+	long entries = 0;
+	int rc;
+	mode_t mode;
+	mode_t old_umask;
+	const char *trusted_path = "/usr/bin/readonly-lock-mode";
+	const char *digest =
+		"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+	char payload[512];
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 255, "[ERROR:255] failed to open temporary LMDB");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n",
+		 trusted_path, SRC_FILE_DB, (size_t)321, digest);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 256,
+	      "[ERROR:256] readonly lock-mode import failed");
+
+	database_close_for_tests();
+
+	CHECK(remove_lmdb_lock_file(dir) == 0, 257,
+	      "[ERROR:257] failed to remove lock before readonly lookup");
+	old_umask = umask(0);
+	rc = database_readonly_lookup_start();
+	umask(old_umask);
+	CHECK(rc == 0, 258, "[ERROR:258] readonly lookup start failed");
+	database_readonly_lookup_finish();
+	CHECK(lmdb_lock_file_mode(dir, &mode) == 0, 259,
+	      "[ERROR:259] failed to stat readonly lookup lock");
+	CHECK(mode == 0660, 260,
+	      "[ERROR:260] readonly lookup recreated lock with wrong mode");
+
+	CHECK(remove_lmdb_lock_file(dir) == 0, 261,
+	      "[ERROR:261] failed to remove lock before database walk");
+	old_umask = umask(0);
+	rc = walk_database_start(&cfg);
+	umask(old_umask);
+	CHECK(rc == WALK_DATABASE_SUCCESS, 262,
+	      "[ERROR:262] walk database start failed");
+	walk_database_finish();
+	CHECK(lmdb_lock_file_mode(dir, &mode) == 0, 263,
+	      "[ERROR:263] failed to stat walk lock");
+	CHECK(mode == 0660, 264,
+	      "[ERROR:264] walk recreated lock with wrong mode");
+
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 265,
+	      "[ERROR:265] readonly lock-mode cleanup failed");
 	return 0;
 }
 
@@ -1580,6 +1684,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_readonly_lookup_keeps_dbi_valid();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_readonly_helpers_create_lock_with_trust_mode();
 	if (rc)
 		return rc;
 

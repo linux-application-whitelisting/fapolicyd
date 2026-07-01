@@ -5059,9 +5059,10 @@ int database_readonly_lookup_start(void)
 	 * This stays read-only, but it must use LMDB's reader table.  A live
 	 * CLI transaction that bypasses locking is invisible to daemon reloads,
 	 * which may otherwise drop retired named DBs while the CLI still reads
-	 * their old pages.
+	 * their old pages. Pass the trust DB mode because a locked read-only
+	 * open may recreate lock.mdb when it is missing.
 	 */
-	rc = mdb_env_open(readonly_lookup_env, data_dir, MDB_RDONLY, 0);
+	rc = mdb_env_open(readonly_lookup_env, data_dir, MDB_RDONLY, 0660);
 	if (rc)
 		goto error;
 
@@ -5782,8 +5783,10 @@ int walk_database_start(conf_t *config)
 	 * This stays read-only, but it must use LMDB's reader table.  The walk
 	 * keeps one transaction open across iteration, so MDB_NOLOCK would let a
 	 * daemon reload reclaim old named DB pages behind the verifier's cursor.
+	 * Pass the trust DB mode because a locked read-only open may recreate
+	 * lock.mdb when it is missing.
 	 */
-	rc = mdb_env_open(walk_env, data_dir, MDB_RDONLY, 0);
+	rc = mdb_env_open(walk_env, data_dir, MDB_RDONLY, 0660);
 	if (rc)
 		goto error;
 
