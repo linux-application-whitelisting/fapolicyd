@@ -55,14 +55,15 @@ struct decision_policy_counters {
 /*
  * decision_context - mutable state owned by one decision processor.
  *
- * There is only one active instance today. Keeping the hot-path caches,
- * logging buffer, counters, and defer queue behind this object makes the
- * ownership boundary explicit before multiple decision workers are added.
+ * Each decision worker owns one active instance. Keeping the hot-path caches,
+ * logging buffer, counters, and defer queue behind this object keeps worker
+ * ownership explicit.
  */
 struct decision_context {
 	unsigned int worker_id;
 	Queue *subject_cache;
 	Queue *object_cache;
+	unsigned long object_cache_flush_generation;
 	char *working_buffer;
 	bool object_cache_warned;
 	atomic_uint early_subject_cache_evictions;

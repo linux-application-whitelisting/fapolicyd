@@ -46,6 +46,7 @@
 #include "daemon-config.h"
 #include "decision-config.h"
 #include "decision-timing.h"
+#include "event.h"
 #include "failure-action.h"
 #include "message.h"
 #include "file.h"
@@ -382,7 +383,6 @@ static int check_trust_database_with_read(struct trust_db_read_handle *read,
 
 // External variables
 extern atomic_bool stop;
-extern atomic_bool needs_flush;
 
 
 static int is_link(const char *path)
@@ -2122,7 +2122,7 @@ static int compact_trust_database(conf_t *config, const char *source_name)
 	if (rc)
 		goto out_status;
 
-	atomic_store_explicit(&needs_flush, true, memory_order_release);
+	request_object_cache_flush();
 	mdb_env_sync(env, 1);
 	check_db_size(config);
 
@@ -5218,7 +5218,7 @@ static int publish_memfd_for_tests(int memfd, conf_t *config,
 	}
 
 	check_db_size(config);
-	atomic_store_explicit(&needs_flush, true, memory_order_release);
+	request_object_cache_flush();
 	return 0;
 }
 
@@ -5333,7 +5333,7 @@ int database_compact_memfd_for_tests(int memfd, conf_t *config)
 
 	remove_lmdb_environment_dir(candidate.tmpdir);
 	check_db_size(config);
-	atomic_store_explicit(&needs_flush, true, memory_order_release);
+	request_object_cache_flush();
 	return 0;
 
 out_close:
@@ -5504,8 +5504,7 @@ static int update_database(conf_t *config, int startup_rebuild)
 
 	check_db_size(config);
 	if (!stop)
-		atomic_store_explicit(&needs_flush, true,
-				      memory_order_release);
+		request_object_cache_flush();
 	mdb_env_sync(env, 1);
 
 	return 0;

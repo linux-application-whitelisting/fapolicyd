@@ -94,7 +94,7 @@ static inline struct decision_context *active_decision_context(void)
 #define building_stale_log \
 	(active_decision_context()->building_stale_rate_limit)
 
-atomic_bool needs_flush = false;
+static atomic_ulong object_cache_flush_generation;
 
 enum building_evict_reason {
 	BUILDING_EVICT_TRACER,
@@ -274,6 +274,34 @@ static void decision_context_init_policy_counters(
 	atomic_init(&counters->fallthrough_sharedlib, 0);
 	atomic_init(&counters->fallthrough_unknown_ftype, 0);
 	atomic_init(&counters->fallthrough_other_ftype, 0);
+}
+
+/*
+ * object_cache_flush_generation_snapshot - read the global object-cache
+ * invalidation generation.
+ *
+ * Returns the latest generation requested by trust database publishers.
+ */
+unsigned long object_cache_flush_generation_snapshot(void)
+{
+	return atomic_load_explicit(&object_cache_flush_generation,
+				    memory_order_acquire);
+}
+
+/*
+ * request_object_cache_flush - publish an object-cache invalidation.
+ *
+ * Each decision worker owns a private object cache, so trust database updates
+ * must be broadcast as a generation. Workers compare this global value with
+ * the generation last applied to their local context and flush independently
+ * before processing the next event.
+ *
+ * Returns the newly published generation.
+ */
+unsigned long request_object_cache_flush(void)
+{
+	return atomic_fetch_add_explicit(&object_cache_flush_generation, 1,
+					 memory_order_acq_rel) + 1;
 }
 
 /*
@@ -586,6 +614,8 @@ struct decision_context *decision_context_create(const struct conf *config)
 		decision_context_destroy(ctx);
 		return NULL;
 	}
+	ctx->object_cache_flush_generation =
+		object_cache_flush_generation_snapshot();
 
 	if (decision_defer_init(&ctx->defer_queue, config->subj_cache_size)) {
 		decision_context_destroy(ctx);
@@ -611,24 +641,61 @@ int init_event_system(const conf_t *config)
 
 static int flush_cache(void)
 {
-	if (atomic_load_explicit(&obj_cache->count, memory_order_relaxed) == 0)
+	Queue *old_cache = obj_cache;
+	Queue *new_cache;
+	unsigned int size;
+
+	if (old_cache == NULL)
+		return 1;
+	if (atomic_load_explicit(&old_cache->count, memory_order_relaxed) == 0)
 		return 0;
 
-	const unsigned int size = obj_cache->total;
+	size = old_cache->total;
 
 	msg(LOG_DEBUG, "Flushing object cache");
-	obj_cache->evict_cb = NULL;
-	destroy_lru(obj_cache);
-
-	obj_cache = init_lru(size,
-				(void (*)(void *))object_clear, "Object",
-				obj_evict_warn);
-	if (!obj_cache)
+	new_cache = init_lru(size,
+			     (void (*)(void *))object_clear, "Object",
+			     obj_evict_warn);
+	if (!new_cache)
 		return 1;
+
+	old_cache->evict_cb = NULL;
+	destroy_lru(old_cache);
+	obj_cache = new_cache;
 
 	msg(LOG_DEBUG, "Flushed");
 
 	return 0;
+}
+
+/*
+ * flush_cache_if_needed - apply pending object-cache invalidations locally.
+ *
+ * Trust database updates advance a global generation. Since every decision
+ * context owns its own object cache, each worker must compare and update its
+ * local generation instead of consuming a single global flag.
+ *
+ * Returns 0 on success and 1 if the cache could not be rebuilt.
+ */
+static int flush_cache_if_needed(void)
+{
+	struct decision_context *ctx = active_decision_context();
+	unsigned long generation;
+	struct decision_timing_span timing;
+	int rc;
+
+	generation = object_cache_flush_generation_snapshot();
+	if (ctx->object_cache_flush_generation == generation)
+		return 0;
+
+	decision_timing_stage_begin(DECISION_TIMING_STAGE_CACHE_FLUSH,
+				    &timing);
+	rc = flush_cache();
+	decision_timing_stage_end(&timing);
+	if (rc == 0)
+		ctx->object_cache_flush_generation = generation;
+
+	return rc;
 }
 
 void destroy_event_system(void)
@@ -850,13 +917,8 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	struct file_info *finfo;
 	struct decision_timing_span timing;
 
-	if (atomic_exchange_explicit(&needs_flush, false,
-				     memory_order_acq_rel)) {
-		decision_timing_stage_begin(
-			DECISION_TIMING_STAGE_CACHE_FLUSH, &timing);
-		flush_cache();
-		decision_timing_stage_end(&timing);
-	}
+	if (flush_cache_if_needed())
+		return 1;
 
 	// Transfer things from fanotify structs to ours
 	e->pid = m->pid;

@@ -17,6 +17,7 @@
 #include "database.h"
 #include "database-internal.h"
 #include "decision-config.h"
+#include "event.h"
 #include "failure-action.h"
 #include "fapolicyd-backend.h"
 
@@ -43,8 +44,6 @@ struct reload_lookup {
 	atomic_bool *stop;
 	int failed;
 };
-
-extern atomic_bool needs_flush;
 
 /*
  * check_failed - report enough context to diagnose hidden Automake logs.
@@ -948,6 +947,7 @@ static int test_lmdb_failed_candidate_preserves_generation(void)
 	const char *digest_b =
 		"babababababababababababababababababababababababababababababababa";
 	char payload[512];
+	unsigned long flush_generation;
 
 	rc = with_temp_db(dir, sizeof(dir), &cfg);
 	CHECK(rc == 0, 100, "[ERROR:100] failed to open temporary LMDB");
@@ -960,7 +960,7 @@ static int test_lmdb_failed_candidate_preserves_generation(void)
 	CHECK(database_generation_report_for_tests(&before) == 0, 102,
 	      "[ERROR:102] generation report failed");
 
-	atomic_store_explicit(&needs_flush, false, memory_order_release);
+	flush_generation = object_cache_flush_generation_snapshot();
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_b,
 		 SRC_FILE_DB, (size_t)200, digest_b);
 	rc = drop_candidate_records(payload);
@@ -973,7 +973,7 @@ static int test_lmdb_failed_candidate_preserves_generation(void)
 	      "[ERROR:106] preserved generation lookup failed");
 	CHECK(check_trust_database(path_b, NULL, -1) == 0, 107,
 	      "[ERROR:107] dropped candidate became visible");
-	CHECK(!atomic_load_explicit(&needs_flush, memory_order_acquire), 108,
+	CHECK(object_cache_flush_generation_snapshot() == flush_generation, 108,
 	      "[ERROR:108] failed candidate requested cache flush");
 
 	database_close_for_tests();
@@ -1300,6 +1300,7 @@ static int test_lmdb_offline_compaction_swaps_environment(void)
 	const char *digest_b =
 		"3434343434343434343434343434343434343434343434343434343434343434";
 	char payload[512];
+	unsigned long flush_generation;
 
 	rc = with_temp_db(dir, sizeof(dir), &cfg);
 	CHECK(rc == 0, 180, "[ERROR:180] failed to open temporary LMDB");
@@ -1314,7 +1315,7 @@ static int test_lmdb_offline_compaction_swaps_environment(void)
 	CHECK(before.generation == 1 && before.lmdb_generation == 1, 183,
 	      "[ERROR:183] initial LMDB generation mismatch");
 
-	atomic_store_explicit(&needs_flush, false, memory_order_release);
+	flush_generation = object_cache_flush_generation_snapshot();
 	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path_b,
 		 SRC_FILE_DB, (size_t)600, digest_b);
 	{
@@ -1336,7 +1337,7 @@ static int test_lmdb_offline_compaction_swaps_environment(void)
 	      "[ERROR:189] old environment record survived replacement");
 	CHECK(check_trust_database(path_b, NULL, -1) == 1, 190,
 	      "[ERROR:190] rebuilt environment record missing");
-	CHECK(atomic_load_explicit(&needs_flush, memory_order_acquire), 191,
+	CHECK(object_cache_flush_generation_snapshot() > flush_generation, 191,
 	      "[ERROR:191] offline compaction did not request cache flush");
 
 	database_close_for_tests();
@@ -1481,6 +1482,7 @@ static int test_lmdb_concurrent_publish_storm(void)
 	atomic_bool start = false;
 	atomic_bool stop_readers = false;
 	database_generation_test_report_t before, after;
+	unsigned long flush_generation;
 
 	rc = with_temp_db(dir, sizeof(dir), &cfg);
 	CHECK(rc == 0, 140, "[ERROR:140] failed to open temporary LMDB");
@@ -1504,7 +1506,7 @@ static int test_lmdb_concurrent_publish_storm(void)
 		      "[ERROR:143] failed to create reload reader");
 	}
 
-	atomic_store_explicit(&needs_flush, false, memory_order_release);
+	flush_generation = object_cache_flush_generation_snapshot();
 	atomic_store_explicit(&start, true, memory_order_release);
 	for (unsigned int i = 0; i < 6; i++) {
 		snprintf(payload, sizeof(payload),
@@ -1515,11 +1517,10 @@ static int test_lmdb_concurrent_publish_storm(void)
 		rc = publish_records(&cfg, payload);
 		CHECK(rc == 0, 144,
 		      "[ERROR:144] reload-storm publish failed");
-		CHECK(atomic_load_explicit(&needs_flush,
-					   memory_order_acquire), 145,
+		CHECK(object_cache_flush_generation_snapshot() >
+		      flush_generation, 145,
 		      "[ERROR:145] publish did not request cache flush");
-		atomic_store_explicit(&needs_flush, false,
-				      memory_order_release);
+		flush_generation = object_cache_flush_generation_snapshot();
 	}
 
 	atomic_store_explicit(&stop_readers, true, memory_order_release);

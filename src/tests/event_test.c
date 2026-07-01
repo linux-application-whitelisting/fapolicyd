@@ -9,6 +9,7 @@
 
 #include "attr-lookup-metrics.h"
 #include "event.h"
+#include "decision-context.h"
 #include "conf.h"
 #include "process.h"
 #include "object.h"
@@ -38,11 +39,9 @@
  * that seeds fanotify_event_metadata with the desired pid/fd pair.  Tests can
  * reuse init_caches() to size caches appropriately and the CHECK macro to
  * report deterministic failures.  Future scenarios to consider include
- * multi-object fanotify events, additional needs_flush interactions, or
+ * multi-object fanotify events, cross-context cache flush generations, or
  * validating that trust-database results propagate into the event fields.
  */
-
-extern atomic_bool needs_flush;
 
 struct proc_info *stat_proc_entry(pid_t pid);
 void clear_proc_info(struct proc_info *info);
@@ -667,7 +666,6 @@ static int init_caches(unsigned int subj_size, unsigned int obj_size)
 
 	cfg.subj_cache_size = subj_size;
 	cfg.obj_cache_size = obj_size;
-	atomic_store_explicit(&needs_flush, false, memory_order_relaxed);
 	return init_event_system(&cfg);
 }
 
@@ -1095,15 +1093,16 @@ static int test_traced_building_occupant_eviction(void)
 }
 
 /*
- * Verify that needs_flush triggers an object cache flush so the next lookup
+ * Verify that a flush generation resets the object cache so the next lookup
  * allocates a fresh entry.
  */
-static int test_needs_flush_resets_object_cache(void)
+static int test_flush_generation_resets_object_cache(void)
 {
 	struct fanotify_event_metadata meta = { 0 };
 	event_t first = { 0 };
 	event_t second = { 0 };
 	unsigned long object_hits = 0, object_misses = 0;
+	unsigned long generation;
 
 	CHECK(init_caches(4, 1) == 0, 30,
 	      "[ERROR:30] init_event_system failed");
@@ -1115,12 +1114,12 @@ static int test_needs_flush_resets_object_cache(void)
 	      "[ERROR:31] first new_event failed");
 	CHECK(first.o != NULL, 32, "[ERROR:32] object missing");
 
-	atomic_store_explicit(&needs_flush, true, memory_order_relaxed);
+	generation = object_cache_flush_generation_snapshot();
+	CHECK(request_object_cache_flush() == generation + 1, 34,
+	      "[ERROR:34] flush generation did not advance");
 	meta.mask = FAN_OPEN_PERM;
 	CHECK(new_event(&meta, &second) == 0, 33,
 	      "[ERROR:33] second new_event failed");
-	CHECK(!atomic_load_explicit(&needs_flush, memory_order_relaxed), 34,
-	      "[ERROR:34] needs_flush not cleared");
 	CHECK(second.s == first.s, 35,
 	      "[ERROR:35] subject cache should reuse same entry");
 	CHECK(read_object_cache_metric("hits", &object_hits) == 0, 36,
@@ -1131,6 +1130,62 @@ static int test_needs_flush_resets_object_cache(void)
 	      "[ERROR:38] object cache flush should reset hit counter");
 	CHECK(object_misses == 1, 39,
 	      "[ERROR:39] object cache flush should force a cache miss");
+
+	destroy_event_system();
+	return 0;
+}
+
+/*
+ * Verify that one trust DB update flushes every registered worker cache.
+ */
+static int test_flush_generation_reaches_all_contexts(void)
+{
+	conf_t cfg = { 0 };
+	struct decision_context *ctx0, *ctx1;
+	struct fanotify_event_metadata meta = { 0 };
+	event_t event = { 0 };
+	unsigned long object_hits = 0, object_misses = 0;
+
+	cfg.subj_cache_size = 4;
+	cfg.obj_cache_size = 1;
+	CHECK(init_event_system(&cfg) == 0, 150,
+	      "[ERROR:150] init_event_system failed");
+	ctx0 = decision_context_current();
+	decision_context_set_worker_id(ctx0, 0);
+	ctx1 = decision_context_create(&cfg);
+	CHECK(ctx1 != NULL, 151,
+	      "[ERROR:151] second decision context allocation failed");
+	decision_context_set_worker_id(ctx1, 1);
+
+	meta.mask = FAN_OPEN_EXEC_PERM;
+	meta.fd = 40;
+	meta.pid = 400;
+	decision_context_set_current(ctx0);
+	CHECK(new_event(&meta, &event) == 0, 152,
+	      "[ERROR:152] first context prime failed");
+	decision_context_set_current(ctx1);
+	CHECK(new_event(&meta, &event) == 0, 153,
+	      "[ERROR:153] second context prime failed");
+	CHECK(reset_cache_report_counters() == 0, 154,
+	      "[ERROR:154] failed resetting cache counters");
+
+	request_object_cache_flush();
+	meta.mask = FAN_OPEN_PERM;
+	decision_context_set_current(ctx0);
+	CHECK(new_event(&meta, &event) == 0, 155,
+	      "[ERROR:155] first context post-flush event failed");
+	decision_context_set_current(ctx1);
+	CHECK(new_event(&meta, &event) == 0, 156,
+	      "[ERROR:156] second context post-flush event failed");
+
+	CHECK(read_object_cache_metric("hits", &object_hits) == 0, 157,
+	      "[ERROR:157] failed reading object cache hits");
+	CHECK(read_object_cache_metric("misses", &object_misses) == 0, 158,
+	      "[ERROR:158] failed reading object cache misses");
+	CHECK(object_hits == 0, 159,
+	      "[ERROR:159] one worker reused stale object cache");
+	CHECK(object_misses == 2, 160,
+	      "[ERROR:160] both worker caches were not refreshed");
 
 	destroy_event_system();
 	return 0;
@@ -1198,7 +1253,11 @@ int main(void)
 	if (rc)
 		return rc;
 
-	rc = test_needs_flush_resets_object_cache();
+	rc = test_flush_generation_resets_object_cache();
+	if (rc)
+		return rc;
+
+	rc = test_flush_generation_reaches_all_contexts();
 	if (rc)
 		return rc;
 

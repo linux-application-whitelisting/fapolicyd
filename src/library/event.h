@@ -28,7 +28,6 @@
 
 #include "config.h"
 #include <stdio.h>
-#include <stdatomic.h>
 #include <sys/types.h>
 #include <sys/fanotify.h>
 #include "subject.h"
@@ -44,10 +43,10 @@ typedef struct ev {
 	o_array *o;
 } event_t;
 
-extern atomic_bool needs_flush;
-
 int init_event_system(const conf_t *config);
 void destroy_event_system(void);
+unsigned long request_object_cache_flush(void);
+unsigned long object_cache_flush_generation_snapshot(void);
 int new_event(const struct fanotify_event_metadata *m, event_t *e);
 unsigned int event_subject_slot(pid_t pid);
 int event_subject_slot_is_blocked(unsigned int slot, pid_t pid);
