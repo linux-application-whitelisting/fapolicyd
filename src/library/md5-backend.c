@@ -53,6 +53,10 @@
  * While MD5 is considered broken, this is still some effort.
  * This function would compute a sha256 and file size on the attackers
  * crafted file so they do not secure this backend.
+ *
+ * Returns 0 when the file was added, 1 when the file was skipped
+ * (benign per-file condition), and -1 on a fatal error that leaves
+ * the backend snapshot unusable.
  */
 int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 			       struct _hash_record **hashtable,
@@ -145,7 +149,7 @@ int add_file_to_backend_by_md5(const char *path, const char *expected_md5,
 				    "dprintf failed writing %s to memfd (%s)",
 				    path, strerror(errno));
 				free((void *)data);
-				return 1;
+				return -1;
 			}
 		}
 		free((void *)data);
