@@ -44,20 +44,10 @@ static message_t message_mode = MSG_QUIET;
 static debug_message_t debug_message = DBG_NO;
 static atomic_int stderr_color_state = ATOMIC_VAR_INIT(-1);
 
-/*
- * Async logger. Both output destinations can block on journald: vsyslog()
- * writes to /dev/log, and stderr may be a journald stream socket when the
- * daemon runs under systemd. journald itself generates fanotify events this
- * daemon must answer, so a thread that answers events must never write to
- * either destination directly - that is a circular wait during journal
- * rotation. Instead, producers enqueue formatted messages into this bounded
- * ring without ever blocking (full ring == drop + count) and one drain
- * thread is the only writer. A wedged journald then stalls only the drain
- * thread.
+/* journald can deadlock with fanotify events, so no thread that answers
+ * events may write to syslog/stderr directly. Producers enqueue here
+ * instead (full ring == drop + count) and one drain thread does the writes.
  */
-/* Sized for the longest realistic line: a message can embed one or two full
- * paths (e.g. "Consider 'mv %s %s'"), so match the PATH_MAX*2 convention
- * already used for path-carrying buffers elsewhere (fapolicyd.c). */
 #define LOG_SLOT_SIZE (PATH_MAX * 2)
 #define LOG_QUEUE_DEPTH 256
 
@@ -65,8 +55,7 @@ enum { LOG_ASYNC_OFF, LOG_ASYNC_RUNNING, LOG_ASYNC_STOPPING };
 
 struct log_slot {
 	int priority;
-	size_t len;		/* text length, so the drain thread copies
-				   only what was written, not the whole slot */
+	size_t len;		/* bytes actually written */
 	char text[LOG_SLOT_SIZE];
 };
 
@@ -77,11 +66,7 @@ static sem_t log_sem;
 static pthread_t log_thread;
 static atomic_int log_state = ATOMIC_VAR_INIT(LOG_ASYNC_OFF);
 static atomic_ulong log_dropped = ATOMIC_VAR_INIT(0);
-/* Producers currently between registering intent and finishing their call
- * into log_enqueue() - see msg() and message_async_stop(). Always accessed
- * with the default (seq_cst) atomic ops: the ordering this enforces spans
- * two independent atomics (this counter and log_state), which acquire/
- * release pairing on either one alone cannot provide. */
+/* producers between checking log_state and finishing log_enqueue() */
 static atomic_uint log_inflight = ATOMIC_VAR_INIT(0);
 static struct message_rate_limit log_drop_limit = MESSAGE_RATE_LIMIT_INIT(30);
 
@@ -195,11 +180,6 @@ static void msg_stderr(int priority, const char *fmt, va_list ap)
 	funlockfile(stderr);
 }
 
-/*
- * msg_stderr_f - variadic convenience wrapper around msg_stderr.
- * @priority: syslog LOG_* priority value.
- * @fmt: printf-style format string.
- */
 static void msg_stderr_f(int priority, const char *fmt, ...)
 {
 	va_list ap;
@@ -209,14 +189,8 @@ static void msg_stderr_f(int priority, const char *fmt, ...)
 	va_end(ap);
 }
 
-/*
- * log_write - write one already-formatted message to the active destination.
- * @priority: syslog LOG_* priority value.
- * @text: complete formatted message body.
- *
- * Returns nothing. Only the drain thread may call this while the async
- * logger is running - it is the single writer to the log destinations.
- */
+/* only the drain thread calls this; text may contain '%' so it's passed
+ * through as a literal "%s" body, never as a format string */
 static void log_write(int priority, const char *text)
 {
 	if (message_mode == MSG_SYSLOG)
@@ -225,51 +199,19 @@ static void log_write(int priority, const char *text)
 		msg_stderr_f(priority, "%s", text);
 }
 
-/*
- * log_enqueue - hand one message to the drain thread without blocking on
- * the log destinations.
- * @priority: syslog LOG_* priority value.
- * @fmt: printf-style format string.
- * @ap: argument list for @fmt.
- *
- * Returns nothing. LOG_SLOT_SIZE fits any reasonable message; a message
- * longer than that is truncated. When the ring is full the message is
- * dropped and counted; the drain thread reports the count once it has a
- * free moment (see log_thread_main()).
- */
 static void log_enqueue(int priority, const char *fmt, va_list ap)
 {
-	/*
-	 * A fatal signal can interrupt this thread while it already holds
-	 * log_lock (coredump_handler() -> unmark_fanotify() -> msg()).
-	 * Relocking a normal mutex there would hang forever. log_lock is
-	 * PTHREAD_MUTEX_ERRORCHECK so that specific self-relock case returns
-	 * EDEADLK instead of blocking; contention from a genuinely different
-	 * thread still just blocks, the same as before this queue existed.
-	 */
+	/* log_lock is ERRORCHECK: a fatal-signal handler can call msg() while
+	 * this thread already holds it, and relocking must fail, not hang */
 	if (pthread_mutex_lock(&log_lock) == EDEADLK) {
 		atomic_fetch_add_explicit(&log_dropped, 1,
 					  memory_order_relaxed);
 		return;
 	}
-	/*
-	 * log_sem and log_thread are guaranteed to still be alive past this
-	 * point: the caller (msg()) counted itself in log_inflight before it
-	 * even looked at log_state, and message_async_stop() will not post
-	 * the final wakeup or call sem_destroy() until log_inflight drops
-	 * back to zero. No re-check of log_state is needed here.
-	 */
 	if (log_count == LOG_QUEUE_DEPTH) {
 		pthread_mutex_unlock(&log_lock);
-		/*
-		 * Just count it here. Reporting from this producer thread
-		 * would mean calling msg() -> log_enqueue() again while the
-		 * ring is still full, which would usually just drop the
-		 * report itself - a message about the queue being full is
-		 * the one message that can't be trusted to compete for a
-		 * slot in that same queue. The drain thread reports this
-		 * counter directly instead (see log_thread_main()).
-		 */
+		/* can't report via msg(): that would re-enter this same
+		 * full queue and just drop the report too */
 		atomic_fetch_add_explicit(&log_dropped, 1,
 					  memory_order_relaxed);
 		return;
@@ -281,8 +223,6 @@ static void log_enqueue(int priority, const char *fmt, va_list ap)
 	if (n < 0)
 		n = 0;
 	else if (n >= LOG_SLOT_SIZE) {
-		/* LOG_SLOT_SIZE already fits any reasonable message; only a
-		 * pathological one lands here. Mark it rather than stay silent. */
 		static const char mark[] = " [truncated]";
 
 		memcpy(log_ring[tail].text +
@@ -291,25 +231,19 @@ static void log_enqueue(int priority, const char *fmt, va_list ap)
 	}
 	log_ring[tail].len = (size_t)n;
 	log_count++;
-	/* Posted while still holding log_lock: message_async_stop() cannot
-	 * reach sem_destroy() until this critical section unlocks, so this
-	 * post is guaranteed to land before the semaphore can be destroyed. */
+	/* post while still holding the lock so stop() can't destroy log_sem
+	 * before this post lands */
 	sem_post(&log_sem);
 	pthread_mutex_unlock(&log_lock);
 }
 
-/*
- * log_thread_main - drain queued messages to the log destinations.
- * @arg: unused pthread argument.
- * Returns NULL when the drain thread exits.
- */
 static void *log_thread_main(void *arg)
 {
 	sigset_t sigs;
 
 	(void)arg;
 
-	/* This is a worker thread. Don't handle external signals. */
+	/* worker thread: don't handle external signals */
 	sigemptyset(&sigs);
 	sigaddset(&sigs, SIGTERM);
 	sigaddset(&sigs, SIGHUP);
@@ -328,9 +262,6 @@ static void *log_thread_main(void *arg)
 
 		pthread_mutex_lock(&log_lock);
 		if (log_count) {
-			/* Copy only what was written, not the whole
-			 * LOG_SLOT_SIZE slot, to keep this critical
-			 * section short. */
 			slot.priority = log_ring[log_head].priority;
 			memcpy(slot.text, log_ring[log_head].text,
 			       log_ring[log_head].len + 1);
@@ -343,16 +274,8 @@ static void *log_thread_main(void *arg)
 		if (have)
 			log_write(slot.priority, slot.text);
 
-		/*
-		 * log_dropped doubles as the flag this thread checks for a
-		 * pending report: producer threads only ever increment it
-		 * (see log_enqueue()), so a nonzero read here means messages
-		 * were lost since the last time we looked. Reported directly
-		 * via log_write(), not msg(), because this thread is the
-		 * sole writer and never competes for a ring slot - unlike a
-		 * producer thread, it cannot have its own report swallowed
-		 * by the very overflow it is reporting.
-		 */
+		/* log_write(), not msg(): this thread never competes for a
+		 * ring slot, so its own report can't be dropped */
 		dropped = atomic_load_explicit(&log_dropped,
 					       memory_order_relaxed);
 		if (dropped &&
@@ -402,46 +325,27 @@ void message_async_stop(void)
 				 memory_order_relaxed) != LOG_ASYNC_RUNNING)
 		return;
 
-	/*
-	 * Flip to STOPPING while holding log_lock: any producer already past
-	 * this lock completed its sem_post() before we could acquire it; any
-	 * producer that acquires it after sees STOPPING and never touches
-	 * log_sem. That makes sem_destroy() below safe with no producer
-	 * thread needing to be joined first.
-	 */
+	/* flip to STOPPING under log_lock so no producer can start a fresh
+	 * sem_post() after we decide it's safe to tear the queue down */
 	pthread_mutex_lock(&log_lock);
 	atomic_store_explicit(&log_state, LOG_ASYNC_STOPPING,
 			      memory_order_release);
 	pthread_mutex_unlock(&log_lock);
 
-	/*
-	 * A producer can have read log_state == RUNNING in msg() - registering
-	 * itself in log_inflight first - before the STOPPING store above
-	 * became visible to it. Wait here for log_inflight to drain to zero:
-	 * that is proof every such producer has finished its log_enqueue()
-	 * call (ring push and sem_post included), so it is now safe to post
-	 * the final wakeup and destroy log_sem below. The critical sections
-	 * inside log_enqueue() are short and never block, so this spins only
-	 * briefly.
-	 */
+	/* wait for any producer already past the log_state check in msg()
+	 * to finish its log_enqueue() call before destroying log_sem */
 	while (atomic_load(&log_inflight) != 0)
 		sched_yield();
 
 	sem_post(&log_sem);
 
-	/*
-	 * pthread_join() alone can hang forever if the drain thread is stuck
-	 * inside log_write() on a wedged journald/syslog - exactly the
-	 * blocking hazard this whole design exists to avoid, just moved to
-	 * shutdown. Give up after a bounded wait instead of hanging
-	 * systemctl stop/restart indefinitely.
-	 */
+	/* bounded wait: don't let a wedged journald/syslog hang shutdown */
 	struct timespec deadline;
 	clock_gettime(CLOCK_REALTIME, &deadline);
 	deadline.tv_sec += 5;
 	if (pthread_timedjoin_np(log_thread, NULL, &deadline) != 0) {
-		/* Leak the thread and semaphore rather than risk
-		 * sem_destroy() on one a still-running thread may use. */
+		/* leak the thread/semaphore rather than destroy them
+		 * out from under a still-running thread */
 		atomic_store_explicit(&log_state, LOG_ASYNC_OFF,
 				      memory_order_relaxed);
 		return;
@@ -471,15 +375,8 @@ void msg(int priority, const char *fmt, ...)
 		return;
 
 	va_start(ap, fmt);
-	/*
-	 * Register in log_inflight before looking at log_state, not after:
-	 * this is what lets message_async_stop() treat log_inflight == 0 as
-	 * proof that no producer can still be relying on the async queue.
-	 * Checking log_state first and registering afterward would leave a
-	 * window where stop() samples log_inflight == 0, tears the queue
-	 * down, and only then has this thread show up expecting it to still
-	 * be there.
-	 */
+	/* register before checking log_state, so message_async_stop() can
+	 * rely on log_inflight == 0 as proof no producer is mid-enqueue */
 	atomic_fetch_add(&log_inflight, 1);
 	if (atomic_load(&log_state) == LOG_ASYNC_RUNNING) {
 		log_enqueue(priority, fmt, ap);

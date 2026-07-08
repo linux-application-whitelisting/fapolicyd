@@ -74,22 +74,8 @@ static inline int message_rate_limit_allow(struct message_rate_limit *limit,
 
 void set_message_mode(message_t mode, debug_message_t debug);
 
-/*
- * message_async_start - route msg() through a queue drained by a dedicated
- * writer thread so callers never block on the log destinations.
- * Returns zero on success or an errno-style error code. Synchronous logging
- * can deadlock against journald once fanotify marks are active, so callers
- * must treat a nonzero return as fatal, the same as a decision worker
- * thread failing to start.
- */
 int message_async_start(void);
 
-/*
- * message_async_stop - drain queued messages and join the writer thread.
- * Afterwards msg() writes synchronously again. Safe to call even while
- * other threads may still be calling msg(); log_lock orders the shutdown
- * against them so none can race the internal semaphore's teardown.
- */
 void message_async_stop(void);
 
 void msg(int priority, const char *fmt, ...)
