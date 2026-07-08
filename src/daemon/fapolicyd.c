@@ -1271,6 +1271,16 @@ int main(int argc, const char *argv[])
 		}
 		set_message_mode(MSG_SYSLOG, DBG_NO);
 		openlog("fapolicyd", LOG_PID, LOG_DAEMON);
+		int rc = message_async_start();
+		if (rc) {
+			msg(LOG_ERR,
+			    "Failed starting async logging thread (%s)",
+			    strerror(rc));
+			exit(1);
+		}
+		if (atexit(message_async_stop))
+			msg(LOG_WARNING,
+			    "Cannot register async log exit handler");
 	}
 	state_report_log_reset_strategy(config.reset_strategy);
 	decision_timing_apply_config(config.timing_collection);

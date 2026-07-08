@@ -29,7 +29,7 @@ endif
 check_PROGRAMS = avl_test gid_proc_test uid_proc_test escape_test \
 attr_sets_test elf_file_test fd_fgets_test file_type_detect_test \
 rules_test policy_reload_test policy_concurrent_test failure_action_test \
-queue_test event_test \
+queue_test event_test message_test \
 trustdb_format_test trustdb_lmdb_test lru_test notify_test \
 decision_defer_test decision_config_test \
 decision_timing_report_test daemon_config_test ignore_mounts_risk_test
@@ -70,6 +70,9 @@ failure_action_test_SOURCES = failure_action_test.c \
 	${top_srcdir}/src/library/failure-action.c
 queue_test_SOURCES = queue_test.c test-stubs.c
 queue_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+message_test_SOURCES = message_test.c test-stubs.c
+message_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+message_test_LDFLAGS = -pthread
 trustdb_format_test_SOURCES = trustdb_format_test.c
 trustdb_lmdb_test_SOURCES = trustdb_lmdb_test.c test-stubs.c
 trustdb_lmdb_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
