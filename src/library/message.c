@@ -464,12 +464,16 @@ void msg(int priority, const char *fmt, ...)
 		return;
 
 	va_start(ap, fmt);
+	/* register before checking log_state, so message_async_stop() can
+	 * rely on log_inflight == 0 as proof no producer is mid-enqueue */
+	atomic_fetch_add(&log_inflight, 1);
 	if (atomic_load_explicit(&log_state, memory_order_relaxed) ==
 	    LOG_ASYNC_RUNNING) {
-		atomic_fetch_add(&log_inflight, 1);
 		log_enqueue(priority, fmt, ap);
 		atomic_fetch_sub(&log_inflight, 1);
-	} else
+	} else {
+		atomic_fetch_sub(&log_inflight, 1);
 		msg_direct_deliver(priority, fmt, ap);
+	}
 	va_end(ap);
 }
