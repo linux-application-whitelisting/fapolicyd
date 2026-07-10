@@ -66,7 +66,7 @@ static sem_t log_sem;
 static pthread_t log_thread;
 static atomic_int log_state = ATOMIC_VAR_INIT(LOG_ASYNC_OFF);
 static atomic_ulong log_dropped = ATOMIC_VAR_INIT(0);
-/* producers between checking log_state and finishing log_enqueue() */
+/* producers currently inside log_enqueue() */
 static atomic_uint log_inflight = ATOMIC_VAR_INIT(0);
 static struct message_rate_limit log_drop_limit = MESSAGE_RATE_LIMIT_INIT(30);
 
@@ -332,8 +332,8 @@ void message_async_stop(void)
 			      memory_order_release);
 	pthread_mutex_unlock(&log_lock);
 
-	/* wait for any producer already past the log_state check in msg()
-	 * to finish its log_enqueue() call before destroying log_sem */
+	/* wait for any producer already inside log_enqueue() to finish
+	 * before destroying log_sem */
 	while (atomic_load(&log_inflight) != 0)
 		sched_yield();
 
@@ -375,18 +375,8 @@ void msg(int priority, const char *fmt, ...)
 		return;
 
 	va_start(ap, fmt);
-	/* register before checking log_state, so message_async_stop() can
-	 * rely on log_inflight == 0 as proof no producer is mid-enqueue */
 	atomic_fetch_add(&log_inflight, 1);
-	if (atomic_load(&log_state) == LOG_ASYNC_RUNNING) {
-		log_enqueue(priority, fmt, ap);
-		atomic_fetch_sub(&log_inflight, 1);
-	} else {
-		atomic_fetch_sub(&log_inflight, 1);
-		if (message_mode == MSG_SYSLOG)
-			vsyslog(priority, fmt, ap);
-		else
-			msg_stderr(priority, fmt, ap);
-	}
+	log_enqueue(priority, fmt, ap);
+	atomic_fetch_sub(&log_inflight, 1);
 	va_end(ap);
 }
