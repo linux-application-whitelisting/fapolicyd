@@ -24,8 +24,8 @@
 
 #include "config.h"
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
-#include <poll.h>
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
@@ -202,14 +202,19 @@ static void log_write(int priority, const char *text)
 		msg_stderr_f(priority, "%s", text);
 }
 
-/* deliver to stderr without ever blocking: skip the write entirely rather
- * than risk stalling on a full pipe */
+/* deliver to stderr without ever blocking: a poll() check doesn't bound how
+ * much the message could grow, so the fd itself is switched to O_NONBLOCK
+ * for the write instead, which is safe regardless of message size */
 static void nonblocking_stderr(int priority, const char *fmt, va_list ap)
 {
-	struct pollfd pfd = { .fd = STDERR_FILENO, .events = POLLOUT };
+	int flags = fcntl(STDERR_FILENO, F_GETFL);
 
-	if (poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLOUT))
-		msg_stderr(priority, fmt, ap);
+	if (flags == -1)
+		return;
+	if (fcntl(STDERR_FILENO, F_SETFL, flags | O_NONBLOCK) == -1)
+		return;
+	msg_stderr(priority, fmt, ap);
+	fcntl(STDERR_FILENO, F_SETFL, flags);
 }
 
 /* deliver to syslog without ever blocking. vsyslog() has no non-blocking
@@ -219,15 +224,13 @@ static void nonblocking_stderr(int priority, const char *fmt, va_list ap)
 static void nonblocking_syslog(int priority, const char *fmt, va_list ap)
 {
 	static int log_fd = -1;
-	static int log_opened;
 	char text[LOG_SLOT_SIZE];
 	char packet[LOG_SLOT_SIZE + 64];
 	int n;
 
-	if (!log_opened) {
+	if (log_fd == -1) {
 		struct sockaddr_un addr;
 
-		log_opened = 1;
 		memset(&addr, 0, sizeof(addr));
 		addr.sun_family = AF_UNIX;
 		strncpy(addr.sun_path, _PATH_LOG, sizeof(addr.sun_path) - 1);
