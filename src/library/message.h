@@ -85,4 +85,12 @@ void msg(int priority, const char *fmt, ...)
 	;
 #endif
 
+/* best-effort, non-blocking - bypasses the async queue entirely */
+void msg_direct(int priority, const char *fmt, ...)
+#ifdef __GNUC__
+	__attribute__ ((format (printf, 2, 3)));
+#else
+	;
+#endif
+
 #endif

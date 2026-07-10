@@ -288,6 +288,31 @@ static void test_basic_async_logging(void)
 }
 
 /*
+ * test_msg_without_async_start - verify msg() still delivers via the
+ * best-effort path when the drain thread was never started (e.g. every CLI
+ * tool that never calls message_async_start()).
+ * Returns nothing. Exits with error() on failure.
+ */
+static void test_msg_without_async_start(void)
+{
+	struct capture cap;
+	char buf[4096];
+
+	set_message_mode(MSG_STDERR, DBG_NO);
+	capture_start(&cap);
+	msg(LOG_WARNING, "no-async-%d", 24680);
+	capture_read(&cap, buf, sizeof(buf));
+	capture_end(&cap);
+	capture_close(&cap);
+
+	CHECK(strstr(buf, "no-async-24680") != NULL, 60,
+	      "[ERROR:60] msg() produced no output when async logging was "
+	      "never started");
+
+	set_message_mode(MSG_QUIET, DBG_NO);
+}
+
+/*
  * test_literal_percent_in_message - verify data passed as a msg() argument
  * (not as its format string) reaches stderr byte-for-byte. log_write()
  * forwards queued text via a literal "%s" (see message.c), so a
@@ -874,6 +899,46 @@ static void test_queue_overflow_drops_and_reports(void)
 }
 
 /*
+ * test_msg_direct_does_not_block - verify msg_direct() returns promptly even
+ * when stderr itself is stalled (a full, unread pipe), since it never
+ * touches the drain thread's queue at all - it must skip the write, not
+ * block on it.
+ * Returns nothing. Exits with error() on failure.
+ */
+static void test_msg_direct_does_not_block(void)
+{
+	struct capture cap;
+	char filler[4096];
+	struct timespec start, end;
+	double elapsed;
+
+	memset(filler, 'x', sizeof(filler));
+
+	set_message_mode(MSG_STDERR, DBG_NO);
+	capture_start(&cap);
+
+	/* fill the pipe with nothing reading it, so poll() inside
+	 * msg_direct() finds no room and must skip the write */
+	if (fcntl(STDERR_FILENO, F_SETFL, O_NONBLOCK))
+		error(1, errno, "fcntl failed");
+	while (write(STDERR_FILENO, filler, sizeof(filler)) > 0)
+		;
+
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	msg_direct(LOG_NOTICE, "should-not-block");
+	clock_gettime(CLOCK_MONOTONIC, &end);
+
+	capture_end(&cap);
+	capture_close(&cap);
+	set_message_mode(MSG_QUIET, DBG_NO);
+
+	elapsed = (double)(end.tv_sec - start.tv_sec) +
+		  (double)(end.tv_nsec - start.tv_nsec) / 1e9;
+	CHECK(elapsed < 1.0, 61, "[ERROR:61] msg_direct() blocked while "
+	      "stderr was stalled");
+}
+
+/*
  * test_producer_does_not_block - verify msg() returns promptly even while
  * the log destination itself is stalled (a full, unread pipe standing in
  * for a wedged journald/stderr), which is the entire reason this async
@@ -956,6 +1021,7 @@ int main(void)
 	test_message_mode_quiet();
 	test_debug_gating();
 	test_basic_async_logging();
+	test_msg_without_async_start();
 	test_literal_percent_in_message();
 	test_async_start_failure();
 	test_long_messages();
@@ -964,6 +1030,7 @@ int main(void)
 	test_queue_overflow_drops_and_reports();
 	test_async_start_stop_idempotent();
 	test_concurrent_producers();
+	test_msg_direct_does_not_block();
 	test_producer_does_not_block();
 
 	return 0;

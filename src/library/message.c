@@ -25,6 +25,7 @@
 #include "config.h"
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
@@ -34,6 +35,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 #include "message.h"
@@ -197,6 +200,92 @@ static void log_write(int priority, const char *text)
 		syslog(priority, "%s", text);
 	else
 		msg_stderr_f(priority, "%s", text);
+}
+
+/* deliver to stderr without ever blocking: skip the write entirely rather
+ * than risk stalling on a full pipe */
+static void nonblocking_stderr(int priority, const char *fmt, va_list ap)
+{
+	struct pollfd pfd = { .fd = STDERR_FILENO, .events = POLLOUT };
+
+	if (poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLOUT))
+		msg_stderr(priority, fmt, ap);
+}
+
+/* deliver to syslog without ever blocking. vsyslog() has no non-blocking
+ * mode and can stall on a wedged journald - the exact deadlock this whole
+ * async design exists to avoid - so a minimal datagram sender is used
+ * instead; any failure is silently dropped, never retried/waited on */
+static void nonblocking_syslog(int priority, const char *fmt, va_list ap)
+{
+	static int log_fd = -1;
+	static int log_opened;
+	char text[LOG_SLOT_SIZE];
+	char packet[LOG_SLOT_SIZE + 64];
+	int n;
+
+	if (!log_opened) {
+		struct sockaddr_un addr;
+
+		log_opened = 1;
+		memset(&addr, 0, sizeof(addr));
+		addr.sun_family = AF_UNIX;
+		strncpy(addr.sun_path, _PATH_LOG, sizeof(addr.sun_path) - 1);
+
+		log_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+		if (log_fd != -1 && connect(log_fd, (struct sockaddr *)&addr,
+					    sizeof(addr)) == -1) {
+			close(log_fd);
+			log_fd = -1;
+		}
+	}
+	if (log_fd == -1)
+		return;
+
+	n = vsnprintf(text, sizeof(text), fmt, ap);
+	if (n < 0)
+		return;
+	if ((size_t)n >= sizeof(text))
+		n = sizeof(text) - 1;
+
+	n = snprintf(packet, sizeof(packet), "<%d>%s[%d]: %.*s",
+		     LOG_DAEMON | priority, program_invocation_short_name,
+		     getpid(), n, text);
+	if (n < 0)
+		return;
+	if ((size_t)n >= sizeof(packet))
+		n = sizeof(packet) - 1;
+
+	send(log_fd, packet, (size_t)n, MSG_DONTWAIT);
+}
+
+/* best-effort, non-blocking delivery shared by msg_direct() and by msg()
+ * whenever the async drain thread isn't running */
+static void msg_direct_deliver(int priority, const char *fmt, va_list ap)
+{
+	if (message_mode == MSG_SYSLOG)
+		nonblocking_syslog(priority, fmt, ap);
+	else
+		nonblocking_stderr(priority, fmt, ap);
+}
+
+/*
+ * msg_direct - log a message immediately, best-effort and non-blocking,
+ * bypassing the async queue entirely. For callers that can't rely on (or
+ * must not touch) the drain thread - e.g. the crash handler.
+ */
+void msg_direct(int priority, const char *fmt, ...)
+{
+	va_list ap;
+
+	if (message_mode == MSG_QUIET)
+		return;
+	if (priority == LOG_DEBUG && debug_message == DBG_NO)
+		return;
+
+	va_start(ap, fmt);
+	msg_direct_deliver(priority, fmt, ap);
+	va_end(ap);
 }
 
 static void log_enqueue(int priority, const char *fmt, va_list ap)
@@ -375,8 +464,12 @@ void msg(int priority, const char *fmt, ...)
 		return;
 
 	va_start(ap, fmt);
-	atomic_fetch_add(&log_inflight, 1);
-	log_enqueue(priority, fmt, ap);
-	atomic_fetch_sub(&log_inflight, 1);
+	if (atomic_load_explicit(&log_state, memory_order_relaxed) ==
+	    LOG_ASYNC_RUNNING) {
+		atomic_fetch_add(&log_inflight, 1);
+		log_enqueue(priority, fmt, ap);
+		atomic_fetch_sub(&log_inflight, 1);
+	} else
+		msg_direct_deliver(priority, fmt, ap);
 	va_end(ap);
 }
