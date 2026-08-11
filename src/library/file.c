@@ -31,6 +31,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
+#include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/md5.h>
 #include <magic.h>
@@ -1339,15 +1340,105 @@ static const char *degenerate_hash_sha512 =
 	"47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
 static const char *degenerate_hash_md5 =
 	"d41d8cd98f00b204e9800998ecf8427e";
-char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
+
+/*
+ * get_evp_hash_algorithm - map a file hash algorithm to OpenSSL's EVP API.
+ * @alg: file digest algorithm requested by the caller.
+ * Returns the EVP implementation, or NULL when the algorithm is unavailable.
+ */
+static const EVP_MD *get_evp_hash_algorithm(file_hash_alg_t alg)
+{
+	switch (alg) {
+	case FILE_HASH_ALG_SHA1:
+		return EVP_sha1();
+	case FILE_HASH_ALG_SHA256:
+		return EVP_sha256();
+	case FILE_HASH_ALG_SHA512:
+		return EVP_sha512();
+	case FILE_HASH_ALG_MD5:
+#ifdef USE_DEB
+		return EVP_md5();
+#else
+		return NULL;
+#endif
+	default:
+		return NULL;
+	}
+}
+
+/*
+ * hash_fd_in_chunks - hash a file that cannot fit in one mmap length.
+ * @fd: open descriptor whose contents should be measured.
+ * @size: number of bytes to include in the digest calculation.
+ * @alg: digest algorithm to use for the measurement.
+ *
+ * pread preserves the descriptor offset while off_t keeps every chunk offset
+ * representable on 32-bit large-file builds. Returns an allocated hex digest
+ * on success, or NULL on read, allocation, or digest failure.
+ */
+static char *hash_fd_in_chunks(int fd, off_t size, file_hash_alg_t alg)
+{
+	unsigned char buf[64 * 1024];
+	unsigned char hptr[EVP_MAX_MD_SIZE];
+	const EVP_MD *md = get_evp_hash_algorithm(alg);
+	EVP_MD_CTX *ctx = NULL;
+	off_t offset = 0;
+	unsigned int hash_length = 0;
+	char *digest = NULL;
+
+	if (md == NULL)
+		return NULL;
+
+	ctx = EVP_MD_CTX_new();
+	if (ctx == NULL || EVP_DigestInit_ex(ctx, md, NULL) != 1)
+		goto out;
+
+	while (offset < size) {
+		off_t remaining = size - offset;
+		size_t requested = sizeof(buf);
+		ssize_t len;
+
+		if (remaining < (off_t)requested)
+			requested = (size_t)remaining;
+		do {
+			len = pread(fd, buf, requested, offset);
+		} while (len < 0 && errno == EINTR);
+		if (len <= 0) {
+			if (len == 0)
+				errno = EIO;
+			goto out;
+		}
+		if (EVP_DigestUpdate(ctx, buf, (size_t)len) != 1)
+			goto out;
+		offset += len;
+	}
+
+	if (EVP_DigestFinal_ex(ctx, hptr, &hash_length) != 1 ||
+	    hash_length != file_hash_length(alg))
+		goto out;
+
+	digest = malloc(((size_t)hash_length * 2) + 1);
+	if (digest)
+		bytes2hex(digest, hptr, hash_length);
+out:
+	EVP_MD_CTX_free(ctx);
+	return digest;
+}
+
+char *get_hash_from_fd2(int fd, off_t size, file_hash_alg_t alg)
 {
 	unsigned char *mapped;
 	char *digest = NULL;
+	size_t map_size;
 	size_t digest_length;
 	struct decision_timing_span timing;
 
 	decision_timing_stage_begin(DECISION_TIMING_STAGE_HASH_SHA,
 				    &timing);
+	if (size < 0) {
+		decision_timing_stage_end(&timing);
+		return NULL;
+	}
 	if (size == 0) {
 		char *degenerate;
 
@@ -1378,34 +1469,41 @@ char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
 		return NULL;
 	}
 
-	mapped = mmap(0, size, PROT_READ, MAP_SHARED|MAP_POPULATE, fd, 0);
+	if ((uintmax_t)size > SIZE_MAX) {
+		digest = hash_fd_in_chunks(fd, size, alg);
+		decision_timing_stage_end(&timing);
+		return digest;
+	}
+
+	map_size = (size_t)size;
+	mapped = mmap(0, map_size, PROT_READ, MAP_SHARED|MAP_POPULATE, fd, 0);
 	if (mapped != MAP_FAILED) {
 		unsigned char hptr[SHA512_DIGEST_LENGTH];
 		int computed = 0;
 
 		switch (alg) {
 		case FILE_HASH_ALG_SHA1:
-			SHA1(mapped, size, hptr);
+			SHA1(mapped, map_size, hptr);
 			computed = 1;
 			break;
 		case FILE_HASH_ALG_SHA256:
-			SHA256(mapped, size, hptr);
+			SHA256(mapped, map_size, hptr);
 			computed = 1;
 			break;
 		case FILE_HASH_ALG_SHA512:
-			SHA512(mapped, size, hptr);
+			SHA512(mapped, map_size, hptr);
 			computed = 1;
 			break;
 		case FILE_HASH_ALG_MD5:
 #ifdef USE_DEB
-			MD5(mapped, size, hptr);
+			MD5(mapped, map_size, hptr);
 			computed = 1;
 #endif
 			break;
 		default:
 			break;
 		}
-		munmap(mapped, size);
+		munmap(mapped, map_size);
 
 		if (computed) {
 			digest = malloc((digest_length * 2) + 1);

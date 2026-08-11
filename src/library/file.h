@@ -106,7 +106,7 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 	__attr_access ((__write_only__, 5, 4)) __attr_fd_arg_read (1);
 char *bytes2hex(char *final, const unsigned char *buf, unsigned int size)
 	 __attr_access ((__read_only__, 2, 3));
-char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
+char *get_hash_from_fd2(int fd, off_t size, file_hash_alg_t alg)
 	__attr_dealloc_free __attr_fd_arg_read (1);
 int get_ima_hash(int fd, file_hash_alg_t *alg, char *sha)
 	__attr_fd_arg (1);

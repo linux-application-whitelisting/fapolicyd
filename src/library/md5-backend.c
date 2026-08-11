@@ -103,17 +103,17 @@ md5_backend_result_t add_file_to_backend_by_md5(const char *path,
 		return MD5_BACKEND_SKIPPED;
 	}
 
-	size_t file_size = path_stat.st_size;
+	off_t file_size = path_stat.st_size;
 	trustdb_size_t stored_size;
 
-	if (trustdb_size_from_unsigned(file_size, &stored_size)) {
+	if (trustdb_size_from_signed((intmax_t)file_size, &stored_size)) {
 		close(fd);
 		msg(LOG_ERR, "File size for %s exceeds trust DB format", path);
 		return MD5_BACKEND_FATAL;
 	}
 
 	#ifdef DEBUG
-	msg(LOG_DEBUG, "\tFile size: %zu", file_size);
+	msg(LOG_DEBUG, "\tFile size: %jd", (intmax_t)file_size);
 	#endif
 
 	char *md5_digest = get_hash_from_fd2(fd, file_size,

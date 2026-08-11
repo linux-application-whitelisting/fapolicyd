@@ -115,7 +115,7 @@ static char *md5_for_file(const char *path)
 	if (fstat(fd, &sb) < 0)
 		error(1, errno, "fstat failed");
 
-	hash = get_hash_from_fd2(fd, (size_t)sb.st_size, FILE_HASH_ALG_MD5);
+	hash = get_hash_from_fd2(fd, sb.st_size, FILE_HASH_ALG_MD5);
 	if (close(fd) < 0)
 		error(1, errno, "close failed");
 	if (hash == NULL)

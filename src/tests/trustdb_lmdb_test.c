@@ -691,6 +691,76 @@ static int test_lmdb_large_size_import(void)
 	return 0;
 }
 
+/*
+ * test_lmdb_large_file_sha256_recompute - cover content past size_t on i686.
+ *
+ * Large-file builds have a 64-bit off_t even when size_t remains 32 bits. A
+ * byte at the end of an exact 4 GiB file must therefore affect both the trust
+ * record digest and the runtime SHA recomputation used to validate it. The
+ * IMA fallback uses the same hashing helper when its xattr digest is stale.
+ *
+ * Returns 0 on success or when the host ABI cannot expose the truncation.
+ */
+static int test_lmdb_large_file_sha256_recompute(void)
+{
+	const off_t large_size = (off_t)UINT64_C(4294967296);
+	const char original_tail = 'A';
+	const char changed_tail = 'B';
+	conf_t cfg;
+	char dir[128];
+	char path[128];
+	char payload[512];
+	struct file_info *info = NULL;
+	char *hash = NULL;
+	long entries = 0;
+	int fd = -1;
+	int rc;
+
+	if (sizeof(size_t) >= sizeof(off_t))
+		return 0;
+
+	fd = create_test_file(path, sizeof(path), "");
+	CHECK(fd != -1, 277, "[ERROR:277] failed to create large SHA file");
+	CHECK(ftruncate(fd, large_size) == 0, 278,
+	      "[ERROR:278] failed to size large SHA file");
+	CHECK(pwrite(fd, &original_tail, 1, large_size - 1) == 1, 279,
+	      "[ERROR:279] failed to write large SHA file tail");
+	CHECK(describe_test_file(fd, &info, &hash) == 0, 280,
+	      "[ERROR:280] failed to hash large SHA file");
+
+	rc = with_temp_db(dir, sizeof(dir), &cfg);
+	CHECK(rc == 0, 281, "[ERROR:281] failed to open large SHA LMDB");
+	cfg.integrity = IN_SHA256;
+	rc = decision_config_publish(&cfg);
+	CHECK(rc == 0, 282,
+	      "[ERROR:282] failed to publish SHA integrity config");
+
+	snprintf(payload, sizeof(payload), "%s " DATA_FORMAT "\n", path,
+		 SRC_FILE_DB, (trustdb_size_t)info->size, hash);
+	rc = import_records(payload, &entries);
+	CHECK(rc == 0 && entries == 1, 283,
+	      "[ERROR:283] large SHA record import failed");
+	CHECK(check_trust_database(path, info, fd) == 1, 284,
+	      "[ERROR:284] unchanged large SHA file was not trusted");
+
+	CHECK(pwrite(fd, &changed_tail, 1, large_size - 1) == 1, 285,
+	      "[ERROR:285] failed to change large SHA file tail");
+	CHECK(check_trust_database(path, info, fd) == 0, 286,
+	      "[ERROR:286] changed large SHA file remained trusted");
+
+	decision_config_destroy();
+	database_close_for_tests();
+	database_set_location(NULL, NULL);
+	CHECK(remove_lmdb_files(dir) == 0, 287,
+	      "[ERROR:287] large SHA LMDB cleanup failed");
+	free(hash);
+	free(info);
+	CHECK(close(fd) == 0, 288, "[ERROR:288] large SHA file close failed");
+	CHECK(unlink(path) == 0, 289,
+	      "[ERROR:289] large SHA file cleanup failed");
+	return 0;
+}
+
 static int test_lmdb_short_path_round_trip(void)
 {
 	conf_t cfg;
@@ -1973,6 +2043,10 @@ int main(void)
 		return rc;
 
 	rc = test_lmdb_large_size_import();
+	if (rc)
+		return rc;
+
+	rc = test_lmdb_large_file_sha256_recompute();
 	if (rc)
 		return rc;
 

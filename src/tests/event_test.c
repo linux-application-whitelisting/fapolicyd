@@ -65,7 +65,7 @@ int check_trust_database(const char *exe, const char *digest, int mode);
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf);
 char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			     size_t blen, char *buf);
-char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg);
+char *get_hash_from_fd2(int fd, off_t size, file_hash_alg_t alg);
 
 struct stub_proc_record {
 	pid_t pid;
@@ -442,12 +442,12 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 /*
  * Produce a fake digest string so new_event() can populate hash attributes.
  */
-char *get_hash_from_fd2(int fd, size_t size, file_hash_alg_t alg)
+char *get_hash_from_fd2(int fd, off_t size, file_hash_alg_t alg)
 {
 	char *out = malloc(64);
 	if (out == NULL)
 		return NULL;
-	snprintf(out, 64, "hash-%d-%zu-%d", fd, (size_t)size, (int)alg);
+	snprintf(out, 64, "hash-%d-%jd-%d", fd, (intmax_t)size, (int)alg);
 	return out;
 }
 
