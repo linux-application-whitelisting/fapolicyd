@@ -1,5 +1,6 @@
 2.0.1
 - Enable large file support on 32-bit builds
+- Allow KDE qml and policykit files into the trust db
 
 2.0
 - Add decision_threads configuration to fapolicyd.conf
