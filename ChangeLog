@@ -1,6 +1,7 @@
 2.0.1
 - Enable large file support on 32-bit builds
 - Allow KDE qml and policykit files into the trust db
+- Fix LMDB generation slot reuse race during reclamation
 
 2.0
 - Add decision_threads configuration to fapolicyd.conf
