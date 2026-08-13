@@ -1303,8 +1303,6 @@ static void trust_db_reclaim_retired(void)
 		     link = &(*link)->next) {
 			if ((*link)->readers == 0) {
 				gen = *link;
-				*link = gen->next;
-				gen->next = NULL;
 				break;
 			}
 		}
@@ -1318,12 +1316,23 @@ static void trust_db_reclaim_retired(void)
 			msg(LOG_WARNING,
 			    "Could not reclaim retired trust DB generation %lu (%s): %s",
 			    gen->generation, gen->name, mdb_strerror(rc));
-			pthread_mutex_lock(&generation_lock);
-			gen->next = retired_generations;
-			retired_generations = gen;
-			pthread_mutex_unlock(&generation_lock);
 			break;
 		}
+
+		/*
+		 * Keep the generation visible until mdb_drop() commits so a
+		 * publisher cannot reuse its named DB slot while it is being
+		 * reclaimed.
+		 */
+		pthread_mutex_lock(&generation_lock);
+		for (link = &retired_generations; *link && *link != gen;
+		     link = &(*link)->next)
+			;
+		if (*link == gen) {
+			*link = gen->next;
+			gen->next = NULL;
+		}
+		pthread_mutex_unlock(&generation_lock);
 
 		now = time(NULL);
 		if (gen->retired_time && now >= gen->retired_time) {

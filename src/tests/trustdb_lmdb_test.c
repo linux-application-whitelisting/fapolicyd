@@ -222,13 +222,16 @@ static int import_records(const char *payload, long *entries)
 static int publish_records(conf_t *cfg, const char *payload)
 {
 	int fd = make_memfd_input(payload);
-	int rc;
+	int rc, saved_errno;
 
 	if (fd == -1)
 		return 1;
 
+	errno = 0;
 	rc = database_publish_memfd_for_tests(fd, cfg);
+	saved_errno = errno;
 	close(fd);
+	errno = saved_errno;
 	return rc;
 }
 
@@ -1998,6 +2001,9 @@ static int test_lmdb_concurrent_publish_storm(void)
 			 (trustdb_size_t)(600 + i), digest,
 			 i, SRC_FILE_DB, (trustdb_size_t)(700 + i), digest);
 		rc = publish_records(&cfg, payload);
+		if (rc)
+			fprintf(stderr,
+				"reload-storm publish %u returned %d\n", i, rc);
 		CHECK(rc == 0, 144,
 		      "[ERROR:144] reload-storm publish failed");
 		CHECK(object_cache_flush_generation_snapshot() >
