@@ -2865,17 +2865,24 @@ static void close_db(int do_report)
 			msg(LOG_DEBUG,
 			    "The trust database is empty.");
 		} else {
-			mdb_env_info(env, &st);
-			max_pages = st.me_mapsize / size;
-			allocated_pages = st.me_last_pgno + 1;
-			allocated_pages_percent = max_pages ?
-				((100 * allocated_pages) / max_pages) : 0;
-			msg(LOG_DEBUG, "Trust database max pages: %lu", max_pages);
-			msg(LOG_DEBUG, "Trust database pages in use: %lu (%lu%%)", pages,
-			    max_pages ? ((100*pages)/max_pages) : 0);
-			msg(LOG_DEBUG,
+			int rc = mdb_env_info(env, &st);
+			if (rc) {
+				msg(LOG_DEBUG, "Trust DB stats unavailable. "
+				    "mdb_env_info failed: %s",mdb_strerror(rc));
+			} else {
+				max_pages = st.me_mapsize / size;
+				allocated_pages = st.me_last_pgno + 1;
+				allocated_pages_percent = max_pages ?
+				    ((100 * allocated_pages) / max_pages) : 0;
+				msg(LOG_DEBUG, "Trust database max pages: %lu",
+				    max_pages);
+				msg(LOG_DEBUG,
+				    "Trust database pages in use: %lu (%lu%%)",
+				    pages, max_pages ? ((100*pages)/max_pages) : 0);
+				msg(LOG_DEBUG,
 			    "Trust database allocated high-water pages: %lu (%lu%%)",
-			    allocated_pages, allocated_pages_percent);
+				    allocated_pages, allocated_pages_percent);
+			}
 		}
 	}
 
