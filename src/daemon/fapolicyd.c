@@ -1456,7 +1456,7 @@ int main(int argc, const char *argv[])
 	sigaction(SIGTERM, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
 
-	// Bump up resources
+	// Bump up resources while we have CAP_SYS_RESOURCE
 	limit.rlim_cur = RLIM_INFINITY;
 	limit.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_FSIZE, &limit);
@@ -1551,7 +1551,7 @@ int main(int argc, const char *argv[])
 		capng_clear(CAPNG_SELECT_BOTH);
 		capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED,
 			CAP_DAC_OVERRIDE, CAP_SYS_ADMIN, CAP_SYS_PTRACE,
-			CAP_SYS_NICE, CAP_SYS_RESOURCE, CAP_AUDIT_WRITE, -1);
+			CAP_SYS_NICE, CAP_AUDIT_WRITE, -1);
 		if (capng_change_id(config.uid, config.gid,
 							CAPNG_DROP_SUPP_GRP)) {
 			msg(LOG_ERR, "Cannot change to uid %d", config.uid);
