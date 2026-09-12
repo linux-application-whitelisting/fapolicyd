@@ -286,10 +286,21 @@ filter_rc_t filter_check(const char *_path)
 	}
 
 	filter_t *filter = global_filter;
-	size_t path_len = strnlen(_path, PATH_MAX);
-	char *path = alloca(path_len + 1);
-	strncpy(path, _path, path_len);
+	size_t source_len = strnlen(_path, PATH_MAX);
+	char *path = alloca(source_len + 1);
+	size_t path_len = 0;
+
+	/* Linux treats repeated separators as one. Normalize before matching
+	 * so spelling alone cannot bypass directory exclusions or exceptions.
+	 * Do not resolve the path: trust imports need not name existing files. */
+	for (size_t i = 0; i < source_len; i++) {
+		if (_path[i] == '/' && path_len && path[path_len - 1] == '/')
+			continue;
+		path[path_len++] = _path[i];
+	}
 	path[path_len] = 0;
+	if (path_len != source_len)
+		FILTER_TRACE("normalized path: %s\n", path);
 	/* Reject paths with parent directory references */
 	if ((path[0] == '.' && path[1] == '.' &&
 		(path[2] == '/' || path[2] == '\0')) ||

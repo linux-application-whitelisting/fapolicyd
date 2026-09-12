@@ -8,6 +8,8 @@ The filter controls which files from a trust source are added to the TrustDB. Ru
 Valid line starts with character '+', '-' or '#' for comments. The rest of the line contains a path specification. Space can be used as indentation to add more specific filters to the previous one. Note, that only one space is required for one level of an indent. If  there are multiple specifications on the same indentation level they extend the previous line with lower indentation, usually a directory.  The path may be specified using the glob pattern. A directory specification has to end with a slash ‘/’; without it the rule is treated as a file glob and the directory decision from the parent rule remains in effect.
 
 If the result was a plus (+), the respective file from a trust source is imported to the TrustDB. Vice versa, if the result was a minus (-), the respective file is not imported.
+.PP
+Repeated slashes in a candidate path are collapsed before matching, so equivalent Linux path spellings receive the same decision. Paths containing a parent-directory component (\fB..\fP) are excluded. Matching does not require the file to exist.
 
 From a performance point of view it is better to design an indented filter because in the ideal situation each component of the path is compared only once. In contrast to it, a filter without any indentation has to contain a full path which makes the pattern more complicated and thus slower to process. The motivation behind this is to have a flexible configuration and keep the TrustDB as small as possible to make the look-ups faster.
 

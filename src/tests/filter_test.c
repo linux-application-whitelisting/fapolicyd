@@ -30,8 +30,8 @@
  * Coverage includes wildcard patterns, nested overrides, directory
  * versus file semantics, duplicate slashes, “..” traversal, UTF‑8
  * path segments, and other edge cases.
- * Kernel script/tool exceptions require a version directory; .c/.h source
- * files under those exceptions remain excluded by the production filter.
+ * Kernel script/tool exceptions require a version directory; .c/.h script
+ * sources remain excluded, including those in nested script directories.
  *
  * Fixture rows are read one line at a time so escaped spaces in paths cannot
  * silently truncate the suite. Malformed rows fail with a line number.
@@ -437,6 +437,20 @@ static int run_traversal_cases(void)
 			  "deciding rule: deny / (directory fallback)\n"
 			  "decision exclude\n" },
 			{ "/opt", FILTER_DENY, NULL },
+			{ NULL, 0, NULL }
+		  } },
+		{ "repeated slashes before literal matching",
+		  "+ /opt/tool\n",
+		  (const struct filter_case[]) {
+			{ "/opt//tool", FILTER_ALLOW,
+			  "normalized path: /opt/tool\n"
+			  "allow /opt/tool match\n"
+			  "deciding rule: allow /opt/tool (leaf match)\n"
+			  "decision include\n" },
+			{ "///opt///tool", FILTER_ALLOW, NULL },
+			{ "/opt//tool/", FILTER_DENY, NULL },
+			{ "/opt//tool-extra", FILTER_DENY, NULL },
+			{ "///", FILTER_DENY, NULL },
 			{ NULL, 0, NULL }
 		  } },
 		{ "empty tree", "",

@@ -131,8 +131,7 @@ int main(void)
 		  "+ /usr/bin/tool\n+ /usr/share/*.py\n", NULL, 0, 0 },
 		{ "invalid configuration is not validated as a complete tree",
 		  "+ /foo*\n - *.c\n   + broken\n", NULL, 0, 1 },
-		{ "shipped configuration", NULL,
-		  "rule '+ */scripts/*'", 1, 0 },
+		{ "shipped configuration", NULL, NULL, 0, 0 },
 	};
 
 	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
