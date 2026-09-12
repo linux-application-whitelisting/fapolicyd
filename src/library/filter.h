@@ -59,15 +59,6 @@ typedef struct _filter
 extern filter_t *global_filter;
 
 
-typedef struct _stack_item
-{
-	int level;
-	int offset;
-	int processed;
-	int matched;
-	filter_t *filter;
-} stack_item_t;
-
 #ifndef MAX_FILTER_DEPTH
 #define MAX_FILTER_DEPTH 64
 #endif

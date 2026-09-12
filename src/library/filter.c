@@ -29,12 +29,12 @@
  * Filters are stored in a tree.  Each node describes a path fragment and
  * whether it should be kept (ADD) or dropped (SUB).  The tree is walked using
  * an explicit stack rather than recursion.  Stack items track the current
- * filter node, the depth level and an offset into the path being evaluated.
+ * filter node and an offset into the path being evaluated.
  *
- * Three major users of the stack exist:
+ * Traversal state is kept locally:
  *
  *  - filter_check() walks the tree comparing a path against the filters.
- *  - filter_load_file() builds the tree from an indented configuration file.
+ *  - filter_load_file() tracks ancestors by their indentation level.
  *  - filter_destroy_obj() iteratively frees the tree.
  *
  * Using a stack keeps memory usage predictable and avoids deep recursion when
@@ -83,11 +83,19 @@ void filter_set_trace(FILE *stream)
 static filter_t *filter_create_obj(void);
 static void filter_destroy_obj(filter_t *_filter);
 static size_t filter_count_nodes(filter_t *root);
-static int stack_push_vars_cap(stack_t *_stack, stack_item_t *buf, int *sp,
-			       size_t cap, int _level, int _offset,
-			       filter_t *_filter);
-static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
-			    int _level, int _offset, filter_t *_filter);
+
+typedef struct {
+	int offset;
+	int processed;
+	int matched;
+	filter_t *filter;
+} stack_item_t;
+
+struct filter_stack {
+	stack_item_t *items;
+	size_t count;
+	size_t capacity;
+};
 
 /*
  * filter_init - initialize module and global filter tree
@@ -205,69 +213,23 @@ static size_t filter_count_nodes(filter_t *root)
 }
 
 /*
- * stack_push_vars_cap - push traversal context with explicit capacity
- * @_stack: traversal stack
- * @buf: stack item buffer
- * @sp: current stack pointer in @buf
- * @cap: number of entries available in @buf
- * @_level: current filter nesting level
- * @_offset: current offset in matched path
- * @_filter: filter node to push
- * Returns 0 on success and -1 if @cap would be exceeded.
+ * filter_stack_push - save a filter and its path position for traversal.
+ * @stack: array of traversal frames, with count and capacity.
+ * @filter: filter node to push.
+ * @offset: current offset in the matched path.
+ * Returns 0 on success and -1 if the capacity would be exceeded.
  */
-static int stack_push_vars_cap(stack_t *_stack, stack_item_t *buf, int *sp,
-			       size_t cap, int _level, int _offset,
-			       filter_t *_filter)
+static int filter_stack_push(struct filter_stack *stack, filter_t *filter,
+			     int offset)
 {
-	if (_stack == NULL || buf == NULL || sp == NULL)
-		return -1;
-	if (*sp < 0 || (size_t)*sp >= cap)
+	if (stack->count >= stack->capacity)
 		return -1;
 
-	stack_item_t *item = &buf[(*sp)++];
-	item->level = _level;
-	item->offset = _offset;
-	item->processed = 0;
-	item->matched = 0;
-	item->filter = _filter;
-
-	stack_push(_stack, item);
+	stack->items[stack->count++] = (stack_item_t) {
+		.offset = offset,
+		.filter = filter,
+	};
 	return 0;
-}
-
-/*
- * stack_push_vars - create context item & push it to the top of traversal stack
- * Returns 0 on success and -1 if MAX_FILTER_DEPTH would be exceeded.
- */
-static int stack_push_vars(stack_t *_stack, stack_item_t *buf, int *sp,
-			   int _level, int _offset, filter_t *_filter)
-{
-	return stack_push_vars_cap(_stack, buf, sp, MAX_FILTER_DEPTH,
-				   _level, _offset, _filter);
-}
-
-/*
- * stack_pop_vars - pop context item from traversal stack
- */
-static void stack_pop_vars(stack_t *_stack, int *sp)
-{
-	if (_stack == NULL || sp == NULL || *sp <= 0)
-		return;
-
-	stack_pop(_stack);
-	(*sp)--;
-}
-
-/*
- * stack_pop_all_vars - pop all context items
- */
-static void stack_pop_all_vars(stack_t *_stack, int *sp)
-{
-	if (_stack == NULL || sp == NULL)
-		return;
-
-	while (!stack_is_empty(_stack))
-		stack_pop_vars(_stack, sp);
 }
 
 /*
@@ -309,43 +271,33 @@ filter_rc_t filter_check(const char *_path)
 		return FILTER_DENY;
 	/* offset tracks how much of the path has already matched */
 	size_t offset = 0;
-	/* Create a stack to store the filters that need to be checked */
-	stack_t stack;
-	stack_init(&stack);
-	size_t stack_cap = filter_count_nodes(global_filter);
-	stack_item_t *stack_buf;
-	int sp = 0;
+	/* The frame array is the stack; no separate linked nodes are needed.
+	 * Capacity counts nodes, not depth, because siblings are also pending. */
+	struct filter_stack stack = {
+		.capacity = filter_count_nodes(global_filter),
+	};
 
-	if (stack_cap == 0) {
-		stack_destroy(&stack);
+	if (stack.capacity == 0)
 		return FILTER_DENY;
-	}
 
-	stack_buf = calloc(stack_cap, sizeof(*stack_buf));
-	if (stack_buf == NULL) {
+	stack.items = calloc(stack.capacity, sizeof(*stack.items));
+	if (stack.items == NULL) {
 		msg(LOG_ERR, "fapolicyd: cannot allocate filter traversal stack");
-		stack_destroy(&stack);
 		return FILTER_ERR_DEPTH;
 	}
 
 	filter_rc_t res = FILTER_DENY;
 	const filter_t *deciding = NULL;
 	const char *reason = NULL;
-	int level = 0;
 	stack_item_t *stack_item;
 
-	if (stack_push_vars_cap(&stack, stack_buf, &sp, stack_cap,
-				level, offset, filter)) {
-		msg(LOG_WARNING,
-		    "fapolicyd: filter traversal stack exhausted\n");
-		free(stack_buf);
-		stack_destroy(&stack);
-		return FILTER_ERR_DEPTH;
-	}
+	/* The nonempty tree always has room for its root frame. */
+	stack.items[0].filter = filter;
+	stack.count = 1;
 
-	while(!stack_is_empty(&stack)) {
+	while (stack.count) {
 		int matched = 0;
-		stack_item = (stack_item_t *)stack_top(&stack);
+		stack_item = &stack.items[stack.count - 1];
 		stack_item->processed = 1;
 		filter = stack_item->filter;
 
@@ -356,10 +308,8 @@ filter_rc_t filter_check(const char *_path)
 			// push all the descendants to the stack
 			for (; item != NULL ; item = item->next) {
 				filter_t *next_filter = (filter_t*)item->data;
-				if (stack_push_vars_cap(&stack, stack_buf, &sp,
-							stack_cap,
-							level+1, offset,
-							next_filter)) {
+				if (filter_stack_push(&stack, next_filter,
+						      offset)) {
 					msg(LOG_WARNING,
 		    "fapolicyd: filter traversal stack exhausted\n");
 					res = FILTER_ERR_DEPTH;
@@ -425,16 +375,16 @@ filter_rc_t filter_check(const char *_path)
 			}
 
 			if (matched) {
-				level++;
 				stack_item->matched = 1;
 
 				// if matched we need ot push descendants
 				// to the stack
 				list_item_t *item=list_get_first(&filter->list);
 
-				// if there are no descendants and it is
-				// a wildcard then it's a match
-				if (item == NULL && is_wildcard) {
+				/* A leaf matches after a successful wildcard or
+				 * when its literal path was consumed entirely. */
+				if (item == NULL &&
+				    (is_wildcard || path_len == offset)) {
 					const char *rule = (filter->path &&
 							*filter->path) ?
 							filter->path : "/";
@@ -450,31 +400,11 @@ filter_rc_t filter_check(const char *_path)
 					goto end;
 				}
 
-				// no descendants, and already compared
-				// whole path string so its a match
-				if (item == NULL && path_len == offset) {
-					const char *rule = (filter->path &&
-							*filter->path) ?
-							filter->path : "/";
-					FILTER_TRACE("%s %s %s\n",
-							filter->type == ADD ?
-							"allow" : "deny",
-							rule, "match");
-					// if '+' ret 1 and if '-' ret 0
-					res = filter->type == ADD ?
-						FILTER_ALLOW : FILTER_DENY;
-					deciding = filter;
-					reason = "leaf match";
-					goto end;
-				}
-
 				// push descendants to the stack
 				for (; item != NULL ; item = item->next) {
 					filter_t *next_filter = (filter_t*)item->data;
-					if (stack_push_vars_cap(&stack, stack_buf,
-							    &sp, stack_cap,
-							    level, offset,
-							    next_filter)) {
+					if (filter_stack_push(&stack, next_filter,
+							      offset)) {
 						msg(LOG_WARNING,
 		    "fapolicyd: filter traversal stack exhausted\n");
 						res = FILTER_ERR_DEPTH;
@@ -509,17 +439,17 @@ filter_rc_t filter_check(const char *_path)
 					goto end;
 				}
 
-				stack_pop_vars(&stack, &sp);
+				stack.count--;
 			}
 
-			stack_item = (stack_item_t*)stack_top(&stack);
+			stack_item = stack.count ?
+				&stack.items[stack.count - 1] : NULL;
 		} while(stack_item && stack_item->processed);
 
 		if (!stack_item)
 			break;
 
 		offset = stack_item->offset;
-		level = stack_item->level;
 	}
 
 end:
@@ -532,10 +462,7 @@ end:
 			     "filter traversal failed" : "default: exclude");
 	FILTER_TRACE("decision %s\n",
 		res == FILTER_ALLOW ? "include" : "exclude");
-	// Clean up the stack
-	stack_pop_all_vars(&stack, &sp);
-	stack_destroy(&stack);
-	free(stack_buf);
+	free(stack.items);
 	return res;
 }
 
@@ -675,19 +602,9 @@ int filter_load_file(const char *path)
 	long line_number = 0;
 	int last_level = 0;
 
-	stack_t stack;
-	stack_init(&stack);
-	stack_item_t stack_buf[MAX_FILTER_DEPTH];
-	int sp = 0;
-	/* root of the tree is already allocated */
-	if (stack_push_vars(&stack, stack_buf, &sp, last_level, 0,
-			    global_filter)) {
-					msg(LOG_WARNING,
-		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
-		    MAX_FILTER_DEPTH);
-		fclose(stream);
-		return 1; /* depth too deep */
-	}
+	/* Indentation identifies the parent directly. Keep only the most recent
+	 * node at each level; siblings replace that level's previous entry. */
+	filter_t *ancestors[MAX_FILTER_DEPTH] = { global_filter };
 
 	while (getline(&line, &len, stream) != -1) {
 		line_number++;
@@ -769,89 +686,7 @@ int filter_load_file(const char *path)
 		filter->type = type;
 		filter->line_number = line_number;
 
-		// compare indetention between the last and current line
-		last_level = ((stack_item_t*)stack_top(&stack))->level;
-		/* Reject a deeper rule before linking it. Freeing an already
-		 * linked node on push failure leaves a dangling child pointer. */
-		if (level == last_level + 1 && sp >= MAX_FILTER_DEPTH) {
-			msg(LOG_WARNING,
-			    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)",
-			    MAX_FILTER_DEPTH);
-			filter_destroy_obj(filter);
-			free(line);
-			line = NULL;
-			goto bad;
-		}
-		if (level == last_level) {
-
-			// since we are at the same level as filter before
-			// we need to pop the previous filter from the top
-			stack_pop_vars(&stack, &sp);
-
-			// pushing filter to the list of top's children list
-			list_prepend(
-			    &((stack_item_t*)stack_top(&stack))->filter->list,
-			    NULL, (void*)filter);
-
-			// pushing filter to the top of the stack
-			if (stack_push_vars(&stack, stack_buf, &sp, level, 0,
-					    filter)) {
-				msg(LOG_WARNING,
-		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
-					MAX_FILTER_DEPTH);
-				filter_destroy_obj(filter);
-				free(line);
-				line = NULL;
-				goto bad;
-			}
-
-		} else if (level == last_level + 1) {
-			// this filter has higher level tha privious one
-			// we wont do pop just push
-
-			// pushing filter to the list of top's children list
-			list_prepend(
-			    &((stack_item_t*)stack_top(&stack))->filter->list,
-			    NULL, (void*)filter);
-
-			// pushing filter to the top of the stack
-			if (stack_push_vars(&stack, stack_buf, &sp, level, 0,
-					    filter)) {
-						msg(LOG_WARNING,
-		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
-					MAX_FILTER_DEPTH);
-				filter_destroy_obj(filter);
-				free(line);
-				line = NULL;
-				goto bad;
-			}
-
-		} else if (level < last_level){
-			// level of indentation dropped, we need to pop
-			// +1 is meant for getting rid of the current
-			// level so we can push again
-			for (int i = 0 ; i < last_level - level + 1; i++) {
-				stack_pop_vars(&stack, &sp);
-			}
-
-			// pushing filter to the list of top's children list
-			list_prepend(
-			    &((stack_item_t*)stack_top(&stack))->filter->list,
-			    NULL, (void*)filter);
-
-			// pushing filter to the top of the stack
-			if (stack_push_vars(&stack, stack_buf, &sp, level, 0,
-					    filter)) {
-				msg(LOG_WARNING,
-		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)\n",
-					MAX_FILTER_DEPTH);
-				filter_destroy_obj(filter);
-				free(line);
-				line = NULL;
-				goto bad;
-			}
-
-		} else {
+		if (level > last_level + 1) {
 			msg(LOG_ERR,
 			    "filter_load_file: paring error line: %ld, \"%s\"",
 			    line_number, line);
@@ -860,6 +695,24 @@ int filter_load_file(const char *path)
 			line = NULL;
 			goto bad;
 		}
+
+		/* Check capacity before linking the node so an excessive depth
+		 * cannot leave a freed child attached to the tree. */
+		if (level >= MAX_FILTER_DEPTH) {
+			msg(LOG_WARNING,
+		    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)",
+			    MAX_FILTER_DEPTH);
+			filter_destroy_obj(filter);
+			free(line);
+			line = NULL;
+			goto bad;
+		}
+
+		/* Prepend preserves file order when the checker pushes children
+		 * onto its stack and visits the last pushed child first. */
+		list_prepend(&ancestors[level - 1]->list, NULL, (void *)filter);
+		ancestors[level] = filter;
+		last_level = level;
 	}
 
 	if (line) {
@@ -873,8 +726,6 @@ bad:
 
 good:
 	fclose(stream);
-	stack_pop_all_vars(&stack, &sp);
-	stack_destroy(&stack);
 	if (res == 0)
 		filter_validate(path);
 	if (global_filter->list.count == 0) {
