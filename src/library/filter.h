@@ -46,6 +46,7 @@ typedef struct _filter
 	filter_type_t type;
 	char * path;
 	size_t len;
+	long line_number;	/* source location for load-time diagnostics */
 	/*
 	 * filter_check() treats loaded filters as immutable. These flags are
 	 * reserved for destructive/internal tree walks that own the tree.

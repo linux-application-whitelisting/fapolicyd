@@ -1462,7 +1462,6 @@ static int do_status_report(report_intent_t intent, int reset_metrics)
 static int do_test_filter(const char *path)
 {
 	set_message_mode(MSG_STDERR, DBG_NO);
-	filter_set_trace(stdout);
 
 	if (filter_init()) {
 		fprintf(stderr, "filter_init failed\n");
@@ -1473,9 +1472,12 @@ static int do_test_filter(const char *path)
 		fprintf(stderr, "filter_load_file failed\n");
 		return CLI_EXIT_RULE_FILTER;
 	}
-	filter_check(path);
+	/* Loading validates every branch before tracing this specific path. */
+	filter_set_trace(stdout);
+	filter_rc_t result = filter_check(path);
+	filter_set_trace(NULL);
 	filter_destroy();
-	return CLI_EXIT_SUCCESS;
+	return result == FILTER_ERR_DEPTH ? CLI_EXIT_RULE_FILTER : CLI_EXIT_SUCCESS;
 }
 #endif
 

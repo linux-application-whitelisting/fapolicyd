@@ -138,6 +138,11 @@ filter_test_SOURCES += test-stubs.c
 filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
 filter_test_LDFLAGS = -pthread
+check_PROGRAMS += filter_diagnostics_test
+filter_diagnostics_test_SOURCES = filter_diagnostics_test.c test-stubs.c
+filter_diagnostics_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+filter_diagnostics_test_CPPFLAGS = $(filter_test_CPPFLAGS)
+filter_diagnostics_test_LDFLAGS = -pthread -Wl,--wrap=msg
 check_PROGRAMS += file_filter_test
 file_filter_test_SOURCES = file_filter_test.c
 file_filter_test_SOURCES += test-stubs.c

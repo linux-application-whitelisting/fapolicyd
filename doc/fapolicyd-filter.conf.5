@@ -55,6 +55,10 @@ The filter configuration is parsed into a tree where each node represents a path
 
 .SH TESTING FILTERS
 .PP
+Whenever a filter is loaded, including by the daemon, its rules are checked for suspicious refinements. A file or glob rule with children but no trailing slash produces a warning with its filename and line number. Its children may match, but if none do, the parent's decision does not apply; an enclosing directory rule or the default decides. Warnings are advisory and do not change the rules or prevent loading.
+.PP
+With \fBfapolicyd-cli --test-filter\fP, these warnings are reported before the path trace, even for branches that the supplied path never visits. The trace identifies the deciding rule and whether it was a leaf match or a directory fallback, or reports default exclusion if no rule decided.
+.PP
 Administrators can validate how a change to \fIfapolicyd-filter.conf\fP behaves before rebuilding the trust database. Use \fBfapolicyd-cli --test-filter /path/to/file\fP to trace how the configuration is applied to a specific path and see the final include/exclude decision. When adding or updating trust entries, combine \fB--file add\fP or \fB--file update\fP with \fB--filter\fP so only paths that survive the filter are processed; this is useful when pointing the tool at directories to ensure the filter omits unwanted content while you test.
 
 .SH FILES

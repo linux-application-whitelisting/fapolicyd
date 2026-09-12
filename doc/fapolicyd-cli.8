@@ -215,6 +215,7 @@ Use after \fBfile\fP option. Makes every command of \fBfile\fP option operate on
 .TP
 .B \-\-test-filter /path/to/file
 Evaluate the filter configuration against the given path and emit a rule-by-rule trace ending with "decision include" or "decision exclude". Use this to confirm whether a file would be eligible for inclusion in the trust database.
+Warnings about suspicious parent/child rules are written to standard error before tracing, including for branches unrelated to the supplied path. The same validation runs when the daemon loads the filter. The trace identifies the deciding rule and distinguishes leaf matches from directory fallback decisions.
 .TP
 .B \-t, \-\-ftype /path/to/file
 Prints the mime type of the file given. A full path must be specified. This command is intended to help get the ftype parameter of rules correct by seeing how fapolicyd will classify it. Fapolicyd may differ from the \fBfile\fP command.

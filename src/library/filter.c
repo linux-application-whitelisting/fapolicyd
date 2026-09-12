@@ -122,6 +122,7 @@ static filter_t *filter_create_obj(void)
 		filter->type = NONE;
 		filter->path = NULL;
 		filter->len = 0;
+		filter->line_number = 0;
 		filter->matched = 0;
 		filter->processed = 0;
 		list_init(&filter->list);
@@ -317,6 +318,8 @@ filter_rc_t filter_check(const char *_path)
 	}
 
 	filter_rc_t res = FILTER_DENY;
+	const filter_t *deciding = NULL;
+	const char *reason = NULL;
 	int level = 0;
 	stack_item_t *stack_item;
 
@@ -431,6 +434,8 @@ filter_rc_t filter_check(const char *_path)
 					// if '+' ret 1 and if '-' ret 0
 					res = filter->type == ADD ?
 						FILTER_ALLOW : FILTER_DENY;
+					deciding = filter;
+					reason = "leaf match";
 					goto end;
 				}
 
@@ -447,6 +452,8 @@ filter_rc_t filter_check(const char *_path)
 					// if '+' ret 1 and if '-' ret 0
 					res = filter->type == ADD ?
 						FILTER_ALLOW : FILTER_DENY;
+					deciding = filter;
+					reason = "leaf match";
 					goto end;
 				}
 
@@ -486,6 +493,8 @@ filter_rc_t filter_check(const char *_path)
 				    filter->path[filter->len-1] == '/') {
 					res = filter->type == ADD ?
 						FILTER_ALLOW : FILTER_DENY;
+					deciding = filter;
+					reason = "directory fallback";
 					goto end;
 				}
 
@@ -503,6 +512,13 @@ filter_rc_t filter_check(const char *_path)
 	}
 
 end:
+	if (deciding)
+		FILTER_TRACE("deciding rule: %s %s (%s)\n",
+			     deciding->type == ADD ? "allow" : "deny",
+			     deciding->path, reason);
+	else
+		FILTER_TRACE("%s\n", res == FILTER_ERR_DEPTH ?
+			     "filter traversal failed" : "default: exclude");
 	FILTER_TRACE("decision %s\n",
 		res == FILTER_ALLOW ? "include" : "exclude");
 	// Clean up the stack
@@ -565,6 +581,46 @@ int filter_prune_list(list_t *list, const char *path)
 }
 
 /*
+ * filter_validate - warn about suspicious refinements in a loaded tree.
+ * @path: configuration filename used in warning messages.
+ * Returns nothing and never changes rules or their decisions. The loader
+ * bounds the depth, so one pending sibling per level needs no allocation.
+ */
+static void filter_validate(const char *path)
+{
+	const list_item_t *pending[MAX_FILTER_DEPTH];
+	size_t depth = 0;
+
+	pending[0] = list_get_first(&global_filter->list);
+	for (;;) {
+		const list_item_t *item = pending[depth];
+		const filter_t *filter;
+
+		if (item == NULL) {
+			if (depth == 0)
+				break;
+			depth--;
+			continue;
+		}
+		filter = item->data;
+		pending[depth] = item->next;
+		if (filter->list.count == 0)
+			continue;
+		/* A file/glob parent can gate children, but cannot supply the
+		 * fallback that authors commonly intend for their exceptions. */
+		if (filter->len == 0 || filter->path[filter->len - 1] != '/')
+			msg(LOG_WARNING,
+			    "%s:%ld: rule '%c %s' has child rules but is not a "
+			    "directory rule. If no child matches, its %s decision "
+			    "does not apply; an enclosing directory rule or the "
+			    "default decides.", path, filter->line_number,
+			    filter->type == ADD ? '+' : '-', filter->path,
+			    filter->type == ADD ? "include" : "exclude");
+		pending[++depth] = list_get_first(&filter->list);
+	}
+}
+
+/*
  * filter_load_file - load filter configuration and build tree
  * @path: optional configuration file path, defaults to FILTER_FILE
  * Returns 0 on success and 1 on error.
@@ -580,13 +636,15 @@ int filter_load_file(const char *path)
 
 		if (stream == NULL) {
 
-			stream = fopen(FILTER_FILE, "r");
+			path = FILTER_FILE;
+			stream = fopen(path, "r");
 			if (stream == NULL) {
 				msg(LOG_ERR,
 				    "Cannot open filter file %s", FILTER_FILE);
 				return 1;
 			}
 		} else {
+			path = OLD_FILTER_FILE;
 			msg(LOG_INFO,
 			    "Using old filter file: %s, use the new one: %s",
 			    OLD_FILTER_FILE, FILTER_FILE);
@@ -698,6 +756,7 @@ int filter_load_file(const char *path)
 		}
 		filter->len = strlen(filter->path);
 		filter->type = type;
+		filter->line_number = line_number;
 
 		// compare indetention between the last and current line
 		last_level = ((stack_item_t*)stack_top(&stack))->level;
@@ -794,6 +853,8 @@ good:
 	fclose(stream);
 	stack_pop_all_vars(&stack, &sp);
 	stack_destroy(&stack);
+	if (res == 0)
+		filter_validate(path);
 	if (global_filter->list.count == 0) {
 		const char *conf_file = path ? path : FILTER_FILE;
 		msg(LOG_ERR, "filter_load_file: no valid filter provided in %s",

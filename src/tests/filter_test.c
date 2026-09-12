@@ -345,10 +345,14 @@ static int run_traversal_cases(void)
 		  "+ /usr/bin/tool\n- /usr/bin/*\n",
 		  (const struct filter_case[]) {
 			{ "/usr/share/cache/keep.py", FILTER_DENY,
-			  "deny /usr/share/cache/* match\ndecision exclude\n" },
+			  "deny /usr/share/cache/* match\n"
+			  "deciding rule: deny /usr/share/cache/* (leaf match)\n"
+			  "decision exclude\n" },
 			{ "/usr/share/script.py", FILTER_ALLOW,
 			  "deny /usr/share/cache/* no match\n"
-			  "allow /usr/share/* match\ndecision include\n" },
+			  "allow /usr/share/* match\n"
+			  "deciding rule: allow /usr/share/* (leaf match)\n"
+			  "decision include\n" },
 			{ "/usr/bin/tool", FILTER_ALLOW, NULL },
 			{ "/usr/bin/tool-extra", FILTER_DENY, NULL },
 			{ "/opt/unknown", FILTER_DENY, NULL },
@@ -362,7 +366,9 @@ static int run_traversal_cases(void)
 			{ "/usr/share/script.py", FILTER_ALLOW,
 			  "deny / match\nallow usr/ match\n"
 			  "deny share/cache/* no match\n"
-			  "allow share/* match\ndecision include\n" },
+			  "allow share/* match\n"
+			  "deciding rule: allow share/* (leaf match)\n"
+			  "decision include\n" },
 			{ "/usr/bin/tool", FILTER_ALLOW, NULL },
 			{ "/usr/bin/tool-extra", FILTER_DENY, NULL },
 			{ "/usr/other", FILTER_ALLOW, NULL },
@@ -383,11 +389,15 @@ static int run_traversal_cases(void)
 			{ "/usr/lib/plugins/module.debug", FILTER_DENY,
 			  "deny / match\nallow usr/ match\ndeny share/ no match\n"
 			  "deny lib/ match\nallow plugins/ match\n"
-			  "deny *.debug match\ndecision exclude\n" },
+			  "deny *.debug match\n"
+			  "deciding rule: deny *.debug (leaf match)\n"
+			  "decision exclude\n" },
 			{ "/usr/lib/scripts/tool", FILTER_ALLOW,
 			  "deny / match\nallow usr/ match\ndeny share/ no match\n"
 			  "deny lib/ match\nallow plugins/ no match\n"
-			  "allow scripts/ match\ndecision include\n" },
+			  "allow scripts/ match\n"
+			  "deciding rule: allow scripts/ (directory fallback)\n"
+			  "decision include\n" },
 			{ "/usr/lib/other", FILTER_DENY, NULL },
 			{ "/usr/bin/tool", FILTER_ALLOW, NULL },
 			{ "/opt/cache/keep", FILTER_ALLOW, NULL },
@@ -401,11 +411,14 @@ static int run_traversal_cases(void)
 		  "+ /opt/tool\n+ /opt/plugins/*.so\n+ /srv/data/\n",
 		  (const struct filter_case[]) {
 			{ "/opt/tool", FILTER_ALLOW,
-			  "allow /opt/tool match\ndecision include\n" },
+			  "allow /opt/tool match\n"
+			  "deciding rule: allow /opt/tool (leaf match)\n"
+			  "decision include\n" },
 			{ "/opt/tool-extra", FILTER_DENY, NULL },
 			{ "/opt/tool/child", FILTER_DENY, NULL },
 			{ "/opt/plugins/module.so", FILTER_ALLOW,
 			  "allow /opt/tool no match\nallow /opt/plugins/*.so match\n"
+			  "deciding rule: allow /opt/plugins/*.so (leaf match)\n"
 			  "decision include\n" },
 			{ "/opt/plugins/module.so.debug", FILTER_DENY, NULL },
 			{ "/srv/data", FILTER_DENY, NULL },
@@ -415,9 +428,20 @@ static int run_traversal_cases(void)
 			{ "", FILTER_DENY, NULL },
 			{ NULL, 0, NULL }
 		  } },
+		{ "non-directory parent has no fallback",
+		  "- /\n + opt\n  + /keep\n",
+		  (const struct filter_case[]) {
+			{ "/opt/keep", FILTER_ALLOW, NULL },
+			{ "/opt/other", FILTER_DENY,
+			  "deny / match\nallow opt match\nallow /keep no match\n"
+			  "deciding rule: deny / (directory fallback)\n"
+			  "decision exclude\n" },
+			{ "/opt", FILTER_DENY, NULL },
+			{ NULL, 0, NULL }
+		  } },
 		{ "empty tree", "",
 		  (const struct filter_case[]) {
-			{ "/anything", FILTER_DENY, "decision exclude\n" },
+			{ "/anything", FILTER_DENY, "default: exclude\ndecision exclude\n" },
 			{ NULL, 0, NULL }
 		  } },
 	};
