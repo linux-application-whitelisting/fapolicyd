@@ -516,6 +516,70 @@ static int run_invalid_indentation_cases(void)
 }
 
 /*
+ * run_depth_boundary_case - check the last accepted and first rejected depth.
+ * The root consumes one stack slot. Rejected trees must remain safe to free.
+ * Returns 0 on success and 21 on a setup, parsing, or matching failure.
+ */
+static int run_depth_boundary_case(void)
+{
+	for (int depth = MAX_FILTER_DEPTH - 1;
+	     depth <= MAX_FILTER_DEPTH; depth++) {
+		char tmpl[] = "/tmp/fapolicyd-filter-depth-XXXXXX";
+		char path[2 * MAX_FILTER_DEPTH] = "/";
+		int fd = mkstemp(tmpl);
+		FILE *f;
+		int rc;
+
+		if (fd < 0)
+			return 21;
+		f = fdopen(fd, "w");
+		if (f == NULL) {
+			close(fd);
+			unlink(tmpl);
+			return 21;
+		}
+
+		for (int level = 1; level <= depth; level++) {
+			/* The deepest rule reverses its parent, so skipping it
+			 * cannot accidentally produce the expected verdict. */
+			if (fprintf(f, "%*s%c %s\n", level - 1, "",
+				    level == depth ? '-' : '+',
+				    level == 1 ? "/" : "a/") < 0) {
+				fclose(f);
+				unlink(tmpl);
+				return 21;
+			}
+			if (level > 1)
+				strcat(path, "a/");
+		}
+		if (fclose(f) != 0) {
+			unlink(tmpl);
+			return 21;
+		}
+		if (filter_init()) {
+			unlink(tmpl);
+			return 21;
+		}
+
+		rc = filter_load_file(tmpl);
+		unlink(tmpl);
+		if (depth < MAX_FILTER_DEPTH) {
+			if (rc == 0 && filter_check(path) != FILTER_DENY)
+				rc = 1;
+		} else
+			rc = rc == 0;
+		filter_destroy();
+		if (rc) {
+			fprintf(stderr,
+				"[ERROR:21] unexpected result at filter depth %d\n",
+				depth);
+			return 21;
+		}
+	}
+	return 0;
+}
+
+/*
  * run_wide_tree_case - verify wide root trees do not hit depth errors
  * Returns 0 on success and a unique non-zero test code on failure.
  */
@@ -813,6 +877,9 @@ int main(void)
 	if (rc)
 		return rc;
 	rc = run_cases("prod", PROD_CONF);
+	if (rc)
+		return rc;
+	rc = run_depth_boundary_case();
 	if (rc)
 		return rc;
 	rc = run_wide_tree_case();

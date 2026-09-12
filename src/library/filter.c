@@ -771,6 +771,17 @@ int filter_load_file(const char *path)
 
 		// compare indetention between the last and current line
 		last_level = ((stack_item_t*)stack_top(&stack))->level;
+		/* Reject a deeper rule before linking it. Freeing an already
+		 * linked node on push failure leaves a dangling child pointer. */
+		if (level == last_level + 1 && sp >= MAX_FILTER_DEPTH) {
+			msg(LOG_WARNING,
+			    "fapolicyd: rule nesting exceeds MAX_FILTER_DEPTH (%d)",
+			    MAX_FILTER_DEPTH);
+			filter_destroy_obj(filter);
+			free(line);
+			line = NULL;
+			goto bad;
+		}
 		if (level == last_level) {
 
 			// since we are at the same level as filter before
