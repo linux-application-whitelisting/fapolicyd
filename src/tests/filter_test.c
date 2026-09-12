@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "filter.h"
 
@@ -29,10 +30,16 @@
  * Coverage includes wildcard patterns, nested overrides, directory
  * versus file semantics, duplicate slashes, “..” traversal, UTF‑8
  * path segments, and other edge cases.
+ * Kernel script/tool exceptions require a version directory; .c/.h source
+ * files under those exceptions remain excluded by the production filter.
  *
- * Negative parsing: src/tests/fixtures/broken-filter.conf contains mixed
- * whitespace indentation, a missing leading ‘+’/‘-’, and an unescaped
- * ‘#’ to ensure filter_load_file() fails on malformed syntax.
+ * Fixture rows are read one line at a time so escaped spaces in paths cannot
+ * silently truncate the suite. Malformed rows fail with a line number.
+ *
+ * Additional configurations exercise conflicting sibling rules, ancestor
+ * changes, parent fallback and literal/glob leaves, with exact trace checks.
+ * Invalid indentation and missing rule signs are tested independently so an
+ * earlier error cannot hide a later case in a malformed configuration.
  *
  * Performance guardrail: the production filter is parsed 1000 times,
  * measuring mean parse time via clock_gettime(). A warning is issued if
@@ -100,11 +107,93 @@ static void unescape(char *s)
 	*dst = '\0';
 }
 
+/*
+ * parse_case - split one fixture row in place, preserving escaped whitespace.
+ * Outputs the configuration name, decoded path and expected 0/1 verdict.
+ * Returns 0 for a complete valid row and 1 for malformed test input.
+ */
+static int parse_case(char *line, char **cfg, char **path, int *expected)
+{
+	char *end;
+
+	*cfg = line + strspn(line, " \t");
+	end = strpbrk(*cfg, " \t");
+	if (end == NULL)
+		return 1;
+	*end++ = '\0';
+	if (strcmp(*cfg, "minimal") && strcmp(*cfg, "prod"))
+		return 1;
+	*path = end + strspn(end, " \t");
+	for (end = *path; *end && !isspace((unsigned char)*end); end++) {
+		if (*end == '\\') {
+			if (!end[1] || end[1] == '\n')
+				return 1;
+			end++;
+		}
+	}
+	if (end == *path || *end == '\0')
+		return 1;
+	*end++ = '\0';
+	end += strspn(end, " \t");
+	if ((*end != '0' && *end != '1') ||
+	    end[1 + strspn(end + 1, " \t\r\n")] != '\0')
+		return 1;
+	*expected = *end - '0';
+	unescape(*path);
+	return 0;
+}
+
+/* Check fixture parsing against valid and malformed rows; return 0 or 23. */
+static int run_fixture_reader_cases(void)
+{
+	static const struct {
+		const char *row;
+		const char *cfg;
+		const char *path;
+		int expected;
+	} cases[] = {
+		{ "minimal /etc/hosts 1\n", "minimal", "/etc/hosts", 1 },
+		{ "prod /usr/share/space\\ file.py 1\n",
+		  "prod", "/usr/share/space file.py", 1 },
+		{ "\tprod\t/usr/share/手稿.lua\t0\r\n",
+		  "prod", "/usr/share/手稿.lua", 0 },
+		{ "prod /trailing\\  0", "prod", "/trailing ", 0 },
+		{ "prod /missing-verdict\n", NULL, NULL, 0 },
+		{ "prod /invalid 2\n", NULL, NULL, 0 },
+		{ "prod /invalid 1 extra\n", NULL, NULL, 0 },
+		{ "prod /unescaped space 1\n", NULL, NULL, 0 },
+		{ "unknown /file 1\n", NULL, NULL, 0 },
+		{ "prod /dangling\\\n", NULL, NULL, 0 },
+		{ "\n", NULL, NULL, 0 },
+	};
+
+	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		char *row = strdup(cases[i].row);
+		char *cfg, *path;
+		int expected, rc;
+
+		if (row == NULL)
+			return 23;
+		rc = parse_case(row, &cfg, &path, &expected);
+		if ((rc == 0) != (cases[i].cfg != NULL) ||
+		    (rc == 0 && (strcmp(cfg, cases[i].cfg) ||
+				 strcmp(path, cases[i].path) ||
+				 expected != cases[i].expected))) {
+			fprintf(stderr, "[ERROR:23] fixture reader case %zu\n", i);
+			free(row);
+			return 23;
+		}
+		free(row);
+	}
+	return 0;
+}
+
+/* Run every row for cfg from the fixture file; return 0 or a test error. */
 static int run_cases(const char *cfg, const char *path)
 {
 	FILE *f = fopen(CASES_FILE, "r");
-	char col[32];
-	char p[1024];
+	char *line = NULL;
+	size_t capacity = 0, lineno = 0, count = 0;
 	int exp;
 	int rc = 0;
 
@@ -113,10 +202,18 @@ static int run_cases(const char *cfg, const char *path)
 		return 6;
 	}
 
-	while (fscanf(f, "%31s %1023s %d", col, p, &exp) == 3) {
+	while (getline(&line, &capacity, f) != -1) {
+		char *col, *p;
+
+		lineno++;
+		if (parse_case(line, &col, &p, &exp)) {
+			fprintf(stderr, "[ERROR:22] malformed fixture %s:%zu\n",
+				CASES_FILE, lineno);
+			rc = 22;
+			break;
+		}
 		if (strcmp(col, cfg) != 0)
 			continue;
-		unescape(p);
 		if (filter_init()) {
 			fprintf(stderr, "[ERROR:2] filter_init failed\n");
 			rc = 2;
@@ -147,10 +244,237 @@ static int run_cases(const char *cfg, const char *path)
 			break;
 		}
 		filter_destroy();
+		count++;
 	}
 
+	if (rc == 0 && (!feof(f) || count == 0)) {
+		fprintf(stderr, "[ERROR:22] incomplete or empty %s cases\n", cfg);
+		rc = 22;
+	}
+	if (rc == 0)
+		printf("%s: %zu fixture cases passed\n", cfg, count);
+	free(line);
 	fclose(f);
 	return rc;
+}
+
+struct filter_case {
+	const char *path;
+	filter_rc_t expected;
+	const char *trace;
+};
+
+/* Load an isolated configuration; return -1 for setup errors or loader status. */
+static int load_filter_text(const char *rules)
+{
+	char tmpl[] = "/tmp/fapolicyd-filter-case-XXXXXX";
+	int fd = mkstemp(tmpl);
+	FILE *f;
+	int rc;
+
+	if (fd < 0)
+		return -1;
+	f = fdopen(fd, "w");
+	if (f == NULL) {
+		close(fd);
+		unlink(tmpl);
+		return -1;
+	}
+	rc = fputs(rules, f) == EOF;
+	if (fclose(f) != 0)
+		rc = 1;
+	if (rc || filter_init()) {
+		unlink(tmpl);
+		return -1;
+	}
+	rc = filter_load_file(tmpl);
+	unlink(tmpl);
+	return rc;
+}
+
+/* Check a verdict, optional exact trace and tree flags; return 0 or 24. */
+static int check_filter_case(const char *name, const struct filter_case *test)
+{
+	char *trace = NULL;
+	size_t size = 0;
+	FILE *f = NULL;
+	int rc = 0;
+	filter_rc_t result;
+
+	if (test->trace) {
+		f = open_memstream(&trace, &size);
+		if (f == NULL)
+			return 24;
+	}
+	filter_set_trace(f);
+	result = filter_check(test->path);
+	filter_set_trace(NULL);
+	if (f && fclose(f) != 0)
+		rc = 24;
+	if (result != test->expected || !check_tree_reset(global_filter)) {
+		fprintf(stderr, "[ERROR:24] %s:%s expected %d got %d\n",
+			name, test->path, test->expected, result);
+		rc = 24;
+	}
+	if (rc == 0 && test->trace && strcmp(trace, test->trace)) {
+		fprintf(stderr,
+			"[ERROR:24] %s:%s trace mismatch\nExpected:\n%sGot:\n%s",
+			name, test->path, test->trace, trace);
+		rc = 24;
+	}
+	free(trace);
+	return rc;
+}
+
+/*
+ * run_traversal_cases - check import decisions independently of tree layout.
+ * Conflicting rules make reversed order observable. Mixed ancestor changes
+ * expose stale parents, offsets or matched flags. Repeat paths in reverse
+ * order on the same tree to check that earlier queries leave no state behind.
+ * Returns 0 on success or 24 on a setup, verdict, trace or tree-state error.
+ */
+static int run_traversal_cases(void)
+{
+	const struct {
+		const char *name;
+		const char *rules;
+		const struct filter_case *cases;
+	} scenarios[] = {
+		{ "top-level precedence",
+		  "- /usr/share/cache/*\n+ /usr/share/*\n"
+		  "+ /usr/bin/tool\n- /usr/bin/*\n",
+		  (const struct filter_case[]) {
+			{ "/usr/share/cache/keep.py", FILTER_DENY,
+			  "deny /usr/share/cache/* match\ndecision exclude\n" },
+			{ "/usr/share/script.py", FILTER_ALLOW,
+			  "deny /usr/share/cache/* no match\n"
+			  "allow /usr/share/* match\ndecision include\n" },
+			{ "/usr/bin/tool", FILTER_ALLOW, NULL },
+			{ "/usr/bin/tool-extra", FILTER_DENY, NULL },
+			{ "/opt/unknown", FILTER_DENY, NULL },
+			{ NULL, 0, NULL }
+		  } },
+		{ "nested precedence",
+		  "- /\n + usr/\n  - share/cache/*\n  + share/*\n"
+		  "  + bin/tool\n  - bin/*\n",
+		  (const struct filter_case[]) {
+			{ "/usr/share/cache/keep.py", FILTER_DENY, NULL },
+			{ "/usr/share/script.py", FILTER_ALLOW,
+			  "deny / match\nallow usr/ match\n"
+			  "deny share/cache/* no match\n"
+			  "allow share/* match\ndecision include\n" },
+			{ "/usr/bin/tool", FILTER_ALLOW, NULL },
+			{ "/usr/bin/tool-extra", FILTER_DENY, NULL },
+			{ "/usr/other", FILTER_ALLOW, NULL },
+			{ "/opt/unknown", FILTER_DENY, NULL },
+			{ NULL, 0, NULL }
+		  } },
+		{ "ancestor changes and parent fallback",
+		  "- /\n + usr/\n  - share/\n   + scripts/\n"
+		  "    - private/\n   + public/\n  - lib/\n"
+		  "   + plugins/\n    - *.debug\n   + scripts/\n"
+		  " + opt/\n  - cache/\n   + keep\n",
+		  (const struct filter_case[]) {
+			{ "/usr/share/scripts/tool", FILTER_ALLOW, NULL },
+			{ "/usr/share/scripts/private/secret", FILTER_DENY, NULL },
+			{ "/usr/share/public/info", FILTER_ALLOW, NULL },
+			{ "/usr/share/other", FILTER_DENY, NULL },
+			{ "/usr/lib/plugins/module.so", FILTER_ALLOW, NULL },
+			{ "/usr/lib/plugins/module.debug", FILTER_DENY,
+			  "deny / match\nallow usr/ match\ndeny share/ no match\n"
+			  "deny lib/ match\nallow plugins/ match\n"
+			  "deny *.debug match\ndecision exclude\n" },
+			{ "/usr/lib/scripts/tool", FILTER_ALLOW,
+			  "deny / match\nallow usr/ match\ndeny share/ no match\n"
+			  "deny lib/ match\nallow plugins/ no match\n"
+			  "allow scripts/ match\ndecision include\n" },
+			{ "/usr/lib/other", FILTER_DENY, NULL },
+			{ "/usr/bin/tool", FILTER_ALLOW, NULL },
+			{ "/opt/cache/keep", FILTER_ALLOW, NULL },
+			{ "/opt/cache/keep-extra", FILTER_DENY, NULL },
+			{ "/opt/cache/temp", FILTER_DENY, NULL },
+			{ "/opt/tool", FILTER_ALLOW, NULL },
+			{ "/other", FILTER_DENY, NULL },
+			{ NULL, 0, NULL }
+		  } },
+		{ "literal, glob and directory leaves",
+		  "+ /opt/tool\n+ /opt/plugins/*.so\n+ /srv/data/\n",
+		  (const struct filter_case[]) {
+			{ "/opt/tool", FILTER_ALLOW,
+			  "allow /opt/tool match\ndecision include\n" },
+			{ "/opt/tool-extra", FILTER_DENY, NULL },
+			{ "/opt/tool/child", FILTER_DENY, NULL },
+			{ "/opt/plugins/module.so", FILTER_ALLOW,
+			  "allow /opt/tool no match\nallow /opt/plugins/*.so match\n"
+			  "decision include\n" },
+			{ "/opt/plugins/module.so.debug", FILTER_DENY, NULL },
+			{ "/srv/data", FILTER_DENY, NULL },
+			{ "/srv/data/", FILTER_ALLOW, NULL },
+			{ "/srv/data/item", FILTER_ALLOW, NULL },
+			{ "/srv/database/item", FILTER_DENY, NULL },
+			{ "", FILTER_DENY, NULL },
+			{ NULL, 0, NULL }
+		  } },
+		{ "empty tree", "",
+		  (const struct filter_case[]) {
+			{ "/anything", FILTER_DENY, "decision exclude\n" },
+			{ NULL, 0, NULL }
+		  } },
+	};
+
+	for (size_t i = 0; i < sizeof(scenarios) / sizeof(scenarios[0]); i++) {
+		const struct filter_case *cases = scenarios[i].cases;
+		size_t count = 0;
+		int rc = 0;
+
+		if (load_filter_text(scenarios[i].rules)) {
+			fprintf(stderr, "[ERROR:24] loading %s\n", scenarios[i].name);
+			filter_destroy();
+			return 24;
+		}
+		while (cases[count].path)
+			count++;
+		for (size_t n = 0; n < 2 * count; n++) {
+			size_t index = n < count ? n : 2 * count - n - 1;
+
+			rc = check_filter_case(scenarios[i].name, &cases[index]);
+			if (rc)
+				break;
+		}
+		filter_destroy();
+		if (rc)
+			return rc;
+	}
+	return 0;
+}
+
+/* Reject each malformed configuration independently; return 0 or 25. */
+static int run_invalid_indentation_cases(void)
+{
+	static const struct {
+		const char *name;
+		const char *rules;
+	} cases[] = {
+		{ "indented first rule", " + /usr/\n" },
+		{ "skipped child level", "+ /\n  - usr/\n" },
+		{ "jump after dedent",
+		  "+ /\n + usr/\n  - share/\n + opt/\n   + cache/\n" },
+		{ "missing sign", "+ /\nusr/share/\n" },
+		{ "tab indentation", "+ /\n\t- usr/\n" },
+	};
+
+	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		int rc = load_filter_text(cases[i].rules);
+
+		/* Failed loads still own a partial tree which must be safe to free. */
+		filter_destroy();
+		if (rc != 1) {
+			fprintf(stderr, "[ERROR:25] %s: load returned %d\n",
+				cases[i].name, rc);
+			return 25;
+		}
+	}
+	return 0;
 }
 
 /*
@@ -438,7 +762,16 @@ int main(void)
 	}
 	filter_destroy();
 
-	int rc = run_cases("minimal", MIN_CONF);
+	int rc = run_fixture_reader_cases();
+	if (rc)
+		return rc;
+	rc = run_traversal_cases();
+	if (rc)
+		return rc;
+	rc = run_invalid_indentation_cases();
+	if (rc)
+		return rc;
+	rc = run_cases("minimal", MIN_CONF);
 	if (rc)
 		return rc;
 	rc = run_cases("prod", PROD_CONF);

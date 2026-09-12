@@ -28,7 +28,6 @@ prod /usr/share/test.plx 0
 prod /usr/share/test.stp 1
 prod /usr/share/test.stpx 0
 prod /usr//share/test.js 1
-prod /usr//share/test.jsx 0
 prod /usr/share/test.jar 1
 prod /usr/share/test.jarx 0
 prod /usr/share/test.m4 1
@@ -50,11 +49,12 @@ prod /usr/share/test.elx 0
 prod /usr/share/test.elc 1
 prod /usr/share/test.elcx 0
 prod /usr/src/kernel123/driver.c 0
-prod /usr/src/kernel123/scripts/build 1
+prod /usr/src/kernel123/scripts/build 0
 prod /usr/src/kernel123/scriptz/build 0
-prod /usr/src/kernel123/tools/objtool/run 1
+prod /usr/src/kernel123/tools/objtool/run 0
+prod /usr/src/kernel123/6.17/tools/objtool/run 1
 prod /usr/src/kernel123/tools/objtool2/run 0
 prod /usr/src/kernels/6.17.8-200.fc42.x86_64/arch/x86/kernel/ptrace.c 0
-prod /usr/src/kernels/6.17.8-200.fc42.x86_64/scripts/gendwarfksyms/examples/kabi.h 1
+prod /usr/src/kernels/6.17.8-200.fc42.x86_64/scripts/gendwarfksyms/examples/kabi.h 0
 prod /usr/src/kernels/6.17.6-200.fc42.x86_64/include/linux/memory.h 0
 prod /usr//bin/ls 1

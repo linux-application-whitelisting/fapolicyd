@@ -131,7 +131,7 @@ event_test_LDADD = \
 	${top_builddir}/src/library/libfapolicyd_la-string-util.o
 event_test_DEPENDENCIES = $(event_test_LDADD)
 
-if WITH_RPM
+# Filtering is shared by file, RPM and Debian trust sources.
 check_PROGRAMS += filter_test
 filter_test_SOURCES = filter_test.c
 filter_test_SOURCES += test-stubs.c
@@ -143,6 +143,7 @@ file_filter_test_SOURCES = file_filter_test.c
 file_filter_test_SOURCES += test-stubs.c
 file_filter_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 file_filter_test_CPPFLAGS = -I${top_srcdir}/src/library/ -DTEST_BASE=\"${top_srcdir}\"
+if WITH_RPM
 check_PROGRAMS += rpm_backend_test
 rpm_backend_test_SOURCES = rpm_backend_test.c test-stubs.c
 rpm_backend_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
