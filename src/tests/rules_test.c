@@ -456,6 +456,47 @@ static void test_language_set_extension(void)
 }
 
 /*
+ * test_explicit_untrusted_match - verify that trust=0 is a real constraint.
+ *
+ * A zero trust value matches only an untrusted subject or object. Omitting
+ * trust is what accepts either state, so keep these behaviors distinct.
+ * Returns nothing. Exits on test failure.
+ */
+static void test_explicit_untrusted_match(void)
+{
+	char err[ERRBUF];
+	llist l;
+	event_t e;
+	int rc;
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+	rc = append_capture(&l,
+		"allow perm=any trust=0 : trust=0", 1, err, sizeof(err));
+	if (rc)
+		error(1, 0, "trust=0 rule parse failed: %s", err);
+
+	prep_macro_event(&e, "/opt/untrusted-tool", "/tmp/untrusted-data");
+	add_trust_attrs(&e, 0, 0);
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "trust=0 did not match untrusted attributes");
+	free_event(&e);
+
+	prep_macro_event(&e, "/opt/trusted-tool", "/tmp/untrusted-data");
+	add_trust_attrs(&e, 1, 0);
+	if (evaluate(&l, &e) != NO_OPINION)
+		error(1, 0, "subject trust=0 matched a trusted subject");
+	free_event(&e);
+
+	prep_macro_event(&e, "/opt/untrusted-tool", "/tmp/trusted-data");
+	add_trust_attrs(&e, 0, 1);
+	if (evaluate(&l, &e) != NO_OPINION)
+		error(1, 0, "object trust=0 matched a trusted object");
+	free_event(&e);
+	rules_clear(&l);
+}
+
+/*
 * load_fixture - parse rule lines from a fixture file
 */
 static void load_fixture(const char *path, llist *l)
@@ -858,6 +899,7 @@ int main(void)
 	test_nfsd_kernel_thread_rule();
 	test_unset_auid_rule();
 	test_language_set_extension();
+	test_explicit_untrusted_match();
 
 	/* positive path using fixture file */
 	if (rules_create(&l))

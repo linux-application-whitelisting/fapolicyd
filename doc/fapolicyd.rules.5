@@ -53,7 +53,16 @@ This is the numeric process id that a program has.
 This is the numeric process id of the program's parent. Note that programs that are orphaned or started directly from systemd have a ppid value of 1. Kernel threads have a ppid value of 2.
 .TP
 .B trust
-This is a boolean describing whether it is required for the subject to be in the trust database or not. A value of 1 means its required while 0 means its not. Trust checking is extended by the integrity setting in fapolicyd.conf. When trust is used on the subject, it could be a daemon. If that daemon gets updated on disk, the trustdb will be updated to the new SHA256 hash. If the integrity setting is not none, the running daemon is not likely to be trusted unless it gets restarted. The default rules are not written in a way that this would happen. But this needs to be highlighted as it may not be obvious when writing a new rule.
+This is a boolean describing the required trust state of the subject. A value
+of 1 requires the subject to be trusted, while 0 requires it to be untrusted.
+Omitting the field matches either trust state and does not perform this
+comparison. Trust checking is extended by the integrity setting in
+fapolicyd.conf. When trust is used on the subject, it could be a
+daemon. If that daemon gets updated on disk, the trustdb will be updated to the
+new SHA256 hash. If the integrity setting is not none, the running daemon is
+not likely to be trusted unless it gets restarted. The default rules are not
+written in a way that this would happen. But this needs to be highlighted as
+it may not be obvious when writing a new rule.
 .TP
 .B comm
 This is the shortened command name. When an interpreter starts a program, it usually renames the program to the script rather than the interpreter.
@@ -153,7 +162,11 @@ This option will match against the device that the file being accessed resides o
 This option matches against the mime type of the file being accessed. See \fBftype\fP under Subject for more information on determining the mime type.
 .TP
 .B trust
-This is a boolean describing whether it is required for the object to be in the trust database or not. A value of 1 means its required while 0 means its not. Trust checking is extended by the integrity setting in fapolicyd.conf.
+This is a boolean describing the required trust state of the object. A value
+of 1 requires the object to be trusted, while 0 requires it to be untrusted.
+Omitting the field matches either trust state and does not perform this
+comparison. Trust checking is extended by the integrity setting in
+fapolicyd.conf.
 .TP
 .B FILE_HASH
 (the legacy keyword

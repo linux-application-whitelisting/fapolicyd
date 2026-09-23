@@ -33,7 +33,7 @@ queue_test event_test message_test \
 trustdb_format_test trustdb_lmdb_test lru_test notify_test \
 decision_defer_test decision_config_test \
 decision_timing_report_test daemon_config_test ignore_mounts_risk_test
-check_PROGRAMS += cli_privilege_test
+check_PROGRAMS += cli_privilege_test rule_lint_test
 
 AM_CPPFLAGS = -I${top_srcdir}/src/library/
 AM_CFLAGS = -std=gnu11
@@ -62,6 +62,12 @@ ignore_mounts_risk_test_CPPFLAGS = \
 cli_privilege_test_SOURCES = cli_privilege_test.c
 cli_privilege_test_CPPFLAGS = \
 	-I${top_builddir} \
+	-I${top_srcdir}/src/cli/
+rule_lint_test_SOURCES = rule_lint_test.c test-stubs.c
+rule_lint_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
+rule_lint_test_CPPFLAGS = \
+	-I${top_builddir} \
+	-I${top_srcdir}/src/library/ \
 	-I${top_srcdir}/src/cli/
 rules_test_SOURCES = rules_test.c
 rules_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la

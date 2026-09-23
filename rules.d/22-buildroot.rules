@@ -15,5 +15,5 @@
 #
 # The following uid and dir should be adjusted to fit your configuration.
 
-allow perm=any uid=mock : dir=/home/mock/rpmbuild
+allow perm=any uid=mock : dir=/home/mock/rpmbuild/
 allow perm=any uid=mock trust=1 : all

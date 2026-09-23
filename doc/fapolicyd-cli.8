@@ -116,7 +116,7 @@ entries are found so automated workflows can gate changes.
 Parse the rules file with the daemon policy parser without loading it into the daemon. If \fIpath\fP is omitted, the command checks the active rules file, using \fI/etc/fapolicyd/fapolicyd.rules\fP when present and \fI/etc/fapolicyd/compiled.rules\fP otherwise. If both installed rules files exist, the command reports a path configuration error unless \fB\-\-lint\fP is also used. A zero exit status means the file is valid. Values with the explicit \fBglob:\fP prefix are accepted only for \fBexe\fP and \fBpath\fP, and the pattern after the prefix must be an absolute path. This command reports violations of those requirements, including patterns supplied through named sets. It does not expand valid patterns or simulate which concrete paths they match.
 .TP
 .B \-\-lint
-When used with \fB\-\-check-rules\fP, also emit policy-shape warnings for executable or programmatic content that can reach the default-allow path. The option may be placed before or after \fB\-\-check-rules\fP. A warning causes a non-zero exit status.
+When used with \fB\-\-check-rules\fP, also emit policy-shape warnings for executable or programmatic content that can reach the default-allow path. It also warns about \fBall\fP combined with restricting fields, explicit \fBallow\fP rules containing \fBtrust=0\fP, and literal \fBdir\fP prefixes which do not end in a slash. The option may be placed before or after \fB\-\-check-rules\fP. A warning causes a non-zero exit status.
 .RS
 .P
 Examples:

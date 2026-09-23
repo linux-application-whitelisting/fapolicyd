@@ -57,11 +57,7 @@ static char *get_rule_line(FILE *f)
  */
 static int rule_is_broad_subject(const lnode *rule)
 {
-	for (unsigned int i = 0; i < rule->s_count; i++)
-		if (rule->s[i].type == ALL_SUBJ)
-			return 1;
-
-	return 0;
+	return rule->s_count == 1 && rule->s[0].type == ALL_SUBJ;
 }
 
 /*
@@ -71,8 +67,34 @@ static int rule_is_broad_subject(const lnode *rule)
  */
 static int rule_is_broad_object(const lnode *rule)
 {
+	return rule->o_count == 1 && rule->o[0].type == ALL_OBJ;
+}
+
+/*
+ * rule_has_subject_type - check for a parsed subject attribute.
+ * @rule: parsed rule to inspect.
+ * @type: subject attribute type to find.
+ * Returns 1 when the rule contains @type, 0 otherwise.
+ */
+static int rule_has_subject_type(const lnode *rule, subject_type_t type)
+{
+	for (unsigned int i = 0; i < rule->s_count; i++)
+		if (rule->s[i].type == type)
+			return 1;
+
+	return 0;
+}
+
+/*
+ * rule_has_object_type - check for a parsed object attribute.
+ * @rule: parsed rule to inspect.
+ * @type: object attribute type to find.
+ * Returns 1 when the rule contains @type, 0 otherwise.
+ */
+static int rule_has_object_type(const lnode *rule, object_type_t type)
+{
 	for (unsigned int i = 0; i < rule->o_count; i++)
-		if (rule->o[i].type == ALL_OBJ)
+		if (rule->o[i].type == type)
 			return 1;
 
 	return 0;
@@ -158,6 +180,127 @@ static void print_rule_location(const char *path, const lnode *rule)
 }
 
 /*
+ * lint_redundant_all - warn when all is combined with restricting fields.
+ * @rule: parsed rule to inspect.
+ * @path: rule file path used for diagnostics.
+ * Returns 1 when a warning was emitted, 0 otherwise.
+ */
+static int lint_redundant_all(const lnode *rule, const char *path)
+{
+	int warned = 0;
+
+	if (rule->s_count > 1 && rule_has_subject_type(rule, ALL_SUBJ)) {
+		fprintf(stderr, "Policy lint warning: subject all in ");
+		print_rule_location(path, rule);
+		fprintf(stderr, " is redundant when combined with other "
+			"subject fields\n");
+		warned = 1;
+	}
+	if (rule->o_count > 1 && rule_has_object_type(rule, ALL_OBJ)) {
+		fprintf(stderr, "Policy lint warning: object all in ");
+		print_rule_location(path, rule);
+		fprintf(stderr, " is redundant when combined with other "
+			"object fields\n");
+		warned = 1;
+	}
+
+	return warned;
+}
+
+/*
+ * lint_untrusted_allow - warn about explicit allows for untrusted content.
+ * @rule: parsed rule to inspect.
+ * @path: rule file path used for diagnostics.
+ * Returns 1 when a warning was emitted, 0 otherwise.
+ */
+static int lint_untrusted_allow(const lnode *rule, const char *path)
+{
+	int warned = 0;
+
+	if (!rule_is_allow(rule))
+		return 0;
+
+	for (unsigned int i = 0; i < rule->s_count; i++) {
+		if (rule->s[i].type != SUBJ_TRUST || rule->s[i].uval != 0)
+			continue;
+		fprintf(stderr, "Policy lint warning: subject trust=0 in allow ");
+		print_rule_location(path, rule);
+		fprintf(stderr, " explicitly matches an untrusted subject; "
+			"omitting trust would match either trust state\n");
+		warned = 1;
+	}
+
+	for (unsigned int i = 0; i < rule->o_count; i++) {
+		if (rule->o[i].type != OBJ_TRUST || rule->o[i].val != 0)
+			continue;
+		fprintf(stderr, "Policy lint warning: object trust=0 in allow ");
+		print_rule_location(path, rule);
+		fprintf(stderr, " explicitly matches an untrusted object; "
+			"omitting trust would match either trust state\n");
+		warned = 1;
+	}
+
+	return warned;
+}
+
+/*
+ * lint_dir_set - warn about literal directory prefixes without a final slash.
+ * @set: string set used by a dir attribute.
+ * @side: subject or object side for the diagnostic.
+ * @rule: parsed rule containing the attribute.
+ * @path: rule file path used for diagnostics.
+ * Returns 1 when a warning was emitted, 0 otherwise.
+ */
+static int lint_dir_set(attr_sets_entry_t *set, const char *side,
+			const lnode *rule, const char *path)
+{
+	avl_iterator iterator;
+	avl_str_data_t *entry;
+	int warned = 0;
+
+	if (!set)
+		return 0;
+
+	for (entry = (avl_str_data_t *)avl_first(&iterator, &set->tree);
+	     entry; entry = (avl_str_data_t *)avl_next(&iterator)) {
+		if (entry->len == 0 || entry->str[0] != '/' ||
+		    entry->str[entry->len - 1] == '/')
+			continue;
+		fprintf(stderr, "Policy lint warning: %s dir prefix '%s' in ",
+			side, entry->str);
+		print_rule_location(path, rule);
+		fprintf(stderr, " does not end in '/'; prefix matching can "
+			"include sibling path names\n");
+		warned = 1;
+	}
+
+	return warned;
+}
+
+/*
+ * lint_directory_prefixes - check subject and object directory attributes.
+ * @rule: parsed rule to inspect.
+ * @path: rule file path used for diagnostics.
+ * Returns 1 when a warning was emitted, 0 otherwise.
+ */
+static int lint_directory_prefixes(const lnode *rule, const char *path)
+{
+	int warned = 0;
+
+	for (unsigned int i = 0; i < rule->s_count; i++)
+		if (rule->s[i].type == EXE_DIR)
+			warned |= lint_dir_set(rule->s[i].set, "subject", rule,
+					       path);
+
+	for (unsigned int i = 0; i < rule->o_count; i++)
+		if (rule->o[i].type == ODIR)
+			warned |= lint_dir_set(rule->o[i].set, "object", rule,
+					       path);
+
+	return warned;
+}
+
+/*
  * lint_rules_policy - emit policy-shape warnings for default-allow gaps.
  * @rules: parsed rule list to inspect.
  * @path: rule file path used for parsing.
@@ -179,6 +322,10 @@ static int lint_rules_policy(const llist *rules, const char *path,
 
 	for (rule = rules_first_node(rules); rule;
 	     rule = rules_next_node(rule)) {
+		warnings |= lint_redundant_all(rule, path);
+		warnings |= lint_untrusted_allow(rule, path);
+		warnings |= lint_directory_prefixes(rule, path);
+
 		if (rule_matches_execute(rule))
 			last_exec_rule = rule;
 
