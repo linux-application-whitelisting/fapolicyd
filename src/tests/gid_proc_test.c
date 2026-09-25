@@ -191,7 +191,7 @@ int main(void)
 	FILE *status;
 	char buf[4096];
 	int saw_gid_line = 0;
-	unsigned int missing_gid;
+	unsigned int missing_gid, second_missing_gid;
 
 	check_split_groups_status();
 	check_truncated_status_cleanup();
@@ -264,11 +264,19 @@ int main(void)
 	if (res)
 		error(1, 0, "Found unexpected group");
 
+	/* Supplementary group IDs need not form one contiguous range. */
+	second_missing_gid = missing_gid + 1;
+	while (attr_set_check_int(groups, (int64_t)second_missing_gid)) {
+		if (second_missing_gid == UINT_MAX)
+			error(1, 0, "Unable to determine second missing group");
+		second_missing_gid++;
+	}
+
 	if (check_intersect) {
 		printf("Doing Negative AVL intersection\n");
 		attr_sets_entry_t *g = attr_set_create(NULL, UNSIGNED);
 		attr_set_append_int(g, (int64_t)missing_gid);
-		attr_set_append_int(g, (int64_t)(missing_gid + 1));
+		attr_set_append_int(g, (int64_t)second_missing_gid);
 		res = avl_intersection(&(g->tree), &(groups->tree));
 		if (res)
 			error(1, 0, "Negative AVL intersection failed");
