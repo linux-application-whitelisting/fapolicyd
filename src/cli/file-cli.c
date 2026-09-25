@@ -37,6 +37,7 @@
 
 #include "llist.h"
 #include "message.h"
+#include "ftw-compat.h"
 #include "string-util.h"
 #include "trust-file.h"
 #include "filter.h"

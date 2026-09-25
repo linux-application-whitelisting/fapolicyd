@@ -26,8 +26,20 @@
 #define MESSAGE_HEADER
 
 #include <stdatomic.h>
+#include <string.h>
 #include <syslog.h>
 #include <time.h>
+
+#include "string-util.h"
+
+/*
+ * Keep this redirect after <string.h>. Existing logging calls use the GNU
+ * strerror_r return convention, while fapolicyd_strerror() is compiled in an
+ * isolated translation unit that forces and verifies the portable XSI
+ * interface. This keeps libc ABI handling out of every logging call site.
+ */
+#define strerror_r(errnum, buf, buf_size) \
+	fapolicyd_strerror((errnum), (buf), (buf_size))
 
 typedef enum { MSG_STDERR, MSG_SYSLOG, MSG_QUIET } message_t;
 typedef enum { DBG_NO, DBG_YES } debug_message_t;

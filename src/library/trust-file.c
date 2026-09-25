@@ -43,6 +43,7 @@
 
 #include "fapolicyd-backend.h"
 #include "file.h"
+#include "ftw-compat.h"
 #include "llist.h"
 #include "message.h"
 #include "trust-file.h"

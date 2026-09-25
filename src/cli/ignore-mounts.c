@@ -27,6 +27,7 @@
 #include "daemon-config.h"
 #include "file-cli.h"
 #include "file.h"
+#include "ftw-compat.h"
 #include "ignore-mounts.h"
 #include "llist.h"
 #include "message.h"

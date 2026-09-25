@@ -63,7 +63,12 @@ struct log_slot {
 
 static struct log_slot log_ring[LOG_QUEUE_DEPTH];
 static unsigned log_head, log_count;		/* guarded by log_lock */
+#ifdef PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
 static pthread_mutex_t log_lock = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP;
+#else
+/* POSIX does not provide a portable error-checking static initializer. */
+static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 static sem_t log_sem;
 static pthread_t log_thread;
 static atomic_int log_state = ATOMIC_VAR_INIT(LOG_ASYNC_OFF);

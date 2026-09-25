@@ -25,6 +25,17 @@
 
 #include "config.h"
 
+/*
+ * Keep this feature selection before every system header. fapolicyd enables
+ * _GNU_SOURCE globally, which makes glibc expose its non-portable, char *
+ * strerror_r(). This translation unit deliberately selects POSIX.1-2008 so
+ * glibc and musl both expose the XSI, int-returning interface. Do not remove
+ * or move this override without changing fapolicyd_strerror() with it.
+ */
+#undef _GNU_SOURCE
+#undef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +44,10 @@
 #include "string-util.h"
 
 #pragma GCC optimize("O3")
+
+_Static_assert(_Generic(&strerror_r,
+	int (*)(int, char *, size_t): 1, default: 0),
+	"fapolicyd requires the XSI strerror_r interface");
 
 char *fapolicyd_strtrim(char *s)
 {
@@ -82,6 +97,26 @@ char *fapolicyd_strnchr(const char *s, int c, size_t len)
 			break;
 	}
 	return NULL;
+}
+
+/*
+ * fapolicyd_strerror - provide one strerror_r interface across C libraries.
+ * @errnum: error number to describe.
+ * @buf: caller-owned output buffer.
+ * @buf_size: size of @buf.
+ *
+ * Returns @buf containing the error description, or a fixed string when no
+ * writable buffer was supplied. This translation unit forces and verifies the
+ * portable XSI strerror_r interface above.
+ */
+const char *fapolicyd_strerror(int errnum, char *buf, size_t buf_size)
+{
+	if (buf == NULL || buf_size == 0)
+		return "Unknown error";
+
+	if (strerror_r(errnum, buf, buf_size) != 0)
+		snprintf(buf, buf_size, "Unknown error %d", errnum);
+	return buf;
 }
 
 /*

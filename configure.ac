@@ -49,7 +49,7 @@ if test "$FILE_COMM" = "no"; then
 	AC_MSG_ERROR([Unable to find the file program need to build magic databases])
 fi
 AC_CHECK_MEMBER([struct fanotify_response_info_audit_rule.rule_number],
-		[perm=yes], [perm=no], [[#include <linux/fanotify.h>]])
+	[perm=yes], [perm=no], [[#include <sys/fanotify.h>]])
 if test $perm = "yes"; then
 	AC_DEFINE(FAN_AUDIT_RULE_NUM, 1,[Define if kernel supports audit rule numbers])
 fi

@@ -48,6 +48,7 @@
 #include "database.h"
 #include "file-cli.h"
 #include "file.h"
+#include "ftw-compat.h"
 #include "fapolicyd-backend.h"
 #include "string-util.h"
 #include "daemon-config.h"

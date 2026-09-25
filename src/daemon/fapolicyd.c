@@ -1470,7 +1470,8 @@ int main(int argc, const char *argv[])
 		msg(LOG_WARNING, "Can't increase file number rlimit - %s",
 		    strerror(errno));
 	else
-		msg(LOG_INFO,"Can handle %lu file descriptors", limit.rlim_cur);
+		msg(LOG_INFO, "Can handle %llu file descriptors",
+		    (unsigned long long)limit.rlim_cur);
 
 	// get more time slices because everything is waiting on us
 	errno = 0;

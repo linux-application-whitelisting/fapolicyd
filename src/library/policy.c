@@ -1469,7 +1469,7 @@ static void reply_event_write(int fd,
 			failure_action_record(
 			    FAILURE_REASON_RESPONSE_WRITE_FAILURE);
 		decision_timing_stage_end(&write_timing);
-		goto out;
+		return;
 	}
 #endif
 	struct fanotify_response response;
@@ -1488,8 +1488,6 @@ static void reply_event_write(int fd,
 		failure_action_record(
 		    FAILURE_REASON_RESPONSE_WRITE_FAILURE);
 	decision_timing_stage_end(&write_timing);
-out:
-	return;
 }
 
 void reply_event(int fd, const struct fanotify_event_metadata *metadata,
