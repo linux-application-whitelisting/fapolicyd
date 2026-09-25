@@ -1,0 +1,42 @@
+name: alpine-musl-build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: alpine:latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: getting envinronment info
+      run: uname -a
+
+    - name: print version
+      run: cat /etc/*release
+
+    - name: installing dependencies 1
+      run: apk add --no-cache autoconf automake build-base coreutils file gawk libtool linux-headers tar
+
+    - name: installing dependencies 2
+      run: apk add --no-cache eudev-dev file-dev libcap-ng-dev libcap-ng-static libmagic-static libseccomp-dev libseccomp-static lmdb-dev musl-legacy-error openssl-dev openssl-libs-static rpm-dev uthash-dev
+
+    - name: generate config files
+      run: ./autogen.sh
+
+    - name: configure
+      run: ./configure --with-perf-test --with-rpm --with-audit --disable-shared --disable-dependency-tracking
+
+    - name: build
+      run: make
+
+    - name: check
+      run: make check
+
+    - name: dist
+      run: make dist
