@@ -250,6 +250,48 @@ static void test_deferred_compaction(void)
 }
 
 /*
+ * An incomplete line left after earlier lines have advanced the read pointer
+ * must be compacted before reading more data. Returns nothing. Assertions
+ * verify that tail space is not mistaken for a full backing buffer and
+ * exposed as a line fragment.
+ */
+static void test_compaction_before_partial_read(void)
+{
+	int fds[2];
+	char buf[64];
+	char *custom;
+	fd_fgets_state_t *st;
+
+	assert(pipe(fds) == 0);
+	st = fd_fgets_init();
+	assert(st);
+	custom = malloc(33);
+	assert(custom);
+	assert(fd_setvbuf_r(st, custom, 33, MEM_MALLOC) == 0);
+
+	write_all(fds[1], "first\nsecond\nthird\npart");
+	assert(fd_fgets_r(st, buf, sizeof(buf), fds[0]) == 6);
+	assert(strcmp(buf, "first\n") == 0);
+	assert(fd_fgets_r(st, buf, sizeof(buf), fds[0]) == 7);
+	assert(strcmp(buf, "second\n") == 0);
+	assert(fd_fgets_r(st, buf, sizeof(buf), fds[0]) == 6);
+	assert(strcmp(buf, "third\n") == 0);
+
+	write_all(fds[1], "ial-record\nnext\n");
+	close(fds[1]);
+
+	assert(fd_fgets_r(st, buf, sizeof(buf), fds[0]) == 15);
+	assert(strcmp(buf, "partial-record\n") == 0);
+	assert(fd_fgets_r(st, buf, sizeof(buf), fds[0]) == 5);
+	assert(strcmp(buf, "next\n") == 0);
+	assert(fd_fgets_r(st, buf, sizeof(buf), fds[0]) == 0);
+	assert(fd_fgets_eof_r(st) == 1);
+
+	close(fds[0]);
+	fd_fgets_destroy(st);
+}
+
+/*
  * MEM_SELF_MANAGED is reserved for the internal default buffer created by
  * fd_fgets_init(). Supplying external memory with this mode is rejected.
  */
@@ -391,6 +433,7 @@ int main(void)
 	test_malloc_buffer();
 	test_mmap_buffer();
 	test_deferred_compaction();
+	test_compaction_before_partial_read();
 	test_reject_self_managed_override();
 	test_read_error_preserves_caller_state();
 	test_mmap_file_no_trailing_newline();
