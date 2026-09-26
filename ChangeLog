@@ -1,4 +1,9 @@
 2.0.2
+- Adjust the daemon's capabilities
+- Rewrite filter to correct its operation
+- Update the rule linter to detect more problems
+- Add portability to systems with musl-c
+- Add fd_fgets_r fix for issue #434
 
 2.0.1
 - Enable large file support on 32-bit builds
