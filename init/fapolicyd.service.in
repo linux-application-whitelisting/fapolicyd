@@ -15,6 +15,7 @@ OOMScoreAdjust=-1000
 Type=@FAPOLICYD_SERVICE_TYPE@
 @FAPOLICYD_SERVICE_NOTIFY_ACCESS@
 RuntimeDirectory=fapolicyd
+RuntimeDirectoryPreserve=yes
 @FAPOLICYD_SERVICE_PIDFILE@
 ExecStartPre=/usr/sbin/fagenrules
 ExecStart=@FAPOLICYD_SERVICE_EXEC@
