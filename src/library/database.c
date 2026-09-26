@@ -3946,7 +3946,7 @@ static int trust_db_record_from_line(char *buff,
 
 	end = fapolicyd_strnchr(buff, '\n', BUFFER_SIZE);
 	if (end == NULL) {
-		msg(LOG_ERR, "Too long line?");
+		msg(LOG_ERR, "Line too long?");
 		return 1;
 	}
 

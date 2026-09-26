@@ -689,7 +689,8 @@ static void *update_thread_main(void *arg)
 						int count;
 
 						if (end == NULL) {
-							msg(LOG_ERR, "Too long line?");
+							msg(LOG_ERR,
+							    "Line too long?");
 							continue;
 						}
 
