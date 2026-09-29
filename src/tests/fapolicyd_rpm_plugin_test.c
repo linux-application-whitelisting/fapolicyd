@@ -94,8 +94,12 @@ static void test_full_fifo(void)
 		error(1, errno, "filling nonblocking pipe");
 
 	alarm(2);
-	if (write_fifo(&state, "x") != RPMRC_FAIL)
-		error(1, 0, "full FIFO write unexpectedly succeeded");
+	for (int i = 0; i <= MAX_WRITE_ERROR_LOGS; i++) {
+		if (write_fifo(&state, "x") != RPMRC_FAIL)
+			error(1, 0, "full FIFO write unexpectedly succeeded");
+	}
+	if (state.write_error_logs != MAX_WRITE_ERROR_LOGS)
+		error(1, 0, "write error log limit was not enforced");
 	alarm(0);
 	close(pipefd[0]);
 	close(pipefd[1]);

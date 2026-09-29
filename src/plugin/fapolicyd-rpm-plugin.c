@@ -37,9 +37,12 @@
 #define RPM_SYMBOL_EXPORT __attribute__((visibility("default")))
 #endif
 
+#define MAX_WRITE_ERROR_LOGS 5
+
 struct fapolicyd_data {
 	int fd;
 	long changed_files;
+	unsigned int write_error_logs;
 	const char *connected_path;
 	const char *primary_fifo_path;
 	const char *legacy_fifo_path;
@@ -48,6 +51,7 @@ struct fapolicyd_data {
 static struct fapolicyd_data fapolicyd_state = {
 	.fd = -1,
 	.changed_files = 0,
+	.write_error_logs = 0,
 	.connected_path = UPDATE_FIFO_PATH,
 	.primary_fifo_path = UPDATE_FIFO_PATH,
 	.legacy_fifo_path = LEGACY_UPDATE_FIFO_PATH,
@@ -157,8 +161,11 @@ static rpmRC write_fifo(struct fapolicyd_data *state, const char *str)
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
-			rpmlog(RPMLOG_DEBUG, "Write: %s -> %s\n",
-			       state->connected_path, strerror(errno));
+			if (state->write_error_logs < MAX_WRITE_ERROR_LOGS) {
+				rpmlog(RPMLOG_DEBUG, "Write: %s -> %s\n",
+				       state->connected_path, strerror(errno));
+				state->write_error_logs++;
+			}
 			return RPMRC_FAIL;
 		}
 		if (n == 0) {
@@ -221,6 +228,9 @@ static rpmRC try_to_write_to_fifo(struct fapolicyd_data *state,
 /* Initialize the plugin connection for a real host transaction. */
 static rpmRC fapolicyd_rpm_init(rpmPlugin plugin, rpmts ts)
 {
+	/* Limit repeated write errors independently for each transaction. */
+	fapolicyd_state.write_error_logs = 0;
+
 	if (rpmtsFlags(ts) & (RPMTRANS_FLAG_TEST | RPMTRANS_FLAG_BUILD_PROBS))
 		return RPMRC_OK;
 
