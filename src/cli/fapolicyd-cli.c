@@ -578,6 +578,7 @@ static int do_reload(int code)
 {
 	int fd = -1;
 	struct stat s;
+	const char *path = fifo_path;
 	char command;
 	char str[2];
 	ssize_t ret;
@@ -598,21 +599,28 @@ static int do_reload(int code)
 	str[0] = command;
 	str[1] = '\n';
 
-	fd = open(fifo_path, O_WRONLY);
+	fd = open(path, O_WRONLY);
+#ifdef HAVE_RPM_PLUGIN
+	/* Keep control commands working until the migration restart occurs. */
+	if (fd == -1 && errno == ENOENT) {
+		path = LEGACY_UPDATE_FIFO_PATH;
+		fd = open(path, O_WRONLY);
+	}
+#endif
 	if (fd == -1) {
-		fprintf(stderr, "Open: %s -> %s\n", fifo_path, strerror(errno));
+		fprintf(stderr, "Open: %s -> %s\n", path, strerror(errno));
 		return CLI_EXIT_DAEMON_IPC;
 	}
 
 	if (fstat(fd, &s) == -1) {
-		fprintf(stderr, "Stat: %s -> %s\n", fifo_path, strerror(errno));
+		fprintf(stderr, "Stat: %s -> %s\n", path, strerror(errno));
 		close(fd);
 		return CLI_EXIT_DAEMON_IPC;
 	} else {
 		if (!S_ISFIFO(s.st_mode)) {
 			fprintf(stderr,
 				"File: %s exists but it is not a pipe!\n",
-				fifo_path);
+				path);
 			close(fd);
 			return CLI_EXIT_DAEMON_IPC;
 		}
@@ -621,7 +629,7 @@ static int do_reload(int code)
 		if (mode != 0660) {
 			fprintf(stderr,
 				"File: %s has 0%o instead of 0660 \n",
-				fifo_path,
+				path,
 				mode);
 			close(fd);
 			return CLI_EXIT_DAEMON_IPC;
@@ -634,17 +642,17 @@ static int do_reload(int code)
 
 	if (ret != (ssize_t)sizeof(str)) {
 		if (ret < 0)
-			fprintf(stderr, "Write: %s -> %s\n", fifo_path,
+			fprintf(stderr, "Write: %s -> %s\n", path,
 				strerror(errno));
 		else
 			fprintf(stderr, "Write: %s -> short write (%zd of %zu bytes)\n",
-				fifo_path, ret, sizeof(str));
+				path, ret, sizeof(str));
 		close(fd);
 		return CLI_EXIT_DAEMON_IPC;
 	}
 
 	if (close(fd)) {
-		fprintf(stderr,"Close: %s -> %s\n", fifo_path, strerror(errno));
+		fprintf(stderr,"Close: %s -> %s\n", path, strerror(errno));
 		return CLI_EXIT_DAEMON_IPC;
 	}
 
@@ -1407,6 +1415,15 @@ static int do_timing_control(report_intent_t intent)
 	return CLI_EXIT_SUCCESS;
 }
 
+/* Report a deferred daemon restart left by the RPM plugin migration. */
+static void warn_restart_required(void)
+{
+	if (access(RESTART_REQUIRED_PATH, F_OK) == 0)
+		fprintf(stderr,
+			"fapolicyd must be restarted, or the system rebooted, "
+			"to finish the RPM plugin migration.\n");
+}
+
 /*
  * do_status_report - request and display a daemon report.
  * @intent: report intent to send.
@@ -1420,6 +1437,9 @@ static int do_status_report(report_intent_t intent, int reset_metrics)
 	unsigned int pid;
 	char signal_reason[80];
 	int fd;
+
+	if (intent == REPORT_INTENT_STATUS)
+		warn_restart_required();
 
 	if (get_daemon_pid(&pid, signal_reason, sizeof(signal_reason))) {
 		printf("Can't find fapolicyd: %s\n", signal_reason);

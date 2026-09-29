@@ -187,6 +187,9 @@ int preconstruct_fifo(const conf_t *config)
 		}
 	}
 
+	/* A successful open completes the package-plugin endpoint handoff. */
+	unlink(RESTART_REQUIRED_PATH);
+
 	return 0;
 }
 
@@ -198,6 +201,10 @@ int preconstruct_fifo(const conf_t *config)
 void unlink_fifo(void)
 {
 	unlink(fifo_path);
+#ifdef HAVE_RPM_PLUGIN
+	/* Do not leave an endpoint which can reactivate the retired plugin. */
+	unlink(LEGACY_UPDATE_FIFO_PATH);
+#endif
 }
 
 /*

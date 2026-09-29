@@ -1,5 +1,6 @@
 SUBDIRS = tests
 CONFIG_CLEAN_FILES = *.loT *.rej *.orig
+EXTRA_DIST = plugin/rpm-plugin-migration.md
 
 AM_CPPFLAGS = \
 	-I${top_srcdir} \
@@ -12,6 +13,23 @@ if WITH_PERF_TEST
 sbin_PROGRAMS += fapolicyd-perf-test
 endif
 libexec_PROGRAMS =
+
+if WITH_RPM_PLUGIN
+rpmplugindir = $(RPM_PLUGIN_DIR)
+rpmplugin_PROGRAMS = fapolicyd_rpm.so
+fapolicyd_rpm_so_SOURCES = plugin/fapolicyd-rpm-plugin.c
+fapolicyd_rpm_so_CFLAGS = $(RPM_PLUGIN_CFLAGS) -std=gnu11 -fPIC \
+	-g -W -Wall -Wshadow -Wundef -Wno-unused-parameter -D_GNU_SOURCE
+fapolicyd_rpm_so_LDFLAGS = -shared -Wl,--as-needed -Wl,-z,relro -Wl,-z,now
+fapolicyd_rpm_so_LDADD = $(RPM_PLUGIN_LIBS)
+# The daemon deliberately uses --disable-shared for libfapolicyd. This module
+# is a raw DSO, so bypass libtool's global shared-library switch when linking.
+fapolicyd_rpm_so_LINK = $(CCLD) $(fapolicyd_rpm_so_CFLAGS) $(CFLAGS) \
+	$(fapolicyd_rpm_so_LDFLAGS) $(LDFLAGS) -o $@
+
+rpmmacrodir = $(RPM_MACRO_DIR)
+dist_rpmmacro_DATA = plugin/macros.transaction_fapolicyd_rpm
+endif
 
 lib_LTLIBRARIES= libfapolicyd.la
 

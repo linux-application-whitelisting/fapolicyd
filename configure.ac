@@ -185,6 +185,67 @@ fi
 AM_CONDITIONAL(WITH_RPM, test x$use_rpm = xyes)
 
 withval=""
+AC_ARG_WITH(rpm-plugin,
+AS_HELP_STRING([--with-rpm-plugin],
+[Build the RPM transaction plugin (default=auto with the public plugin API)]),
+use_rpm_plugin=$withval,use_rpm_plugin=auto)
+
+case x$use_rpm_plugin in
+	xyes|xno|xauto)
+		;;
+	*)
+		AC_MSG_ERROR([bad value $use_rpm_plugin for --with-rpm-plugin])
+		;;
+esac
+
+if test x$use_rpm != xyes && test x$use_rpm_plugin = xauto; then
+	use_rpm_plugin=no
+fi
+
+if test x$use_rpm_plugin != xno; then
+	rpm_plugin_requested=$use_rpm_plugin
+	rpm_plugin_api=no
+	PKG_CHECK_MODULES([RPM_PLUGIN], [rpm],
+	[
+		saved_CPPFLAGS=$CPPFLAGS
+		CPPFLAGS="$CPPFLAGS $RPM_PLUGIN_CFLAGS"
+		AC_MSG_CHECKING([for the public RPM plugin API])
+		AC_COMPILE_IFELSE(
+			[AC_LANG_PROGRAM(
+				[[#include <rpm/rpmplugin.h>]],
+				[[struct rpmPluginHooks_s hooks = { 0 };
+				  rpmFsmOp op = FAF_UNOWNED;
+				  hooks.fsm_file_prepare = 0;
+				  return op == 0;]])],
+			[rpm_plugin_api=yes], [rpm_plugin_api=no])
+		AC_MSG_RESULT([$rpm_plugin_api])
+		CPPFLAGS=$saved_CPPFLAGS
+	],
+	[:])
+
+	if test x$rpm_plugin_api = xyes; then
+		use_rpm_plugin=yes
+		PKG_CHECK_VAR([RPM_PLUGIN_DIR], [rpm], [rpmplugindir], [],
+			[PKG_CHECK_VAR([RPM_LIBDIR], [rpm], [libdir])
+			 RPM_PLUGIN_DIR="$RPM_LIBDIR/rpm-plugins"])
+		PKG_CHECK_VAR([RPM_HOME], [rpm], [rpmhome])
+		RPM_MACRO_DIR="$RPM_HOME/macros.d"
+	else
+		if test x$rpm_plugin_requested = xyes; then
+			AC_MSG_ERROR([the public RPM plugin API is required])
+		fi
+		use_rpm_plugin=no
+	fi
+fi
+AC_SUBST([RPM_PLUGIN_DIR])
+AC_SUBST([RPM_MACRO_DIR])
+AM_CONDITIONAL(WITH_RPM_PLUGIN, test x$use_rpm_plugin = xyes)
+if test x$use_rpm_plugin = xyes; then
+	AC_DEFINE([HAVE_RPM_PLUGIN], [1],
+		[Define when building the fapolicyd-owned RPM plugin])
+fi
+
+withval=""
 AC_ARG_WITH(deb,
 AS_HELP_STRING([--with-deb],[Use the deb database as a trust source]),
 use_deb=$withval,use_deb=no)
@@ -292,5 +353,6 @@ echo "
   __attr_dealloc_free support: $DEALLOC
   FAN_FS_ERROR monitoring: $enable_fanotify_fs_error
   systemd watchdog:      $enable_systemd_watchdog
+  RPM transaction plugin: $use_rpm_plugin
 "
  

@@ -162,6 +162,16 @@ rpm_backend_test_SOURCES = rpm_backend_test.c test-stubs.c
 rpm_backend_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 endif
 
+if WITH_RPM_PLUGIN
+check_PROGRAMS += fapolicyd_rpm_plugin_test
+fapolicyd_rpm_plugin_test_SOURCES = fapolicyd_rpm_plugin_test.c
+fapolicyd_rpm_plugin_test_CPPFLAGS = \
+	-I${top_builddir} \
+	-I${top_srcdir}/src/library/ \
+	$(RPM_PLUGIN_CFLAGS)
+fapolicyd_rpm_plugin_test_LDADD = $(RPM_PLUGIN_LIBS)
+endif
+
 if WITH_DEB
 check_PROGRAMS += deb_test md5_backend_test deb_filter_test
 LIBS += -ldpkg -lmd

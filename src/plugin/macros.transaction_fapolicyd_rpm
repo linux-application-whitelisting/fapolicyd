@@ -1,0 +1,1 @@
+%__transaction_fapolicyd_rpm %{__plugindir}/fapolicyd_rpm.so

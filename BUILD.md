@@ -66,9 +66,22 @@ Note that the shipped policy expects that auditing is enabled. This is done
 by passing --with-audit to ./configure.
 
 The use of rpm as a trust source is now optional. You can run ./configure
-passing --without-rpm and it will not link against librpm. In this mode, it
-purely uses the file database in fapolicyd.trust. If rpm is used, then the
-file trust database can be used in addition to rpmdb.
+passing --without-rpm and it will not link the daemon against librpm. In this
+mode, it purely uses the file database in fapolicyd.trust. If rpm is used, then
+the file trust database can be used in addition to rpmdb.
+
+Configure also builds the fapolicyd-owned RPM transaction plugin when RPM's
+public plugin API is available. Upstream RPM first provided that API in 4.20;
+a distribution backport is detected by capability rather than version. Use
+`--without-rpm-plugin` to omit the plugin, or `--with-rpm-plugin` to require it
+and fail configuration when the API is unavailable. The transaction plugin is
+independent of the RPM trust backend but is disabled automatically when
+`--without-rpm` is selected unless explicitly requested.
+
+Distributors moving from RPM's original plugin should follow the
+[plugin migration guide](src/plugin/rpm-plugin-migration.md). The transition
+requires package metadata and one deferred daemon restart in addition to
+installing the new DSO.
 
 BUILDING THE RPMS
 -----------------
@@ -136,4 +149,3 @@ chown root:fapolicyd /etc/fapolicyd/rules.d/
 chown root:fapolicyd /etc/fapolicyd/trust.d/
 chown root:fapolicyd /var/lib/fapolicyd/
 ```
-

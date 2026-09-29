@@ -1,0 +1,38 @@
+.TH "FAPOLICYD-RPM-PLUGIN" "8" "September 2026" "Red Hat" "System Administration Utilities"
+.SH NAME
+fapolicyd-rpm-plugin \- report RPM transaction changes to fapolicyd
+.SH DESCRIPTION
+The fapolicyd RPM transaction plugin sends metadata for files installed by
+RPM to the fapolicyd daemon. It also requests trust database reloads and
+object cache flushes at transaction and scriptlet boundaries.
+.PP
+The plugin is enabled by the
+.B %__transaction_fapolicyd_rpm
+RPM macro and is loaded from
+.IR fapolicyd_rpm.so .
+.SH COMMUNICATION
+The plugin first connects to
+.IR /run/fapolicyd/fapolicyd-update.fifo .
+The daemon creates this endpoint with mode 0660.
+.PP
+During migration from the RPM-owned plugin, a previously started daemon may
+still be listening on
+.IR /run/fapolicyd/fapolicyd.fifo .
+If the new endpoint does not exist, the plugin falls back to this legacy
+endpoint. The fallback keeps package updates synchronized until the daemon is
+restarted. A newly started daemon creates only the new endpoint, permanently
+disabling the retired plugin.
+.SH MIGRATION
+Distributors should package this plugin with the daemon and replace the
+RPM-owned
+.B rpm-plugin-fapolicyd
+package through normal package dependency metadata. The transition must not
+restart an old daemon before the active RPM transaction plugin sends its final
+records.
+.PP
+The complete cross-distribution procedure is documented in
+.IR rpm-plugin-migration.md
+in the fapolicyd source distribution.
+.SH SEE ALSO
+.BR fapolicyd (8),
+.BR rpm-plugins (8)

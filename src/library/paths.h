@@ -38,7 +38,15 @@
 #define STAT_REPORT     "/run/fapolicyd/fapolicyd.state"
 #define METRICS_REPORT  "/run/fapolicyd/fapolicyd.metrics"
 #define TIMING_REPORT   "/run/fapolicyd/fapolicyd.timing"
-#define fifo_path       "/run/fapolicyd/fapolicyd.fifo"
+#define UPDATE_FIFO_PATH RUN_DIR "fapolicyd-update.fifo"
+#define LEGACY_UPDATE_FIFO_PATH RUN_DIR "fapolicyd.fifo"
+#define RESTART_REQUIRED_PATH RUN_DIR "restart-required"
+#ifdef HAVE_RPM_PLUGIN
+#define fifo_path       UPDATE_FIFO_PATH
+#else
+/* RPM releases without the public plugin API still use the legacy plugin. */
+#define fifo_path       LEGACY_UPDATE_FIFO_PATH
+#endif
 #define pidfile         RUN_DIR "fapolicyd.pid"
 
 #define OLD_FILTER_FILE "/etc/fapolicyd/rpm-filter.conf"

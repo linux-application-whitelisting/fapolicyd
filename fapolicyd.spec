@@ -1,6 +1,12 @@
 #ASAN %%global asan_build 1
 #ELN %%global eln_build 1
 
+%if 0%{?fedora} || 0%{?rhel} > 10
+%bcond_without rpm_plugin
+%else
+%bcond_with rpm_plugin
+%endif
+
 %if %{defined eln_build}
 %global selinuxtype targeted
 %global moduletype contrib
@@ -26,6 +32,10 @@ BuildRequires: python3-devel
 
 BuildRequires: uthash-devel
 
+%if %{with rpm_plugin}
+BuildRequires: pkgconfig(rpm)
+%endif
+
 %if %{defined asan_build}
 BuildRequires: libasan
 %endif
@@ -38,6 +48,14 @@ Requires(pre): shadow-utils
 Requires(post): systemd-units
 Requires(preun): systemd-units
 Requires(postun): systemd-units
+Requires(posttrans): systemd
+%if %{with rpm_plugin}
+Provides: rpm-plugin-fapolicyd = %{version}-%{release}
+# Current RPM-owned plugin package EVRs are below the next RPM major.
+Obsoletes: rpm-plugin-fapolicyd < 7
+%else
+Requires: rpm-plugin-fapolicyd
+%endif
 
 %description
 Fapolicyd (File Access Policy Daemon) implements application whitelisting
@@ -100,6 +118,12 @@ EOF
 %build
 ./autogen.sh
 configure_flags="--with-perf-test --with-audit --with-rpm --disable-shared"
+
+%if %{with rpm_plugin}
+configure_flags="$configure_flags --with-rpm-plugin"
+%else
+configure_flags="$configure_flags --without-rpm-plugin"
+%endif
 
 %if %{defined asan_build}
 configure_flags="$configure_flags --with-asan"
@@ -229,6 +253,20 @@ fi
 %postun
 %systemd_postun_with_restart %{name}.service
 
+%posttrans
+%if %{with rpm_plugin}
+# The old package's postun may have queued a restart before its loaded RPM
+# plugin reaches tsm_post. Keep the old daemon alive for that one transaction.
+if [ -p %{_rundir}/%{name}/%{name}.fifo ] && \
+   [ ! -p %{_rundir}/%{name}/%{name}-update.fifo ]; then
+  systemctl set-property %{name}.service Markers=-needs-restart || :
+  touch %{_rundir}/%{name}/restart-required
+  chown root:%{name} %{_rundir}/%{name}/restart-required
+  chmod 0640 %{_rundir}/%{name}/restart-required
+  echo "fapolicyd is using its legacy RPM plugin endpoint; restart the service or reboot to complete the plugin migration" >&2
+fi
+%endif
+
 %files
 %doc README.md
 %{!?_licensedir:%global license %%doc}
@@ -255,13 +293,18 @@ fi
 %attr(755,root,root) %{_sbindir}/%{name}-perf-test
 %attr(755,root,root) %{_libexecdir}/%{name}-rpm-loader
 %attr(755,root,root) %{_sbindir}/fagenrules
-%attr(644,root,root) %{_mandir}/man8/*
+%attr(644,root,root) %{_mandir}/man8/fagenrules.8*
+%attr(644,root,root) %{_mandir}/man8/fapolicyd.8*
+%attr(644,root,root) %{_mandir}/man8/fapolicyd-cli.8*
+%attr(644,root,root) %{_mandir}/man8/fapolicyd-perf-test.8*
 %attr(644,root,root) %{_mandir}/man5/*
 %ghost %attr(440,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/log/%{name}-access.log
 %attr(770,root,%{name}) %dir %{_localstatedir}/lib/%{name}
 %attr(770,root,%{name}) %dir /run/%{name}
 %ghost %attr(600,root,root) %verify(not md5 size mtime) /run/%{name}/%{name}.pid
 %ghost %attr(660,root,%{name}) /run/%{name}/%{name}.fifo
+%ghost %attr(660,root,%{name}) /run/%{name}/%{name}-update.fifo
+%ghost %attr(640,root,%{name}) /run/%{name}/restart-required
 %ghost %attr(640,%{name},%{name}) %verify(not md5 size mtime) /run/%{name}/%{name}.state
 %ghost %attr(640,%{name},%{name}) %verify(not md5 size mtime) /run/%{name}/%{name}.metrics
 %ghost %attr(640,%{name},%{name}) %verify(not md5 size mtime) /run/%{name}/%{name}.timing
@@ -269,6 +312,13 @@ fi
 %ghost %attr(660,%{name},%{name}) %verify(not md5 size mtime) %{_localstatedir}/lib/%{name}/lock.mdb
 %if 0%{?fedora} || 0%{?rhel} > 9
 %{_sysusersdir}/fapolicyd.conf
+%endif
+
+%if %{with rpm_plugin}
+%doc src/plugin/rpm-plugin-migration.md
+%{_libdir}/rpm-plugins/fapolicyd_rpm.so
+%{_rpmconfigdir}/macros.d/macros.transaction_fapolicyd_rpm
+%{_mandir}/man8/fapolicyd-rpm-plugin.8*
 %endif
 
 %if %{defined eln_build}

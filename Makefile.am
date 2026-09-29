@@ -9,11 +9,14 @@ src/tests/fixtures/broken-filter.conf \
 init/fapolicyd-filter.conf \
 src/tests/fixtures/rules-valid.rules
 
-EXTRA_DIST = ChangeLog AUTHORS NEWS README.md INSTALL fapolicyd.spec \
+EXTRA_DIST = ChangeLog AUTHORS NEWS README.md BUILD.md INSTALL fapolicyd.spec \
 dnf/fapolicyd-dnf-plugin.py autogen.sh \
 $(TEST_FIXTURES)
 
 dist_check_DATA = $(TEST_FIXTURES)
+
+# RPM advertises absolute loader directories outside distcheck's test prefix.
+AM_DISTCHECK_CONFIGURE_FLAGS = --without-rpm-plugin
 
 clean-generic:
 	rm -rf autom4te*.cache

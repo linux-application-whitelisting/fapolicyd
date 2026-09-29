@@ -20,8 +20,8 @@
 #   Steve Grubb <sgrubb@redhat.com>
 #
 
-EXTRA_DIST = $(man_MANS) fapolicyd-perf-test.8 check-manpages.sh \
-	systemd-watchdog.md
+EXTRA_DIST = $(man_MANS) check-manpages.sh systemd-watchdog.md \
+	fapolicyd-rpm-plugin.8
 
 TEST_EXTENSIONS = .sh
 SH_LOG_COMPILER = $(SHELL)
@@ -31,6 +31,7 @@ man_MANS = \
 	fapolicyd.8 \
 	fagenrules.8 \
 	fapolicyd-cli.8 \
+	fapolicyd-perf-test.8 \
 	fapolicyd.rules.5 \
 	fapolicyd.trust.5 \
 	fapolicyd.state.5 \
@@ -39,3 +40,7 @@ man_MANS = \
 	fapolicyd.conf.5 \
 	rpm-filter.conf.5 \
 	fapolicyd-filter.conf.5
+
+if WITH_RPM_PLUGIN
+man_MANS += fapolicyd-rpm-plugin.8
+endif
