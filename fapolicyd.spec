@@ -98,15 +98,6 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 # generate rules for python
 sed -i "s|%python3_path%|`readlink -f %{__python3}`|g" rules.d/*.rules
 
-# Detect run time linker directly from bash
-interpret=`readelf -e /usr/bin/bash \
-		| grep Requesting \
-		| sed 's/.$//' \
-		| rev | cut -d" " -f1 \
-		| rev`
-
-sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
-
 %if 0%{?fedora} || 0%{?rhel} > 9
 # Create a sysusers.d config file
 cat >fapolicyd.sysusers.conf <<EOF

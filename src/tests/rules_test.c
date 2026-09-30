@@ -534,14 +534,14 @@ static decision_t evaluate(const llist *l, event_t *e)
 }
 
 /*
- * evaluate_glob_rule - parse and evaluate one path-oriented rule
+ * evaluate_path_rule - parse and evaluate one path-oriented rule
  * @rule: policy rule text to parse.
  * @exe: concrete subject executable path.
  * @path: concrete object path.
  *
  * Returns: the decision produced by the parsed rule.
  */
-static decision_t evaluate_glob_rule(const char *rule, const char *exe,
+static decision_t evaluate_path_rule(const char *rule, const char *exe,
 				     const char *path)
 {
 	char err[ERRBUF];
@@ -693,7 +693,7 @@ static void test_glob_rules(void)
 	object_attr_t *path_attr;
 
 	for (size_t i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
-		decision_t decision = evaluate_glob_rule(cases[i].rule,
+		decision_t decision = evaluate_path_rule(cases[i].rule,
 			cases[i].exe, cases[i].path);
 
 		if (decision != cases[i].expected)
@@ -736,6 +736,65 @@ static void test_glob_rules(void)
 	prep_macro_event(&e, "/usr/bin/bash", "/home/alice/bin/tool");
 	if (evaluate(&l, &e) != DENY)
 		error(1, 0, "glob rules did not preserve first-match ordering");
+	free_event(&e);
+	rules_clear(&l);
+}
+
+/*
+ * test_ld_so_path_rules - verify the runtime linker object-path keyword.
+ *
+ * The keyword matches known linker paths, including the configured native
+ * linker, and remains an OR alternative in inline and named sets. It does not
+ * affect subject exe matching, confer trust, or replace the concrete path.
+ * Returns nothing. Exits on test failure.
+ */
+static void test_ld_so_path_rules(void)
+{
+	char err[ERRBUF];
+	llist l;
+	event_t e;
+	object_attr_t *path_attr;
+
+	if (evaluate_path_rule("allow perm=any all : path=ld_so",
+		"/usr/bin/bash", SYSTEM_LD_SO) != ALLOW)
+		error(1, 0, "configured runtime linker keyword did not match");
+	if (evaluate_path_rule("allow perm=any all : path=ld_so",
+		"/usr/bin/bash", "/usr/lib/ld-linux-aarch64.so.1") != ALLOW)
+		error(1, 0, "known runtime linker keyword did not match");
+	if (evaluate_path_rule("allow perm=any all : path=ld_so",
+		"/usr/bin/bash", "/usr/lib64/libc.so.6") != NO_OPINION)
+		error(1, 0, "non-linker library matched runtime linker keyword");
+	if (evaluate_path_rule("allow perm=any exe=ld_so : all",
+		SYSTEM_LD_SO, "/tmp/input") != NO_OPINION)
+		error(1, 0, "runtime linker keyword affected subject exe");
+	if (evaluate_path_rule(
+		"allow perm=any all : path=ld_so,/opt/custom-loader",
+		"/usr/bin/bash", "/opt/custom-loader") != ALLOW)
+		error(1, 0, "literal alternative to runtime linker did not match");
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+	if (append_capture(&l, "%loaders=ld_so,/opt/custom-loader", 1,
+			   err, sizeof(err)))
+		error(1, 0, "runtime linker set parse failed: %s", err);
+	if (append_capture(&l,
+		"allow perm=any all : path=%loaders trust=1", 2,
+		err, sizeof(err)))
+		error(1, 0, "runtime linker rule parse failed: %s", err);
+
+	prep_macro_event(&e, "/usr/bin/bash", SYSTEM_LD_SO);
+	add_trust_attrs(&e, 1, 1);
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "trusted runtime linker set did not match");
+	path_attr = object_access(e.o, PATH);
+	if (!path_attr || strcmp(path_attr->o, SYSTEM_LD_SO))
+		error(1, 0, "runtime linker keyword changed the concrete path");
+	free_event(&e);
+
+	prep_macro_event(&e, "/usr/bin/bash", SYSTEM_LD_SO);
+	add_trust_attrs(&e, 1, 0);
+	if (evaluate(&l, &e) != NO_OPINION)
+		error(1, 0, "runtime linker keyword conferred object trust");
 	free_event(&e);
 	rules_clear(&l);
 }
@@ -896,6 +955,7 @@ int main(void)
 
 	test_pattern_outcome_rules();
 	test_glob_rules();
+	test_ld_so_path_rules();
 	test_nfsd_kernel_thread_rule();
 	test_unset_auid_rule();
 	test_language_set_extension();

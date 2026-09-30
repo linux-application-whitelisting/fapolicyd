@@ -68,6 +68,10 @@ optional: 77-known-lua.rules
 90-deny-execute.rules
 95-allow-open.rules
 
+The restrictive policy uses the object `path=ld_so` keyword to match the
+native and known runtime linker paths internally. The keyword selects a path;
+the accompanying `trust=1` check is what requires the linker to be trusted.
+
 The known-libs policy (default) was designed with these goals in mind:
 
 1. No bypass of security by executing programs via ld.so.

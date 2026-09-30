@@ -125,6 +125,9 @@ This matches against any ELF program that is dynamically linked.
 .TP
 .B ld_so
 This matches against access patterns that indicate that the program is being started directly by the runtime linker.
+This is distinct from object
+.BR path=ld_so ,
+which matches the runtime linker file rather than the startup access pattern.
 .TP
 .B ld_preload
 This matches against access patterns that indicate that the program is being started with either LD_PRELOAD or LD_AUDIT present in the environment. Note that even without this rule, you have protection against LD_PRELOAD of unknown binaries when the rules are written such that trust is used to determine if a library should be opened. In that case, the preloaded library would be denied but the application will still execute. This rule makes it so that even trusted libraries can be denied and the application will not execute.
@@ -151,6 +154,19 @@ pattern prefix. See
 .B PATH GLOBBING
 below. You may also use the special keyword \fBuntrusted\fP to match on the
 object not being listed in the rpm database.
+The special keyword
+.B ld_so
+matches the native runtime linker detected when fapolicyd was built and known
+runtime linker names installed directly under
+.IR /lib/ ,
+.IR /lib64/ ,
+.IR /usr/lib/ ,
+or
+.IR /usr/lib64/ .
+It may be used in a comma-separated value or named string set. The keyword
+identifies the object path but does not make the file trusted, so an allow rule
+should normally also require object
+.BR trust=1 .
 .TP
 .B dir
 If you wish to match on access to any file in a directory, then use this by giving the full path to the directory. Its recommended to end with the / to ensure it matches a directory. There are 3 keywords that \fIdir\fP supports: \fBexecdirs\fP, \fBsystemdirs\fP, \fBuntrusted\fP. See the \fBdir\fP option under Subject for an explanation of these keywords.
@@ -220,6 +236,9 @@ uses
 .B [1]
 as a bracket expression and matches
 .BR /tmp/name1 .
+The object
+.B path=ld_so
+keyword is resolved through the built-in runtime linker list and is not a glob.
 
 The
 .B glob:
@@ -402,6 +421,7 @@ The following rules illustrate the rule syntax.
 .nf
 .B deny_audit perm=open exe=/usr/bin/wget : dir=/tmp
 .B allow perm=open exe=/usr/bin/python3.7 : ftype=text/x-python trust=1
+.B allow perm=execute all : path=ld_so trust=1
 .B deny_audit perm=any pattern ld_so : all
 .B deny perm=any all : all
 .fi

@@ -63,19 +63,26 @@ static void resolve_path(const char *pcwd, char *path, size_t len)
 				__attr_access ((__write_only__, 2, 3));
 static file_init_status_t file_init_failure;
 
-// readelf -l path-to-app | grep 'Requesting' | cut -d':' -f2 | tr -d ' ]';
-static const char *interpreters[] = {
-	"/lib64/ld-linux-x86-64.so.2",
-	"/lib/ld-linux.so.2",			// i686
-	"/usr/lib64/ld-linux-x86-64.so.2",
-	"/usr/lib/ld-linux.so.2",		// i686
-	"/lib/ld.so.2",
-	"/lib/ld-linux-armhf.so.3",		// fedora armv7hl
-	"/lib/ld-linux-aarch64.so.1",		// fedora aarch64
-	"/lib/ld64.so.1",			// rhel8 s390x
-	"/lib64/ld64.so.2",			// rhel8 ppc64le
+static const char *interpreter_names[] = {
+	"ld-linux-x86-64.so.2",
+	"ld-linux.so.2",			// i686
+	"ld.so.2",
+	"ld-linux-armhf.so.3",			// fedora armv7hl
+	"ld-linux-aarch64.so.1",		// fedora aarch64
+	"ld64.so.1",				// rhel8 s390x
+	"ld64.so.2",				// rhel8 ppc64le
 };
-#define MAX_INTERPS (sizeof(interpreters)/sizeof(interpreters[0]))
+#define MAX_INTERP_NAMES \
+	(sizeof(interpreter_names)/sizeof(interpreter_names[0]))
+
+static const char *interpreter_dirs[] = {
+	"/lib/",
+	"/lib64/",
+	"/usr/lib/",
+	"/usr/lib64/",
+};
+#define MAX_INTERP_DIRS \
+	(sizeof(interpreter_dirs)/sizeof(interpreter_dirs[0]))
 
 
 // Define a convience function to rewind a descriptor to the beginning
@@ -1636,18 +1643,46 @@ static int interpreter_is_trusted(const char *interp)
 	return trusted;
 }
 
+/*
+ * is_known_elf_interpreter - identify a known runtime linker path.
+ * @path: absolute path to compare with the configured and built-in linkers.
+ *
+ * Loader names are checked only as direct children of standard library
+ * directories. SYSTEM_LD_SO preserves support for a native linker installed
+ * elsewhere and for names not present in the built-in table.
+ * Returns 1 for a known runtime linker path and 0 otherwise.
+ */
+int is_known_elf_interpreter(const char *path)
+{
+	unsigned int i, j;
+
+	if (path == NULL || path[0] == 0)
+		return 0;
+	if (strcmp(path, SYSTEM_LD_SO) == 0)
+		return 1;
+
+	for (i = 0; i < MAX_INTERP_DIRS; i++) {
+		size_t len = strlen(interpreter_dirs[i]);
+
+		if (strncmp(path, interpreter_dirs[i], len) != 0 ||
+		    strchr(path + len, '/') != NULL)
+			continue;
+
+		for (j = 0; j < MAX_INTERP_NAMES; j++)
+			if (strcmp(path + len, interpreter_names[j]) == 0)
+				return 1;
+	}
+
+	return 0;
+}
+
 /**
- * Check interpreter provided as an argument obtained from the ELF against
- * known fixed locations in the file hierarchy.
+ * Check an ELF PT_INTERP path against known linkers or the trust database.
  */
 static int check_interpreter(const char *interp)
 {
-	unsigned i;
-
-	for (i = 0; i < MAX_INTERPS; i++) {
-		if (strcmp(interp, interpreters[i]) == 0)
-			return 0;
-	}
+	if (is_known_elf_interpreter(interp))
+		return 0;
 
 	// We fell through the list that we know about. If it is trusted,
 	// allow it. This is an attempt to accomodate other distributions

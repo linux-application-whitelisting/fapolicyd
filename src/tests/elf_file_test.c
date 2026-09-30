@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <error.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -169,12 +170,60 @@ static void expect_flags(const char *label, const void *buf, size_t len, uint32_
 		error(1, 0, "%s: expected 0x%x got 0x%x", label, expect, got);
 }
 
+/*
+ * test_known_interpreters - verify runtime linker name and directory matching.
+ *
+ * Every built-in name is valid directly below each supported library
+ * directory. The configure-detected native linker is always accepted, while
+ * near-prefixes, nested paths, and unrelated trusted-library names are not.
+ * Returns nothing. Exits on test failure.
+ */
+static void test_known_interpreters(void)
+{
+	static const char *names[] = {
+		"ld-linux-x86-64.so.2",
+		"ld-linux.so.2",
+		"ld.so.2",
+		"ld-linux-armhf.so.3",
+		"ld-linux-aarch64.so.1",
+		"ld64.so.1",
+		"ld64.so.2",
+	};
+	static const char *dirs[] = {
+		"/lib/", "/lib64/", "/usr/lib/", "/usr/lib64/",
+	};
+	char path[PATH_MAX];
+
+	for (size_t i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
+		for (size_t j = 0; j < sizeof(names)/sizeof(names[0]); j++) {
+			if (snprintf(path, sizeof(path), "%s%s", dirs[i], names[j]) >=
+			    (int)sizeof(path))
+				error(1, 0, "interpreter test path overflow");
+			if (!is_known_elf_interpreter(path))
+				error(1, 0, "known interpreter did not match: %s",
+				      path);
+		}
+	}
+
+	if (!is_known_elf_interpreter(SYSTEM_LD_SO))
+		error(1, 0, "configured interpreter did not match: %s",
+		      SYSTEM_LD_SO);
+	if (is_known_elf_interpreter("/opt/lib/ld-linux-x86-64.so.2") ||
+	    is_known_elf_interpreter("/usr/library/ld-linux-x86-64.so.2") ||
+	    is_known_elf_interpreter("/usr/lib/subdir/ld-linux-x86-64.so.2") ||
+	    is_known_elf_interpreter("/usr/lib64/libc.so.6") ||
+	    is_known_elf_interpreter("") || is_known_elf_interpreter(NULL))
+		error(1, 0, "non-interpreter path matched");
+}
+
 int main(void)
 {
 	unsigned char buf[sizeof(Elf64_Ehdr) + sizeof(Elf64_Phdr)];
 	unsigned char shebang[] = "#!/bin/sh\nexit 0\n";
 	unsigned char text_script[] = "echo hello world\n";
 	unsigned char trunc_buf[EI_NIDENT + 4];
+
+	test_known_interpreters();
 
 	size_t sz32 = make_elf32(buf, 1);
 	expect_flags("elf32-load", buf, sz32, IS_ELF | HAS_EXEC | HAS_LOAD);

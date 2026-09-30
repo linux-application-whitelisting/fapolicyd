@@ -111,12 +111,6 @@ If you chose to do it yourself, you need to do a couple prep steps:
 ```
 1) sed -i "s/%python2_path%/`readlink -f /bin/python2 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
 2) sed -i "s/%python2_path%/`readlink -f /bin/python3 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
-3) interpret=`readelf -e /usr/bin/bash \
-                | grep Requesting \
-                | sed 's/.$//' \
-                | rev | cut -d" " -f1 \
-                | rev`
-4) sed -i "s|%ld_so_path%|`realpath $interpret`|g" rules.d/*.rules
 ```
 This corrects the placeholders to match your current system. Then follow the
 rules listed above for compiling except run make install instead of make dist.

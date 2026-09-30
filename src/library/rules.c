@@ -66,6 +66,7 @@ enum rule_parse_result {
 #define PATTERN_STATIC_VAL 2
 #define PATTERN_LD_PRELOAD_STR "ld_preload"
 #define PATTERN_LD_PRELOAD_VAL 3
+#define PATH_LD_SO_STR "ld_so"
 
 static int assign_subject(llist *l, lnode *n, int type,
 			  const char *ptr2, int lineno) __wur;
@@ -1913,6 +1914,10 @@ static int check_object(lnode *r, event_t *e)
 				return 0;
 
 			if (!obj->o)
+				break;
+
+			if (attr_set_check_str(r->o[cnt].set, PATH_LD_SO_STR) &&
+			    is_known_elf_interpreter(obj->o))
 				break;
 
 			// Globbing changes rule selection only, never object identity.
