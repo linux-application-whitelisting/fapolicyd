@@ -4,6 +4,8 @@
 - Update the rule linter to detect more problems
 - Add portability to systems with musl-c
 - Add fd_fgets_r fix for issue #434
+- Add fapolicyd-owned rpm plugin
+- Add the ld_so keyword so that rules are arch agnostic
 
 2.0.1
 - Enable large file support on 32-bit builds
