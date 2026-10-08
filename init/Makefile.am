@@ -18,6 +18,8 @@ dist_fapolicyd_DATA = \
 systemdservicedir = $(systemdsystemunitdir)
 nodist_systemdservice_DATA = fapolicyd.service
 
+tmpfilesdir = /usr/lib/tmpfiles.d
+
 sbin_SCRIPTS = fagenrules
 
 completiondir = $(sysconfdir)/bash_completion.d/
@@ -29,3 +31,11 @@ CLEANFILES = ${MAGIC} fapolicyd.service
 
 ${MAGIC}: $(EXTRA_DIST)
 	file -C -m ${top_srcdir}/init/fapolicyd-magic
+
+install-data-hook:
+	$(MKDIR_P) "$(DESTDIR)$(tmpfilesdir)"
+	$(INSTALL_DATA) "$(srcdir)/fapolicyd-tmpfiles.conf" \
+		"$(DESTDIR)$(tmpfilesdir)/fapolicyd.conf"
+
+uninstall-hook:
+	rm -f "$(DESTDIR)$(tmpfilesdir)/fapolicyd.conf"
