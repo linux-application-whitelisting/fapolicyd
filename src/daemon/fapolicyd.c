@@ -112,6 +112,35 @@ static atomic_bool mounts_running = false;
 static __noreturn void usage(void);
 
 /*
+ * ensure_run_dir - create and normalize daemon runtime directory.
+ * @gid: group id that should own runtime IPC files.
+ *
+ * Returns 0 on success or 1 on failure.
+ */
+static int ensure_run_dir(gid_t gid)
+{
+	if (mkdir(RUN_DIR, 0770) && errno != EEXIST) {
+		msg(LOG_ERR, "Unable to create runtime directory %s (%s)",
+		    RUN_DIR, strerror(errno));
+		return 1;
+	}
+
+	if (chmod(RUN_DIR, 0770)) {
+		msg(LOG_ERR, "Unable to set mode on runtime directory %s (%s)",
+		    RUN_DIR, strerror(errno));
+		return 1;
+	}
+
+	if (chown(RUN_DIR, 0, gid)) {
+		msg(LOG_ERR, "Unable to set ownership on runtime directory %s (%s)",
+		    RUN_DIR, strerror(errno));
+		return 1;
+	}
+
+	return 0;
+}
+
+/*
  * install_syscall_filter - install daemon seccomp restrictions.
  *
  * Package trust snapshots can be rebuilt after startup. The RPM database
@@ -1349,6 +1378,11 @@ int main(int argc, const char *argv[])
 		msg(LOG_ERR, "Exiting due to bad configuration");
 		return 1;
         }
+
+	if (ensure_run_dir(config.gid)) {
+		free_daemon_config(&config);
+		return 1;
+	}
 
 	// set the debug flags
 	for (int i=1; i < argc; i++) {
