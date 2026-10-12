@@ -304,7 +304,17 @@ AC_SUBST([FAPOLICYD_SERVICE_WATCHDOG])
 
 dnl FIXME some day pass this on the command line
 def_systemdsystemunitdir=${prefix}/lib/systemd/system
+def_tmpfilesdir=/usr/lib/tmpfiles.d
+def_sysusersdir=/usr/lib/sysusers.d
+
+PKG_CHECK_VAR([tmpfilesdir], [systemd], [tmpfilesdir], [],
+	[tmpfilesdir=$def_tmpfilesdir])
+PKG_CHECK_VAR([sysusersdir], [systemd], [sysusersdir], [],
+	[sysusersdir=$def_sysusersdir])
+
 AC_SUBST([systemdsystemunitdir], [$def_systemdsystemunitdir])
+AC_SUBST([tmpfilesdir], [$tmpfilesdir])
+AC_SUBST([sysusersdir], [$sysusersdir])
 
 echo .
 echo Checking for required header files
