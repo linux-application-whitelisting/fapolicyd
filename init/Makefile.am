@@ -10,6 +10,7 @@ EXTRA_DIST = \
 	fagenrules
 
 fapolicyddir = $(sysconfdir)/fapolicyd
+fapolicyrulesdir = $(fapolicyddir)/rules.d
 
 dist_fapolicyd_DATA = \
 	fapolicyd.conf \
@@ -35,6 +36,7 @@ ${MAGIC}: $(EXTRA_DIST)
 	file -C -m ${top_srcdir}/init/fapolicyd-magic
 
 install-data-hook:
+	$(MKDIR_P) "$(DESTDIR)$(fapolicyrulesdir)"
 	$(MKDIR_P) "$(DESTDIR)$(tmpfilesdir)"
 	$(INSTALL_DATA) "$(srcdir)/fapolicyd-tmpfiles.conf" \
 		"$(DESTDIR)$(tmpfilesdir)/fapolicyd.conf"
