@@ -98,13 +98,6 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 # generate rules for python
 sed -i "s|%python3_path%|`readlink -f %{__python3}`|g" rules.d/*.rules
 
-%if 0%{?fedora} || 0%{?rhel} > 9
-# Create a sysusers.d config file
-cat >fapolicyd.sysusers.conf <<EOF
-u fapolicyd - 'Application Whitelisting Daemon' %{_localstatedir}/lib/%{name} -
-EOF
-%endif
-
 %build
 ./autogen.sh
 configure_flags="--with-perf-test --with-audit --with-rpm --disable-shared"
@@ -158,10 +151,6 @@ install -p -m 644 %{name}-selinux-%{semodule_version}/%{name}.if %{buildroot}%{_
 
 #cleanup
 find %{buildroot} \( -name '*.la' -o -name '*.a' \) -delete
-
-%if 0%{?fedora} || 0%{?rhel} > 9
-install -m0644 -D fapolicyd.sysusers.conf %{buildroot}%{_sysusersdir}/fapolicyd.conf
-%endif
 
 %define manage_default_rules   default_changed=0 \
   # check changed fapolicyd.rules \
@@ -278,6 +267,7 @@ fi
 %ghost %attr(644,root,%{name}) %{_sysconfdir}/%{name}/compiled.rules
 %attr(644,root,root) %{_unitdir}/%{name}.service
 %attr(644,root,root) %{_tmpfilesdir}/%{name}.conf
+%attr(644,root,root) %{_sysusersdir}/%{name}.conf
 %attr(755,root,root) %{_sbindir}/%{name}
 %attr(755,root,root) %{_sbindir}/%{name}-cli
 %attr(755,root,root) %{_sbindir}/%{name}-perf-test
