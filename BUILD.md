@@ -106,14 +106,10 @@ By default, the RPMs will appear in `~/rpmbuild/RPMS/$(arch)`.
 
 NOT BUILDING RPMS
 -----------------
-If you chose to do it yourself, you need to do a couple prep steps:
-
-```
-1) sed -i "s/%python2_path%/`readlink -f /bin/python2 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
-2) sed -i "s/%python2_path%/`readlink -f /bin/python3 | sed 's/\//\\\\\//g'`/g" rules.d/*.rules
-```
-This corrects the placeholders to match your current system. Then follow the
-rules listed above for compiling except run make install instead of make dist.
+If you chose to do it yourself, no extra rule-file prep is needed. The
+`%python3_path%` placeholder in sample rules is replaced during install using
+the detected `python3` path. You can override that path with
+`./configure --with-python3-path=/usr/bin/python3`.
 
 CREATING RUNTIME ENVIRONMENT
 ----------------------------
