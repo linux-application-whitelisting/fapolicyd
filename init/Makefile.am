@@ -3,6 +3,7 @@ EXTRA_DIST = \
 	fapolicyd.conf \
 	fapolicyd-filter.conf \
 	fapolicyd.trust \
+	fapolicyd.sysusers \
 	fapolicyd-tmpfiles.conf \
 	fapolicyd-magic \
 	fapolicyd.bash_completion \
@@ -19,6 +20,7 @@ systemdservicedir = $(systemdsystemunitdir)
 nodist_systemdservice_DATA = fapolicyd.service
 
 tmpfilesdir = /usr/lib/tmpfiles.d
+sysusersdir = /usr/lib/sysusers.d
 
 sbin_SCRIPTS = fagenrules
 
@@ -36,6 +38,10 @@ install-data-hook:
 	$(MKDIR_P) "$(DESTDIR)$(tmpfilesdir)"
 	$(INSTALL_DATA) "$(srcdir)/fapolicyd-tmpfiles.conf" \
 		"$(DESTDIR)$(tmpfilesdir)/fapolicyd.conf"
+	$(MKDIR_P) "$(DESTDIR)$(sysusersdir)"
+	$(INSTALL_DATA) "$(srcdir)/fapolicyd.sysusers" \
+		"$(DESTDIR)$(sysusersdir)/fapolicyd.conf"
 
 uninstall-hook:
 	rm -f "$(DESTDIR)$(tmpfilesdir)/fapolicyd.conf"
+	rm -f "$(DESTDIR)$(sysusersdir)/fapolicyd.conf"
