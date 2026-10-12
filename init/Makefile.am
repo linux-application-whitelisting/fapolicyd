@@ -19,8 +19,8 @@ dist_fapolicyd_DATA = \
 systemdservicedir = $(systemdsystemunitdir)
 nodist_systemdservice_DATA = fapolicyd.service
 
-tmpfilesdir = /usr/lib/tmpfiles.d
-sysusersdir = /usr/lib/sysusers.d
+tmpfilesdir = @tmpfilesdir@
+sysusersdir = @sysusersdir@
 
 sbin_SCRIPTS = fagenrules
 
