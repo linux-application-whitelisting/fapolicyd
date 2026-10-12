@@ -95,9 +95,6 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 %endif
 
 
-# generate rules for python
-sed -i "s|%python3_path%|`readlink -f %{__python3}`|g" rules.d/*.rules
-
 %build
 ./autogen.sh
 configure_flags="--with-perf-test --with-audit --with-rpm --disable-shared"

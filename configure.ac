@@ -48,6 +48,24 @@ AC_CHECK_PROG([FILE_COMM], "file", "yes", "no")
 if test "$FILE_COMM" = "no"; then
 	AC_MSG_ERROR([Unable to find the file program need to build magic databases])
 fi
+AC_PATH_PROG([PYTHON3], [python3], [])
+withval=""
+AC_ARG_WITH(python3-path,
+AS_HELP_STRING([--with-python3-path=PATH],[path used to replace %python3_path% in sample rules]),
+python3_path=$withval,python3_path=auto)
+case x$python3_path in
+	xyes|xno)
+		AC_MSG_ERROR([--with-python3-path requires a full path])
+		;;
+esac
+if test x$python3_path = xauto; then
+	if test -n "$PYTHON3"; then
+		python3_path=`readlink -f "$PYTHON3" 2>/dev/null || echo "$PYTHON3"`
+	else
+		python3_path=/usr/bin/python3
+	fi
+fi
+AC_SUBST([python3_path], [$python3_path])
 AC_CHECK_MEMBER([struct fanotify_response_info_audit_rule.rule_number],
 	[perm=yes], [perm=no], [[#include <sys/fanotify.h>]])
 if test $perm = "yes"; then
