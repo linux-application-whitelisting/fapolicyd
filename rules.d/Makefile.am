@@ -34,3 +34,7 @@ EXTRA_DIST = README-rules 10-languages.rules 20-dracut.rules \
 
 rulesdir = $(datadir)/fapolicyd/sample-rules
 dist_rules_DATA = $(EXTRA_DIST)
+
+install-data-hook:
+	sed -i "s|%python3_path%|$(python3_path)|g" \
+		$(wildcard $(DESTDIR)$(rulesdir)/*.rules)

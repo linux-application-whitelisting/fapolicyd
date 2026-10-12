@@ -94,10 +94,6 @@ The %{name}-selinux package contains selinux policy for the %{name} daemon.
 %setup -q -D -T -a 1
 %endif
 
-
-# generate rules for python
-sed -i "s|%python3_path%|`readlink -f %{__python3}`|g" rules.d/*.rules
-
 %if 0%{?fedora} || 0%{?rhel} > 9
 # Create a sysusers.d config file
 cat >fapolicyd.sysusers.conf <<EOF
