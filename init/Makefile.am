@@ -11,6 +11,7 @@ EXTRA_DIST = \
 
 fapolicyddir = $(sysconfdir)/fapolicyd
 fapolicyrulesdir = $(fapolicyddir)/rules.d
+fapolicytrustdir = $(fapolicyddir)/trust.d
 
 dist_fapolicyd_DATA = \
 	fapolicyd.conf \
@@ -37,6 +38,7 @@ ${MAGIC}: $(EXTRA_DIST)
 
 install-data-hook:
 	$(MKDIR_P) "$(DESTDIR)$(fapolicyrulesdir)"
+	$(MKDIR_P) "$(DESTDIR)$(fapolicytrustdir)"
 	$(MKDIR_P) "$(DESTDIR)$(tmpfilesdir)"
 	$(INSTALL_DATA) "$(srcdir)/fapolicyd-tmpfiles.conf" \
 		"$(DESTDIR)$(tmpfilesdir)/fapolicyd.conf"
