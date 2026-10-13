@@ -113,29 +113,22 @@ the detected `python3` path. You can override that path with
 
 CREATING RUNTIME ENVIRONMENT
 ----------------------------
-If you are not using rpm's spec file and are doing it yourself, there are
-a few more steps. You need to create the necessary directories in the right
-spot:
+If you are not using RPM packaging, run `make install` as root and then apply
+the systemd provisioning steps:
 
+```bash
+make install
+systemd-sysusers
+systemd-tmpfiles --create /usr/lib/tmpfiles.d/fapolicyd.conf
+cp /usr/share/fapolicyd/sample-rules/*.rules /etc/fapolicyd/rules.d/
+fagenrules
 ```
-mkdir -p /etc/fapolicyd/{rules.d,trust.d}
-mkdir -p /var/lib/fapolicyd/
-mkdir --mode=0755 -p /usr/share/fapolicyd/
-mkdir -p /usr/lib/tmpfiles.d/
-mkdir --mode=0755 -p /run/fapolicyd/
 
-cd init
-cp fapolicyd.bash_completion /etc/bash_completion.d/
-cp fapolicyd.conf /etc/fapolicyd/
-cp fapolicyd-magic /usr/share/fapolicyd/
-cp fapolicyd-magic.mgc /usr/share/fapolicyd/
-cp fapolicyd.service /usr/lib/systemd/system/
-cp fapolicyd-tmpfiles.conf /usr/lib/tmpfiles.d/fapolicyd.conf
-cp fapolicyd.trust /etc/fapolicyd/trust.d/
+`make install` creates and installs the needed runtime layout, including:
 
-useradd -r -M -d /var/lib/fapolicyd -s /sbin/nologin -c "Application Whitelisting Daemon" fapolicyd
-chown root:fapolicyd /etc/fapolicyd/
-chown root:fapolicyd /etc/fapolicyd/rules.d/
-chown root:fapolicyd /etc/fapolicyd/trust.d/
-chown root:fapolicyd /var/lib/fapolicyd/
-```
+- `/etc/fapolicyd/rules.d` and `/etc/fapolicyd/trust.d`
+- `/usr/lib/tmpfiles.d/fapolicyd.conf`
+- `/usr/lib/sysusers.d/fapolicyd.conf`
+
+Use `systemd-sysusers` to create the `fapolicyd` service account from the
+installed sysusers.d file instead of creating it manually with `useradd`.
