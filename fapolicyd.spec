@@ -18,8 +18,8 @@ Name: fapolicyd
 Version: 2.0.2
 Release: 1%{?dist}
 License: GPL-3.0-or-later
-URL: http://people.redhat.com/sgrubb/fapolicyd
-Source0: https://people.redhat.com/sgrubb/fapolicyd/%{name}-%{version}.tar.gz
+URL: https://github.com/linux-application-whitelisting/fapolicyd
+Source0: https://github.com/linux-application-whitelisting/fapolicyd/releases/download/v%{version}/fapolicyd-%{version}.tar.gz
 
 #ELN %Source1: https://github.com/linux-application-whitelisting/%{name}-selinux/archive/refs/heads/%{semodule_version}.tar.gz#/%{name}-selinux-%{semodule_version}.tar.gz
 
