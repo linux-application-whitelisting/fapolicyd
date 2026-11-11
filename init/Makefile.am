@@ -29,12 +29,12 @@ sbin_SCRIPTS = fagenrules
 completiondir = $(sysconfdir)/bash_completion.d/
 dist_completion_DATA = fapolicyd.bash_completion
 
-MAGIC = fapolicyd-magic.mgc
-pkgdata_DATA = ${MAGIC} 
-CLEANFILES = ${MAGIC} fapolicyd.service
+MAGIC = fapolicyd-magic
+pkgdata_DATA = ${MAGIC} ${MAGIC}.mgc
+CLEANFILES = ${MAGIC}.mgc fapolicyd.service
 
-${MAGIC}: $(EXTRA_DIST)
-	file -C -m ${top_srcdir}/init/fapolicyd-magic
+${MAGIC}.mgc: $(EXTRA_DIST)
+	file -C -m ${srcdir}/${MAGIC}
 
 install-data-hook:
 	$(MKDIR_P) "$(DESTDIR)$(fapolicyrulesdir)"

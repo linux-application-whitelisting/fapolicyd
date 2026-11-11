@@ -44,6 +44,7 @@ BuildRequires: libasan
 Recommends: %{name}-selinux
 %endif
 
+Requires: file
 Requires(pre): shadow-utils
 Requires(post): systemd-units
 Requires(preun): systemd-units
@@ -251,6 +252,7 @@ fi
 %attr(755,root,root) %dir %{_datadir}/%{name}/sample-rules
 %attr(644,root,root) %{_datadir}/%{name}/default-ruleset.known-libs
 %attr(644,root,root) %{_datadir}/%{name}/sample-rules/*
+%attr(644,root,root) %{_datadir}/%{name}/fapolicyd-magic
 %attr(644,root,root) %{_datadir}/%{name}/fapolicyd-magic.mgc
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}/trust.d

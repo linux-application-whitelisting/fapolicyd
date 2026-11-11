@@ -16,6 +16,8 @@ Type=@FAPOLICYD_SERVICE_TYPE@
 @FAPOLICYD_SERVICE_NOTIFY_ACCESS@
 @FAPOLICYD_SERVICE_PIDFILE@
 ExecStartPre=/usr/sbin/fagenrules
+# Regenerate the compiled magic database so it always matches the system's libmagic version.
+ExecStartPre=-/bin/sh -c "cd /usr/share/fapolicyd && /usr/bin/file -C -m fapolicyd-magic"
 ExecStart=@FAPOLICYD_SERVICE_EXEC@
 @FAPOLICYD_SERVICE_WATCHDOG@
 Restart=on-failure
