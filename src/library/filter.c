@@ -606,8 +606,9 @@ int filter_load_file(const char *path)
 		}
 	}
 
-	size_t len = 0;
+	size_t capacity = 0;
 	char * line = NULL;
+	ssize_t line_size;
 	long line_number = 0;
 	int last_level = 0;
 
@@ -615,27 +616,32 @@ int filter_load_file(const char *path)
 	 * node at each level; siblings replace that level's previous entry. */
 	filter_t *ancestors[MAX_FILTER_DEPTH] = { global_filter };
 
-	while (getline(&line, &len, stream) != -1) {
-		line_number++;
+	while ((line_size = getline(&line, &capacity, stream)) != -1) {
+		size_t line_len = (size_t)line_size;
+		int level = 1;
+		char *rest = NULL;
+		filter_type_t type = NONE;
 
-		if (line[0] == '\0' || line[0] == '\n') {
+		line_number++;
+		if (line_len && line[line_len - 1] == '\n')
+			line[--line_len] = '\0';
+
+		/* getline's capacity is not the line length. Reject embedded
+		 * NULs so a rule cannot hide trailing bytes from the parser. */
+		if (memchr(line, '\0', line_len) != NULL) {
+			msg(LOG_ERR, "filter_load_file: NUL in line %ld",
+			    line_number);
+			free(line);
+			line = NULL;
+			goto bad;
+		}
+		if (line_len == 0 || strspn(line, " ") == line_len) {
 			free(line);
 			line = NULL;
 			continue;
 		}
 
-		// get rid of the new line char
-		char * new_line = strchr(line, '\n');
-		if (new_line) {
-			*new_line = '\0';
-			len--;
-		}
-
-		int level = 1;
-		char * rest = line;
-		filter_type_t type = NONE;
-
-		for (size_t i = 0 ; i < len ; i++) {
+		for (size_t i = 0 ; i < line_len ; i++) {
 			switch (line[i]) {
 				case ' ':
 					level++;
@@ -654,9 +660,17 @@ int filter_load_file(const char *path)
 					break;
 			}
 
-			// continue with next char
-			// skip + and space
-			rest = fapolicyd_strtrim(&(line[i+2]));
+			/* Rules require a separator and a nonempty path. Check
+			 * them before advancing past the marker and the space. */
+			if (type == ADD || type == SUB) {
+				if (i + 1 >= line_len || line[i + 1] != ' ')
+					type = BAD;
+				else {
+					rest = fapolicyd_strtrim(line + i + 2);
+					if (*rest == '\0')
+						type = BAD;
+				}
+			}
 			break;
 		}
 
@@ -668,7 +682,7 @@ int filter_load_file(const char *path)
 		}
 
 		// if something bad return error
-		if (type == BAD) {
+		if (type != ADD && type != SUB) {
 			msg(LOG_ERR,
 		       "filter_load_file: cannot parse line number %ld, \"%s\"",
 				line_number, line);
@@ -719,7 +733,14 @@ int filter_load_file(const char *path)
 
 		/* Prepend preserves file order when the checker pushes children
 		 * onto its stack and visits the last pushed child first. */
-		list_prepend(&ancestors[level - 1]->list, NULL, (void *)filter);
+		if (list_prepend(&ancestors[level - 1]->list, NULL,
+				 (void *)filter)) {
+			/* Do not use an unlinked node as a parent. */
+			filter_destroy_obj(filter);
+			free(line);
+			line = NULL;
+			goto bad;
+		}
 		ancestors[level] = filter;
 		last_level = level;
 	}

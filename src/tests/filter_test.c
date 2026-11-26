@@ -469,6 +469,13 @@ static int run_traversal_cases(void)
 			{ "///", FILTER_DENY, NULL },
 			{ NULL, 0, NULL }
 		  } },
+		{ "whitespace line after a long rule",
+		  "+ /opt/long/component/tool\n    \n",
+		  (const struct filter_case[]) {
+			{ "/opt/long/component/tool", FILTER_ALLOW, NULL },
+			{ "/opt/other", FILTER_DENY, NULL },
+			{ NULL, 0, NULL }
+		  } },
 		{ "empty tree", "",
 		  (const struct filter_case[]) {
 			{ "/anything", FILTER_DENY, "default: exclude\ndecision exclude\n" },
@@ -515,6 +522,10 @@ static int run_invalid_indentation_cases(void)
 		  "+ /\n + usr/\n  - share/\n + opt/\n   + cache/\n" },
 		{ "missing sign", "+ /\nusr/share/\n" },
 		{ "tab indentation", "+ /\n\t- usr/\n" },
+		{ "missing path on marker", "+ /\n -\n" },
+		{ "missing path at EOF", "+ /\n -" },
+		{ "empty path", "+ /\n - \n" },
+		{ "missing separator", "+ /\n -usr/\n" },
 	};
 
 	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
