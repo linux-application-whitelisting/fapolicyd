@@ -2000,7 +2000,7 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 	if (object == 0)
 		return NO_OPINION;
 	if (subject < 0 || object < 0)
-		return DENY;
+		return DENY | (r->d & (AUDIT | SYSLOG));
 
 	return r->d;
 }

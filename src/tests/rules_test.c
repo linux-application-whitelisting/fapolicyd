@@ -524,22 +524,22 @@ static void test_missing_rule_attributes(void)
 
 	if (rules_create(&l))
 		error(1, 0, "rules_create failed");
-	if (append_capture(&l, "allow perm=any comm=expected : all",
+	if (append_capture(&l, "allow_log perm=any comm=expected : all",
 			   1, err, sizeof(err)))
 		error(1, 0, "comm rule parse failed: %s", err);
 
 	prep_event(&e, 1000, "/tmp/target");
 	e.pid = -1;
-	if (evaluate(&l, &e) != DENY)
+	if (evaluate(&l, &e) != DENY_LOG)
 		error(1, 0, "missing procfs comm did not deny");
 	if (subject_add(e.s, &comm))
 		error(1, 0, "NULL comm setup failed");
-	if (evaluate(&l, &e) != DENY)
+	if (evaluate(&l, &e) != DENY_LOG)
 		error(1, 0, "NULL comm satisfied allow rule");
 	comm.str = strdup("expected");
 	if (!comm.str || subject_add(e.s, &comm))
 		error(1, 0, "comm setup failed");
-	if (evaluate(&l, &e) != ALLOW)
+	if (evaluate(&l, &e) != ALLOW_LOG)
 		error(1, 0, "complete comm did not match allow rule");
 	free_event(&e);
 	rules_clear(&l);
