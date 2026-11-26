@@ -3,7 +3,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <stdarg.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,41 +15,20 @@
 #include "message.h"
 
 static char version_path[64];
-static int version_fd = -1;
-static int fail_version_open;
 static int fail_version_write;
 
-int __real_open(const char *path, int flags, ...);
 ssize_t __real_write(int fd, const void *buf, size_t count);
 
-/* Inject only the version-file failure; other initialization stays real. */
-int __wrap_open(const char *path, int flags, ...)
-{
-	int fd;
-
-	if (fail_version_open && strcmp(path, version_path) == 0 &&
-	    (flags & O_ACCMODE) == O_RDONLY) {
-		errno = EACCES;
-		return -1;
-	}
-	if (flags & O_CREAT) {
-		va_list ap;
-		mode_t mode;
-
-		va_start(ap, flags);
-		mode = va_arg(ap, int);
-		va_end(ap);
-		fd = __real_open(path, flags, mode);
-		if (strcmp(path, version_path) == 0)
-			version_fd = fd;
-		return fd;
-	}
-	return __real_open(path, flags);
-}
-
+/* Identify the marker by inode regardless of the libc open entry point.
+ * Record the injection so an unrelated startup error cannot pass the test. */
 ssize_t __wrap_write(int fd, const void *buf, size_t count)
 {
-	if (fail_version_write && fd == version_fd) {
+	struct stat marker, target;
+
+	if (fail_version_write && !stat(version_path, &marker) &&
+	    !fstat(fd, &target) && target.st_dev == marker.st_dev &&
+	    target.st_ino == marker.st_ino) {
+		fail_version_write = 0;
 		errno = ENOSPC;
 		return -1;
 	}
@@ -84,9 +63,7 @@ int main(void)
 	int rc = 1;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
-	/* Stop after successful migration with an unsupported backend. LTO can
-	 * bypass the linker wrapper for backend_init(), so config.trust must be
-	 * non-NULL even when the real backend initialization runs. */
+	/* Stop after successful migration with an unsupported backend. */
 	config.trust = "migration-test-no-such-backend";
 	if (mkdtemp(directory) == NULL)
 		return 1;
@@ -102,14 +79,17 @@ int main(void)
 	    create_file(lock_path, "keep"))
 		goto out;
 
-	/* EACCES must leave both old database files in place. */
-	fail_version_open = 1;
-	if (init_database(&config) != 1)
+	/* Real open errors must preserve both files, including as root. */
+	if (symlink("db.ver", version_path) ||
+	    init_database(&config) != 1 || access(data_path, F_OK) ||
+	    access(lock_path, F_OK) || unlink(version_path))
 		goto out;
-	fail_version_open = 0;
-	if (access(data_path, F_OK) != 0 ||
-	    access(lock_path, F_OK) != 0)
-		goto out;
+	if (geteuid() != 0) {
+		if (create_file(version_path, "2") || chmod(version_path, 0) ||
+		    init_database(&config) != 1 || access(data_path, F_OK) ||
+		    access(lock_path, F_OK) || unlink(version_path))
+			goto out;
+	}
 
 	/* A dangling marker is an existing directory entry. */
 	if (symlink("missing-target", version_path) ||
@@ -132,12 +112,10 @@ int main(void)
 	/* A failed version write must not leave an empty marker behind. */
 	if (unlink(version_path) < 0 || create_file(data_path, "keep"))
 		goto out;
-	version_fd = -1;
 	fail_version_write = 1;
 	if (init_database(&config) != 1)
 		goto out;
-	fail_version_write = 0;
-	if (access(version_path, F_OK) == 0)
+	if (fail_version_write || access(version_path, F_OK) == 0)
 		goto out;
 	rc = 0;
 

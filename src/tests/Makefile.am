@@ -94,7 +94,7 @@ trust_file_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 check_PROGRAMS += database_migration_test
 database_migration_test_SOURCES = database_migration_test.c test-stubs.c
 database_migration_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
-database_migration_test_LDFLAGS = -Wl,--wrap=open -Wl,--wrap=write
+database_migration_test_LDFLAGS = -Wl,--wrap=write
 trustdb_lmdb_test_SOURCES = trustdb_lmdb_test.c test-stubs.c
 trustdb_lmdb_test_LDADD = ${top_builddir}/src/.libs/libfapolicyd.la
 trustdb_lmdb_test_LDFLAGS = -pthread
