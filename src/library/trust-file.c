@@ -75,6 +75,9 @@
 #define HEADER3 "#  FULL PATH        SIZE                             SHA256\n"
 #define HEADER4 "# /home/user/my-ls 157984 61a9960bf7d255a85811f4afcac51067b8f2e4c75e21cf4f2af95319d4ed1b87\n"
 
+/* Directory walks must never ingest an incomplete replacement fragment. */
+#define TRUST_TEMP_PREFIX ".fapolicyd-tmp-"
+
 
 static list_t _list;
 static char *_path;
@@ -151,34 +154,66 @@ static char *make_data_string(const char *path)
  * @list: List of entries created by trust_file_load or CLI helpers.
  * @dest: Destination trust file to be rewritten.
  *
- * This helper is used exclusively by the CLI trust management commands
- * after they finish editing an in-memory list.  Returns 0 on success and
- * 1 when the destination file could not be opened.
+ * This helper is used exclusively by CLI trust management commands after
+ * they finish editing an in-memory list. A temporary file keeps the prior
+ * trust fragment intact if a write fails. Returns 0 on success and 1 on
+ * any write or replacement failure.
  */
 static int write_out_list(list_t *list, const char *dest)
 {
-	FILE *f = fopen(dest, "w");
-	if (!f) {
-		msg(LOG_ERR, "Cannot delete %s", dest);
-		list_empty(list);
-		return 1;
-	}
+	struct stat previous, created;
+	char *temp_path = NULL;
+	FILE *f = NULL;
+	int fd = -1;
+	int exists = 0;
+	int saved_errno;
+	int path_len;
+	const char *slash = strrchr(dest, '/');
 
-	size_t hlen;
-	hlen = strlen(HEADER0);
-	fwrite(HEADER0, hlen, 1, f);
+	if (lstat(dest, &previous) == 0) {
+		if (!S_ISREG(previous.st_mode)) {
+			errno = EINVAL;
+			goto bad;
+		}
+		exists = 1;
+	} else if (errno != ENOENT)
+		goto bad;
 
-	hlen = strlen(HEADER1);
-	fwrite(HEADER1, hlen, 1, f);
+	/* Keep the temporary file in the same directory for atomic rename
+	 * and its normal filesystem label. The reserved name is excluded
+	 * from trust.d directory walks until replacement completes. */
+	if (slash)
+		path_len = asprintf(&temp_path,
+			"%.*s/" TRUST_TEMP_PREFIX "XXXXXX",
+			(int)(slash - dest), dest);
+	else
+		path_len = asprintf(&temp_path, TRUST_TEMP_PREFIX "XXXXXX");
+	if (path_len < 0)
+		goto bad;
+	fd = mkstemp(temp_path);
+	if (fd < 0)
+		goto bad;
 
-	hlen = strlen(HEADER2);
-	fwrite(HEADER2, hlen, 1, f);
+	/* Replacing an inode must not change an existing fragment's access
+	 * permissions or owner. New fragments need to be daemon-readable. */
+	if (fstat(fd, &created) < 0)
+		goto bad;
+	if (exists &&
+	    (created.st_uid != previous.st_uid ||
+	     created.st_gid != previous.st_gid) &&
+	    fchown(fd, previous.st_uid, previous.st_gid) < 0)
+		goto bad;
+	if (fchmod(fd, exists ? previous.st_mode & 0777 : 0644) < 0)
+		goto bad;
+	f = fdopen(fd, "w");
+	if (f == NULL)
+		goto bad;
+	fd = -1;
 
-	hlen = strlen(HEADER3);
-	fwrite(HEADER3, hlen, 1, f);
-
-	hlen = strlen(HEADER4);
-	fwrite(HEADER4, hlen, 1, f);
+	if (fputs(HEADER0, f) == EOF || fputs(HEADER1, f) == EOF ||
+	    fputs(HEADER2, f) == EOF || fputs(HEADER3, f) == EOF ||
+	    fputs(HEADER4, f) == EOF)
+		goto bad;
 
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
 		const char *data = (char *)(lptr->data);
@@ -189,11 +224,33 @@ static int write_out_list(list_t *list, const char *dest)
 		// 0 -> filedb source
 		// Skip writing out the source (data + 2)
 		if (fprintf(f, "%s %s\n", path, data + 2) < 0)
-			msg(LOG_ERR, "Cannot write entry for %s", path);
+			goto bad;
 	}
 
-	fclose(f);
+	if (fflush(f) == EOF || fsync(fileno(f)) < 0)
+		goto bad;
+	if (fclose(f) == EOF) {
+		f = NULL;
+		goto bad;
+	}
+	f = NULL;
+	if (rename(temp_path, dest) < 0)
+		goto bad;
+	free(temp_path);
 	return 0;
+
+bad:
+	saved_errno = errno;
+	if (f)
+		fclose(f);
+	else if (fd >= 0)
+		close(fd);
+	if (temp_path) {
+		unlink(temp_path);
+		free(temp_path);
+	}
+	msg(LOG_ERR, "Cannot write %s: %s", dest, strerror(saved_errno));
+	return 1;
 }
 
 /*
@@ -214,17 +271,23 @@ int trust_file_append(const char *fpath, list_t *list)
 	// if trust file does not exist, we ignore it as it will be created while writing
 	if (rc > 1) {
 		// exit on load errors, we dont want invalid entries to be autoremoved
+		list_empty(&content);
 		return 1;
 	}
 
 	for (list_item_t *lptr = list->first; lptr; lptr = lptr->next) {
 		lptr->data = make_data_string(lptr->index);
+		if (lptr->data == NULL) {
+			/* Finish every measurement before replacing the trust file. */
+			list_empty(&content);
+			return 1;
+		}
 	}
 
 	list_merge(&content, list);
-	write_out_list(&content, fpath);
+	rc = write_out_list(&content, fpath);
 	list_empty(&content);
-	return 0;
+	return rc;
 }
 
 #define DELIM  ' '
@@ -508,8 +571,10 @@ int trust_file_delete_path(const char *fpath, const char *path)
 		lptr = lptr->next;
 	}
 
-	if (count)
-		write_out_list(&list, fpath);
+	if (count && write_out_list(&list, fpath)) {
+		list_empty(&list);
+		return -1;
+	}
 
 	list_empty(&list);
 	return count;
@@ -569,8 +634,10 @@ int trust_file_update_path(const char *fpath, const char *path, bool use_filter)
 		}
 	}
 
-	if (count)
-		write_out_list(&list, fpath);
+	if (count && write_out_list(&list, fpath)) {
+		list_empty(&list);
+		return -1;
+	}
 
 	list_empty(&list);
 	return count;
@@ -614,6 +681,20 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
 
 
 /*
+ * trust_file_is_temp - identify a pending atomic rewrite.
+ * @fpath: path visited by a trust.d directory walk.
+ * Returns 1 for the reserved temporary basename, otherwise 0.
+ */
+static int trust_file_is_temp(const char *fpath)
+{
+	const char *name = strrchr(fpath, '/');
+
+	name = name ? name + 1 : fpath;
+	return strncmp(name, TRUST_TEMP_PREFIX,
+		       strlen(TRUST_TEMP_PREFIX)) == 0;
+}
+
+/*
  * ftw_load - nftw callback that aggregates trust fragments.
  * @fpath: Current file discovered by nftw.
  * @sb:    (unused) file metadata supplied by nftw.
@@ -625,7 +706,7 @@ static int ftw_load(const char *fpath,
 		int typeflag,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
-	if (typeflag == FTW_F)
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
 		trust_file_load(fpath, &_list, _memfd);
 	return FTW_CONTINUE;
 }
@@ -642,7 +723,7 @@ static int ftw_delete_path(const char *fpath,
 		int typeflag,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
-	if (typeflag == FTW_F)
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
 		_count += trust_file_delete_path(fpath, _path);
 	return FTW_CONTINUE;
 }
@@ -659,7 +740,7 @@ static int ftw_update_path(const char *fpath,
 		int typeflag,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
-	if (typeflag == FTW_F)
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
 		_count += trust_file_update_path(fpath, _path, _use_filter);
 	return FTW_CONTINUE;
 }
@@ -678,7 +759,7 @@ static int ftw_rm_duplicates(const char *fpath,
 {
 	if (_list.count == 0)
 		return FTW_STOP;
-	if (typeflag == FTW_F)
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
 		trust_file_rm_duplicates(fpath, &_list);
 	return FTW_CONTINUE;
 }
