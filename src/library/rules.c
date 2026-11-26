@@ -403,27 +403,27 @@ static void sanity_check_list(llist *l, const char *id)
 
 
 /*
- * If subject is trusted function returns true, false otherwise.
+ * Return the subject trust value, or -1 if acquisition failed.
  */
-static bool is_subj_trusted(event_t *e)
+static int subj_trust(event_t *e)
 {
 	subject_attr_t *trusted = get_subj_attr(e, SUBJ_TRUST);
 
 	if (!trusted)
-		return 0;
+		return -1;
 	return trusted->uval;
 }
 
 
 /*
- * If object is trusted function returns true, false otherwise.
+ * Return the object trust value, or -1 if acquisition failed.
  */
-static bool is_obj_trusted(event_t *e)
+static int obj_trust(event_t *e)
 {
 	object_attr_t *trusted = get_obj_attr(e, OBJ_TRUST);
 
 	if (!trusted)
-		return 0;
+		return -1;
 	return trusted->val;
 }
 
@@ -1753,18 +1753,14 @@ static int check_subject(lnode *r, event_t *e)
 			if (!subj->str)
 				goto unavailable;
 
-			/*
-			 * "untrusted" is a macro-style match. If requested, and the
-			 * subject is not trusted, this attribute matches immediately.
-			 *
-			 * Otherwise, fall back to exact string match semantics so
-			 * explicit paths in the set continue to work.
-			 */
-			if (attr_set_check_str(r->s[cnt].set, "untrusted") &&
-			    !is_subj_trusted(e))
+			if (path_set_match(r->s[cnt].set, subj->str))
 				break;
-
-			if (!path_set_match(r->s[cnt].set, subj->str))
+			if (!attr_set_check_str(r->s[cnt].set, "untrusted"))
+				return 0;
+			int trust = subj_trust(e);
+			if (trust < 0)
+				goto unavailable;
+			if (trust)
 				return 0;
 
 			break;
@@ -1797,21 +1793,14 @@ static int check_subject(lnode *r, event_t *e)
 				if (check_dirs(0, subj->str))
 					macro_match = 1;
 
-			// DEPRECATED
-			if (attr_set_check_str(r->s[cnt].set, "untrusted"))
-				if (!is_subj_trusted(e))
-					macro_match = 1;
-
-			/*
-			 * Macros are alternatives to literal directory prefixes.
-			 * If any macro matched, this attribute is satisfied.
-			 */
-			if (macro_match)
+			if (macro_match || attr_set_check_pstr(r->s[cnt].set, subj->str))
 				break;
-
-			// check partial match (via strncmp)
-			// subdir test
-			if (!attr_set_check_pstr(r->s[cnt].set, subj->str))
+			if (!attr_set_check_str(r->s[cnt].set, "untrusted"))
+				return 0;
+			int trust = subj_trust(e);
+			if (trust < 0)
+				goto unavailable;
+			if (trust)
 				return 0;
 
 			break;
@@ -1845,7 +1834,7 @@ unavailable:
  * remains here for compatibility until dir=untrusted support is removed.
  *
  * Returns: 1 when the legacy compatibility rule blocks this object match,
- * otherwise 0.
+ * 0 if permitted, or -1 if object trust is unavailable.
  */
 static int legacy_untrusted_subject_path_blocked(lnode *r, unsigned int idx,
 						 event_t *e)
@@ -1857,7 +1846,7 @@ static int legacy_untrusted_subject_path_blocked(lnode *r, unsigned int idx,
 	if (!attr_set_check_str(r->s[idx].set, "untrusted"))
 		return 0;
 
-	return is_obj_trusted(e);
+	return obj_trust(e);
 }
 
 // Returns 0 if no match, 1 if a match, -1 on error
@@ -1912,18 +1901,17 @@ static int check_object(lnode *r, event_t *e)
 
 
 		case PATH: {
-			if (legacy_untrusted_subject_path_blocked(r, cnt, e))
-				return 0;
-
 			if (!obj->o)
 				goto unavailable;
+			if (!(attr_set_check_str(r->o[cnt].set, PATH_LD_SO_STR) &&
+			      is_known_elf_interpreter(obj->o)) &&
+			    !path_set_match(r->o[cnt].set, obj->o))
+				return 0;
 
-			if (attr_set_check_str(r->o[cnt].set, PATH_LD_SO_STR) &&
-			    is_known_elf_interpreter(obj->o))
-				break;
-
-			// Globbing changes rule selection only, never object identity.
-			if (!path_set_match(r->o[cnt].set, obj->o))
+			int blocked = legacy_untrusted_subject_path_blocked(r, cnt, e);
+			if (blocked < 0)
+				goto unavailable;
+			if (blocked)
 				return 0;
 
 			break;
@@ -1944,21 +1932,14 @@ static int check_object(lnode *r, event_t *e)
 				if (check_dirs(0, obj->o))
 					macro_match = 1;
 
-			// DEPRECATED
-			if (attr_set_check_str(r->o[cnt].set, "untrusted"))
-				if (!is_obj_trusted(e))
-					macro_match = 1;
-
-			/*
-			 * Keep macro keywords and literal directory prefixes as
-			 * ORed alternatives for dir matching.
-			 */
-			if (macro_match)
+			if (macro_match || attr_set_check_pstr(r->o[cnt].set, obj->o))
 				break;
-
-			// check partial match (via strncmp)
-			// subdir test
-			if (!attr_set_check_pstr(r->o[cnt].set, obj->o))
+			if (!attr_set_check_str(r->o[cnt].set, "untrusted"))
+				return 0;
+			int trust = obj_trust(e);
+			if (trust < 0)
+				goto unavailable;
+			if (trust)
 				return 0;
 
 			break;

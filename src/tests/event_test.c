@@ -404,13 +404,15 @@ int read_process_audit_id(pid_t pid, bool session, unsigned int *value)
 	return 0;
 }
 
+static int stub_trust_result;
+
 /* Bypass trust database lookups while keeping the signature intact. */
 int check_trust_database(const char *exe, const char *digest, int mode)
 {
 	(void)exe;
 	(void)digest;
 	(void)mode;
-	return 0;
+	return stub_trust_result;
 }
 
 /*
@@ -718,6 +720,26 @@ static int test_attribute_replacement_preserves_count(void)
 
 	subject_clear(&subjects);
 	object_clear(&objects);
+	return 0;
+}
+
+/* Failed lookups must leave both trust slots available for retry. */
+static int test_trust_lookup_errors(void)
+{
+	s_array subjects;
+	o_array objects;
+	event_t e = { .s = &subjects, .o = &objects, .fd = 10, .pid = 100 };
+
+	CHECK(!subject_create(e.s) && !object_create(e.o), 1, "setup failed");
+	stub_trust_result = -1;
+	CHECK(!get_subj_attr(&e, SUBJ_TRUST) && !get_obj_attr(&e, OBJ_TRUST),
+	      2, "lookup error produced a trust value");
+	stub_trust_result = 0;
+	subject_attr_t *s = get_subj_attr(&e, SUBJ_TRUST);
+	object_attr_t *o = get_obj_attr(&e, OBJ_TRUST);
+	CHECK(s && !s->uval && o && !o->val, 3, "untrusted retry failed");
+	subject_clear(e.s);
+	object_clear(e.o);
 	return 0;
 }
 
@@ -1253,6 +1275,9 @@ int main(void)
 	if (rc)
 		return rc;
 
+	rc = test_trust_lookup_errors();
+	if (rc)
+		return rc;
 	rc = test_attr_lookup_metrics();
 	if (rc)
 		return rc;

@@ -142,13 +142,8 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 
 	const char *path = proc_path(pid, "/exe");
 	path_len = readlink(path, buf, blen - 1);
-	if (path_len <= 0) {
-		snprintf(buf, blen,
-			"Error-getting-exe(errno=%d,pid=%d)",
-			 errno, pid);
-
-		return buf;
-	}
+	if (path_len <= 0)
+		return NULL;
 
 	size_t len;
 	if ((size_t)path_len < blen)

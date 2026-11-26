@@ -1162,6 +1162,9 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 static subject_attr_t *fetch_proc_status(event_t *e, subject_type_t t)
 {
 	unsigned int mask = policy_get_proc_status_mask();
+	/* Kernel threads may need COMM as an implicit EXE dependency. */
+	if (t == COMM)
+		mask |= PROC_STAT_COMM;
 	struct proc_status_info info = {
 		.ppid = -1,
 		.uid = NULL,
@@ -1282,8 +1285,9 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
 				&timing);
 			ptr = get_program_from_pid(e->pid, sizeof(buf), buf);
+			int exe_errno = errno;
 			decision_timing_stage_end(&timing);
-			if (errno == ENOENT) {
+			if (!ptr && exe_errno == ENOENT) {
 				/* kworkers have no exe entry
 				 * readlink("/proc/4/exe", 0x55624a28d410, 64) = -1 ENOENT (No such file or directory)
 				 * use comm
@@ -1291,14 +1295,12 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 				sn = subject_access(s, COMM);
 				if (!sn)
 					sn = fetch_proc_status(e, COMM);
-				if (sn)
+				if (sn && sn->str)
 					subj.str = strdup(sn->str);
-				else
-					subj.str = strdup("?");
 			} else if (ptr)
 				subj.str = strdup(buf);
-			else
-				subj.str = strdup("?");
+			if (!subj.str)
+				return NULL;
 		}
 		break;
 		case EXE_TYPE: {
@@ -1312,8 +1314,8 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			decision_timing_stage_end(&timing);
 			if (ptr)
 				subj.str = strdup(buf);
-			else
-				subj.str = strdup("?");
+			if (!subj.str)
+				return NULL;
 			}
 			break;
 		case SUBJ_TRUST: {
@@ -1321,19 +1323,12 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 
 			attr_lookup_metrics_count_subject_lookup(t);
 			exe = get_subj_attr(e, EXE);
-			subj.uval = 0;
-			if (exe) {
-				if (exe->str) {
-					int res = check_trust_database(exe->str,
-								       NULL, 0);
-
-					// ignore -1
-					if (res == 1)
-						subj.uval = 1;
-					else
-						subj.uval = 0;
-				}
-			}
+			if (!exe || !exe->str)
+				return NULL;
+			int trust = check_trust_database(exe->str, NULL, 0);
+			if (trust < 0)
+				return NULL;
+			subj.uval = trust;
 			}
 			break;
 		default:
@@ -1456,16 +1451,12 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 
 			attr_lookup_metrics_count_object_lookup(t);
 			path =  get_obj_attr(e, PATH);
-			if (path && path->o) {
-				int res = check_trust_database(path->o,
-							       o->info, e->fd);
-
-				// ignore -1
-				if (res == 1)
-					obj.val = 1;
-				else
-					obj.val = 0;
-			}
+			if (!path || !path->o)
+				return NULL;
+			int trust = check_trust_database(path->o, o->info, e->fd);
+			if (trust < 0)
+				return NULL;
+			obj.val = trust;
 			}
 			break;
 		default:

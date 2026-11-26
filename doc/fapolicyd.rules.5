@@ -57,7 +57,7 @@ This is the numeric process id of the program's parent. Note that programs that 
 .B trust
 This is a boolean describing the required trust state of the subject. A value
 of 1 requires the subject to be trusted, while 0 requires it to be untrusted.
-Omitting the field matches either trust state and does not perform this
+A failed trust lookup leaves the attribute unavailable. Omitting the field matches either trust state and does not perform this
 comparison. Trust checking is extended by the integrity setting in
 fapolicyd.conf. When trust is used on the subject, it could be a
 daemon. If that daemon gets updated on disk, the trustdb will be updated to the
@@ -182,7 +182,7 @@ This option matches against the mime type of the file being accessed. See \fBfty
 .B trust
 This is a boolean describing the required trust state of the object. A value
 of 1 requires the object to be trusted, while 0 requires it to be untrusted.
-Omitting the field matches either trust state and does not perform this
+A failed trust lookup leaves the attribute unavailable. Omitting the field matches either trust state and does not perform this
 comparison. Trust checking is extended by the integrity setting in
 fapolicyd.conf.
 .TP

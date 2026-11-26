@@ -965,7 +965,7 @@ static char *format_value(int item, unsigned int num, decision_t results,
 	} else if (item >= OBJ_START) {
 		object_attr_t *obj = get_obj_attr(e, item);
 		if (item != OBJ_TRUST) {
-			char * str = obj ? obj->o : "?";
+			char *str = obj && obj->o ? obj->o : "?";
 			char *tmp = NULL;
 			size_t need_escape = check_escape_shell(str);
 
@@ -988,10 +988,12 @@ static char *format_value(int item, unsigned int num, decision_t results,
 			if (asprintf(&out, "%d", subj ? subj->pid : 0) < 0)
 				out = NULL;
 		} else if (item < GID && item != UID) {
-			if (asprintf(&out, "%u", subj ? subj->uval : 0) < 0)
+			if (!subj)
+				out = strdup(item == SUBJ_TRUST ? "9" : "?");
+			else if (asprintf(&out, "%u", subj->uval) < 0)
 				out = NULL;
 		} else if (item >= COMM) {
-			char * str = subj ? subj->str : "?";
+			char *str = subj && subj->str ? subj->str : "?";
 			char *tmp = NULL;
 			size_t need_escape = check_escape_shell(str);
 
