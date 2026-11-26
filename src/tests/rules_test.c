@@ -168,6 +168,17 @@ static const struct err_case errors[] = {
 	{
 	{ "allow perm=any exe=glob:opt/app-* : all", NULL },
 	"subject exe glob pattern must be an absolute path"
+	},
+	{
+	{ "allow auid=1 auid=1 auid=1 auid=1 auid=1 auid=1 "
+	  "auid=1 auid=1 auid=1 auid=1 auid=1 auid=1 path=/x", NULL },
+	"Too many subject fields"
+	},
+	{
+	{ "allow all path=/x path=/x path=/x path=/x path=/x "
+	  "path=/x path=/x path=/x path=/x path=/x path=/x path=/x",
+	  NULL },
+	"Too many object fields"
 	}
 };
 

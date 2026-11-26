@@ -475,6 +475,11 @@ static int assign_subject(llist *l, lnode *n, int type,
 	attr_sets_entry_t *owned_set = NULL;
 
 	sanity_check_node(n, "assign_subject - 1");
+	/* Check before writing: a malformed rule can repeat the same field. */
+	if (i >= MAX_FIELDS) {
+		msg(LOG_ERR, "Too many subject fields in line %d", lineno);
+		return 1;
+	}
 	n->s[i].type = type;
 
 	// Opportunistically mark the fields that might be needed for
@@ -780,6 +785,11 @@ static int assign_object(llist *l, lnode *n, int type,
 	attr_sets_entry_t *owned_set = NULL;
 
 	sanity_check_node(n, "assign_object - 1");
+	/* Duplicate object fields count too; do not overrun the node. */
+	if (i >= MAX_FIELDS) {
+		msg(LOG_ERR, "Too many object fields in line %d", lineno);
+		return 1;
+	}
 	n->o[i].type = type;
 
 	char *ptr, *saved, *tmp = strdup(ptr2);
