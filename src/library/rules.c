@@ -1861,7 +1861,8 @@ static int check_object(lnode *r, event_t *e)
 		object_attr_t *obj = NULL;
 
 		// optimize get_obj_attr call if possible
-		if (type == ALL_OBJ)
+		if (type == ALL_OBJ || (type == FTYPE &&
+		    attr_set_check_str(r->o[cnt].set, "any")))
 			continue;
 		obj = get_obj_attr(e, type);
 
@@ -1879,14 +1880,7 @@ static int check_object(lnode *r, event_t *e)
 		} // case
 
 
-		case FTYPE: {
-
-			if (attr_set_check_str(r->o[cnt].set, "any"))
-				break;
-		}
-
-		// fall through
-
+		case FTYPE:
 		case DEVICE:
 		case FILE_HASH: {
 

@@ -1397,8 +1397,6 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 					sizeof(buf), buf);
 			if (ptr)
 				obj.o = strdup(buf);
-			else
-				obj.o = strdup("?");
 			break;
 		case FTYPE: {
 			object_attr_t *path;
@@ -1417,8 +1415,6 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			decision_timing_stage_end(&timing);
 			if (ptr)
 				obj.o = strdup(buf);
-			else
-				obj.o = strdup("?");
 			}
 			break;
 		case FILE_HASH: {
@@ -1464,6 +1460,9 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			return NULL;
 	}
 
+	/* Only cache acquired strings so a transient failure can be retried. */
+	if (t != OBJ_TRUST && !obj.o)
+		return NULL;
 	if (object_add(e->o, &obj) == 0) {
 		on = object_access(e->o, t);
 		return on;

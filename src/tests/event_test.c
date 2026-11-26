@@ -415,11 +415,15 @@ int check_trust_database(const char *exe, const char *digest, int mode)
 	return stub_trust_result;
 }
 
+static bool fail_object_lookup;
+
 /*
  * Report a stringified device identifier to satisfy object attribute updates.
  */
 char *get_device_from_stat(unsigned int device, size_t blen, char *buf)
 {
+	if (fail_object_lookup)
+		return NULL;
 	if (snprintf(buf, blen, "dev-%u", device) < 0)
 		return NULL;
 	return buf;
@@ -432,6 +436,8 @@ char *get_file_type_from_fd(int fd, const struct file_info *i, const char *path,
 			    size_t blen, char *buf)
 {
 	(void)i;
+	if (fail_object_lookup)
+		return NULL;
 	if (snprintf(buf, blen, "ftype-%d-%s", fd, path ? path : "?") < 0)
 		return NULL;
 	return buf;
@@ -739,6 +745,25 @@ static int test_trust_lookup_errors(void)
 	object_attr_t *o = get_obj_attr(&e, OBJ_TRUST);
 	CHECK(s && !s->uval && o && !o->val, 3, "untrusted retry failed");
 	subject_clear(e.s);
+	object_clear(e.o);
+	return 0;
+}
+
+/* Classifier failures must reach rule evaluation and remain retryable. */
+static int test_object_lookup_errors(void)
+{
+	o_array objects;
+	event_t e = { .o = &objects, .fd = 10, .pid = 100 };
+
+	CHECK(!object_create(e.o), 1, "object setup failed");
+	e.o->info = stat_file_entry(e.fd);
+	CHECK(e.o->info, 2, "file info setup failed");
+	fail_object_lookup = true;
+	CHECK(!get_obj_attr(&e, FTYPE) && !get_obj_attr(&e, DEVICE),
+	      3, "failed lookup became a string");
+	fail_object_lookup = false;
+	CHECK(get_obj_attr(&e, FTYPE) && get_obj_attr(&e, DEVICE),
+	      4, "object lookup retry failed");
 	object_clear(e.o);
 	return 0;
 }
@@ -1275,6 +1300,9 @@ int main(void)
 	if (rc)
 		return rc;
 
+	rc = test_object_lookup_errors();
+	if (rc)
+		return rc;
 	rc = test_trust_lookup_errors();
 	if (rc)
 		return rc;
