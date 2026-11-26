@@ -1673,10 +1673,9 @@ static int check_subject(lnode *r, event_t *e)
 			subj = get_subj_attr(e, type);
 		}
 
-		if (subj == NULL && type != PATTERN) {
-			cnt++;
-			continue;
-		}
+		/* A missing required attribute must never satisfy an allow rule. */
+		if (subj == NULL && type != PATTERN)
+			return -1;
 
 		switch(type) {
 
@@ -1689,6 +1688,8 @@ static int check_subject(lnode *r, event_t *e)
 			break;
 		}
 		case UID:
+			if (subj->set == NULL)
+				return -1;
 			/*
 			 * A process can present multiple UID values (real,
 			 * effective, saved, filesystem).  Require the rule's
@@ -1711,6 +1712,8 @@ static int check_subject(lnode *r, event_t *e)
 		// GID is unique in that process can have multiple and
 		// rules can have multiple
 		case GID:
+			if (subj->set == NULL)
+				return -1;
 			if (!avl_intersection(&(r->s[cnt].set->tree),
 					     &(subj->set->tree)))
 				return 0;
@@ -1722,10 +1725,9 @@ static int check_subject(lnode *r, event_t *e)
 
 			if (rc == 0)
 				return 0;
-			// If there was an error, consider it
-			// a match since deny is likely
+			// Let the evaluator deny on an acquisition error.
 			if (rc == -1)
-				return 1;
+				return -1;
 
 			break;
 		} // case
@@ -1741,9 +1743,8 @@ static int check_subject(lnode *r, event_t *e)
 
 		// regular strings -> multiple value
 		case EXE: {
-			if (!subj->str) {
-				break;
-			}
+			if (!subj->str)
+				return -1;
 
 			/*
 			 * "untrusted" is a macro-style match. If requested, and the
@@ -1766,7 +1767,7 @@ static int check_subject(lnode *r, event_t *e)
 		case COMM:
 		case EXE_TYPE: {
 			if (!subj->str)
-				break;
+				return -1;
 
 			if (!attr_set_check_str(r->s[cnt].set, subj->str))
 				return 0;
@@ -1778,9 +1779,8 @@ static int check_subject(lnode *r, event_t *e)
 		case EXE_DIR: {
 			int macro_match = 0;
 
-			if (!subj->str) {
-				break;
-			}
+			if (!subj->str)
+				return -1;
 
 			if (attr_set_check_str(r->s[cnt].set, "execdirs"))
 				if (check_dirs(1, subj->str))
@@ -1869,10 +1869,9 @@ static int check_object(lnode *r, event_t *e)
 			obj = get_obj_attr(e, type);
 		}
 
-		if (obj == NULL) {
-			cnt++;
-			continue;
-		}
+		/* Missing object data cannot establish a rule match. */
+		if (obj == NULL)
+			return -1;
 
 		switch(type) {
 
@@ -1895,12 +1894,8 @@ static int check_object(lnode *r, event_t *e)
 		case DEVICE:
 		case FILE_HASH: {
 
-			if (!obj->o) {
-				// Treat errors as denial for file hash lookups
-				if (type == FILE_HASH)
-					return 0;
-				break;
-			}
+			if (!obj->o)
+				return -1;
 
 			if (!attr_set_check_str(r->o[cnt].set, obj->o))
 				return 0;
@@ -1914,7 +1909,7 @@ static int check_object(lnode *r, event_t *e)
 				return 0;
 
 			if (!obj->o)
-				break;
+				return -1;
 
 			if (attr_set_check_str(r->o[cnt].set, PATH_LD_SO_STR) &&
 			    is_known_elf_interpreter(obj->o))
@@ -1931,9 +1926,8 @@ static int check_object(lnode *r, event_t *e)
 		case ODIR: {
 			int macro_match = 0;
 
-			if (!obj->o) {
-				break;
-			}
+			if (!obj->o)
+				return -1;
 
 			if (attr_set_check_str(r->o[cnt].set, "execdirs"))
 				if (check_dirs(1, obj->o))
@@ -1990,11 +1984,16 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 
 	// Check the subject
 	d = check_subject(r, e);
+	/* An attribute lookup error must not fall through to a later allow. */
+	if (d < 0)
+		return DENY;
 	if (d == 0)	// No match
 		return NO_OPINION;
 
 	// Check the object
 	d = check_object(r, e);
+	if (d < 0)
+		return DENY;
 	if (d == 0)	// No match
 		return NO_OPINION;
 

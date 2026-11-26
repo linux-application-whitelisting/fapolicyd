@@ -497,6 +497,62 @@ static void test_explicit_untrusted_match(void)
 }
 
 /*
+ * test_missing_rule_attributes - reject decisions with unavailable data.
+ *
+ * A failed procfs lookup or a cached NULL string used to satisfy a rule
+ * without checking its constraint. Both subject and object failures must
+ * deny, while complete matching attributes still allow.
+ */
+static void test_missing_rule_attributes(void)
+{
+	char err[ERRBUF];
+	llist l;
+	event_t e;
+	subject_attr_t comm = { .type = COMM, .str = NULL };
+	object_attr_t path = { .type = PATH, .o = NULL };
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+	if (append_capture(&l, "allow perm=any comm=expected : all",
+			   1, err, sizeof(err)))
+		error(1, 0, "comm rule parse failed: %s", err);
+
+	prep_event(&e, 1000, "/tmp/target");
+	e.pid = -1;
+	if (evaluate(&l, &e) != DENY)
+		error(1, 0, "missing procfs comm did not deny");
+	if (subject_add(e.s, &comm))
+		error(1, 0, "NULL comm setup failed");
+	if (evaluate(&l, &e) != DENY)
+		error(1, 0, "NULL comm satisfied allow rule");
+	comm.str = strdup("expected");
+	if (!comm.str || subject_add(e.s, &comm))
+		error(1, 0, "comm setup failed");
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "complete comm did not match allow rule");
+	free_event(&e);
+	rules_clear(&l);
+
+	if (rules_create(&l))
+		error(1, 0, "rules_create failed");
+	if (append_capture(&l, "allow perm=any all : path=/tmp/target",
+			   1, err, sizeof(err)))
+		error(1, 0, "path rule parse failed: %s", err);
+	prep_event(&e, 1000, "/tmp/target");
+	if (object_add(e.o, &path))
+		error(1, 0, "NULL path setup failed");
+	if (evaluate(&l, &e) != DENY)
+		error(1, 0, "NULL path satisfied allow rule");
+	path.o = strdup("/tmp/target");
+	if (!path.o || object_add(e.o, &path))
+		error(1, 0, "path setup failed");
+	if (evaluate(&l, &e) != ALLOW)
+		error(1, 0, "complete path did not match allow rule");
+	free_event(&e);
+	rules_clear(&l);
+}
+
+/*
 * load_fixture - parse rule lines from a fixture file
 */
 static void load_fixture(const char *path, llist *l)
@@ -960,6 +1016,7 @@ int main(void)
 	test_unset_auid_rule();
 	test_language_set_extension();
 	test_explicit_untrusted_match();
+	test_missing_rule_attributes();
 
 	/* positive path using fixture file */
 	if (rules_create(&l))
