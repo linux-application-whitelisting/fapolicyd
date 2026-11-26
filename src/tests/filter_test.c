@@ -890,7 +890,8 @@ int main(void)
 		fprintf(stderr, "[ERROR:2] filter_init failed\n");
 		return 2;
 	}
-	if (!filter_load_file(BROKEN_CONF)) {
+	/* On Linux a directory opens as a stream but fails on read. */
+	if (!filter_load_file(".") || !filter_load_file(BROKEN_CONF)) {
 		fprintf(stderr,
 		    "[ERROR:5] malformed filter did not fail as expected\n");
 		filter_destroy();

@@ -55,6 +55,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 #include <fnmatch.h>
 #include <limits.h>
 
@@ -746,9 +747,12 @@ int filter_load_file(const char *path)
 		last_level = level;
 	}
 
-	if (line) {
-		free(line);
-		line = NULL;
+	free(line);
+	/* getline can stop on I/O or allocation failure after valid rules. */
+	if (ferror(stream) || !feof(stream)) {
+		msg(LOG_ERR, "Failed reading filter file %s: %s",
+		    path, strerror(errno));
+		goto bad;
 	}
 
 	goto good;
