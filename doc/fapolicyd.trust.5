@@ -29,6 +29,9 @@ Functionally, the fapolicy daemon will behave the same way as if the whole trust
 Syntax and semantics of trust files inside \fBtrust\&.d\fR directory are the same as for \fBfapolicyd\&.trust\fR file (described above)\&.
 Trust files can either be created manually inside \fBtrust\&.d\fR directory or via \fBfapolicyd\-cli\fR\& (the latter option is recommended).
 
+An absent primary trust file or fragment directory is treated as empty.
+If an existing fragment cannot be read completely, the file backend reports a
+load failure and the CLI stops the affected edit.
 .SH EXAMPLE
 .PP
 .EX

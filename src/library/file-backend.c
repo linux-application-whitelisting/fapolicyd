@@ -69,7 +69,12 @@ static int file_load_list(const conf_t *conf)
 		return 1;
 	}
 
-	trust_file_load_all(NULL, memfd);
+	if (trust_file_load_all(NULL, memfd)) {
+		msg(LOG_ERR, "Failed to load file trust snapshot");
+		close(memfd);
+		file_backend.memfd = -1;
+		return 1;
+	}
 
 	/* Seal the snapshot so readers see a stable view. */
 	if (fcntl(memfd, F_ADD_SEALS, F_SEAL_SHRINK |

@@ -48,6 +48,12 @@ int main(void)
 	    snprintf(input, sizeof(input), "%s/input", directory) >=
 	    (int)sizeof(input))
 		goto out;
+	/* An unreadable existing fragment must not look like a new one. */
+	if (symlink("absent", fragment))
+		goto out;
+	list_init(&loaded);
+	if (trust_file_load(fragment, &loaded, -1) <= 1 || unlink(fragment))
+		goto out;
 	f = fopen(fragment, "w");
 	if (f == NULL)
 		goto out;
@@ -59,6 +65,10 @@ int main(void)
 	if (stat(fragment, &original) < 0)
 		goto out;
 
+	list_init(&loaded);
+	/* Directory streams can open successfully and then fail on read. */
+	if (trust_file_load(directory, &loaded, -1) <= 1)
+		goto out;
 	list_init(&pending);
 	if (add_path(&pending, input))
 		goto clear_pending;

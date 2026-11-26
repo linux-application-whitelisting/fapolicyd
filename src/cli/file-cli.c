@@ -185,7 +185,10 @@ int file_append(const char *path, const char *fname, bool use_filter)
 		return CLI_EXIT_RULE_FILTER;
 	}
 
-	trust_file_rm_duplicates_all(&add_list);
+	if (trust_file_rm_duplicates_all(&add_list)) {
+		list_empty(&add_list);
+		return CLI_EXIT_IO;
+	}
 
 	if (add_list.count == 0) {
 		msg(LOG_ERR,

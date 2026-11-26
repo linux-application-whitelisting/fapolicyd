@@ -39,6 +39,8 @@
 #include <sys/syslog.h>
 #include <sys/types.h>
 #include <unistd.h>
+/* A failed duplicate index must abort this load, not the daemon. */
+#define HASH_NONFATAL_OOM 1
 #include <uthash.h>
 
 #include "fapolicyd-backend.h"
@@ -374,8 +376,8 @@ static int parse_line_backwards(char *line, char *path, trustdb_size_t *size,
  * @memfd: File descriptor used for streaming output, or -1 for lists.
  *
  * This helper is shared by the daemon and CLI.  It returns 0 on success,
- * 1 when the file cannot be opened, 2 on parse errors, and 3 when memory
- * could not be allocated while tracking duplicates.
+ * 1 for a missing file, 2 on parse errors, and 3 on I/O or allocation
+ * failure. On failure the caller must discard any entries already read.
  */
 int trust_file_load(const char *fpath, list_t *list, int memfd)
 {
@@ -386,8 +388,16 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 	struct trust_seen_entry *seen = NULL;
 
 	FILE *file = fopen(fpath, "r");
-	if (!file)
-		return 1;
+	if (!file) {
+		if (errno == ENOENT) {
+			struct stat st;
+
+			if (lstat(fpath, &st) < 0 && errno == ENOENT)
+				return 1;
+		}
+		msg(LOG_ERR, "Cannot read %s: %s", fpath, strerror(errno));
+		return 3;
+	}
 
 	while (fgets(buffer, BUFFER_SIZE, file)) {
 		char name[PATH_MAX+1], sha[FILE_DIGEST_STRING_MAX], *index = NULL,
@@ -447,7 +457,8 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 				   DATA_FORMAT, tsource, sz, sha);
 		if (len < 0 || len >= (int)sizeof(data_buf)) {
 			msg(LOG_ERR, "Entry too large in %s", fpath);
-			continue;
+			rc = 2;
+			goto out;
 		}
 
 
@@ -455,7 +466,8 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		index = escaped ? unescape(name) : strdup(name);
 		if (index == NULL) {
 			msg(LOG_ERR, "Could not unescape %s from %s", name, fpath);
-			continue;
+			rc = 3;
+			goto out;
 		}
 
 		struct trust_seen_entry *entry;
@@ -477,35 +489,44 @@ int trust_file_load(const char *fpath, list_t *list, int memfd)
 		}
 
 		entry->path = index;
-
 		if (memfd >= 0) {
-			HASH_ADD_KEYPTR(hh, seen, entry->path,
-					strlen(entry->path), entry);
-			if (dprintf(memfd, "%s %s\n", index, data_buf) < 0)
-				msg(LOG_ERR,
-				    "dprintf failed writing %s to memfd (%s)",
+			if (dprintf(memfd, "%s %s\n", index, data_buf) < 0) {
+				msg(LOG_ERR, "Failed streaming %s: %s",
 				    index, strerror(errno));
-		} else {
-			data = strdup(data_buf);
-			if (data == NULL) {
 				free(index);
 				free(entry);
-				continue;
+				rc = 3;
+				goto out;
 			}
-
-			if (list_append(list, index, data)) {
+		} else {
+			data = strdup(data_buf);
+			if (!data || list_append(list, index, data)) {
 				free(index);
 				free(data);
 				free(entry);
-			} else // Add it after successfully stored on the list
-				HASH_ADD_KEYPTR(hh, seen, entry->path,
-						strlen(entry->path), entry);
+				rc = 3;
+				goto out;
+			}
+		}
 
+		HASH_ADD_KEYPTR(hh, seen, index, strlen(index), entry);
+		if (!entry->hh.tbl) {
+			/* The list owns index after append; a stream does not. */
+			if (memfd >= 0)
+				free(index);
+			free(entry);
+			rc = 3;
+			goto out;
 		}
 	}
 
+	if (ferror(file)) {
+		msg(LOG_ERR, "Failed reading %s: %s", fpath, strerror(errno));
+		rc = 3;
+	}
 out:
-	fclose(file);
+	if (fclose(file) != 0)
+		rc = 3;
 
 	struct trust_seen_entry *item;
 
@@ -527,23 +548,16 @@ out:
  * @path:  Prefix that identifies entries scheduled for removal.
  *
  * Used only by the CLI trust management commands.  Returns the number of
- * entries deleted, 0 when the file could not be opened,
- * and -1 on parse errors.
+ * entries deleted, 0 when the fragment is absent, and -1 on failure.
  */
 int trust_file_delete_path(const char *fpath, const char *path)
 {
 	list_t list;
 	list_init(&list);
 	int rc = trust_file_load(fpath, &list, -1);
-	switch (rc) {
-	case 1:
-		msg(LOG_ERR, "Cannot open %s", fpath);
-		return 0;
-	case 2:
+	if (rc) {
 		list_empty(&list);
-		return -1;
-	default:
-		break;
+		return rc == 1 ? 0 : -1;
 	}
 
 	int count = 0;
@@ -586,23 +600,16 @@ int trust_file_delete_path(const char *fpath, const char *path)
  * @path:  Prefix designating entries that must be re-measured.
  *
  * Used only by the CLI trust management commands.  Returns the number of
- * entries updated, 0 when the file could not be opened,
- * and -1 when the existing file cannot be parsed.
+ * entries updated, 0 when the fragment is absent, and -1 on failure.
  */
 int trust_file_update_path(const char *fpath, const char *path, bool use_filter)
 {
 	list_t list;
 	list_init(&list);
 	int rc = trust_file_load(fpath, &list, -1);
-	switch (rc) {
-	case 1:
-		msg(LOG_ERR, "Cannot open %s", fpath);
-		return 0;
-	case 2:
+	if (rc) {
 		list_empty(&list);
-		return -1;
-	default:
-		break;
+		return rc == 1 ? 0 : -1;
 	}
 
 	int count = 0;
@@ -657,15 +664,9 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
 	list_t trust_file;
 	list_init(&trust_file);
 	int rc = trust_file_load(fpath, &trust_file, -1);
-	switch (rc) {
-	case 1:
-		msg(LOG_ERR, "Cannot open %s", fpath);
-		return -1;
-	case 2:
+	if (rc) {
 		list_empty(&trust_file);
-		return -1;
-	default:
-		break;
+		return rc == 1 ? 0 : -1;
 	}
 
 	for (list_item_t *lptr = trust_file.first; lptr; lptr = lptr->next) {
@@ -706,8 +707,11 @@ static int ftw_load(const char *fpath,
 		int typeflag,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
-	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
-		trust_file_load(fpath, &_list, _memfd);
+	if (typeflag == FTW_DNR || typeflag == FTW_NS)
+		return FTW_STOP;
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath) &&
+	    trust_file_load(fpath, &_list, _memfd))
+		return FTW_STOP;
 	return FTW_CONTINUE;
 }
 
@@ -758,13 +762,28 @@ static int ftw_rm_duplicates(const char *fpath,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
 	if (_list.count == 0)
+		return FTW_CONTINUE;
+	if (typeflag == FTW_DNR || typeflag == FTW_NS)
 		return FTW_STOP;
-	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
-		trust_file_rm_duplicates(fpath, &_list);
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath) &&
+	    trust_file_rm_duplicates(fpath, &_list))
+		return FTW_STOP;
 	return FTW_CONTINUE;
 }
 
 
+
+/* Walk the optional fragment directory. Only an absent directory is
+ * equivalent to an empty one. Callback failures must reach the caller. */
+static int walk_trust_dir(int (*visit)(const char *, const struct stat *,
+				      int, struct FTW *))
+{
+	struct stat st;
+
+	if (stat(TRUST_DIR_PATH, &st) < 0)
+		return errno == ENOENT ? 0 : -1;
+	return nftw(TRUST_DIR_PATH, visit, FTW_NOPENFD, FTW_FLAGS);
+}
 
 /*
  * trust_file_load_all - Aggregate every trust fragment.
@@ -773,21 +792,22 @@ static int ftw_rm_duplicates(const char *fpath,
  *
  * Used by both the daemon and CLI to populate either an in-memory list or
  * a memfd-backed snapshot covering the primary trust file plus the tree
- * of per-package fragments.
+ * of per-package fragments. Returns nonzero on an incomplete snapshot.
  */
-void trust_file_load_all(list_t *list, int memfd)
+int trust_file_load_all(list_t *list, int memfd)
 {
 	list_empty(&_list);
 	_memfd = memfd;
 	/* Populate either the in-memory list or the memfd snapshot. */
-	trust_file_load(TRUST_FILE_PATH, &_list, memfd);
-	nftw(TRUST_DIR_PATH, &ftw_load, FTW_NOPENFD, FTW_FLAGS);
-	if (memfd < 0) {
-		if (list)
-			list_merge(list, &_list);
-	} else
+	int rc = trust_file_load(TRUST_FILE_PATH, &_list, memfd);
+	if (rc <= 1)
+		rc = walk_trust_dir(ftw_load);
+	if (!rc && memfd < 0 && list)
+		list_merge(list, &_list);
+	else
 		list_empty(&_list);
 	_memfd = -1;
+	return rc;
 }
 
 /*
@@ -829,13 +849,15 @@ int trust_file_update_path_all(const char *path, bool use_filter)
  * @list: Pending CLI additions to prune before appending.
  *
  * Used only by the CLI trust management commands prior to calling
- * trust_file_append().
+ * trust_file_append(). Returns nonzero if deduplication could not finish.
  */
-void trust_file_rm_duplicates_all(list_t *list)
+int trust_file_rm_duplicates_all(list_t *list)
 {
 	list_empty(&_list);
 	list_merge(&_list, list);
-	trust_file_rm_duplicates(TRUST_FILE_PATH, &_list);
-	nftw(TRUST_DIR_PATH, &ftw_rm_duplicates, FTW_NOPENFD, FTW_FLAGS);
+	int rc = trust_file_rm_duplicates(TRUST_FILE_PATH, &_list);
+	if (!rc && _list.count)
+		rc = walk_trust_dir(ftw_rm_duplicates);
 	list_merge(list, &_list);
+	return rc;
 }

@@ -38,9 +38,9 @@ int trust_file_update_path(const char *fpath, const char *path, bool use_filter)
 int trust_file_delete_path(const char *fpath, const char *path);
 int trust_file_rm_duplicates(const char *fpath, list_t *list);
 
-void trust_file_load_all(list_t *list, int memfd);
+int trust_file_load_all(list_t *list, int memfd);
 int trust_file_update_path_all(const char *path, bool use_filter);
 int trust_file_delete_path_all(const char *path);
-void trust_file_rm_duplicates_all(list_t *list);
+int trust_file_rm_duplicates_all(list_t *list);
 
 #endif
