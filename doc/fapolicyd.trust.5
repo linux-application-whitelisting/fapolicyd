@@ -37,6 +37,11 @@ Other names sharing the prefix are ordinary fragments.
 CLI edits through a symbolic link to an existing regular trust file replace
 the target and preserve the link. Directory imports do not follow symlinks.
 .PP
+The CLI creates the replacement in the same directory as the trust file
+and preserves the owner, group, and read, write, and execute permission bits.
+After an update, administrators should verify and reapply any site-specific
+ACLs or extended attributes the trust file requires.
+.PP
 An absent primary trust file or fragment directory is treated as empty.
 If an existing fragment cannot be read completely, the file backend reports a
 load failure and the CLI stops the affected edit.

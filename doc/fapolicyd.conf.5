@@ -6,6 +6,11 @@ The file
 .I /etc/fapolicyd/fapolicyd.conf
 contains configuration information for the application whitelisting daemon configuration. This file allows the admin to tune the performance and actions of the fapolicyd during runtime. This file contains one configuration keyword per line, an equal sign, and then followed by appropriate configuration information. All option names and values are case insensitive. The keywords recognized are listed and described below. Each line should be limited to 160 characters or the line will be skipped. You may add comments to the file by starting the line with a '#' character.
 
+.PP
+After updating any fapolicyd configuration file, administrators should
+verify that its ACLs and extended attributes, including its SELinux label,
+meet local requirements and restore them as needed.
+
 .TP
 .B permissive
 This option is either a 0 to mean send policy decisions to the kernel for enforcement. Or it can be a 1 to mean always allow the access even if policy would block it. This should only be used for policy testing and debug. The default value is 0.
