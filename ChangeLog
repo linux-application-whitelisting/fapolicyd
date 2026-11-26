@@ -1,3 +1,6 @@
+2.0.3
+- Avoid SIGBUS if the file is trucated
+
 2.0.2
 - Adjust the daemon's capabilities
 - Rewrite filter to correct its operation
