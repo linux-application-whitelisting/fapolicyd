@@ -1,5 +1,10 @@
 2.0.3
-- Avoid SIGBUS if the file is trucated
+- Avoid daemon crashes when files shrink during hashing
+- Deny access when required rule attributes are unavailable
+- Fix nested wildcard matching in trust filters
+- Reject malformed filters and rules with too many fields
+- Preserve trust fragments when fapolicyd-cli updates fail
+- Keep the trust database if its version file cannot be read
 
 2.0.2
 - Adjust the daemon's capabilities
