@@ -14,6 +14,8 @@ which contains the rules that \fBfapolicyd\fP uses to make decisions about acces
 They are evaluated from top to bottom with the first rule to match being used
 for the access control decision. The colon is mandatory to separate subject and object since they share keywords.
 
+A known mismatch in any field skips the rule. If all available fields match
+and a required attribute could not be obtained, the decision is deny.
 .SS Decision
 The decision is either
 .IR allow ", " deny ", " allow_audit ", " deny_audit ", " allow_syslog ", "deny_syslog ", " allow_log ", or " deny_log ".

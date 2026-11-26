@@ -1667,25 +1667,22 @@ static int check_access(const lnode *r, const event_t *e)
 __attribute__((hot))
 static int check_subject(lnode *r, event_t *e)
 {
-	unsigned int cnt = 0;
+	int result = 1;
 
 	sanity_check_node(r, "check_subject");
 
-	while (cnt < r->s_count) {
+	for (unsigned int cnt = 0; cnt < r->s_count; cnt++) {
 		unsigned int type = r->s[cnt].type;
 		subject_attr_t *subj = NULL;
 
 		// optimize get_subj_attr call if possible
-		if (type == ALL_SUBJ) {
-			cnt++;
+		if (type == ALL_SUBJ)
 			continue;
-		} else {
-			subj = get_subj_attr(e, type);
-		}
+		subj = get_subj_attr(e, type);
 
 		/* A missing required attribute must never satisfy an allow rule. */
 		if (subj == NULL && type != PATTERN)
-			return -1;
+			goto unavailable;
 
 		switch(type) {
 
@@ -1699,7 +1696,7 @@ static int check_subject(lnode *r, event_t *e)
 		}
 		case UID:
 			if (subj->set == NULL)
-				return -1;
+				goto unavailable;
 			/*
 			 * A process can present multiple UID values (real,
 			 * effective, saved, filesystem).  Require the rule's
@@ -1723,7 +1720,7 @@ static int check_subject(lnode *r, event_t *e)
 		// rules can have multiple
 		case GID:
 			if (subj->set == NULL)
-				return -1;
+				goto unavailable;
 			if (!avl_intersection(&(r->s[cnt].set->tree),
 					     &(subj->set->tree)))
 				return 0;
@@ -1737,7 +1734,7 @@ static int check_subject(lnode *r, event_t *e)
 				return 0;
 			// Let the evaluator deny on an acquisition error.
 			if (rc == -1)
-				return -1;
+				goto unavailable;
 
 			break;
 		} // case
@@ -1754,7 +1751,7 @@ static int check_subject(lnode *r, event_t *e)
 		// regular strings -> multiple value
 		case EXE: {
 			if (!subj->str)
-				return -1;
+				goto unavailable;
 
 			/*
 			 * "untrusted" is a macro-style match. If requested, and the
@@ -1777,7 +1774,7 @@ static int check_subject(lnode *r, event_t *e)
 		case COMM:
 		case EXE_TYPE: {
 			if (!subj->str)
-				return -1;
+				goto unavailable;
 
 			if (!attr_set_check_str(r->s[cnt].set, subj->str))
 				return 0;
@@ -1790,7 +1787,7 @@ static int check_subject(lnode *r, event_t *e)
 			int macro_match = 0;
 
 			if (!subj->str)
-				return -1;
+				goto unavailable;
 
 			if (attr_set_check_str(r->s[cnt].set, "execdirs"))
 				if (check_dirs(1, subj->str))
@@ -1822,15 +1819,18 @@ static int check_subject(lnode *r, event_t *e)
 
 
 		default:
-			return -1;
+			goto unavailable;
 
 		} // switch
 
 
-		cnt++;
+		continue;
+unavailable:
+		/* A later field can still disqualify this rule. */
+		result = -1;
 	}
 
-	return 1;
+	return result;
 }
 
 /*
@@ -1864,24 +1864,21 @@ static int legacy_untrusted_subject_path_blocked(lnode *r, unsigned int idx,
 __attribute__((hot))
 static int check_object(lnode *r, event_t *e)
 {
-	unsigned int cnt = 0;
+	int result = 1;
 
 	sanity_check_node(r, "check_object");
-	while (cnt < r->o_count) {
+	for (unsigned int cnt = 0; cnt < r->o_count; cnt++) {
 		unsigned int type = r->o[cnt].type;
 		object_attr_t *obj = NULL;
 
 		// optimize get_obj_attr call if possible
-		if (type == ALL_OBJ) {
-			cnt++;
+		if (type == ALL_OBJ)
 			continue;
-		} else {
-			obj = get_obj_attr(e, type);
-		}
+		obj = get_obj_attr(e, type);
 
 		/* Missing object data cannot establish a rule match. */
 		if (obj == NULL)
-			return -1;
+			goto unavailable;
 
 		switch(type) {
 
@@ -1905,7 +1902,7 @@ static int check_object(lnode *r, event_t *e)
 		case FILE_HASH: {
 
 			if (!obj->o)
-				return -1;
+				goto unavailable;
 
 			if (!attr_set_check_str(r->o[cnt].set, obj->o))
 				return 0;
@@ -1919,7 +1916,7 @@ static int check_object(lnode *r, event_t *e)
 				return 0;
 
 			if (!obj->o)
-				return -1;
+				goto unavailable;
 
 			if (attr_set_check_str(r->o[cnt].set, PATH_LD_SO_STR) &&
 			    is_known_elf_interpreter(obj->o))
@@ -1937,7 +1934,7 @@ static int check_object(lnode *r, event_t *e)
 			int macro_match = 0;
 
 			if (!obj->o)
-				return -1;
+				goto unavailable;
 
 			if (attr_set_check_str(r->o[cnt].set, "execdirs"))
 				if (check_dirs(1, obj->o))
@@ -1970,15 +1967,18 @@ static int check_object(lnode *r, event_t *e)
 
 		// should not happen
 		default: {
-			return -1;
+			goto unavailable;
 		} // case
 
 		} // switch
 
-		cnt++;
+		continue;
+unavailable:
+		/* A later field can still disqualify this rule. */
+		result = -1;
 	}
 
-	return 1;
+	return result;
 }
 
 
@@ -1992,20 +1992,15 @@ decision_t rule_evaluate(lnode *r, event_t *e)
 	if (d == 0)	// No match
 		return NO_OPINION;
 
-	// Check the subject
-	d = check_subject(r, e);
-	/* An attribute lookup error must not fall through to a later allow. */
-	if (d < 0)
-		return DENY;
-	if (d == 0)	// No match
+	/* A rule is a conjunction across both sides of the colon. */
+	int subject = check_subject(r, e);
+	if (subject == 0)
 		return NO_OPINION;
-
-	// Check the object
-	d = check_object(r, e);
-	if (d < 0)
-		return DENY;
-	if (d == 0)	// No match
+	int object = check_object(r, e);
+	if (object == 0)
 		return NO_OPINION;
+	if (subject < 0 || object < 0)
+		return DENY;
 
 	return r->d;
 }

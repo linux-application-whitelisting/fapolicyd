@@ -563,6 +563,33 @@ static void test_missing_rule_attributes(void)
 	rules_clear(&l);
 }
 
+/* Check that a definite mismatch wins over a missing attribute, in
+ * either field order and across the subject/object boundary. */
+static void test_missing_attribute_mismatch(void)
+{
+	const char *rules[] = {
+		"allow comm=expected auid=0 : all",
+		"allow auid=0 comm=expected : all",
+		"allow comm=expected : path=/other",
+		"allow perm=any all : filehash=abcd path=/other",
+	};
+	event_t e;
+	char err[ERRBUF];
+
+	prep_event(&e, 1000, "/tmp/target");
+	e.pid = -1;
+	for (size_t i = 0; i < sizeof(rules)/sizeof(rules[0]); i++) {
+		llist l;
+
+		if (rules_create(&l) ||
+		    append_capture(&l, rules[i], 1, err, sizeof(err)) ||
+		    evaluate(&l, &e) != NO_OPINION)
+			error(1, 0, "mismatched rule decided: %s", rules[i]);
+		rules_clear(&l);
+	}
+	free_event(&e);
+}
+
 /*
 * load_fixture - parse rule lines from a fixture file
 */
@@ -1028,6 +1055,7 @@ int main(void)
 	test_language_set_extension();
 	test_explicit_untrusted_match();
 	test_missing_rule_attributes();
+	test_missing_attribute_mismatch();
 
 	/* positive path using fixture file */
 	if (rules_create(&l))
