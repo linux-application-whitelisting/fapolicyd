@@ -32,14 +32,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <openssl/evp.h>
-#include <openssl/sha.h>
-#include <openssl/md5.h>
 #include <magic.h>
 #include <libudev.h>
 #include <elf.h>
 #include <sys/xattr.h>
 #include <linux/hash_info.h>
-#include <sys/mman.h>
 #include <mntent.h>
 
 #include "file.h"
@@ -1331,13 +1328,7 @@ static ssize_t safe_read(int fd, char *buf, size_t size)
 	return len;
 }
 
-/*
- * get_hash_from_fd2 - calculate the requested file digest.
- * @fd: open descriptor whose contents should be measured.
- * @size: number of bytes to include in the digest calculation.
- * @alg: digest algorithm to use for the measurement.
- * Returns a heap-allocated hex string on success or NULL when hashing fails.
- */
+/* Precomputed empty-file digests avoid reading a zero-length descriptor. */
 static const char *degenerate_hash_sha1 =
 	"da39a3ee5e6b4b0d3255bfef95601890afd80709";
 static const char *degenerate_hash_sha256 =
@@ -1374,7 +1365,7 @@ static const EVP_MD *get_evp_hash_algorithm(file_hash_alg_t alg)
 }
 
 /*
- * hash_fd_in_chunks - hash a file that cannot fit in one mmap length.
+ * hash_fd_in_chunks - hash the requested number of bytes with pread.
  * @fd: open descriptor whose contents should be measured.
  * @size: number of bytes to include in the digest calculation.
  * @alg: digest algorithm to use for the measurement.
@@ -1410,6 +1401,7 @@ static char *hash_fd_in_chunks(int fd, off_t size, file_hash_alg_t alg)
 		do {
 			len = pread(fd, buf, requested, offset);
 		} while (len < 0 && errno == EINTR);
+		/* A short read can be retried; EOF before @size is an error. */
 		if (len <= 0) {
 			if (len == 0)
 				errno = EIO;
@@ -1432,12 +1424,19 @@ out:
 	return digest;
 }
 
+/*
+ * get_hash_from_fd2 - calculate the requested digest of an open file.
+ * @fd: open descriptor whose contents should be measured.
+ * @size: number of bytes to hash, starting at offset zero.
+ * @alg: digest algorithm to use for the measurement.
+ *
+ * Returns a heap-allocated hex digest on success, or NULL for an invalid
+ * input, unavailable algorithm, or failed read or digest calculation. The
+ * descriptor offset is unchanged.
+ */
 char *get_hash_from_fd2(int fd, off_t size, file_hash_alg_t alg)
 {
-	unsigned char *mapped;
-	char *digest = NULL;
-	size_t map_size;
-	size_t digest_length;
+	char *digest;
 	struct decision_timing_span timing;
 
 	decision_timing_stage_begin(DECISION_TIMING_STAGE_HASH_SHA,
@@ -1449,6 +1448,7 @@ char *get_hash_from_fd2(int fd, off_t size, file_hash_alg_t alg)
 	if (size == 0) {
 		char *degenerate;
 
+		/* Hashes of empty files do not need descriptor I/O. */
 		switch (alg) {
 		case FILE_HASH_ALG_SHA1:
 			degenerate = strdup(degenerate_hash_sha1);
@@ -1470,59 +1470,12 @@ char *get_hash_from_fd2(int fd, off_t size, file_hash_alg_t alg)
 		return degenerate;
 	}
 
-	digest_length = file_hash_length(alg);
-	if (digest_length == 0) {
-		decision_timing_stage_end(&timing);
-		return NULL;
-	}
-
-	if ((uintmax_t)size > SIZE_MAX) {
-		digest = hash_fd_in_chunks(fd, size, alg);
-		decision_timing_stage_end(&timing);
-		return digest;
-	}
-
-	map_size = (size_t)size;
-	mapped = mmap(0, map_size, PROT_READ, MAP_SHARED|MAP_POPULATE, fd, 0);
-	if (mapped != MAP_FAILED) {
-		unsigned char hptr[SHA512_DIGEST_LENGTH];
-		int computed = 0;
-
-		switch (alg) {
-		case FILE_HASH_ALG_SHA1:
-			SHA1(mapped, map_size, hptr);
-			computed = 1;
-			break;
-		case FILE_HASH_ALG_SHA256:
-			SHA256(mapped, map_size, hptr);
-			computed = 1;
-			break;
-		case FILE_HASH_ALG_SHA512:
-			SHA512(mapped, map_size, hptr);
-			computed = 1;
-			break;
-		case FILE_HASH_ALG_MD5:
-#ifdef USE_DEB
-			MD5(mapped, map_size, hptr);
-			computed = 1;
-#endif
-			break;
-		default:
-			break;
-		}
-		munmap(mapped, map_size);
-
-		if (computed) {
-			digest = malloc((digest_length * 2) + 1);
-			if (digest)
-				bytes2hex(digest, hptr, digest_length);
-		}
-	}
+	/* The file may shrink after stat; pread reports EOF instead of SIGBUS. */
+	digest = hash_fd_in_chunks(fd, size, alg);
 	decision_timing_stage_end(&timing);
 	return digest;
 }
 
-// This function returns 0 on error and 1 if successful
 /*
  * get_ima_hash - Decode the IMA digest-ng xattr and expose the measurement.
  * @fd: open file descriptor backed by an IMA measurement.
