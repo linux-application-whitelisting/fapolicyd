@@ -34,6 +34,9 @@ or digits are reserved for pending replacements. Rename any administrator
 fragment with that exact name pattern before refreshing the trust database.
 Other names sharing the prefix are ordinary fragments.
 .PP
+CLI edits through a symbolic link to an existing regular trust file replace
+the target and preserve the link. Directory imports do not follow symlinks.
+.PP
 An absent primary trust file or fragment directory is treated as empty.
 If an existing fragment cannot be read completely, the file backend reports a
 load failure and the CLI stops the affected edit.

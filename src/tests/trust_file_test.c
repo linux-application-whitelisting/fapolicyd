@@ -34,7 +34,7 @@ static int add_path(list_t *list, const char *path)
 int main(void)
 {
 	char directory[] = "/tmp/fapolicyd-trust-file-XXXXXX";
-	char fragment[256], input[256], contents[32];
+	char fragment[256], input[256], linkpath[256], contents[32];
 	struct stat st, original;
 	list_t pending, loaded;
 	FILE *f;
@@ -47,7 +47,9 @@ int main(void)
 		return 1;
 	if (mkdtemp(directory) == NULL)
 		return 1;
-	if (snprintf(fragment, sizeof(fragment), "%s/trust", directory) >=
+	if (snprintf(linkpath, sizeof(linkpath), "%s/link", directory) >=
+	    (int)sizeof(linkpath) ||
+	    snprintf(fragment, sizeof(fragment), "%s/trust", directory) >=
 	    (int)sizeof(fragment) ||
 	    snprintf(input, sizeof(input), "%s/input", directory) >=
 	    (int)sizeof(input))
@@ -120,12 +122,19 @@ int main(void)
 	list_empty(&pending);
 	if (stat(fragment, &st) < 0 || (st.st_mode & 0777) != 0644)
 		goto out;
+	/* A relative primary-file link must survive replacement. */
+	if (symlink("trust", linkpath) ||
+	    trust_file_delete_path(linkpath, input) != 1 ||
+	    lstat(linkpath, &st) || !S_ISLNK(st.st_mode) ||
+	    trust_file_load(fragment, &loaded, -1) || loaded.count)
+		goto out;
 	rc = 0;
 	goto out;
 
 clear_pending:
 	list_empty(&pending);
 out:
+	unlink(linkpath);
 	unlink(input);
 	unlink(fragment);
 	rmdir(directory);

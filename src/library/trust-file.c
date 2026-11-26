@@ -165,15 +165,23 @@ static char *make_data_string(const char *path)
 static int write_out_list(list_t *list, const char *dest)
 {
 	struct stat previous, created;
-	char *temp_path = NULL;
+	char *temp_path = NULL, *target = NULL;
 	FILE *f = NULL;
 	int fd = -1;
 	int exists = 0;
 	int saved_errno;
 	int path_len;
-	const char *slash = strrchr(dest, '/');
+	const char *slash;
 
 	if (lstat(dest, &previous) == 0) {
+		if (S_ISLNK(previous.st_mode)) {
+			/* Rename the target in its own directory, keeping the
+			 * administrator's link in place across CLI edits. */
+			target = realpath(dest, NULL);
+			if (!target || lstat(target, &previous) < 0)
+				goto bad;
+			dest = target;
+		}
 		if (!S_ISREG(previous.st_mode)) {
 			errno = EINVAL;
 			goto bad;
@@ -185,6 +193,7 @@ static int write_out_list(list_t *list, const char *dest)
 	/* Keep the temporary file in the same directory for atomic rename
 	 * and its normal filesystem label. The reserved name is excluded
 	 * from trust.d directory walks until replacement completes. */
+	slash = strrchr(dest, '/');
 	if (slash)
 		path_len = asprintf(&temp_path,
 			"%.*s/" TRUST_TEMP_PREFIX "XXXXXX",
@@ -244,6 +253,7 @@ static int write_out_list(list_t *list, const char *dest)
 	if (rename(temp_path, dest) < 0)
 		goto bad;
 	free(temp_path);
+	free(target);
 	return 0;
 
 bad:
@@ -257,6 +267,7 @@ bad:
 		free(temp_path);
 	}
 	msg(LOG_ERR, "Cannot write %s: %s", dest, strerror(saved_errno));
+	free(target);
 	return 1;
 }
 
