@@ -1238,13 +1238,20 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 	subj.str = NULL;
 	switch (t) {
 		case AUID:
+		case SESSIONID: {
+			int rc;
+
 			attr_lookup_metrics_count_subject_lookup(t);
 			decision_timing_stage_begin(
 				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
 				&timing);
-			subj.uval = get_program_auid_from_pid(e->pid);
+			rc = read_process_audit_id(e->pid, t == SESSIONID,
+						   &subj.uval);
 			decision_timing_stage_end(&timing);
+			if (rc)
+				return NULL;
 			break;
+		}
 		case PPID:
 		case UID:
 		case GID:
@@ -1257,15 +1264,6 @@ subject_attr_t *get_subj_attr(event_t *e, subject_type_t t)
 			 * possible identities during matching.
 			 */
 			return fetch_proc_status(e, t);
-			break;
-		case SESSIONID:
-			attr_lookup_metrics_count_subject_lookup(t);
-			decision_timing_stage_begin(
-				DECISION_TIMING_STAGE_PROC_STATUS_EXE_LOOKUP,
-				&timing);
-			subj.uval = (unsigned int)
-					get_program_sessionid_from_pid(e->pid);
-			decision_timing_stage_end(&timing);
 			break;
 		case PID:
 			attr_lookup_metrics_count_subject_lookup(t);

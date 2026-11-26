@@ -396,16 +396,12 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 	return buf;
 }
 
-/* Return a deterministic audit uid derived from the pid. */
-uid_t get_program_auid_from_pid(pid_t pid)
+/* Return a deterministic audit identifier for the synthetic process. */
+int read_process_audit_id(pid_t pid, bool session, unsigned int *value)
 {
-	return (uid_t)pid;
-}
-
-/* Return a deterministic session id derived from the pid. */
-int get_program_sessionid_from_pid(pid_t pid)
-{
-	return (int)pid;
+	(void)session;
+	*value = pid;
+	return 0;
 }
 
 /* Bypass trust database lookups while keeping the signature intact. */

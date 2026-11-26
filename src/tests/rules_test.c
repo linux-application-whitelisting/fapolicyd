@@ -1033,6 +1033,10 @@ static void test_unset_auid_rule(void)
 	e.type = FAN_OPEN_PERM;
 	if (evaluate(&l, &e) != ALLOW)
 		error(1, 0, "unset auid did not match unsigned rule value");
+	subject_reset(e.s, AUID);
+	e.pid = -1;
+	if (evaluate(&l, &e) != DENY || subject_access(e.s, AUID))
+		error(1, 0, "failed audit lookup was cached as unset");
 	free_event(&e);
 	rules_clear(&l);
 }

@@ -228,53 +228,45 @@ char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 }
 
 
-uid_t get_program_auid_from_pid(pid_t pid)
+/* Read the kernel's unsigned login or session ID for pid. Return zero
+ * with the value (including UINT_MAX for unset), or -1 on failure. */
+int read_process_audit_id(pid_t pid, bool session, unsigned int *value)
 {
-	ssize_t rc;
-	int fd;
+	char buf[16], *end;
+	unsigned long id;
+	ssize_t n;
+	int fd = open(proc_path(pid, session ? "/sessionid" : "/loginuid"),
+		      O_RDONLY | O_CLOEXEC);
 
-	const char *path = proc_path(pid, "/loginuid");
-	fd = open(path, O_RDONLY|O_CLOEXEC);
-	if (fd >= 0) {
-		char buf[16];
-		uid_t auid;
-
-		rc = read(fd, buf, sizeof(buf)-1);
-		close(fd);
-		if (rc > 0) {
-			buf[rc] = 0;  // manually terminate, read doesn't
-			errno = 0;
-			auid = strtol(buf, NULL, 10);
-			if (errno == 0)
-				return auid;
-		}
-	}
-	return -1;
+	if (fd < 0)
+		return -1;
+	do {
+		n = read(fd, buf, sizeof(buf) - 1);
+	} while (n < 0 && errno == EINTR);
+	close(fd);
+	if (n <= 0 || !isdigit((unsigned char)buf[0]))
+		return -1;
+	buf[n] = 0;
+	errno = 0;
+	id = strtoul(buf, &end, 10);
+	if (errno || id > UINT_MAX || (*end && strcmp(end, "\n")))
+		return -1;
+	*value = id;
+	return 0;
 }
 
+uid_t get_program_auid_from_pid(pid_t pid)
+{
+	unsigned int value;
+
+	return read_process_audit_id(pid, false, &value) ? (uid_t)-1 : value;
+}
 
 int get_program_sessionid_from_pid(pid_t pid)
 {
-	ssize_t rc;
-	int fd;
+	unsigned int value;
 
-	const char *path = proc_path(pid, "/sessionid");
-	fd = open(path, O_RDONLY|O_CLOEXEC);
-	if (fd >= 0) {
-		char buf[16];
-		int ses;
-
-		rc = read(fd, buf, sizeof(buf)-1);
-		close(fd);
-		if (rc > 0) {
-			buf[rc] = 0;  // manually terminate, read doesn't
-			errno = 0;
-			ses = strtol(buf, NULL, 10);
-			if (errno == 0)
-				return ses;
-		}
-	}
-	return -1;
+	return read_process_audit_id(pid, true, &value) ? -1 : (int)value;
 }
 
 /*

@@ -27,6 +27,7 @@
 
 #include <sys/types.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "attr-sets.h"
 #include "gcc-attributes.h"
 
@@ -114,6 +115,7 @@ char *get_program_from_pid(pid_t pid, size_t blen, char *buf)
 	__attr_access ((__write_only__, 3, 2));
 char *get_type_from_pid(pid_t pid, size_t blen, char *buf)
 	__attr_access ((__write_only__, 3, 2));
+int read_process_audit_id(pid_t pid, bool session, unsigned int *value);
 uid_t get_program_auid_from_pid(pid_t pid);
 int get_program_sessionid_from_pid(pid_t pid);
 int read_proc_status_fd(int fd, unsigned int fields,
