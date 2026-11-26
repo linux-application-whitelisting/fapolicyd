@@ -205,6 +205,9 @@ This command deletes all entries that match from the trust database. It will try
 .TP 12
 .B update
 This command updates the size and hash of any matching paths in the file trust database. If no path is given, then all files are updated. If an argument is passed, then only matching paths get updated. If the intent is to match against a directory, ensure that it ends with '/'.
+.PP
+An update or deletion across multiple trust files reports failure if any fragment
+cannot be edited. Changes already completed in other fragments are retained.
 .TP 12
 .B --filter
 When used with \fBadd\fP or \fBupdate\fP, evaluate the selected files and directories through the filter configuration (\fIfapolicyd-filter.conf\fP). Paths excluded by the filter are skipped so only allowed entries are added or refreshed.

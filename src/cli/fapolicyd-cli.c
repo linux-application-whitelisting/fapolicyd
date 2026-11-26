@@ -462,9 +462,8 @@ static int do_manage_files(int argc, char * const argv[])
 		fprintf(stderr, "Wrong number of arguments\n");
                 fprintf(stderr, "\n%s", usage);
                 return rc;
-	case CLI_EXIT_PATH_CONFIG: // realpath error
-		fprintf(stderr, "Can't obtain realpath from: %s\n", argv[1]);
-		fprintf(stderr, "\n%s", usage);
+	case CLI_EXIT_PATH_CONFIG:
+		fprintf(stderr, "Cannot process the specified path or trust file\n");
 		return rc;
 	default: // file function errors
 		break;

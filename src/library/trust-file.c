@@ -82,8 +82,9 @@
 
 
 static list_t _list;
-static char *_path;
+static const char *_path;
 static int _count;
+static bool edit_failed;
 static bool _use_filter;
 static int _memfd = -1;
 
@@ -727,8 +728,16 @@ static int ftw_delete_path(const char *fpath,
 		int typeflag,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
-	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
-		_count += trust_file_delete_path(fpath, _path);
+	if (typeflag == FTW_DNR || typeflag == FTW_NS)
+		edit_failed = true;
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath)) {
+		int count = trust_file_delete_path(fpath, _path);
+
+		if (count < 0)
+			edit_failed = true;
+		else
+			_count += count;
+	}
 	return FTW_CONTINUE;
 }
 
@@ -744,8 +753,16 @@ static int ftw_update_path(const char *fpath,
 		int typeflag,
 		struct FTW *ftwbuf __attribute__ ((unused)))
 {
-	if (typeflag == FTW_F && !trust_file_is_temp(fpath))
-		_count += trust_file_update_path(fpath, _path, _use_filter);
+	if (typeflag == FTW_DNR || typeflag == FTW_NS)
+		edit_failed = true;
+	if (typeflag == FTW_F && !trust_file_is_temp(fpath)) {
+		int count = trust_file_update_path(fpath, _path, _use_filter);
+
+		if (count < 0)
+			edit_failed = true;
+		else
+			_count += count;
+	}
 	return FTW_CONTINUE;
 }
 
@@ -819,11 +836,13 @@ int trust_file_load_all(list_t *list, int memfd)
  */
 int trust_file_delete_path_all(const char *path)
 {
-	_path = strdup(path);
+	_path = path;
 	_count = trust_file_delete_path(TRUST_FILE_PATH, path);
-	nftw(TRUST_DIR_PATH, &ftw_delete_path, FTW_NOPENFD, FTW_FLAGS);
-	free(_path);
-	return _count;
+	edit_failed = _count < 0;
+	if (walk_trust_dir(ftw_delete_path))
+		edit_failed = true;
+	_path = NULL;
+	return edit_failed ? -1 : _count;
 }
 
 /*
@@ -835,13 +854,15 @@ int trust_file_delete_path_all(const char *path)
  */
 int trust_file_update_path_all(const char *path, bool use_filter)
 {
-	_path = strdup(path);
+	_path = path;
 	_use_filter = use_filter;
 	_count = trust_file_update_path(TRUST_FILE_PATH, path, _use_filter);
-	nftw(TRUST_DIR_PATH, &ftw_update_path, FTW_NOPENFD, FTW_FLAGS);
-	free(_path);
+	edit_failed = _count < 0;
+	if (walk_trust_dir(ftw_update_path))
+		edit_failed = true;
+	_path = NULL;
 	_use_filter = false;
-	return _count;
+	return edit_failed ? -1 : _count;
 }
 
 /*
