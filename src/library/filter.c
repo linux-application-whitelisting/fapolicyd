@@ -661,9 +661,10 @@ int filter_load_file(const char *path)
 			}
 
 			/* Rules require a separator and a nonempty path. Check
-			 * them before advancing past the marker and the space. */
+			 * them before advancing past the marker and its separator. */
 			if (type == ADD || type == SUB) {
-				if (i + 1 >= line_len || line[i + 1] != ' ')
+				if (i + 1 >= line_len ||
+				    !isblank((unsigned char)line[i + 1]))
 					type = BAD;
 				else {
 					rest = fapolicyd_strtrim(line + i + 2);

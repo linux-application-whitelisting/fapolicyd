@@ -469,6 +469,13 @@ static int run_traversal_cases(void)
 			{ "///", FILTER_DENY, NULL },
 			{ NULL, 0, NULL }
 		  } },
+		{ "tab separator after marker",
+		  "+\t/\n -\tprivate/\n",
+		  (const struct filter_case[]) {
+			{ "/private/file", FILTER_DENY, NULL },
+			{ "/other", FILTER_ALLOW, NULL },
+			{ NULL, 0, NULL }
+		  } },
 		{ "whitespace line after a long rule",
 		  "+ /opt/long/component/tool\n    \n",
 		  (const struct filter_case[]) {
