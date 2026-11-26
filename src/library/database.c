@@ -4657,6 +4657,13 @@ static int migrate_database(void)
 	snprintf(vpath, sizeof(vpath), "%s/db.ver", data_dir);
 	fd = open(vpath, O_RDONLY);
 	if (fd < 0) {
+		/* Only an absent version file identifies the old schema.
+		 * Other open failures must leave the existing database intact. */
+		if (errno != ENOENT) {
+			msg(LOG_ERR, "Cannot read db version %s: %s",
+			    vpath, strerror(errno));
+			return 1;
+		}
 		msg(LOG_INFO, "Trust database migration will be performed.");
 
 		// Then we have a version1 db since it does not track versions
@@ -4670,8 +4677,18 @@ static int migrate_database(void)
 			    strerror(errno));
 			return 1;
 		}
-		write(fd, "2", 1);
-		close(fd);
+		ssize_t written = write(fd, "2", 1);
+		int write_errno = written < 0 ? errno : EIO;
+		int close_rc = close(fd);
+
+		if (written != 1 || close_rc < 0) {
+			/* Do not leave an empty or incomplete version marker:
+			 * a later start would refuse the database altogether. */
+			msg(LOG_ERR, "Failed writing db version %s",
+			    strerror(written != 1 ? write_errno : errno));
+			unlink(vpath);
+			return 1;
+		}
 
 		return 0;
 	} else {
