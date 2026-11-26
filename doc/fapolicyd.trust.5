@@ -43,6 +43,7 @@ After an update, administrators should verify and reapply any site-specific
 ACLs or extended attributes the trust file requires.
 .PP
 An absent primary trust file or fragment directory is treated as empty.
+A dangling link at either configured location causes the load to fail.
 If an existing fragment cannot be read completely, the file backend reports a
 load failure and the CLI stops the affected edit.
 .SH EXAMPLE

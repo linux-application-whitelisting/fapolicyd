@@ -28,9 +28,7 @@
 #include <stdbool.h>
 
 #include "llist.h"
-
-#define TRUST_FILE_PATH "/etc/fapolicyd/fapolicyd.trust"
-#define TRUST_DIR_PATH "/etc/fapolicyd/trust.d/"
+#include "paths.h"
 
 bool trust_file_is_temp(const char *fpath);
 int trust_file_append(const char *fpath, list_t *list);

@@ -817,8 +817,14 @@ static int walk_trust_dir(int (*visit)(const char *, const struct stat *,
 {
 	struct stat st;
 
-	if (stat(TRUST_DIR_PATH, &st) < 0)
-		return errno == ENOENT ? 0 : -1;
+	if (stat(TRUST_DIR_PATH, &st) < 0) {
+		/* The trailing slash follows symlinks even with lstat. Check
+		 * the directory entry itself before treating it as absent. */
+		if (errno == ENOENT && lstat(TRUST_DIR, &st) < 0 &&
+		    errno == ENOENT)
+			return 0;
+		return -1;
+	}
 	return nftw(TRUST_DIR_PATH, visit, FTW_NOPENFD, FTW_FLAGS);
 }
 

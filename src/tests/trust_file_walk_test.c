@@ -3,9 +3,9 @@
 #include "paths.h"
 #include "trust-file.h"
 #undef TRUST_FILE_PATH
-#undef TRUST_DIR_PATH
+#undef TRUST_DIR
 #define TRUST_FILE_PATH "primary"
-#define TRUST_DIR_PATH "fragments/"
+#define TRUST_DIR "fragments"
 #include "../library/trust-file.c"
 
 /* Write the given fixture text and report any I/O error. */
@@ -53,14 +53,23 @@ int main(void)
 	list_empty(&list);
 	if (trust_file_delete_path_all("item") >= 0)
 		goto out;
-	if (!trust_file_load("primary", &list, -1) && !list.count)
-		rc = 0;
+	int failed = trust_file_load("primary", &list, -1) || list.count;
 	list_empty(&list);
+	if (failed || unlink("fragments/bad") || rmdir("fragments"))
+		goto out;
+	/* An absent optional directory is valid. A broken link signals
+	 * that configured trust inputs are unavailable. */
+	if (trust_file_load_all(&list, -1) ||
+	    symlink("absent", "fragments") ||
+	    !trust_file_load_all(&list, -1))
+		goto out;
+	rc = 0;
 out:
 	unlink("fragments/bad");
 	unlink("primary");
 	unlink("item1");
 	unlink("item2");
+	unlink("fragments");
 	rmdir("fragments");
 	rmdir(directory);
 	if (rc)
