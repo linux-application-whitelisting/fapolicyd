@@ -111,6 +111,12 @@ int main(void)
 	    access(lock_path, F_OK) != 0)
 		goto out;
 
+	/* A dangling marker is an existing directory entry. */
+	if (symlink("missing-target", version_path) ||
+	    init_database(&config) != 1 || access(data_path, F_OK) ||
+	    access(lock_path, F_OK) || unlink(version_path))
+		goto out;
+
 	/* An actually missing marker still performs the normal migration. */
 	if (init_database(&config) != 1 ||
 	    access(data_path, F_OK) == 0 ||

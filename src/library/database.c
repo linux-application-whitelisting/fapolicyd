@@ -4659,6 +4659,12 @@ static int migrate_database(void)
 	if (fd < 0) {
 		/* Only an absent version file identifies the old schema.
 		 * Other open failures must leave the existing database intact. */
+		struct stat st;
+		/* open also reports ENOENT for a dangling symbolic link. */
+		if (errno == ENOENT && lstat(vpath, &st) == 0) {
+			msg(LOG_ERR, "Cannot resolve existing db version %s", vpath);
+			return 1;
+		}
 		if (errno != ENOENT) {
 			msg(LOG_ERR, "Cannot read db version %s: %s",
 			    vpath, strerror(errno));
