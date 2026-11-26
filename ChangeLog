@@ -1,10 +1,13 @@
 2.0.3
-- Avoid daemon crashes when files shrink during hashing
-- Deny access when required rule attributes are unavailable
-- Fix nested wildcard matching in trust filters
-- Reject malformed filters and rules with too many fields
-- Preserve trust fragments when fapolicyd-cli updates fail
-- Keep the trust database if its version file cannot be read
+- Avoid crashes when files shrink during hashing or startup paths are missing
+- Deny with configured logging when an otherwise matching rule lacks event data
+- Distinguish lookup failures from untrusted files and unset audit IDs
+- Reject rules with too many subject or object fields
+- Fix nested wildcard matching and reject malformed or incomplete trust filters
+- Reject incomplete trust-file loads and report partial failures in bulk edits
+- Update trust files atomically and preserve symlinks, ownership, and mode bits
+- Reserve .fapolicyd-tmp- followed by six ASCII letters or digits in trust.d
+- Keep the trust database when its existing version file cannot be opened
 
 2.0.2
 - Adjust the daemon's capabilities
