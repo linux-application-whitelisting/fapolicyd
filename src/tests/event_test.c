@@ -914,6 +914,26 @@ static int read_object_cache_metric(const char *metric, unsigned long *value)
 	return read_cache_report_line(label, value);
 }
 
+/* A cached object can outlive a failed path allocation. Check that a
+ * new startup using that object fails cleanly and drops its partial subject. */
+static int test_missing_startup_path(void)
+{
+	struct fanotify_event_metadata meta = {
+		.mask = FAN_OPEN_PERM, .fd = 10, .pid = 100,
+	};
+	event_t e = { 0 };
+	object_attr_t path = { .type = PATH };
+
+	CHECK(init_caches(4, 4) == 0, 1, "cache setup failed");
+	CHECK(new_event(&meta, &e) == 0, 2, "open event setup failed");
+	CHECK(object_add(e.o, &path) == 0, 3, "path setup failed");
+	meta.mask = FAN_OPEN_EXEC_PERM;
+	CHECK(new_event(&meta, &e) != 0 && e.s == NULL, 4,
+	      "incomplete startup subject retained");
+	destroy_event_system();
+	return 0;
+}
+
 /*
  * Verify that a second FAN_OPEN_PERM event for the same pid reuses the cached
  * subject, transitions STATE_COLLECTING -> STATE_REOPEN, and skips path
@@ -1237,6 +1257,9 @@ int main(void)
 	if (rc)
 		return rc;
 
+	rc = test_missing_startup_path();
+	if (rc)
+		return rc;
 	rc = test_reopen_skip_path();
 	if (rc)
 		return rc;

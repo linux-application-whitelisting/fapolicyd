@@ -1119,27 +1119,28 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	// Setup pattern info
 	pinfo = e->s->info;
 	if (pinfo && !skip_path && pinfo->state < STATE_FULL) {
-		object_attr_t *on = get_obj_attr(e, PATH);
-		if (on) {
-			const char *file = on->o;
-			if (pinfo->path1 == NULL) {
-				// In this step, we gather info on what is
-				// being asked permission to execute.
-				pinfo->path1 = strdup(file);
-				pinfo->elf_info = gather_elf(e->fd,
-							e->o->info->size);
-			//	pinfo->state = STATE_COLLECTING;Just for clarity
-			} else if (pinfo->path2 == NULL) {
-				pinfo->path2 = strdup(file);
-				pinfo->state = STATE_PARTIAL;
-			} else {
-				// This third look is needed because the first
-				// two are still the old process as far as
-				// procfs is concerned. Reset things that could
-				// change based on the new process name.
-				pinfo->state = STATE_FULL;
-				reset_subject_attributes(s);
+		if (pinfo->path1 == NULL || pinfo->path2 == NULL) {
+			object_attr_t *on = get_obj_attr(e, PATH);
+			char *file = on && on->o ? strdup(on->o) : NULL;
+
+			if (file == NULL) {
+				/* A gap makes this startup sequence unusable. */
+				lru_evict(subj_cache, subject_key);
+				e->s = NULL;
+				return 1;
 			}
+			if (pinfo->path1 == NULL) {
+				pinfo->path1 = file;
+				pinfo->elf_info = gather_elf(e->fd,
+							     e->o->info->size);
+			} else {
+				pinfo->path2 = file;
+				pinfo->state = STATE_PARTIAL;
+			}
+		} else {
+			/* The third event sees the new process in procfs. */
+			pinfo->state = STATE_FULL;
+			reset_subject_attributes(e->s);
 		}
 	}
 	subject_mark_building_event(pinfo);
@@ -1380,7 +1381,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 			attr_lookup_metrics_count_object_lookup(t);
 			// Try to avoid looking up the path if we have it
 			on = object_find_file(o);
-			if (on)
+			if (on && on->o)
 				obj.o = strdup(on->o);
 			else {
 				decision_timing_stage_begin(
@@ -1391,9 +1392,9 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 				decision_timing_stage_end(&timing);
 				if (ptr)
 					obj.o = strdup(buf);
-				else
-					obj.o = strdup("?");
 			}
+			if (!obj.o)
+				return NULL;
 			break;
 		case DEVICE:
 			attr_lookup_metrics_count_object_lookup(t);
@@ -1416,7 +1417,7 @@ object_attr_t *get_obj_attr(event_t *e, object_type_t t)
 				DECISION_TIMING_MIME_TOTAL,
 				&timing);
 			ptr = get_file_type_from_fd(e->fd, o->info,
-							path ? path->o : "?",
+							path && path->o ? path->o : "?",
 							sizeof(buf), buf);
 			decision_timing_stage_end(&timing);
 			if (ptr)
