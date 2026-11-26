@@ -32,6 +32,7 @@
 #define TRUST_FILE_PATH "/etc/fapolicyd/fapolicyd.trust"
 #define TRUST_DIR_PATH "/etc/fapolicyd/trust.d/"
 
+bool trust_file_is_temp(const char *fpath);
 int trust_file_append(const char *fpath, list_t *list);
 int trust_file_load(const char *fpath, list_t *list, int memfd);
 int trust_file_update_path(const char *fpath, const char *path, bool use_filter);

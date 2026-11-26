@@ -194,8 +194,12 @@ static int write_out_list(list_t *list, const char *dest)
 	if (path_len < 0)
 		goto bad;
 	fd = mkstemp(temp_path);
-	if (fd < 0)
+	if (fd < 0) {
+		/* mkstemp did not create a file for us to unlink. */
+		free(temp_path);
+		temp_path = NULL;
 		goto bad;
+	}
 
 	/* Replacing an inode must not change an existing fragment's access
 	 * permissions or owner. New fragments need to be daemon-readable. */
@@ -687,13 +691,18 @@ int trust_file_rm_duplicates(const char *fpath, list_t *list)
  * @fpath: path visited by a trust.d directory walk.
  * Returns 1 for the reserved temporary basename, otherwise 0.
  */
-static int trust_file_is_temp(const char *fpath)
+bool trust_file_is_temp(const char *fpath)
 {
 	const char *name = strrchr(fpath, '/');
 
 	name = name ? name + 1 : fpath;
-	return strncmp(name, TRUST_TEMP_PREFIX,
-		       strlen(TRUST_TEMP_PREFIX)) == 0;
+	if (strncmp(name, TRUST_TEMP_PREFIX, sizeof(TRUST_TEMP_PREFIX) - 1))
+		return false;
+	name += sizeof(TRUST_TEMP_PREFIX) - 1;
+	/* mkstemp replaces exactly six Xs. Keep other fragments visible. */
+	return strlen(name) == 6 &&
+		strspn(name, "abcdefghijklmnopqrstuvwxyz"
+			     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") == 6;
 }
 
 /*

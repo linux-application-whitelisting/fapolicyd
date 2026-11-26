@@ -41,6 +41,10 @@ int main(void)
 	int rc = 1;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
+	if (!trust_file_is_temp("trust.d/.fapolicyd-tmp-Q2hj90") ||
+	    trust_file_is_temp(".fapolicyd-tmp-local") ||
+	    trust_file_is_temp(".fapolicyd-tmp-local.conf"))
+		return 1;
 	if (mkdtemp(directory) == NULL)
 		return 1;
 	if (snprintf(fragment, sizeof(fragment), "%s/trust", directory) >=

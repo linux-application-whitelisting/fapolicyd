@@ -164,7 +164,7 @@ static bool trust_file_name_valid(const char *fname)
 	if (strcmp(fname, ".") == 0 || strcmp(fname, "..") == 0)
 		return false;
 
-	return true;
+	return !trust_file_is_temp(fname);
 }
 
 int file_append(const char *path, const char *fname, bool use_filter)
@@ -172,6 +172,11 @@ int file_append(const char *path, const char *fname, bool use_filter)
 	int rc;
 
 	set_message_mode(MSG_STDERR, DBG_NO);
+
+	if (fname && !trust_file_name_valid(fname)) {
+		msg(LOG_ERR, "Invalid trust file name: %s", fname);
+		return CLI_EXIT_USAGE;
+	}
 
 	list_init(&add_list);
 	rc = add_list_load_path(path);
@@ -196,11 +201,6 @@ int file_append(const char *path, const char *fname, bool use_filter)
 		return CLI_EXIT_NOOP;
 	}
 
-	if (fname && !trust_file_name_valid(fname)) {
-		msg(LOG_ERR, "Invalid trust file name: %s", fname);
-		list_empty(&add_list);
-		return CLI_EXIT_USAGE;
-	}
 
 	char *dest = fname ? fapolicyd_strcat(TRUST_DIR_PATH, fname) :
 							TRUST_FILE_PATH;
