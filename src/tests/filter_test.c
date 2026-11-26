@@ -340,6 +340,22 @@ static int run_traversal_cases(void)
 		const char *rules;
 		const struct filter_case *cases;
 	} scenarios[] = {
+		{ "wildcard directory after a consumed parent",
+		  "+ /\n - usr/src/*/\n - usr/include/\n",
+		  (const struct filter_case[]) {
+			{ "/", FILTER_ALLOW, NULL },
+			{ "/usr/src/kernel-6/file.c", FILTER_DENY, NULL },
+			{ "/usr/bin/tool", FILTER_ALLOW, NULL },
+			{ NULL, 0, NULL }
+		  } },
+		{ "nested wildcard child offset",
+		  "- /\n + opt/\n  - cache*/\n   + keep.txt\n",
+		  (const struct filter_case[]) {
+			{ "/opt/cacheA/keep.txt", FILTER_ALLOW, NULL },
+			{ "/opt/cacheA/other", FILTER_DENY, NULL },
+			{ "/opt/other", FILTER_ALLOW, NULL },
+			{ NULL, 0, NULL }
+		  } },
 		{ "top-level precedence",
 		  "- /usr/share/cache/*\n+ /usr/share/*\n"
 		  "+ /usr/bin/tool\n- /usr/bin/*\n",

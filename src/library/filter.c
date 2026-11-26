@@ -326,8 +326,8 @@ filter_rc_t filter_check(const char *_path)
 				char *filter_lim, *filter_old_lim;
 				filter_lim = filter_old_lim = filter->path;
 
-				char *path_lim, *path_old_lim;
-				path_lim = path_old_lim = path+offset;
+				char *path_lim = path + offset;
+				char *path_old_lim = NULL;
 
 				// there can be wildcard in the dir name as well
 				// we need to count how many chars can be eaten
@@ -350,10 +350,14 @@ filter_rc_t filter_check(const char *_path)
 						break;
 
 				}
+				/* A path with no remaining slash can end at the
+				 * alloca boundary after a parent consumes it. */
+				int truncate = count && filter_old_lim[1] == '\0' &&
+					path_old_lim != NULL;
 				// put 0 after the last /
 				char tmp = '\0';
-				if (count && *(filter_old_lim+1) == '\0') {
-					 tmp = *(path_old_lim+1);
+				if (truncate) {
+					tmp = *(path_old_lim+1);
 					*(path_old_lim+1) = '\0';
 				}
 
@@ -361,15 +365,20 @@ filter_rc_t filter_check(const char *_path)
 				matched = !fnmatch(filter->path, path+offset,0);
 
 				// restore original path string
-				if (count && *(filter_old_lim+1) == '\0')
+				if (truncate)
 					*(path_old_lim+1) = tmp;
 
-				if (matched)
-					offset = (path_old_lim - path) + offset;
+				/* path_old_lim is absolute within path; a child
+				 * begins after it, without adding offset again. */
+				if (matched && path_old_lim)
+					offset = path_old_lim - path + 1;
 			} else {
-				// match normal path or just specific part of it
-				matched = !strncmp(path+offset, filter->path,
-						   filter->len);
+				/* A parent can consume the entire path. Bound the
+				 * literal comparison to its remaining bytes. */
+				matched = offset <= path_len &&
+					filter->len <= path_len - offset &&
+					!strncmp(path+offset, filter->path,
+						 filter->len);
 				if (matched)
 					offset += filter->len;
 			}
