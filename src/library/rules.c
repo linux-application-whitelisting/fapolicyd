@@ -1564,6 +1564,10 @@ static int subj_pattern_test(const subject_attr_t *s, event_t *e)
 	int rc = 0;
 	struct proc_info *pinfo = e->s->info;
 
+	/* Subsequent rules see the same failed classification. */
+	if (!pinfo || pinfo->state == STATE_BAD_ELF)
+		return -1;
+
 	// At this point, we have only 1 or 2 paths.
 	if (pinfo->state < STATE_FULL) {
 		// if it's not an elf file, we're done
@@ -1630,12 +1634,10 @@ make_decision:
 				(pinfo->state == STATE_STATIC))
 				rc = 1;
 			break;
-		case PATTERN_LD_PRELOAD_VAL: {
-			int env = check_environ_from_pid(pinfo->pid);
-			if (env == 1) {
+		case PATTERN_LD_PRELOAD_VAL:
+			rc = check_environ_from_pid(pinfo->pid);
+			if (rc == 1)
 				pinfo->state = STATE_LD_PRELOAD;
-				rc = 1;
-			} }
 			break;
 	}
 

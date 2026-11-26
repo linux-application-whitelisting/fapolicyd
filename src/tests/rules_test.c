@@ -934,6 +934,24 @@ static decision_t evaluate_pattern_rule(const char *rule, state_t state,
 */
 static void test_pattern_outcome_rules(void)
 {
+	char err[ERRBUF];
+	llist l;
+	event_t e;
+
+	if (rules_create(&l) || append_capture(&l,
+	    "allow perm=any pattern=ld_preload : all", 1, err, sizeof(err)))
+		error(1, 0, "preload rule setup failed");
+	prep_pattern_event(&e, STATE_NORMAL, IS_ELF, "/usr/bin/app");
+	e.s->info->pid = -1;
+	if (evaluate(&l, &e) != DENY)
+		error(1, 0, "unavailable environment became a nonmatch");
+	free_event(&e);
+	rules_clear(&l);
+
+	if (evaluate_pattern_rule("allow perm=any pattern=normal : all",
+				  STATE_BAD_ELF, HAS_ERROR, "/usr/bin/app") != DENY)
+		error(1, 0, "cached ELF error became a nonmatch");
+
 	if (evaluate_pattern_rule("allow perm=any pattern=normal : all",
 				  STATE_FULL, IS_ELF|HAS_DYNAMIC,
 				  "/usr/bin/dynamic-app") != ALLOW)

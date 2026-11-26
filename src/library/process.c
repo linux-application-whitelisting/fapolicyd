@@ -609,9 +609,10 @@ int check_environ_from_pid(pid_t pid)
 				break;
 			}
 		}
-		fclose(f);
-		if (rc == -1)
+		/* Only a clean EOF establishes absence from the environment. */
+		if (rc == -1 && feof(f) && !ferror(f))
 			rc = 0;
+		fclose(f);
 		free(line);
 	}
 	return rc;
